@@ -20,7 +20,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from importlib import resources
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, BinaryIO, Literal, TypeAlias, cast
+from typing import TYPE_CHECKING, Any, BinaryIO, TypeAlias, cast
 
 import click
 import psutil
@@ -31,7 +31,6 @@ from rich.console import Console
 from rich.table import Table
 
 from omnigent._platform import IS_WINDOWS, resolve_repo_symlink
-from omnigent._startup_events import capture_cli_entry, record_startup_event
 
 # Interactive harness/credential configuration lives in omnigent.cli_config; the
 # config/setup Click commands and the first-run plan call these entry points.
@@ -100,7 +99,6 @@ if TYPE_CHECKING:
 
     from omnigent.install_ledger import InstallLedger
     from omnigent.server.smart_routing import LLMRoutingClient
-    from omnigent.smart_routing_cli import ArmedSession
     from omnigent.spec.types import LLMConfig
     from omnigent.update_check import _InstalledWheelInfo
 
@@ -1979,7 +1977,6 @@ def _ensure_stdio_survives_unencodable_output() -> None:
                 reconfigure(errors="replace")
 
 
-@capture_cli_entry
 def main() -> None:
     """
     Console-script entry point for ``omnigent``.
@@ -2429,7 +2426,7 @@ def _daemon_host_status_probe(
         HTTP answer and the body carries the transport failure — or ``None``
         when the record has no host id or no server URL to probe.
     """
-    from omnigent.harnesses.claude_native.bridge import url_component
+    from urllib.parse import quote
 
     host_id = record.host_id or _load_existing_host_id()
     if host_id is None:
@@ -2440,7 +2437,7 @@ def _daemon_host_status_probe(
     return _host_http_json(
         base_url=base_url,
         method="GET",
-        path=f"/v1/hosts/{url_component(host_id)}",
+        path=f"/v1/hosts/{quote(host_id, safe='')}",
         timeout_s=timeout_s,
         host_id=host_id,
     )
@@ -3200,28 +3197,11 @@ def _ensure_host_daemon(server_url: str | None) -> bool:
         rather than continue this command mid-restart. ``False`` for a
         plain reuse, a transparent tunnel-health heal, or a first spawn.
     """
-    ensure_started_at = time.monotonic()
     target = _normalize_daemon_target(server_url)
-    existing_before = _find_daemon_record(target)
-    process_was_running = existing_before is not None and _daemon_owner_is_live(existing_before)
-
-    def _record_host_state(action: str, *, running_before: bool = process_was_running) -> None:
-        record_startup_event(
-            "host_state_observed",
-            details={
-                "host_mode": "remote" if server_url else "local",
-                "host_process_state_at_launch": "running" if running_before else "not_running",
-                "host_process_action": action,
-                "host_ensure_elapsed_ms": round((time.monotonic() - ensure_started_at) * 1000, 3),
-            },
-        )
-
     decision = _reuse_existing_daemon_record(target)
     if decision.reuse:
-        _record_host_state("reused")
         return False
     if not decision.config_changed and _local_daemon_serves_target(target, server_url):
-        _record_host_state("reused_local_daemon", running_before=True)
         return False
 
     _HOST_PID_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -3235,11 +3215,9 @@ def _ensure_host_daemon(server_url: str | None) -> bool:
     expected_host_id = _load_existing_host_id()
     spawned = _spawn_host_daemon_process(args=args, env=daemon_env)
     if spawned is None:
-        _record_host_state("start_failed")
         return False
     claimed = _wait_for_daemon_claim(target, spawned)
     if claimed is None:
-        _record_host_state("start_timeout")
         _stop_spawned_host_daemon_process(spawned)
         _delete_spawned_daemon_record(target, spawned)
         # The spawned daemon (or a concurrent winner) never wrote its record:
@@ -3251,7 +3229,6 @@ def _ensure_host_daemon(server_url: str | None) -> bool:
         )
     expected_host_id = expected_host_id or _load_existing_host_id()
     if expected_host_id is not None and claimed.host_id != expected_host_id:
-        _record_host_state("start_identity_mismatch")
         _stop_spawned_host_daemon_process(spawned)
         _delete_spawned_daemon_record(target, spawned)
         actual_host_id = claimed.host_id or "<missing>"
@@ -3261,13 +3238,6 @@ def _ensure_host_daemon(server_url: str | None) -> bool:
             "Check OMNIGENT_HOST_ID, OMNIGENT_HOST_NAME, and OMNIGENT_CONFIG_HOME. "
             f"See {spawned.log_path}."
         )
-    if claimed.pid != spawned.pid:
-        action = "started_concurrently_during_launch"
-    elif process_was_running:
-        action = "restarted_during_launch"
-    else:
-        action = "started_during_launch"
-    _record_host_state(action)
     return decision.config_changed
 
 
@@ -5973,10 +5943,8 @@ def resume(
     """Resume an Omnigent conversation, auto-dispatching by runtime.
 
     \b
-    With CONV_ID: looks up the conversation and dispatches to the
-    matching wrapper. claude-native sessions reopen in the native
-    Claude terminal; everything else surfaces a clear hint to
-    use ``omnigent run --resume <id> <agent.yaml>``.
+    With CONV_ID: surfaces a clear hint to use
+    ``omnigent run --resume <id> <agent.yaml>``.
 
     \b
     Without CONV_ID: opens a cross-agent picker over your prior
@@ -5995,278 +5963,6 @@ def resume(
         target=target,
         server=_resolve_server_url(server).api_base if server else server,
     )
-
-
-_IMPORT_BATCH_MAX_WORKERS = 8
-
-
-@dataclass
-class _SessionImportResult:
-    """Outcome of importing one source session.
-
-    Shared by the single-session path and the parallel batch path so both
-    interpret the same statuses.
-    """
-
-    session_id: str
-    status: Literal["imported", "already", "unreachable", "failed", "load_error"]
-    item_count: int = 0
-    link: str | None = None
-    message: str | None = None
-    raw_exc: BaseException | None = None
-
-
-@cli.command("import")
-@click.option(
-    "--harness",
-    type=click.Choice(
-        ["all", "claude", "codex", "pi"],
-        case_sensitive=False,
-    ),
-    required=True,
-    help="Local coding harness that owns the source session, or 'all' (with --last) "
-    "to import from every supported harness.",
-)
-@click.option(
-    "--session",
-    "source_session_id",
-    default=None,
-    metavar="SESSION_ID",
-    help="Harness-native session ID to import. Mutually exclusive with --last.",
-)
-@click.option(
-    "--last",
-    "recent_session_count",
-    type=click.IntRange(min=1, max=100),
-    default=None,
-    metavar="N",
-    help="Import the N most recently modified parent sessions (maximum 100).",
-)
-@click.option(
-    "--server",
-    default=None,
-    help=(
-        "Omnigent server URL. Defaults to the configured server, an existing "
-        "local server, or a newly started local server."
-    ),
-)
-@click.option(
-    "--force",
-    is_flag=True,
-    help="Replace a previously imported chat from the same harness session.",
-)
-def import_session_command(
-    harness: str,
-    source_session_id: str | None,
-    recent_session_count: int | None,
-    server: str | None,
-    force: bool,
-) -> None:
-    """Import chats from supported local coding harnesses.
-
-    The source transcript is converted to ordinary Omnigent items and stored
-    as a normal session. Use --session for one chat or --last for a bounded
-    batch. A source session can only be imported once unless --force is used
-    to replace the previous import.
-
-    \b
-    Examples:
-      omnigent import --harness claude --session <session-id>
-      omnigent import --harness codex --session <session-id>
-      omnigent import --harness pi --session <session-id>
-      omnigent import --harness claude --last 10
-      omnigent import --harness claude --session <session-id> --force
-    """
-    import httpx
-
-    from omnigent.chat import _remote_headers
-    from omnigent.conversation_browser import conversation_url
-    from omnigent.session_import import (
-        ImportSource,
-        SessionImportNotFoundError,
-    )
-    from omnigent.session_import.local import (
-        list_recent_local_session_ids,
-        list_recent_sessions_across_harnesses,
-        load_local_session,
-    )
-
-    if (source_session_id is None) == (recent_session_count is None):
-        raise click.UsageError("Provide exactly one of --session or --last.")
-
-    harness = harness.lower()
-    all_harnesses = harness == "all"
-    if all_harnesses and source_session_id is not None:
-        raise click.UsageError(
-            "--harness all requires --last (a session id belongs to one harness)."
-        )
-
-    is_batch = recent_session_count is not None
-    # Each target is a (harness, session-id) pair so an "all" batch can span
-    # harnesses; a single-harness run just yields one harness's ids.
-    import_targets: list[tuple[ImportSource, str]] = []
-    if recent_session_count is not None:
-        if all_harnesses:
-            # Merge every harness into one global recency order, keep the top N
-            # (so "last N" is N total, not N per harness). Oldest first so the
-            # newest import lands atop the sidebar.
-            import_targets = list(
-                reversed(list_recent_sessions_across_harnesses(limit=recent_session_count))
-            )
-        else:
-            src = cast(ImportSource, harness)
-            try:
-                recent_ids = list_recent_local_session_ids(src, limit=recent_session_count)
-            except SessionImportNotFoundError as exc:
-                raise click.ClickException(str(exc)) from exc
-            import_targets = [(src, sid) for sid in reversed(recent_ids)]
-        if not import_targets:
-            scope = "any harness" if all_harnesses else harness
-            raise click.ClickException(f"No local {scope} parent sessions were found")
-    else:
-        assert source_session_id is not None
-        import_targets = [(cast(ImportSource, harness), source_session_id)]
-
-    cfg = _load_effective_config()
-    base_url = _resolve_attach_server(server, cfg.get("server"))
-    if base_url is None:
-        base_url = ensure_local_omnigent_server().url
-    base_url = base_url.rstrip("/")
-
-    # If this machine is itself a host, bind the imported session to it so it
-    # resumes where the transcript came from. Read-only: never mints an identity
-    # on a machine that isn't already a host. Read from the effective config
-    # path so an OMNIGENT_CONFIG_HOME override is honored.
-    from omnigent.host.identity import load_host_identity_if_present
-
-    host_identity = load_host_identity_if_present(_effective_global_config_path())
-
-    def _import_one(target: tuple[ImportSource, str]) -> _SessionImportResult:
-        # Each target carries its own harness so an "all" batch can span them.
-        current_source, sid = target
-        try:
-            imported = load_local_session(current_source, sid)
-        except SessionImportNotFoundError as exc:
-            return _SessionImportResult(sid, "load_error", message=str(exc), raw_exc=exc)
-        except (OSError, TypeError, ValueError) as exc:
-            return _SessionImportResult(sid, "load_error", message=str(exc), raw_exc=exc)
-
-        payload: dict[str, object] = {
-            "source": imported.source,
-            "external_session_id": imported.external_session_id,
-            "workspace": imported.workspace,
-            "title": imported.native_title,
-            "force": force,
-            "items": [
-                {
-                    "type": item.type,
-                    "response_id": item.response_id,
-                    "data": item.data.model_dump(mode="json", exclude_none=True),
-                }
-                for item in imported.items
-            ],
-        }
-        if host_identity is not None:
-            payload["host_id"] = host_identity.host_id
-        try:
-            response = httpx.post(
-                f"{base_url}/v1/imports",
-                json=payload,
-                headers=_remote_headers(server_url=base_url, host_id=None),
-                timeout=120.0,
-            )
-        except httpx.RequestError as exc:
-            return _SessionImportResult(
-                sid,
-                "unreachable",
-                message=f"Could not reach the Omnigent server: {exc}",
-                raw_exc=exc,
-            )
-
-        if response.is_error:
-            try:
-                body = response.json()
-                detail = body.get("error", {}).get("message") or body.get("detail")
-            except (ValueError, AttributeError):
-                detail = None
-            message = f"Import failed ({response.status_code}): {detail or response.text}"
-            status = "already" if response.status_code == 409 else "failed"
-            return _SessionImportResult(sid, status, message=message)
-
-        try:
-            result = response.json()
-            session_id = result["session_id"]
-            item_count = result["item_count"]
-        except (AttributeError, KeyError, TypeError, ValueError) as exc:
-            return _SessionImportResult(
-                sid,
-                "failed",
-                message="Import returned an invalid server response",
-                raw_exc=exc,
-            )
-        # Surface the browser URL, not the bare id, so the user can open the
-        # imported session straight into the web (where it offers the resume
-        # picker). Maps a Databricks API base to its workspace SPA link.
-        return _SessionImportResult(
-            sid,
-            "imported",
-            item_count=item_count,
-            link=conversation_url(base_url, session_id),
-        )
-
-    if not is_batch:
-        result = _import_one(import_targets[0])
-        if result.status == "imported":
-            click.echo(f"Imported {result.item_count} item(s) into {result.link}")
-            return
-        if result.status == "load_error":
-            # A missing session is a clean CLI error; a corrupt transcript keeps
-            # its original exception so the traceback points at the parse fault.
-            if isinstance(result.raw_exc, SessionImportNotFoundError):
-                raise click.ClickException(str(result.raw_exc)) from result.raw_exc
-            assert result.raw_exc is not None
-            raise result.raw_exc
-        raise click.ClickException(result.message or "Import failed")
-
-    # Distinct sessions are independent conversations on the server (their own
-    # ids, row locks, and position counters), so importing them concurrently
-    # never contends. Resolve the remote auth token once up front to populate
-    # the per-URL SDK cache before the workers fan out, rather than have each
-    # worker cold-mint it in parallel.
-    _remote_headers(server_url=base_url, host_id=None)
-    results: dict[tuple[ImportSource, str], _SessionImportResult] = {}
-    max_workers = min(len(import_targets), _IMPORT_BATCH_MAX_WORKERS)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {executor.submit(_import_one, target): target for target in import_targets}
-        for future in concurrent.futures.as_completed(futures):
-            target = futures[future]
-            results[target] = future.result()
-
-    # A per-session network failure (e.g. one large session's read timeout) is
-    # reported and counted like any other failure so the rest of the batch still
-    # imports; only the single-session path treats unreachable as fatal.
-    imported_count = 0
-    already_imported_count = 0
-    failed_count = 0
-    # Report in the caller's requested order, not worker completion order.
-    for target in import_targets:
-        sid = target[1]
-        outcome = results[target]
-        if outcome.status == "imported":
-            imported_count += 1
-            click.echo(f"Imported {outcome.item_count} item(s) from {sid} into {outcome.link}")
-        elif outcome.status == "already":
-            already_imported_count += 1
-            click.echo(f"Already imported {sid}; skipped.")
-        else:
-            failed_count += 1
-            click.echo(f"Failed {sid}: {outcome.message}", err=True)
-
-    click.echo(f"\nImported: {imported_count}")
-    click.echo(f"Already imported: {already_imported_count}")
-    click.echo(f"Failed: {failed_count}")
-    if failed_count:
-        raise click.ClickException(f"{failed_count} session(s) failed to import")
 
 
 def _render_usage(report: dict[str, Any], limit: int) -> None:  # type: ignore[explicit-any]
@@ -6635,8 +6331,7 @@ def session_import(input_path: str, title: str | None, server: str | None) -> No
 
     The inverse of ``omnigent session export``: reads the ``session_meta`` +
     ``item`` lines and recreates the conversation on the target server as a new
-    session (a fresh conversation id each time). Distinct from ``omnigent
-    import``, which reads native harness history rather than an export file.
+    session (a fresh conversation id each time).
 
     The session is created as history-only (no runner is launched); open it in
     the UI or resume it to continue. Note: per-turn ``response_id`` grouping is
@@ -6653,8 +6348,6 @@ def session_import(input_path: str, title: str | None, server: str | None) -> No
     import httpx
 
     from omnigent.chat import _remote_headers
-    from omnigent.db.utils import builtin_agent_id
-    from omnigent.native.native_coding_agents import native_coding_agent_for_harness
 
     src_path = Path(input_path)
     if not src_path.is_file():
@@ -6694,17 +6387,15 @@ def session_import(input_path: str, title: str | None, server: str | None) -> No
 
     initial_items = [_import_item_payload(item) for item in items]
 
-    # Agent binding: reuse the exported agent_id when it exists on the target
-    # server; otherwise fall back to the built-in native agent for the export's
-    # harness (mirrors the /v1/imports fallback).
+    # Agent binding: reuse the exported agent_id, which must exist on the
+    # target server.
     exported_agent_value = meta.get("agent_id")
     exported_agent_id = exported_agent_value if isinstance(exported_agent_value, str) else None
-    harness_value = meta.get("harness") or meta.get("harness_override")
-    harness = harness_value if isinstance(harness_value, str) else None
-    fallback_agent_id: str | None = None
-    native_agent = native_coding_agent_for_harness(harness)
-    if native_agent is not None:
-        fallback_agent_id = builtin_agent_id(native_agent.agent_name)
+    if not exported_agent_id:
+        raise click.ClickException(
+            "Could not resolve an agent to bind: the export has no agent_id. "
+            "Register the agent on the target server, then retry."
+        )
 
     cfg = _load_effective_config()
     base_url = _resolve_attach_server(server, cfg.get("server"))
@@ -6748,24 +6439,10 @@ def session_import(input_path: str, title: str | None, server: str | None) -> No
         timeout=120.0,
         trust_env=_trust_env_for(base_url),
     ) as client:
-        candidates = [a for a in (exported_agent_id, fallback_agent_id) if a]
-        if not candidates:
-            raise click.ClickException(
-                "Could not resolve an agent to bind: the export has no agent_id "
-                f"and harness {harness!r} has no built-in native agent. "
-                "Register the agent on the target server, then retry."
-            )
-        resp: httpx.Response | None = None
-        for idx, agent_id in enumerate(candidates):
-            resp = _create(agent_id, client)
-            if resp.status_code == 404 and idx + 1 < len(candidates):
-                # Exported agent absent on this server — try the native fallback.
-                continue
-            break
-        assert resp is not None
+        resp = _create(exported_agent_id, client)
         if resp.status_code == 404:
             raise click.ClickException(
-                f"Agent not found on server for import (tried {candidates}). "
+                f"Agent {exported_agent_id!r} not found on server for import. "
                 "Register the agent on the target server, then retry."
             )
         if resp.status_code >= 400:
@@ -7020,245 +6697,6 @@ def _build_resume_parts() -> list[str]:
     return parts
 
 
-def _dispatch_native_terminal_harness(
-    *,
-    harness: str,
-    server: str | None,
-    model: str | None,
-    prompt: str | None,
-    system_prompt: str | None,
-    tools: str | None,
-    log: bool,
-    debug_events: bool,
-    resume_conversation_id: str | None,
-    resume_picker: bool,
-    resume_latest: bool,
-    fork_session_id: str | None,
-    ephemeral: bool,
-    auto_open_conversation: bool,
-) -> bool:
-    """
-    Launch a ``*-native`` terminal harness via its TUI wrapper directly.
-
-    ``run --harness claude-native`` (and the codex/pi equivalents)
-    must NOT go through the materialized-launcher REPL: that drives an
-    Omnigent turn per message — which persists its own user item — *while*
-    the harness forwarder mirrors the same message back from the TUI's
-    transcript, recording every user message twice. These harnesses are
-    terminal-mirror sessions whose turns originate in the TUI, so dispatch
-    straight to the native wrapper, keeping the TUI the single source of
-    turns. A top-level ``--model`` is forwarded in the shape each wrapper
-    expects; wrappers with their own config receive it only when explicitly
-    provided on the command line.
-
-    ``--continue`` is honored (not rejected): it resolves to this harness's
-    most-recent conversation and hands that off to the wrapper, matching the
-    pre-dispatch launcher behavior so it is not a silent resume regression.
-
-    :param harness: The requested ``--harness`` value (canonical or alias).
-    :returns: ``True`` when *harness* is a native terminal harness and was
-        dispatched here; ``False`` when it is not one (caller continues).
-    """
-    from omnigent.native.native_coding_agents import native_coding_agent_for_harness
-
-    native_agent = native_coding_agent_for_harness(harness)
-    if native_agent is None:
-        return False
-    # The native TUI wrappers attach to a tmux pane and own their own turn
-    # loop, so REPL-only options have no analog there. Reject them loudly
-    # rather than silently dropping them, and point at the dedicated
-    # subcommand. (``--continue``/``--resume <id>``/``--resume`` picker ARE
-    # supported below — they map onto the wrapper's session selection.)
-    unsupported = [
-        flag
-        for flag, active in (
-            ("--system-prompt", system_prompt is not None),
-            ("--tools", tools is not None),
-            ("--log", log),
-            ("--debug-events", debug_events),
-            ("--fork", fork_session_id is not None),
-            ("--no-session", ephemeral),
-        )
-        if active
-    ]
-    if unsupported:
-        # These are REPL-only options with no analog in the TUI — and the
-        # dedicated subcommand doesn't accept them either (it would treat them
-        # as passthrough args), so tell the user to drop them rather than
-        # redirect. ``--model`` and session selection (--resume/--continue) ARE
-        # honored here.
-        raise click.ClickException(
-            f"`run --harness {harness}` launches the {native_agent.display_name} TUI directly; "
-            f"the REPL-only option(s) {', '.join(unsupported)} have no effect there — remove them."
-        )
-
-    server = _ensure_backend(server)
-    passthrough = ("--model", model) if model else ()
-
-    # Resolve --continue to a concrete conversation id (the wrappers take a
-    # session id / picker, not a "latest" flag). Precedence matches the REPL:
-    # an explicit id wins, then the picker, then --continue.
-    session_id = resume_conversation_id
-    if session_id is None and not resume_picker and resume_latest:
-        from omnigent.chat import _remote_headers, _resolve_latest_conversation_id
-
-        session_id = _resolve_latest_conversation_id(
-            base_url=server,
-            agent_name=native_agent.agent_name,
-            headers=_remote_headers(server_url=server, host_id=None),
-        )
-        # The user explicitly asked to continue; if there's nothing to continue,
-        # fail loud rather than silently starting fresh (matches the REPL's
-        # _resolve_resume_target behavior).
-        if session_id is None:
-            raise click.ClickException(
-                f"No prior conversation for agent {native_agent.agent_name!r}."
-            )
-
-    common = {
-        "server": server,
-        "session_id": session_id,
-        "resume_picker": resume_picker,
-        "auto_open_conversation": auto_open_conversation,
-    }
-    from omnigent.harnesses.claude_native.main import run_claude_native
-
-    run_claude_native(**common, extra_args=passthrough, prompt=prompt)
-    return True
-
-
-# ── Smart Routing (arm the session, the harness routes the first message) ─
-# The CLI never routes a prompt at create time: ``--smart-routing`` turns Smart
-# Routing on for a new session and the harness's own first-message hook picks
-# the model once the user types. Routing a prompt up front is the web UI's job.
-
-
-def _reject_smart_routing_prompt(prompt: str | None) -> None:
-    """
-    Reject ``--smart-routing`` combined with ``-p``.
-
-    The CLI routes the first message typed *inside* the harness, so a prompt
-    handed over up front would launch on an unrouted model with no sign that
-    the request was dropped.
-
-    :param prompt: The ``-p`` text, or ``None``.
-    :returns: None when the combination is fine.
-    :raises click.UsageError: When *prompt* carries text.
-    """
-    if prompt is None or not prompt.strip():
-        return
-    raise click.UsageError(
-        "--smart-routing routes the first message you type in the harness, so it "
-        "cannot be combined with -p/--prompt. Drop -p and type the prompt in the "
-        "TUI, or start the session from the web UI to route a prompt at create time."
-    )
-
-
-def _reject_smart_routing_resume(*, resuming: bool, flag: str = "--resume") -> None:
-    """
-    Reject ``--smart-routing`` combined with a resume.
-
-    Routing happens when the session is created, so a routed launch is always a
-    new session; resuming one would silently ignore the routing request.
-
-    :param resuming: ``True`` when the invocation targets an existing session.
-    :param flag: The flag to name in the error, e.g. ``"--continue"``.
-    :returns: None when the combination is fine.
-    :raises click.ClickException: When *resuming* is ``True``.
-    """
-    if not resuming:
-        return
-    raise click.ClickException(
-        f"--smart-routing routes a new session, so it cannot be combined with {flag}. "
-        f"Drop {flag} to route, or drop --smart-routing to reopen the existing session "
-        "on its own model."
-    )
-
-
-def _smart_routing_decision(*, server: str, harness: str) -> ArmedSession:
-    """
-    Preflight Smart Routing, then create the session it will route in.
-
-    Preflight failures raise (a pick that cannot be applied is worse than no
-    pick); a create the server rejects comes back as a result with no session
-    whose notice is printed here, so the caller only has to launch a plain
-    wrapper session.
-
-    Nothing is routed at create: the session carries Smart Routing on, and
-    *harness*'s own first-message hook picks the model once the user types,
-    which is what the stderr line reports.
-
-    :param server: Resolved Omnigent server base URL.
-    :param harness: Canonical native harness to bind, e.g. ``"codex-native"``.
-    :returns: The armed session to attach the wrapper to.
-    :raises click.ClickException: When Smart Routing is unavailable.
-    """
-    from omnigent.smart_routing_cli import (
-        arm_smart_routing_session,
-        check_smart_routing_available,
-        known_host_id,
-    )
-
-    # The session must be bound to the host it will run on: the server builds
-    # the router's candidate model catalog from that host's model-options
-    # frames, so the daemon has to be connected before we create (the wrapper
-    # ensures it again on attach; the call is idempotent).
-    host_id: str | None
-    try:
-        from omnigent.host.identity import load_or_create_host_identity
-
-        _ensure_host_daemon(server)
-        host_id = known_host_id(base_url=server, host_id=load_or_create_host_identity().host_id)
-    except (OSError, ValueError):
-        # No host identity yet — the per-host gate has nothing to read, which
-        # is the same "unknown does not gate" case as an older host.
-        host_id = None
-    check_smart_routing_available(
-        base_url=server,
-        harnesses=(harness,),
-        host_id=host_id,
-    )
-    armed = arm_smart_routing_session(
-        base_url=server,
-        harness=harness,
-        host_id=host_id,
-        # The server requires a workspace with a host_id, and this is the cwd
-        # the wrapper will attach in.
-        workspace=str(Path.cwd().resolve()) if host_id is not None else None,
-    )
-    click.echo(
-        armed.notice
-        or "omnigent: Smart Routing is on for this session; your first message picks the model.",
-        err=True,
-    )
-    return armed
-
-
-def _reject_agent_with_native_terminal_harness(harness: str) -> None:
-    """
-    Reject ``run AGENT --harness <x>-native``: native harnesses own their TUI.
-
-    A ``*-native`` harness mirrors an external CLI's own TUI; the agent spec's
-    prompt/tools are never consulted, and driving it through the REPL would
-    double-record every message (Omnigent turn + forwarder mirror). So an
-    explicit AGENT path combined with a native terminal harness has no coherent
-    meaning — fail loud and point at the dedicated subcommand.
-
-    :param harness: The requested ``--harness`` value (canonical or alias).
-    :raises click.ClickException: When *harness* is a native terminal harness.
-    """
-    from omnigent.native.native_coding_agents import native_coding_agent_for_harness
-
-    native_agent = native_coding_agent_for_harness(harness)
-    if native_agent is None:
-        return
-    raise click.ClickException(
-        f"`--harness {harness}` launches the {native_agent.display_name} TUI and "
-        f"ignores an AGENT spec; drop the AGENT path and run "
-        f"`omnigent {native_agent.terminal_name}` (or `run --harness {harness}`)."
-    )
-
-
 def _dispatch_run(
     *,
     target: str | None,
@@ -7360,14 +6798,7 @@ def _dispatch_run(
                 and system_prompt is None
             )
             if resume_conversation_id is not None and is_interactive_shape:
-                from omnigent.chat import _redirect_native_resume_if_needed, run_attach
-
-                if _redirect_native_resume_if_needed(
-                    base_url=base_url,
-                    conversation_id=resume_conversation_id,
-                    auto_open_conversation=auto_open_conversation,
-                ):
-                    return
+                from omnigent.chat import run_attach
 
                 _require_live_conversation(
                     base_url=base_url,
@@ -7408,27 +6839,6 @@ def _dispatch_run(
             return
         if harness is None:
             raise click.ClickException(_missing_run_agent_message())
-        # ``*-native`` terminal harnesses launch their own TUI wrapper instead of
-        # the materialized-launcher REPL — the REPL would double-record every
-        # user message (Omnigent turn + forwarder mirror). Returns False for
-        # non-native harnesses, which fall through to the launcher below.
-        if _dispatch_native_terminal_harness(
-            harness=harness,
-            server=server,
-            model=model,
-            prompt=prompt,
-            system_prompt=system_prompt,
-            tools=tools,
-            log=log,
-            debug_events=debug_events,
-            resume_conversation_id=resume_conversation_id,
-            resume_picker=resume_picker,
-            resume_latest=resume_latest,
-            fork_session_id=fork_session_id,
-            ephemeral=ephemeral,
-            auto_open_conversation=auto_open_conversation,
-        ):
-            return
         if ephemeral:
             raise click.ClickException(
                 "--no-session requires an AGENT path; no-AGENT harness launch "
@@ -7446,11 +6856,6 @@ def _dispatch_run(
         system_prompt = None
     elif harness is not None:
         _validate_harness(harness)
-        # A ``*-native`` harness IS its own TUI agent — pairing it with an AGENT
-        # spec is meaningless, and routing it through the REPL would double-record
-        # every message (Omnigent turn + forwarder mirror, same as the no-AGENT
-        # path above). Reject rather than silently launch the broken surface.
-        _reject_agent_with_native_terminal_harness(harness)
 
     if server is not None:
         if _is_server_url(target):
@@ -8957,7 +8362,7 @@ def _runner_online_map(
     :returns: Map of ``runner_id`` to ``True`` / ``False``. ``None``
         means the runner status could not be resolved.
     """
-    from omnigent.harnesses.claude_native.bridge import url_component
+    from urllib.parse import quote
 
     runner_ids = sorted(
         {
@@ -8980,7 +8385,7 @@ def _runner_online_map(
         result = _host_http_json(
             base_url=base_url,
             method="GET",
-            path=f"/v1/runners/{url_component(runner_id)}/status",
+            path=f"/v1/runners/{quote(runner_id, safe='')}/status",
             host_id=runner_host.get(runner_id),
         )
         if result.status_code == 200 and isinstance(result.body, dict):
@@ -9056,12 +8461,12 @@ def _add_daemon_host_status(
     if not isinstance(host_id, str) or not host_id:
         payload["error"] = "host id is not available in local config"
         return
-    from omnigent.harnesses.claude_native.bridge import url_component
+    from urllib.parse import quote
 
     host_result = _host_http_json(
         base_url=base_url,
         method="GET",
-        path=f"/v1/hosts/{url_component(host_id)}",
+        path=f"/v1/hosts/{quote(host_id, safe='')}",
         host_id=host_id,
     )
     if host_result.status_code == 200 and isinstance(host_result.body, dict):
@@ -9624,7 +9029,7 @@ def _stop_session_on_server(
     :param session_id: Session id, e.g. ``"conv_abc123"``.
     :raises click.ClickException: If the server rejects the stop event.
     """
-    from omnigent.harnesses.claude_native.bridge import url_component
+    from urllib.parse import quote
 
     # This is a standalone CLI process with an empty session→host map, so read
     # the session's host from its record first: the stop_session event is a
@@ -9634,7 +9039,7 @@ def _stop_session_on_server(
     info = _host_http_json(
         base_url=base_url,
         method="GET",
-        path=f"/v1/sessions/{url_component(session_id)}",
+        path=f"/v1/sessions/{quote(session_id, safe='')}",
     )
     if info.status_code == 200 and isinstance(info.body, dict):
         host_value = info.body.get("host_id")
@@ -9644,7 +9049,7 @@ def _stop_session_on_server(
     result = _host_http_json(
         base_url=base_url,
         method="POST",
-        path=f"/v1/sessions/{url_component(session_id)}/events",
+        path=f"/v1/sessions/{quote(session_id, safe='')}/events",
         json_body={"type": "stop_session", "data": {}},
         host_id=host_id,
     )

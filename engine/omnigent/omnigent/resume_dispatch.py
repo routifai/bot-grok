@@ -1,23 +1,14 @@
 """Top-level ``omnigent resume`` dispatch.
 
 Glue layer that converts the user's "take me back to where I was"
-intent into the right wrapper invocation. Lives outside ``cli.py`` so
-the dispatch logic (HTTP lookup, picker, claude-native handoff) is
-testable without spinning up a Click runner, and so ``cli.py`` does
-not need to import the claude-native wrapper at every CLI startup.
+intent into a copy-pasteable ``omnigent run --resume`` invocation.
 
-The dispatch contract:
-
-- ``omnigent resume <conv_id>`` — fetch the conversation, read its
-  ``omnigent.wrapper`` label, and dispatch by runtime.
+- ``omnigent resume <conv_id>`` — validate the id and print the hint.
 - ``omnigent resume`` (no id) — open the cross-agent picker (see
   :func:`omnigent.repl._resume_picker.pick_conversation_cross_agent_from_sdk`)
-  and dispatch the selection the same way.
+  and hint the selection the same way.
 
-Terminal-native conversations are dispatched in-process today.
-Everything else surfaces a copy-pasteable hint to the existing
-``omnigent run --resume`` invocation — the agentless ``run
---resume`` shape is tracked separately.
+The agentless ``run --resume`` shape is tracked separately.
 """
 
 from __future__ import annotations
@@ -28,12 +19,7 @@ import logging
 import click
 import httpx
 
-from omnigent._wrapper_labels import (
-    WRAPPER_LABEL_KEY as _WRAPPER_LABEL_KEY,
-)
 from omnigent.cli_invocation import cli_invocation
-from omnigent.native.native_coding_agents import native_coding_agent_for_wrapper_label
-from omnigent.native.native_dispatch import resolve_hook_for_key
 
 _logger = logging.getLogger(__name__)
 
@@ -49,29 +35,25 @@ def run_resume(
     server: str | None,
 ) -> None:
     """
-    Resolve the user's resume request and dispatch by runtime.
+    Resolve the user's resume request into a resume hint.
 
     Direct-id form (``target`` provided) is the common CUJ — the user
-    knows the conversation they want and types its id; we hit the
-    server once for the wrapper label and route to the right wrapper.
-    Picker form (``target`` is None) requires ``--server`` because
-    starting an empty local server just to host the picker would
-    leak state and collide with any other in-flight ``omnigent``
-    process the user has running.
+    knows the conversation they want and types its id. Picker form
+    (``target`` is None) requires ``--server`` because starting an empty
+    local server just to host the picker would leak state and collide with
+    any other in-flight ``omnigent`` process the user has running.
 
     :param target: Optional conversation id, e.g. ``"conv_abc123"``.
         ``None`` selects the picker form.
     :param server: Optional remote Omnigent server URL. Required in the
         picker form (no agent is supplied so we can't bootstrap a
-        local server). For the direct-id form, ``None`` reads the
-        persistent local session store and dispatches to the matching
-        native wrapper.
-    :returns: None when the dispatched wrapper exits.
+        local server).
+    :returns: None when the picker is cancelled.
     :raises click.UsageError: When the picker form is invoked
         without ``--server`` (the user-facing message names both
         recoverable paths).
-    :raises click.ClickException: When the conversation cannot be
-        resolved or the dispatched wrapper raises.
+    :raises click.ClickException: Carrying the resume hint, or when the
+        conversation id is invalid.
     """
     if target is None:
         if server is None:
@@ -202,176 +184,33 @@ def _dispatch_by_runtime(
     server: str | None,
 ) -> None:
     """
-    Fetch *target*'s wrapper label and dispatch to the matching runtime.
-
-    Terminal-native sessions route into their wrapper entry point
-    carrying ``--server`` through. Non-wrapper
-    conversations surface a clear ``ClickException`` pointing at
-    the existing ``omnigent run --resume`` invocation — the
-    agentless ``run --resume`` (drops the ``AGENT`` requirement
-    via server-side agent lookup) is tracked separately and not in
-    this PR's scope.
+    Point the user at the ``omnigent run --resume`` invocation for *target*.
 
     :param target: Conversation id, e.g. ``"conv_abc123"``.
-    :param server: Optional remote Omnigent server URL. ``None`` when
-        the lookup should hit a freshly-started local server (the
-        claude-native wrapper owns its own local server lifecycle).
-    :raises click.ClickException: When *target* is not a valid
-        conversation id, the conversation can't be resolved, can't be
-        classified, or is not a terminal-native session.
+    :param server: Optional remote Omnigent server URL.
+    :raises click.ClickException: Always: with the resume hint, or when
+        *target* is not a valid local conversation id.
     """
     from omnigent.db.db_models import InvalidUuidError, uuid_to_bytes
 
     # Paste punctuation (trailing period, wrapping quotes/backticks) is never
     # part of an id, so strip it. Only the local path binds the id to the sqlite
     # store's Uuid16 column, so it must be a real uuid — reject a malformed one
-    # loudly rather than surfacing a raw StatementError. The remote server owns
-    # its id space (a managed deployment keys sessions on non-uuid ids) and
-    # validates the id itself, so forward it untouched, like the runner and SDK.
+    # loudly. The remote server owns its id space (a managed deployment keys
+    # sessions on non-uuid ids) and validates the id itself.
     stripped = target.strip(_PASTE_PUNCTUATION)
     if server is None:
         try:
             target = uuid_to_bytes(stripped).hex()
         except InvalidUuidError as exc:
             raise click.ClickException("Invalid session id.") from exc
-    else:
-        target = stripped
-
-    if server is not None:
-        wrapper = _read_wrapper_label_remote(server=server, conv_id=target)
-        if _dispatch_wrapper(
-            wrapper=wrapper,
-            server=server.rstrip("/"),
-            session_id=target,
-        ):
-            return
         raise click.ClickException(
-            f"Conversation {target!r} is not a terminal-native session "
-            f"(wrapper={wrapper!r}). To resume it, run "
-            f"`{cli_invocation()} run --resume {target} <agent.yaml> --server "
-            f"{server}`. The agentless form is tracked separately.",
+            f"To resume {target!r}, run "
+            f"`{cli_invocation()} run --resume {target} <agent.yaml>`. "
+            "The agentless form is tracked separately.",
         )
-
-    wrapper = _read_wrapper_label_local(conv_id=target)
-    if _dispatch_wrapper(
-        wrapper=wrapper,
-        server=None,
-        session_id=target,
-    ):
-        return
     raise click.ClickException(
-        f"Conversation {target!r} is not a terminal-native session "
-        f"(wrapper={wrapper!r}). To resume it, run "
-        f"`{cli_invocation()} run --resume {target} <agent.yaml>`. "
-        "The agentless form is tracked separately.",
+        f"To resume {stripped!r}, run "
+        f"`{cli_invocation()} run --resume {stripped} <agent.yaml> --server "
+        f"{server}`. The agentless form is tracked separately.",
     )
-
-
-def _dispatch_wrapper(
-    *,
-    wrapper: str | None,
-    server: str | None,
-    session_id: str,
-) -> bool:
-    """
-    Dispatch a terminal-native wrapper session.
-
-    :param wrapper: Value from ``labels.omnigent.wrapper``.
-    :param server: Omnigent server base URL without trailing slash, or
-        ``None`` for the local persistent server path.
-    :param session_id: Omnigent conversation id.
-    :returns: ``True`` when a wrapper handled the session.
-    """
-    native_agent = native_coding_agent_for_wrapper_label(wrapper)
-    if native_agent is None:
-        return False
-    run_native = resolve_hook_for_key(native_agent.key, "run_native")
-    if run_native is None:
-        return False
-    run_native(server=server, session_id=session_id, extra_args=())
-    return True
-
-
-def _read_wrapper_label_local(*, conv_id: str) -> str | None:
-    """
-    Read a conversation's wrapper label from the local persistent store.
-
-    :param conv_id: Local Omnigent conversation id, e.g. ``"conv_abc123"``.
-    :returns: Value of ``labels.omnigent.wrapper``, or ``None`` when
-        no wrapper label is present.
-    :raises click.ClickException: If the conversation id is not found
-        in the local persistent store.
-    """
-    from omnigent.chat import _omnigent_persistent_dir
-    from omnigent.stores.conversation_store.sqlalchemy_store import (
-        SqlAlchemyConversationStore,
-    )
-
-    db_path = _omnigent_persistent_dir() / "chat.db"
-    store = SqlAlchemyConversationStore(f"sqlite:///{db_path}")
-    conversation = store.get_conversation(conv_id)
-    if conversation is None:
-        raise click.ClickException(
-            f"Conversation {conv_id!r} not found in the local persistent store. "
-            "Pass --server if the conversation lives on a remote Omnigent server.",
-        )
-    labels = conversation.labels
-    return labels.get(_WRAPPER_LABEL_KEY) if isinstance(labels, dict) else None
-
-
-def _read_wrapper_label_remote(
-    *,
-    server: str,
-    conv_id: str,
-) -> str | None:
-    """
-    GET the conversation on *server* and return its wrapper label.
-
-    Used only on the remote-server path. The local-server path
-    delegates the label check to :func:`run_claude_native`'s
-    cold-resume branch (which already issues a GET and surfaces a
-    clear error on mismatch), so duplicating it here would mean two
-    GETs for the same resolution.
-
-    :param server: Remote Omnigent server URL.
-    :param conv_id: Omnigent conversation id.
-    :returns: Wrapper label string, or ``None`` when no
-        ``omnigent.wrapper`` label is present on the row.
-    :raises click.ClickException: On 404 (conv not found), other
-        non-200 status, or a non-JSON / non-object response body.
-    """
-    from omnigent.chat import _remote_headers
-
-    base_url = server.rstrip("/")
-    headers = _remote_headers(server_url=base_url, host_id=None)
-    try:
-        resp = httpx.get(
-            f"{base_url}/v1/sessions/{conv_id}",
-            headers=headers,
-            timeout=10.0,
-        )
-    except httpx.HTTPError as exc:
-        raise click.ClickException(
-            f"Failed to reach {base_url!r}: {exc}",
-        ) from exc
-    if resp.status_code == 404:
-        raise click.ClickException(
-            f"Conversation {conv_id!r} not found on {base_url!r}.",
-        )
-    if resp.status_code != 200:
-        raise click.ClickException(
-            f"Failed to fetch conversation {conv_id!r} ({resp.status_code}): {resp.text[:400]}",
-        )
-    try:
-        body = resp.json()
-    except ValueError as exc:
-        raise click.ClickException(
-            f"Conversation fetch returned non-JSON body: {exc}",
-        ) from exc
-    if not isinstance(body, dict):
-        raise click.ClickException("Conversation fetch returned a non-object body.")
-    labels = body.get("labels")
-    if not isinstance(labels, dict):
-        return None
-    value = labels.get(_WRAPPER_LABEL_KEY)
-    return value if isinstance(value, str) else None

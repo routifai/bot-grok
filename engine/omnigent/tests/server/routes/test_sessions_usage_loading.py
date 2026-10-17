@@ -16,7 +16,6 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from omnigent.errors import OmnigentError
-from omnigent.runner.native.orchestration import _codex_native_launch_config
 from omnigent.server.auth import LEVEL_OWNER, LEVEL_READ, UnifiedAuthProvider
 from omnigent.server.routes._sessions import orchestration
 from omnigent.server.routes.sessions import create_sessions_router
@@ -160,26 +159,6 @@ async def test_snapshot_can_skip_usage_without_exposing_parent_only_cost(
         assert body["external_session_id"] == "thread-resumed"
         stored = usage_app.conversations.get_conversation(usage_app.parent_id)
         assert stored is not None and stored.external_session_id == "thread-resumed"
-    load_usage.assert_not_called()
-
-
-async def test_real_codex_launch_config_does_not_load_usage(
-    usage_app: _UsageApp,
-    usage_client: httpx.AsyncClient,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Exercise the actual launch callback against the authorized server route."""
-    load_usage = Mock(side_effect=AssertionError("Codex launch must not load usage"))
-    monkeypatch.setattr(orchestration, "load_session_usage", load_usage)
-    usage_app.conversations.update_conversation(
-        usage_app.parent_id, model_override="gpt-5", reasoning_effort="high"
-    )
-    config = await _codex_native_launch_config(
-        session_id=usage_app.parent_id, server_client=usage_client
-    )
-    assert config.workspace == usage_app.workspace
-    assert config.model_override == "gpt-5"
-    assert config.reasoning_effort == "high"
     load_usage.assert_not_called()
 
 

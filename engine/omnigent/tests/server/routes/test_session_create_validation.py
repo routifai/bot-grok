@@ -118,31 +118,3 @@ async def test_multi_user_none_still_unauthorized_for_session_scoped_agent(
             conversation_store=conv_store,
         )
     assert excinfo.value.code == ErrorCode.UNAUTHORIZED
-
-
-@pytest.mark.asyncio
-async def test_template_agent_skips_owning_session_check(
-    agent_store: SqlAlchemyAgentStore,
-    conv_store: SqlAlchemyConversationStore,
-    perm_store: SqlAlchemyPermissionStore,
-) -> None:
-    """A template agent (no owning session) needs no access check.
-
-    This is the ``builtin``/template path a correctly-seeded harness resolves
-    to; it authorizes regardless of ``user_id``.
-    """
-    created = agent_store.create(
-        "a0000000000000000000000000000011",
-        "claude-native-ui",
-        "ag_tmpl/bundle",
-    )
-    assert created.session_id is None
-
-    result = await validate_session_agent(
-        user_id=None,
-        agent_id=created.id,
-        agent_store=agent_store,
-        permission_store=perm_store,
-        conversation_store=conv_store,
-    )
-    assert result.id == created.id

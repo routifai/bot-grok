@@ -111,41 +111,6 @@ def test_lowered_report_does_not_claw_back_bucket(db_uri: str) -> None:
     assert usage["by_model"]["m1"]["total_cost_usd"] == pytest.approx(10.0)
 
 
-def test_per_model_tokens_accumulate_from_cumulative(db_uri: str) -> None:
-    store = SqlAlchemyConversationStore(db_uri)
-    conv = store.create_conversation(title="tokens", agent_id=_AGENT_ID)
-
-    # codex-native style: cumulative token totals plus an explicit cost.
-    _persist_native_cumulative_usage(
-        conv.id,
-        {
-            "cumulative_input_tokens": 100,
-            "cumulative_output_tokens": 20,
-            "cumulative_cost_usd": 1.0,
-            "model": "gpt-5.6",
-        },
-        store,
-    )
-    _persist_native_cumulative_usage(
-        conv.id,
-        {
-            "cumulative_input_tokens": 300,
-            "cumulative_output_tokens": 50,
-            "cumulative_cost_usd": 3.0,
-            "model": "gpt-5.6",
-        },
-        store,
-    )
-
-    usage = _usage(store, conv.id)
-    bucket = usage["by_model"]["gpt-5.6"]
-    # The bucket accumulates deltas to match the flat cumulative session totals.
-    assert bucket["input_tokens"] == usage["input_tokens"] == 300
-    assert bucket["output_tokens"] == usage["output_tokens"] == 50
-    assert bucket["total_tokens"] == usage["total_tokens"] == 350
-    assert bucket["total_cost_usd"] == pytest.approx(3.0)
-
-
 def test_per_model_tokens_sum_across_model_switch(db_uri: str) -> None:
     store = SqlAlchemyConversationStore(db_uri)
     conv = store.create_conversation(title="switch-tokens", agent_id=_AGENT_ID)
@@ -184,38 +149,6 @@ def test_per_model_tokens_sum_across_model_switch(db_uri: str) -> None:
     assert opus["output_tokens"] + sonnet["output_tokens"] == usage["output_tokens"] == 60
     assert opus["total_tokens"] + sonnet["total_tokens"] == usage["total_tokens"] == 360
     assert opus["total_cost_usd"] + sonnet["total_cost_usd"] == pytest.approx(11.91)
-
-
-def test_token_priced_bucket_matches_flat_cost(
-    db_uri: str,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    store = SqlAlchemyConversationStore(db_uri)
-    conv = store.create_conversation(title="codex-priced", agent_id=_AGENT_ID)
-
-    # codex-native reports cumulative tokens but NO explicit cost, so cost is
-    # computed from the running token totals. Stub pricing so the test does not
-    # depend on the live catalog; assert the per-model cost bucket still tracks
-    # the flat token-priced total (the elif-has_tokens branch feeds by_model).
-    monkeypatch.setattr(
-        "omnigent.llms.context_window.fetch_model_pricing",
-        lambda model: {"stub": True},
-    )
-    monkeypatch.setattr(
-        "omnigent.llms.context_window.compute_llm_cost",
-        lambda usage, pricing: float(usage.get("total_tokens", 0)) * 0.01,
-    )
-
-    _persist_native_cumulative_usage(
-        conv.id,
-        {"cumulative_input_tokens": 200, "cumulative_output_tokens": 50, "model": "gpt-5.6"},
-        store,
-    )
-
-    usage = _usage(store, conv.id)
-    # total_tokens = 200 (input) + 0 (cache) + 50 (output) = 250; cost = 2.50.
-    assert usage["total_cost_usd"] == pytest.approx(2.50)
-    assert usage["by_model"]["gpt-5.6"]["total_cost_usd"] == pytest.approx(2.50)
 
 
 def _conversation_point_reads(statements: list[str]) -> list[str]:

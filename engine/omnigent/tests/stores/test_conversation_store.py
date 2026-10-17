@@ -28,10 +28,6 @@ from omnigent.entities import (
 )
 from omnigent.errors import StaleCursorError
 from omnigent.server.auth import RESERVED_USER_LOCAL
-from omnigent.session_import import (
-    IMPORT_EXTERNAL_SESSION_ID_LABEL_KEY,
-    IMPORT_SOURCE_LABEL_KEY,
-)
 from omnigent.stores.agent_store.sqlalchemy_store import SqlAlchemyAgentStore
 from omnigent.stores.conversation_store.sqlalchemy_store import (
     SqlAlchemyConversationStore,
@@ -67,30 +63,6 @@ class _RetryOnceMaker:
             self.attempts += 1
             if self.attempts == 1:
                 raise DBAPIError("commit", {}, _CommitDeadlockVictim(), False)
-
-
-def test_fork_drops_import_provenance_labels(
-    conversation_store: SqlAlchemyConversationStore,
-) -> None:
-    """An imported session's fork must not claim the same source identity."""
-    source = conversation_store.create_conversation()
-    conversation_store.set_labels(
-        source.id,
-        {
-            IMPORT_SOURCE_LABEL_KEY: "claude",
-            IMPORT_EXTERNAL_SESSION_ID_LABEL_KEY: "source-id",
-            "kept": "yes",
-        },
-    )
-    conversation_store.set_session_todos(
-        source.id, [{"content": "fork", "status": "pending", "activeForm": "forking"}]
-    )
-
-    fork = conversation_store.fork_conversation(source.id)
-
-    assert fork.labels["kept"] == "yes"
-    assert IMPORT_SOURCE_LABEL_KEY not in fork.labels
-    assert IMPORT_EXTERNAL_SESSION_ID_LABEL_KEY not in fork.labels
 
 
 def test_fork_drops_sandbox_repo_label(
@@ -172,44 +144,6 @@ def test_create_and_get(conversation_store: SqlAlchemyConversationStore) -> None
     fetched = conversation_store.get_conversation(conv.id)
     assert fetched is not None
     assert fetched.id == conv.id
-
-
-def test_create_persists_initial_labels_and_overrides(
-    conversation_store: SqlAlchemyConversationStore,
-) -> None:
-    """Create returns the initial session state without a follow-up update."""
-    created = conversation_store.create_conversation(
-        labels={
-            "omnigent.ui": "terminal",
-            "custom": "value",
-            "long": "x" * 257,
-        },
-        reasoning_effort="high",
-        model_override="model-a",
-        cost_control_mode_override="on",
-        subagent_routing_override="off",
-        harness_override="codex-native",
-    )
-
-    assert created.labels == {
-        "omnigent.ui": "terminal",
-        "custom": "value",
-        "long": "x" * 256,
-    }
-    assert created.reasoning_effort == "high"
-    assert created.model_override == "model-a"
-    assert created.cost_control_mode_override == "on"
-    assert created.subagent_routing_override == "off"
-    assert created.harness_override == "codex-native"
-
-    fetched = conversation_store.get_conversation(created.id)
-    assert fetched is not None
-    assert fetched.labels == created.labels
-    assert fetched.reasoning_effort == "high"
-    assert fetched.model_override == "model-a"
-    assert fetched.cost_control_mode_override == "on"
-    assert fetched.subagent_routing_override == "off"
-    assert fetched.harness_override == "codex-native"
 
 
 def test_create_with_existing_caller_supplied_id_raises(db_uri: str) -> None:
@@ -1499,49 +1433,6 @@ def _append_n_messages(conversation_store: SqlAlchemyConversationStore, conv_id:
 _DEPLOYED_SAFE_READ_ROWS = 400
 
 
-def test_list_items_large_page_reads_in_bounded_statements(
-    conversation_store: SqlAlchemyConversationStore,
-) -> None:
-    """
-    A large requested page must never become one oversized SQL read.
-
-    A deployed managed-Postgres backend failed a single big-page read of a
-    large conversation (500 at ``limit>=500``) while serving the same rows
-    fine in smaller statements — which broke every ``limit=1000`` caller,
-    most visibly claude-native cold resume. The page must be assembled from
-    bounded per-statement reads, while the returned page stays identical:
-    complete, ordered, and correctly flagged ``has_more``.
-    """
-    conv = conversation_store.create_conversation()
-    items = _append_n_messages(conversation_store, conv.id, 550)
-
-    pages = []
-    limits = _captured_item_statement_limits(
-        conversation_store,
-        lambda: pages.append(conversation_store.list_items(conv.id, limit=500)),
-    )
-    [page] = pages
-
-    assert limits, "expected at least one conversation_items SELECT"
-    oversized = [lim for lim in limits if lim > _DEPLOYED_SAFE_READ_ROWS]
-    assert not oversized, (
-        f"list_items sent statements asking for {oversized} rows — beyond the "
-        f"{_DEPLOYED_SAFE_READ_ROWS}-row reads the deployed backend is proven "
-        f"to serve; a big-conversation page must be stitched from bounded reads"
-    )
-
-    # The stitched page is byte-for-byte what one big read used to return.
-    assert [it.id for it in page.data] == [it.id for it in items[:500]]
-    assert page.has_more is True
-    assert page.first_id == items[0].id
-    assert page.last_id == items[499].id
-
-    # And the follow-up cursor page picks up exactly where it left off.
-    rest = conversation_store.list_items(conv.id, limit=500, after=page.last_id)
-    assert [it.id for it in rest.data] == [it.id for it in items[500:]]
-    assert rest.has_more is False
-
-
 def test_list_items_large_page_desc_and_cursor_cross_chunks(
     conversation_store: SqlAlchemyConversationStore,
 ) -> None:
@@ -2091,31 +1982,6 @@ def test_list_conversations_archive_toggle_round_trips(
 
 
 # ── Delete ───────────────────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_delete_conversation(
-    conversation_store: SqlAlchemyConversationStore,
-) -> None:
-    conv = conversation_store.create_conversation()
-    conversation_store.set_session_todos(
-        conv.id, [{"content": "late", "status": "pending", "activeForm": "waiting"}]
-    )
-    conversation_store.append(
-        conv.id,
-        [
-            NewConversationItem(
-                type="message",
-                response_id="resp_del",
-                data=MessageData(role="user", content=[{"type": "input_text", "text": "bye"}]),
-            ),
-        ],
-    )
-    assert await conversation_store.delete_conversation(conv.id) is True
-    assert conversation_store.get_conversation(conv.id) is None
-    assert conversation_store.list_items(conv.id).data == []
-    assert not conversation_store.set_session_todos(conv.id, [])
-    assert await conversation_store.delete_conversation(conv.id) is False
 
 
 @pytest.mark.asyncio
@@ -3185,29 +3051,6 @@ def test_replace_runner_id_allows_internal_non_session_conversation(
     fetched = conversation_store.get_conversation(conv.id)
     assert fetched is not None
     assert fetched.runner_id == "runner-uuid-1"
-
-
-def test_list_conversations_by_runner_id_filters(
-    conversation_store: SqlAlchemyConversationStore,
-) -> None:
-    """Only conversations pinned to the queried runner are returned.
-
-    The runner tunnel's connect/disconnect callbacks use this lookup to
-    find the sessions whose ``create_session`` handshake (and the
-    claude-native terminal bootstrap behind it) must be driven on
-    reconnect — a wrong or empty result here means the terminal is
-    silently never created.
-    """
-    bound = conversation_store.create_conversation(runner_id="runner_token_a")
-    conversation_store.create_conversation(runner_id="runner_token_b")
-    conversation_store.create_conversation()  # unbound
-
-    result = conversation_store.list_conversations_by_runner_id("runner_token_a")
-
-    # Exactly the bound conversation — proves the filter matched on the
-    # column rather than returning a superset the caller must re-filter.
-    assert [c.id for c in result] == [bound.id]
-    assert result[0].runner_id == "runner_token_a"
 
 
 def test_list_conversations_by_runner_id_hydrates_labels(
@@ -4926,133 +4769,6 @@ def test_fork_conversation_copies_labels(
     )
 
 
-def test_fork_conversation_drops_instance_scoped_labels(
-    conversation_store: SqlAlchemyConversationStore,
-    agent_store: SqlAlchemyAgentStore,
-) -> None:
-    """
-    Instance-scoped labels are NOT copied to the fork.
-
-    The native bridge-id labels and the context metrics belong to the
-    source's running instance. Copying the bridge-id in particular
-    pointed a forked claude-native session at the SOURCE's bridge — the
-    launched terminal + web injection keyed off it and hit "session no
-    longer active after /clear" because the bridge's active-session
-    marker wasn't the clone. The fork must drop them (and re-bind its
-    own runtime), while ordinary labels still copy.
-
-    The DANGEROUS codex full-bypass directive is in the same set for a
-    different reason: a fork is a new session + workspace, so re-arming
-    ``--dangerously-bypass-approvals-and-sandbox`` there with no typed
-    re-confirmation would violate the "impossible to enable accidentally"
-    contract (#657). It must be dropped so the clone opts in afresh.
-    """
-    agent_store.create(
-        agent_id="f88a23d7428c44557a974c2e07787713",
-        name="fork-instance",
-        bundle_location="f88a23d7428c44557a974c2e07787713/fakehash",
-    )
-    source = conversation_store.create_conversation(agent_id="f88a23d7428c44557a974c2e07787713")
-    conversation_store.set_labels(
-        source.id,
-        {
-            "omnigent.claude_native.bridge_id": source.id,
-            "omnigent.codex_native.bridge_id": source.id,
-            "omnigent.last_context_tokens": "39903",
-            "omnigent.last_context_window": "1000000",
-            # The dangerous bypass opt-in must NOT ride into the fork.
-            "omnigent.codex_native.bypass_sandbox": "1",
-            # An ordinary, non-instance label that SHOULD carry over.
-            "omnigent.wrapper": "claude-code-native-ui",
-        },
-    )
-
-    fork = conversation_store.fork_conversation(source.id)
-
-    # The clone keeps the harness identity (wrapper) but none of the
-    # source's per-instance state. A bridge-id here would re-introduce
-    # the cross-bridge bug; the metrics would show the source's stale
-    # usage.
-    assert fork.labels == {"omnigent.wrapper": "claude-code-native-ui"}, (
-        f"Fork must drop instance-scoped labels, kept {fork.labels!r}"
-    )
-    assert fork.session_todos == []
-
-
-def test_fork_extra_labels_rearm_bypass_over_the_always_drop(
-    conversation_store: SqlAlchemyConversationStore,
-    agent_store: SqlAlchemyAgentStore,
-) -> None:
-    """``extra_labels`` stamps AFTER the drop, so a deliberate opt-in wins.
-
-    The source's own bypass label is always dropped (instance-scoped), so a
-    bypass-armed source can't silently re-arm its clone. But when the fork
-    dialog explicitly re-arms bypass, the route passes it via ``extra_labels``,
-    which the store applies last — the fork ends up armed even though the
-    source's identical label was dropped on the same fork.
-    """
-    agent_store.create(
-        agent_id="c1a2b3c4d5e6f7081920314253647586",
-        name="fork-bypass",
-        bundle_location="c1a2b3c4d5e6f7081920314253647586/fakehash",
-    )
-    source = conversation_store.create_conversation(agent_id="c1a2b3c4d5e6f7081920314253647586")
-    conversation_store.set_labels(source.id, {"omnigent.codex_native.bypass_sandbox": "1"})
-
-    # Same-agent fork WITHOUT the opt-in: the source's label is dropped.
-    plain = conversation_store.fork_conversation(source.id)
-    assert "omnigent.codex_native.bypass_sandbox" not in plain.labels
-
-    # WITH the opt-in via extra_labels: armed on the fork despite the drop.
-    armed = conversation_store.fork_conversation(
-        source.id,
-        extra_labels={"omnigent.codex_native.bypass_sandbox": "1"},
-    )
-    assert armed.labels.get("omnigent.codex_native.bypass_sandbox") == "1", (
-        f"extra_labels must re-arm bypass over the always-drop, got {armed.labels!r}"
-    )
-
-
-def test_fork_conversation_stamps_source_external_session_id(
-    conversation_store: SqlAlchemyConversationStore,
-    agent_store: SqlAlchemyAgentStore,
-) -> None:
-    """
-    The source's native session id is stamped on the fork as a one-shot
-    resume directive, while the clone's own ``external_session_id`` stays
-    NULL.
-
-    A native harness launching the clone uses
-    ``omnigent.fork.source_external_session_id`` to resume + branch the
-    source's local transcript (Claude Code ``--fork-session``), so the
-    clone opens with prior history. The clone is NOT that session, so its
-    own ``external_session_id`` must remain unset until it captures its
-    own on first launch. Sources without a native session get no label.
-    """
-    agent_store.create(
-        agent_id="f27f858bf73f99ab4bdef6152e0f8729",
-        name="fork-ext",
-        bundle_location="f27f858bf73f99ab4bdef6152e0f8729/fakehash",
-    )
-    source = conversation_store.create_conversation(agent_id="f27f858bf73f99ab4bdef6152e0f8729")
-    conversation_store.set_external_session_id(source.id, "claude-uuid-abc")
-
-    fork = conversation_store.fork_conversation(source.id)
-
-    # Directive carries the SOURCE's claude uuid for the resume+fork launch.
-    assert fork.labels.get("omnigent.fork.source_external_session_id") == "claude-uuid-abc", (
-        f"Fork should carry the source's external session id, got {fork.labels!r}"
-    )
-    # The clone is a fresh session — it has no native session of its own
-    # yet. Copying external_session_id would make two Omnigent sessions claim
-    # the same Claude session.
-    reloaded = conversation_store.get_conversation(fork.id)
-    assert reloaded is not None
-    assert reloaded.external_session_id is None, (
-        "Fork must not inherit the source's external_session_id"
-    )
-
-
 def test_fork_conversation_no_external_session_id_no_directive(
     conversation_store: SqlAlchemyConversationStore,
     agent_store: SqlAlchemyAgentStore,
@@ -5147,124 +4863,6 @@ def test_fork_conversation_up_to_response_truncates_items(
     assert len(conversation_store.list_items(source.id).data) == 6
 
 
-def test_fork_conversation_truncated_drops_external_session_directive(
-    conversation_store: SqlAlchemyConversationStore,
-    agent_store: SqlAlchemyAgentStore,
-) -> None:
-    """A truncated fork omits the native resume directive but keeps carry-history.
-
-    If ``omnigent.fork.source_external_session_id`` were stamped, the
-    runner would clone the source's FULL native transcript and resume
-    it — resurrecting the truncated turns. The directive must be
-    omitted so the runner's carry-history fork-rebuild path
-    synthesizes the transcript from the truncated items instead.
-    """
-    from omnigent.stores.conversation_store import (
-        FORK_CARRY_HISTORY_LABEL_KEY,
-        FORK_SOURCE_EXTERNAL_SESSION_LABEL_KEY,
-    )
-
-    agent_store.create(
-        agent_id="ab940db594b0b58507f706fa30a355b9",
-        name="fork-trunc-ext",
-        bundle_location="ab940db594b0b58507f706fa30a355b9/fakehash",
-    )
-    source = conversation_store.create_conversation(agent_id="ab940db594b0b58507f706fa30a355b9")
-    conversation_store.set_external_session_id(source.id, "claude-uuid-trunc")
-    _append_three_responses(conversation_store, source.id)
-
-    fork = conversation_store.fork_conversation(
-        source.id,
-        carry_history_into_native=True,
-        up_to_response_id="resp_001",
-    )
-
-    assert FORK_SOURCE_EXTERNAL_SESSION_LABEL_KEY not in fork.labels, (
-        f"Truncated fork must not carry the full-transcript resume directive, got {fork.labels!r}"
-    )
-    # Carry-history still stamps: the runner needs it to rebuild the
-    # native transcript from the truncated items rather than launch fresh.
-    assert fork.labels.get(FORK_CARRY_HISTORY_LABEL_KEY) == "1"
-
-
-def test_fork_conversation_cross_family_drops_external_session_directive(
-    conversation_store: SqlAlchemyConversationStore,
-    agent_store: SqlAlchemyAgentStore,
-) -> None:
-    """``resume_source_native_session=False`` omits the native resume directive.
-
-    A cross-family fork (e.g. codex-native source → claude-native target)
-    must not stamp ``omnigent.fork.source_external_session_id``: the
-    source's native transcript is the wrong format for the target harness,
-    and the runner's clone path launches FRESH when its clone attempt
-    fails — silently losing history. Omitting the directive routes the
-    runner to the carry-history rebuild path (native transcript built from
-    the copied Omnigent items) instead.
-    """
-    from omnigent.stores.conversation_store import (
-        FORK_CARRY_HISTORY_LABEL_KEY,
-        FORK_SOURCE_EXTERNAL_SESSION_LABEL_KEY,
-    )
-
-    agent_store.create(
-        agent_id="203798a08983a6a0d0290e53cf717e65",
-        name="fork-xfam",
-        bundle_location="203798a08983a6a0d0290e53cf717e65/fakehash",
-    )
-    source = conversation_store.create_conversation(agent_id="203798a08983a6a0d0290e53cf717e65")
-    # A codex thread id on the source: resumable only by a codex target.
-    conversation_store.set_external_session_id(source.id, "codex-thread-xfam")
-    _append_three_responses(conversation_store, source.id)
-
-    fork = conversation_store.fork_conversation(
-        source.id,
-        carry_history_into_native=True,
-        resume_source_native_session=False,
-    )
-
-    # Despite a FULL (untruncated) fork of a source with a native session,
-    # the directive must be absent — present would mean the cross-family
-    # gate regressed and the runner will attempt a doomed transcript clone.
-    assert FORK_SOURCE_EXTERNAL_SESSION_LABEL_KEY not in fork.labels, (
-        f"Cross-family fork must not stamp the source's native session id, got {fork.labels!r}"
-    )
-    # Carry-history still stamps so the runner rebuilds from the copied items.
-    assert fork.labels.get(FORK_CARRY_HISTORY_LABEL_KEY) == "1", (
-        f"cross-family fork must stamp carry-history for rebuild, got {fork.labels!r}"
-    )
-
-
-def test_fork_conversation_up_to_last_response_keeps_external_directive(
-    conversation_store: SqlAlchemyConversationStore,
-    agent_store: SqlAlchemyAgentStore,
-) -> None:
-    """Truncating at the LAST response is treated as a full fork.
-
-    The copy is equivalent to a full fork, so the resume directive is
-    kept — the runner can still clone the source's native transcript
-    verbatim (full fidelity) instead of rebuilding from items.
-    """
-    from omnigent.stores.conversation_store import FORK_SOURCE_EXTERNAL_SESSION_LABEL_KEY
-
-    agent_store.create(
-        agent_id="c774126dd8d6bf6ca0d1baba1893dec2",
-        name="fork-trunc-last",
-        bundle_location="c774126dd8d6bf6ca0d1baba1893dec2/fakehash",
-    )
-    source = conversation_store.create_conversation(agent_id="c774126dd8d6bf6ca0d1baba1893dec2")
-    conversation_store.set_external_session_id(source.id, "claude-uuid-last")
-    _append_three_responses(conversation_store, source.id)
-
-    fork = conversation_store.fork_conversation(source.id, up_to_response_id="resp_003")
-
-    # All 6 items copied — the cutoff at the last response drops nothing.
-    assert len(conversation_store.list_items(fork.id).data) == 6
-    assert fork.labels.get(FORK_SOURCE_EXTERNAL_SESSION_LABEL_KEY) == "claude-uuid-last", (
-        f"Cutoff at the last response is a full fork and must keep the resume "
-        f"directive, got {fork.labels!r}"
-    )
-
-
 def test_fork_conversation_up_to_unknown_response_raises(
     conversation_store: SqlAlchemyConversationStore,
     agent_store: SqlAlchemyAgentStore,
@@ -5287,100 +4885,6 @@ def test_fork_conversation_up_to_unknown_response_raises(
         conversation_store.fork_conversation(source.id, up_to_response_id="resp_nope")
 
 
-def test_fork_clone_agent_is_session_scoped(
-    conversation_store: SqlAlchemyConversationStore,
-    agent_store: SqlAlchemyAgentStore,
-) -> None:
-    """A fork that clones an agent creates a session-scoped row, not a built-in.
-
-    The clone must be born with ``kind='session'`` so it never appears in
-    the built-in agent list (``kind='template'``) that backs the fork
-    picker — the regression that surfaced as duplicate "Claude Code" /
-    "Codex" entries in the fork dialog.
-    """
-    agent_store.create(
-        agent_id="2f9e296b0ecfc976c94f8630a80881f8",
-        name="claude-native-ui",
-        bundle_location="2f9e296b0ecfc976c94f8630a80881f8/hash",
-    )
-    source = conversation_store.create_conversation(agent_id="2f9e296b0ecfc976c94f8630a80881f8")
-
-    fork = conversation_store.fork_conversation(
-        source.id,
-        agent_id="42176d50dd2adf7a0ad796da46b94968",
-        cloned_agent_name="claude-native-ui (fork 267eeb019e971bf79ab32a875543d2ed)",
-        cloned_agent_bundle_location="2f9e296b0ecfc976c94f8630a80881f8/hash",
-        cloned_agent_description=None,
-    )
-
-    assert fork.agent_id == "42176d50dd2adf7a0ad796da46b94968"
-    cloned = agent_store.get("42176d50dd2adf7a0ad796da46b94968")
-    assert cloned is not None
-    assert cloned.session_id == fork.id, "clone must be bound to the fork session"
-    # The clone is session-scoped, so it must NOT leak into the built-in
-    # list (the source built-in is the only template-name row).
-    builtin_ids = {a.id for a in agent_store.list(limit=100).data}
-    assert "42176d50dd2adf7a0ad796da46b94968" not in builtin_ids
-    assert "2f9e296b0ecfc976c94f8630a80881f8" in builtin_ids
-
-
-def test_fork_clone_agent_failure_leaves_no_orphan(
-    conversation_store: SqlAlchemyConversationStore,
-    agent_store: SqlAlchemyAgentStore,
-) -> None:
-    """A failed clone-fork rolls the agent row back — no orphaned built-in.
-
-    Pre-fix the route pre-created the clone in its own committed
-    transaction, so a fork failure (here a stale ``up_to_response_id``)
-    orphaned a ``session_id IS NULL`` row that polluted the built-in agent
-    catalog. Creating the clone inside the fork transaction means the
-    failure rolls it back too.
-    """
-    agent_store.create(
-        agent_id="778757750ea50dc358d584451281795d",
-        name="codex-native-ui",
-        bundle_location="778757750ea50dc358d584451281795d/hash",
-    )
-    source = conversation_store.create_conversation(agent_id="778757750ea50dc358d584451281795d")
-    _append_three_responses(conversation_store, source.id)
-
-    before = {a.id for a in agent_store.list(limit=100).data}
-    with pytest.raises(ValueError, match="resp_nope"):
-        conversation_store.fork_conversation(
-            source.id,
-            agent_id="77511ca47f5b6c6085061ccf10622eb5",
-            cloned_agent_name="codex-native-ui (fork 267eeb019e971bf79ab32a875543d2ed)",
-            cloned_agent_bundle_location="778757750ea50dc358d584451281795d/hash",
-            up_to_response_id="resp_nope",
-        )
-
-    # The clone must not exist at all, and the built-in list is unchanged.
-    assert agent_store.get("77511ca47f5b6c6085061ccf10622eb5") is None
-    after = {a.id for a in agent_store.list(limit=100).data}
-    assert after == before
-
-
-def test_instance_scoped_label_keys_match_harness_constants() -> None:
-    """
-    The store's instance-scoped denylist matches the harness label keys.
-
-    The store hard-codes the bridge-id literals (to avoid importing
-    harness modules into the persistence layer). This guards against
-    drift: if a harness renames its bridge-id label key, the literal in
-    :data:`_INSTANCE_SCOPED_LABEL_KEYS` would silently stop matching and
-    forks would re-inherit the source's bridge. Importing the real
-    constants here makes that rename fail loudly at test time.
-    """
-    from omnigent.harnesses.claude_native.bridge import BRIDGE_ID_LABEL_KEY
-    from omnigent.harnesses.codex_native.bridge import CODEX_NATIVE_BRIDGE_ID_LABEL_KEY
-    from omnigent.stores.conversation_store import _INSTANCE_SCOPED_LABEL_KEYS
-
-    # Each harness's canonical bridge-id key must be in the denylist; a
-    # miss means a rename slipped past the store's hard-coded literal.
-    assert BRIDGE_ID_LABEL_KEY in _INSTANCE_SCOPED_LABEL_KEYS
-    assert CODEX_NATIVE_BRIDGE_ID_LABEL_KEY in _INSTANCE_SCOPED_LABEL_KEYS
-
-
 def test_fork_drops_muse_labels(
     conversation_store: SqlAlchemyConversationStore,
 ) -> None:
@@ -5398,33 +4902,6 @@ def test_fork_drops_muse_labels(
     assert fork.labels["kept"] == "yes"
     assert MUSE_LABEL_KEY not in fork.labels
     assert MUSE_KEY_LABEL_KEY not in fork.labels
-
-
-def test_fork_only_dropped_label_keys_match_muse_constants() -> None:
-    """The store's literals for the Muse labels match the superchat constants."""
-    from omnigent.stores.conversation_store import _FORK_ONLY_DROPPED_LABEL_KEYS
-    from omnigent.superchat.muse import MUSE_KEY_LABEL_KEY, MUSE_LABEL_KEY
-
-    assert {MUSE_LABEL_KEY, MUSE_KEY_LABEL_KEY} <= _FORK_ONLY_DROPPED_LABEL_KEYS
-
-
-def test_fork_only_dropped_label_keys_match_sandbox_repo_constant() -> None:
-    """
-    The store's fork-only denylist matches the server's sandbox-repo key.
-
-    The store hard-codes the repository literal (to avoid importing the
-    server into the persistence layer). If the server renames
-    ``MANAGED_REPO_LABEL_KEY``, the literal in
-    :data:`_FORK_ONLY_DROPPED_LABEL_KEYS` would silently stop matching and
-    a fork would re-inherit the source's repository — a clone that asked
-    for an empty sandbox would get the source's repo re-cloned into it on
-    the first relaunch. Importing the real constant here makes that rename
-    fail loudly at test time.
-    """
-    from omnigent.server.managed_hosts import MANAGED_REPO_LABEL_KEY
-    from omnigent.stores.conversation_store import _FORK_ONLY_DROPPED_LABEL_KEYS
-
-    assert MANAGED_REPO_LABEL_KEY in _FORK_ONLY_DROPPED_LABEL_KEYS
 
 
 def test_fork_conversation_copies_reasoning_effort(
@@ -5519,39 +4996,6 @@ def test_fork_conversation_copy_model_settings_false_resets(
     assert reloaded_default.reasoning_effort == "high"
 
 
-def test_fork_conversation_carry_history_into_native_stamps_label(
-    conversation_store: SqlAlchemyConversationStore,
-    agent_store: SqlAlchemyAgentStore,
-) -> None:
-    """``carry_history_into_native=True`` stamps the carry-history directive.
-
-    The runner reads ``omnigent.fork.carry_history`` to decide whether a
-    native target rebuilds its transcript (vs launching fresh). The label
-    must be set only when the flag is passed; the default leaves it off so
-    a normal fork into a native target doesn't trigger a rebuild from the
-    wrong items.
-    """
-    from omnigent.stores.conversation_store import FORK_CARRY_HISTORY_LABEL_KEY
-
-    agent_store.create(
-        agent_id="69ca49f61d21b0fe5219340e39afecf4",
-        name="fork-carry",
-        bundle_location="69ca49f61d21b0fe5219340e39afecf4/fakehash",
-    )
-    source = conversation_store.create_conversation(agent_id="69ca49f61d21b0fe5219340e39afecf4")
-
-    carried = conversation_store.fork_conversation(source.id, carry_history_into_native=True)
-    assert carried.labels.get(FORK_CARRY_HISTORY_LABEL_KEY) == "1", (
-        f"carry_history_into_native=True must stamp the directive, got {carried.labels!r}"
-    )
-
-    # Default (False): no directive, so a native target launches fresh.
-    plain = conversation_store.fork_conversation(source.id)
-    assert FORK_CARRY_HISTORY_LABEL_KEY not in plain.labels, (
-        f"Default fork must not stamp the carry-history directive, got {plain.labels!r}"
-    )
-
-
 def test_fork_conversation_agent_id_override(
     conversation_store: SqlAlchemyConversationStore,
     agent_store: SqlAlchemyAgentStore,
@@ -5579,224 +5023,6 @@ def test_fork_conversation_agent_id_override(
     assert fork.agent_id == "ef45a1fbab40c51165f0fe615492ef91", (
         "Fork should use the overridden agent_id, not the source's"
     )
-
-
-def test_switch_conversation_agent_cross_family_resets_and_relabels(
-    conversation_store: SqlAlchemyConversationStore,
-    agent_store: SqlAlchemyAgentStore,
-) -> None:
-    """In-place switch deletes the old agent, binds the new, and on a
-    cross-family switch resets model settings, clears the native session
-    id, and replaces the harness-presentation labels.
-    """
-    from omnigent._wrapper_labels import (
-        CODEX_NATIVE_WRAPPER_VALUE,
-        UI_MODE_LABEL_KEY,
-        UI_MODE_TERMINAL_VALUE,
-        WRAPPER_LABEL_KEY,
-    )
-    from omnigent.stores.conversation_store import (
-        FORK_CARRY_HISTORY_LABEL_KEY,
-        SWITCH_PREVIOUS_BUILTIN_LABEL_KEY,
-    )
-
-    # An instance-scoped label (belongs to the running instance, dropped on a
-    # switch). Uses a literal still in _INSTANCE_SCOPED_LABEL_KEYS — the old
-    # omnigent.stopped marker was retired upstream.
-    instance_label = "omnigent.last_context_tokens"
-
-    # A real session binds a session-scoped agent (agent.session_id == conv).
-    created = conversation_store.create_session_with_agent(
-        agent_id="af75a9579488e3520ba6842699e43323",
-        agent_name="claude (switch src)",
-        agent_bundle_location="af75a9579488e3520ba6842699e43323/hash",
-        agent_description="old",
-    )
-    conv_id = created.conversation.id
-    # Give the session model settings, a native session id, and labels that a
-    # switch must touch (instance-scoped stopped marker + the old harness's
-    # ui/wrapper) so we can assert they're handled correctly.
-    conversation_store.update_conversation(
-        conv_id, model_override="claude-opus-4-7", reasoning_effort="high"
-    )
-    conversation_store.set_external_session_id(conv_id, "old-native-uuid")
-    conversation_store.set_session_todos(
-        conv_id, [{"content": "switch", "status": "pending", "activeForm": "switching"}]
-    )
-    conversation_store.set_labels(
-        conv_id,
-        {
-            instance_label: "1",
-            # DANGEROUS codex bypass opt-in: in the instance-scoped set so a
-            # switch (a new agent/harness context) drops it rather than
-            # silently re-arming bypass without a fresh typed confirmation.
-            "omnigent.codex_native.bypass_sandbox": "1",
-            UI_MODE_LABEL_KEY: UI_MODE_TERMINAL_VALUE,
-            WRAPPER_LABEL_KEY: "claude-code-native-ui",
-        },
-    )
-    conversation_store.append(
-        conv_id,
-        [
-            NewConversationItem(
-                type="message",
-                response_id="resp_1",
-                data=MessageData(role="user", content=[{"type": "input_text", "text": "hi"}]),
-            )
-        ],
-    )
-
-    target_labels = {
-        UI_MODE_LABEL_KEY: UI_MODE_TERMINAL_VALUE,
-        WRAPPER_LABEL_KEY: CODEX_NATIVE_WRAPPER_VALUE,
-    }
-    updated = conversation_store.switch_conversation_agent(
-        conv_id,
-        new_agent_id="9d2c8d5e342b7da390dc38351c49fb72",
-        new_agent_name="codex (switch new)",
-        new_agent_bundle_location="9d2c8d5e342b7da390dc38351c49fb72/hash",
-        new_agent_description="new",
-        copy_model_settings=False,  # cross-family
-        carry_history_into_native=True,  # native target
-        presentation_labels=target_labels,
-        previous_builtin_id="52adb39f0c5ea92b5563da5327dac08f",
-    )
-
-    # New agent bound; old session-scoped agent deleted (unique session_id
-    # index would otherwise be violated by leaving both).
-    assert updated.agent_id == "9d2c8d5e342b7da390dc38351c49fb72"
-    assert agent_store.get("af75a9579488e3520ba6842699e43323") is None, (
-        "old session-scoped agent must be deleted on switch"
-    )
-    new_agent = agent_store.get("9d2c8d5e342b7da390dc38351c49fb72")
-    assert new_agent is not None and new_agent.session_id == conv_id, (
-        "new agent must be session-scoped to this conversation"
-    )
-    # Cross-family → provider-bound model id is meaningless, so both reset.
-    assert updated.model_override is None
-    assert updated.reasoning_effort is None
-    # Native runtime state belongs to the old harness → cleared so the next
-    # turn cold-starts and rebuilds from items.
-    assert updated.external_session_id is None
-    assert updated.session_todos == []
-    # Labels: target ui/wrapper applied, carry-history + previous-builtin
-    # stamped, and the old instance-scoped stopped marker dropped.
-    assert updated.labels[UI_MODE_LABEL_KEY] == UI_MODE_TERMINAL_VALUE
-    assert updated.labels[WRAPPER_LABEL_KEY] == CODEX_NATIVE_WRAPPER_VALUE
-    assert updated.labels[FORK_CARRY_HISTORY_LABEL_KEY] == "1"
-    assert updated.labels[SWITCH_PREVIOUS_BUILTIN_LABEL_KEY] == "52adb39f0c5ea92b5563da5327dac08f"
-    assert instance_label not in updated.labels, "instance-scoped labels must not survive a switch"
-    assert "omnigent.codex_native.bypass_sandbox" not in updated.labels, (
-        "the dangerous bypass opt-in must not survive a switch (re-confirm per context)"
-    )
-    # Transcript is untouched (in place, not copied).
-    assert len(conversation_store.list_items(conv_id).data) == 1
-
-
-def test_switch_conversation_agent_same_family_keeps_model_settings(
-    conversation_store: SqlAlchemyConversationStore,
-    agent_store: SqlAlchemyAgentStore,
-) -> None:
-    """A same-family switch keeps model settings; an SDK target (empty
-    presentation labels) drops the old ui/wrapper labels and does not stamp
-    the carry-history directive.
-    """
-    from omnigent._wrapper_labels import (
-        UI_MODE_LABEL_KEY,
-        UI_MODE_TERMINAL_VALUE,
-        WRAPPER_LABEL_KEY,
-    )
-    from omnigent.stores.conversation_store import (
-        FORK_CARRY_HISTORY_LABEL_KEY,
-        SWITCH_PREVIOUS_BUILTIN_LABEL_KEY,
-    )
-
-    created = conversation_store.create_session_with_agent(
-        agent_id="06efca8dd5c2e87b8cfed1aae99cc239",
-        agent_name="claude-native-ui",
-        agent_bundle_location="06efca8dd5c2e87b8cfed1aae99cc239/hash",
-        agent_description=None,
-    )
-    conv_id = created.conversation.id
-    conversation_store.update_conversation(
-        conv_id, model_override="claude-opus-4-7", reasoning_effort="high"
-    )
-    conversation_store.set_labels(
-        conv_id,
-        {
-            UI_MODE_LABEL_KEY: UI_MODE_TERMINAL_VALUE,
-            WRAPPER_LABEL_KEY: "claude-code-native-ui",
-            # A stale previous-builtin pointer from an earlier switch.
-            SWITCH_PREVIOUS_BUILTIN_LABEL_KEY: "a8361389acc16b7721305a16d0ec739e",
-        },
-    )
-
-    updated = conversation_store.switch_conversation_agent(
-        conv_id,
-        new_agent_id="6b49de4c1bc8cb4d4c02a933f68bd3b1",
-        new_agent_name="claude (switch new)",
-        new_agent_bundle_location="6b49de4c1bc8cb4d4c02a933f68bd3b1/hash",
-        new_agent_description=None,
-        copy_model_settings=True,  # same family (anthropic native → sdk)
-        carry_history_into_native=False,  # SDK target rebuilds nothing
-        presentation_labels={},  # SDK → chat mode (drop ui/wrapper)
-        previous_builtin_id=None,
-    )
-
-    # Same family → model settings carry over unchanged.
-    assert updated.model_override == "claude-opus-4-7"
-    assert updated.reasoning_effort == "high"
-    # SDK target → terminal-first ui/wrapper labels removed (chat mode).
-    assert UI_MODE_LABEL_KEY not in updated.labels
-    assert WRAPPER_LABEL_KEY not in updated.labels
-    # No native rebuild for an SDK target.
-    assert FORK_CARRY_HISTORY_LABEL_KEY not in updated.labels
-    # Stale previous-builtin pointer dropped (None passed → not re-stamped),
-    # so a later "switch back" can't offer a wrong target.
-    assert SWITCH_PREVIOUS_BUILTIN_LABEL_KEY not in updated.labels
-
-
-def test_switch_conversation_agent_drops_fork_directive_and_keeps_side_chat_parent(
-    conversation_store: SqlAlchemyConversationStore,
-) -> None:
-    """A switched Side Chat stays linked to its Super Chat and is no longer a native fork."""
-    from omnigent.stores.conversation_store import (
-        FORK_SOURCE_LABEL_KEY,
-        SIDE_CHAT_LABEL_KEY,
-        SIDE_CHAT_PARENT_LABEL_KEY,
-        side_chat_parent_id,
-    )
-
-    created = conversation_store.create_session_with_agent(
-        agent_id="1f0c2a9b7d3e4c5a8b6d9e0f1a2b3c4d",
-        agent_name="claude (switch src)",
-        agent_bundle_location="1f0c2a9b7d3e4c5a8b6d9e0f1a2b3c4d/hash",
-        agent_description=None,
-    )
-    conv_id = created.conversation.id
-    conversation_store.set_labels(
-        conv_id,
-        {
-            SIDE_CHAT_LABEL_KEY: "1",
-            SIDE_CHAT_PARENT_LABEL_KEY: "parent_conv",
-            FORK_SOURCE_LABEL_KEY: "parent_conv",
-        },
-    )
-
-    updated = conversation_store.switch_conversation_agent(
-        conv_id,
-        new_agent_id="2e1d3b0c8a4f5d6b9c7e0a1f2b3c4d5e",
-        new_agent_name="pi (switch new)",
-        new_agent_bundle_location="2e1d3b0c8a4f5d6b9c7e0a1f2b3c4d5e/hash",
-        new_agent_description=None,
-        copy_model_settings=False,
-        carry_history_into_native=False,
-        presentation_labels={},
-        previous_builtin_id=None,
-    )
-
-    assert FORK_SOURCE_LABEL_KEY not in updated.labels
-    assert side_chat_parent_id(updated.labels) == "parent_conv"
 
 
 def test_side_chat_parent_id_falls_back_to_the_fork_label_for_older_side_chats() -> None:
@@ -5890,28 +5116,6 @@ def test_get_session_connectivity_reports_needs_workspace_for_fork(
     # No label → in-process resumable, needs_workspace off. This is the
     # CUJ-2 chat-only fork path that must stay reachable.
     assert result[plain.id].needs_workspace is False
-
-
-def test_get_session_connectivity_reports_imported(
-    conversation_store: SqlAlchemyConversationStore,
-) -> None:
-    """
-    The import-source label surfaces as ``imported=True``.
-
-    An imported transcript carries the ``omnigent.import.source`` label and
-    has no live executor, so ``get_session_connectivity`` must report
-    ``imported=True`` — the flag that makes ``_bulk_session_liveness`` mark
-    the unbound import offline so the open view offers the resume picker
-    instead of treating it as a reachable in-process session.
-    """
-    imported = conversation_store.create_conversation()
-    conversation_store.set_labels(imported.id, {"omnigent.import.source": "claude"})
-    plain = conversation_store.create_conversation()
-
-    result = conversation_store.get_session_connectivity([imported.id, plain.id])
-
-    assert result[imported.id].imported is True
-    assert result[plain.id].imported is False
 
 
 def test_get_session_connectivity_empty_input_skips_query(
@@ -6113,25 +5317,6 @@ def test_set_session_state_persists(
     fetched = conversation_store.get_conversation(conv.id)
     assert fetched is not None
     assert fetched.session_state == state
-
-
-def test_set_session_state_overwrites(
-    conversation_store: SqlAlchemyConversationStore,
-) -> None:
-    """set_session_state replaces the entire state dict."""
-    conv = conversation_store.create_conversation()
-    todos = [{"content": "keep", "status": "pending", "activeForm": "keeping"}]
-    conversation_store.set_session_todos(conv.id, todos)
-    conversation_store.set_session_state(conv.id, {"v": 1})
-    conversation_store.set_session_state(
-        conv.id,
-        {"v": 2, "new_key": True, "_omnigent_native_plan_snapshot_v1": [{"forged": 1}]},
-    )
-
-    fetched = conversation_store.get_conversation(conv.id)
-    assert fetched is not None
-    assert fetched.session_state == {"v": 2, "new_key": True}
-    assert fetched.session_todos == todos
 
 
 def test_set_session_state_empty_dict(

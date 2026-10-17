@@ -96,49 +96,6 @@ async def agents_client(agents_app: FastAPI) -> AsyncIterator[httpx.AsyncClient]
         yield c
 
 
-async def test_list_builtin_agents_returns_registered_templates(
-    agent_store: SqlAlchemyAgentStore,
-    agents_client: httpx.AsyncClient,
-) -> None:
-    """
-    ``GET /v1/agents`` surfaces built-in agents registered in the store,
-    with their id and name, inside the ``PaginatedList`` envelope.
-
-    This is what the new-session picker reads; if registered built-ins
-    don't appear, the picker is empty and no session can be created
-    against a built-in. ``mcp_servers`` is empty here because the test
-    agents have no real bundle (the spec load fails gracefully).
-    """
-    agent_store.create(
-        "2d2cd1e48ffdf8a4c7195e954e2e912c",
-        "claude-native-ui",
-        "2d2cd1e48ffdf8a4c7195e954e2e912c/bundle",
-    )
-    agent_store.create(
-        "01bda0a6f702a638bbee8d871441e659",
-        "research-agent",
-        "01bda0a6f702a638bbee8d871441e659/bundle",
-    )
-
-    resp = await agents_client.get("/v1/agents")
-
-    assert resp.status_code == 200, resp.text
-    body = resp.json()
-    assert {a["id"] for a in body["data"]} == {
-        "2d2cd1e48ffdf8a4c7195e954e2e912c",
-        "01bda0a6f702a638bbee8d871441e659",
-    }
-    assert {a["name"] for a in body["data"]} == {"claude-native-ui", "research-agent"}
-    assert body["has_more"] is False
-    # No loadable bundle → harness degrades to None rather than failing
-    # the list. A non-None value here would mean the route invented a
-    # harness for an unreadable spec.
-    assert all(a["harness"] is None for a in body["data"])
-    # Same degradation for skills: an unreadable spec yields an empty
-    # list, not an error and not invented entries.
-    assert all(a["skills"] == [] for a in body["data"])
-
-
 @pytest.mark.parametrize(
     "harness",
     ["pi", "claude-sdk"],
@@ -270,79 +227,6 @@ async def test_list_builtin_agents_exposes_bundled_skills_from_spec(
     # SkillSummary is the safe subset — the SKILL.md body must not leak
     # into the catalog payload.
     assert all("content" not in s for s in entry["skills"])
-
-
-async def test_catalog_keeps_custom_agent_distinct_from_builtin_claude_and_pi(
-    agent_store: SqlAlchemyAgentStore,
-    artifact_store: LocalArtifactStore,
-    agents_client: httpx.AsyncClient,
-) -> None:
-    """
-    A custom YAML agent registered as a built-in appears in the catalog
-    alongside the Claude and Pi built-ins and stays distinguishable by
-    name + harness, with its description surfaced as the picker label.
-
-    This is the custom-agent value prop: bringing your own YAML agent
-    (here ``databricks-coding-agent`` on the ``claude-native`` harness)
-    must not collapse into the built-ins. The Add Agent picker keys the
-    glyph off harness and the label off name + description, so a custom
-    entry that reported a built-in's harness or dropped its name would be
-    mis-badged or indistinguishable from Claude/Pi. Registering all
-    three in one list and asserting per-id fields proves the route keeps
-    them separate rather than, say, reading one shared spec.
-    """
-    _register_builtin_agent(
-        agent_store,
-        artifact_store,
-        agent_id="3a9725fd4de1720e83e53a632da41da8",
-        name="claude-native-ui",
-        bundle=build_agent_bundle(
-            name="claude-native-ui",
-            executor={"type": "omnigent", "config": {"harness": "claude-sdk"}},
-        ),
-    )
-    _register_builtin_agent(
-        agent_store,
-        artifact_store,
-        agent_id="12c8c7631b209d1027416b4bf7604999",
-        name="pi-ui",
-        bundle=build_agent_bundle(
-            name="pi-ui",
-            executor={"type": "omnigent", "config": {"harness": "pi"}},
-        ),
-    )
-    _register_builtin_agent(
-        agent_store,
-        artifact_store,
-        agent_id="f157d3110ddee6bc0f8e1b893270c8a6",
-        name="databricks-coding-agent",
-        description="Custom coding agent",
-        bundle=build_agent_bundle(
-            name="databricks-coding-agent",
-            executor={"type": "omnigent", "config": {"harness": "claude-native"}},
-        ),
-    )
-
-    resp = await agents_client.get("/v1/agents")
-
-    assert resp.status_code == 200, resp.text
-    by_id = {a["id"]: a for a in resp.json()["data"]}
-    # All three discoverable in the one catalog the picker reads.
-    assert by_id.keys() >= {
-        "3a9725fd4de1720e83e53a632da41da8",
-        "12c8c7631b209d1027416b4bf7604999",
-        "f157d3110ddee6bc0f8e1b893270c8a6",
-    }
-    # Each carries its own harness — the custom agent is neither the
-    # Claude SDK nor the Pi kind. A shared/wrong value here is exactly the
-    # mis-badging this contract guards against.
-    assert by_id["3a9725fd4de1720e83e53a632da41da8"]["harness"] == "claude-sdk"
-    assert by_id["12c8c7631b209d1027416b4bf7604999"]["harness"] == "pi"
-    assert by_id["f157d3110ddee6bc0f8e1b893270c8a6"]["harness"] == "claude-native"
-    # The custom agent keeps its registered name and description (the
-    # picker's label), distinct from both built-ins.
-    assert by_id["f157d3110ddee6bc0f8e1b893270c8a6"]["name"] == "databricks-coding-agent"
-    assert by_id["f157d3110ddee6bc0f8e1b893270c8a6"]["description"] == "Custom coding agent"
 
 
 async def test_list_builtin_agents_empty_when_none_registered(

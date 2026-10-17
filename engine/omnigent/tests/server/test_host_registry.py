@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 import pytest
 
 from omnigent.db.db_models import workspace_scope
-from omnigent.host.frames import CAP_CODEX_SIDE_CHAT, HostHelloFrame
+from omnigent.host.frames import HostHelloFrame
 from omnigent.server.host_registry import HostRegistry, RunnerExitReports
 
 
@@ -73,29 +73,6 @@ def test_register_and_get() -> None:
     assert fetched.hello.name == "test-host"
 
 
-def test_host_supports_codex_side_chat_by_capability() -> None:
-    """The gate refuses only a connected host that didn't advertise the capability.
-
-    A newer build advertises ``CAP_CODEX_SIDE_CHAT``; an older host omits it
-    (empty capabilities) and is gated out. An offline/unknown host fails OPEN so
-    a host we can't see isn't wrongly declared too old.
-    """
-    registry = HostRegistry()
-
-    def hello_caps(caps: list[str]) -> HostHelloFrame:
-        return HostHelloFrame(
-            version="0.1.0", frame_protocol_version=1, name="h", capabilities=caps
-        )
-
-    registry.register("host_new", FakeWebSocket(), hello_caps([CAP_CODEX_SIDE_CHAT]), owner="a")
-    registry.register("host_old", FakeWebSocket(), hello_caps([]), owner="a")
-
-    assert registry.host_supports_codex_side_chat("host_new") is True
-    assert registry.host_supports_codex_side_chat("host_old") is False
-    # Fail-open: an unknown/offline host isn't declared too old.
-    assert registry.host_supports_codex_side_chat("host_absent") is True
-
-
 def test_interactive_shells_survive_disconnect() -> None:
     """A runner can outlive its host tunnel without losing the shell snapshot."""
     registry = HostRegistry()
@@ -148,38 +125,6 @@ def test_deregister_poisons_outbound_queue() -> None:
 
     assert registry.deregister("host_poison") is True
     assert conn.outbound_queue.get_nowait() is None
-
-
-def test_deregister_fails_pending_import_streams() -> None:
-    """Deregistering fails in-flight import streams instead of leaving them to
-    wait out their 60s per-frame timeout on a tunnel that can never answer."""
-    registry = HostRegistry()
-    conn = registry.register("host_imp", FakeWebSocket(), _make_hello(), owner="bob")
-    queue: asyncio.Queue[tuple[str, dict[str, object]]] = asyncio.Queue()
-    conn.pending_import_local["req_1"] = queue
-
-    assert registry.deregister("host_imp") is True
-
-    kind, data = queue.get_nowait()
-    assert kind == "done"
-    assert data["status"] == "failed"
-    assert "disconnected mid-import" in str(data["error"])
-    assert conn.pending_import_local == {}
-
-
-def test_register_replacement_fails_stale_pending_import_streams() -> None:
-    """A reconnect fails the replaced connection's import streams: the new
-    tunnel has no context for them, so no frame will ever land on their queues."""
-    registry = HostRegistry()
-    old = registry.register("host_imp2", FakeWebSocket(), _make_hello(), owner="bob")
-    queue: asyncio.Queue[tuple[str, dict[str, object]]] = asyncio.Queue()
-    old.pending_import_local["req_1"] = queue
-
-    registry.register("host_imp2", FakeWebSocket(), _make_hello(), owner="bob")
-
-    kind, data = queue.get_nowait()
-    assert kind == "done"
-    assert data["status"] == "failed"
 
 
 def test_deregister_returns_false_for_unknown() -> None:
@@ -489,38 +434,6 @@ def test_exit_reports_get_is_unscoped() -> None:
     assert reports.get("runner_abc") == "runner process exited with code 1"
     # Missing runner still reads None (snapshot then leaves last_task_error unset).
     assert reports.get("runner_unknown") is None
-
-
-def test_gateway_inference_is_reported_not_persisted() -> None:
-    """The map a host reports is held per host id and survives a tunnel flap.
-
-    Nothing about gateway backing reaches the database, so the registry is the
-    only place a routing decision can read it. A host that disconnects keeps its
-    last report (a flap must not blank a known answer); a fresh registry — a
-    restarted server — knows nothing until the host reconnects and re-reports.
-    """
-    bare = "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
-    registry = HostRegistry()
-    assert registry.gateway_inference(bare) is None
-
-    registry.register(bare, FakeWebSocket(), _make_hello(), owner="alice")
-    registry.record_gateway_inference(bare, {"claude-native": True, "codex": False})
-    assert registry.gateway_inference(bare) == {"claude-native": True, "codex": False}
-    # Any accepted spelling of the id reads the same entry.
-    assert registry.gateway_inference(f"host_{bare}") == {
-        "claude-native": True,
-        "codex": False,
-    }
-
-    registry.deregister(bare)
-    assert registry.gateway_inference(bare) == {"claude-native": True, "codex": False}
-
-    # A host that cannot evaluate the map at all reports None, which is unknown
-    # — not "nothing is gateway-backed".
-    registry.record_gateway_inference(bare, None)
-    assert registry.gateway_inference(bare) is None
-
-    assert HostRegistry().gateway_inference(bare) is None
 
 
 def test_gateway_inference_returns_a_copy() -> None:

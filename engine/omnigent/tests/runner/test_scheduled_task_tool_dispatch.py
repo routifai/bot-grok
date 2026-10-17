@@ -18,9 +18,6 @@ import json
 import pytest
 
 from omnigent.runner.tool_dispatch import (
-    _ALL_LOCAL_TOOLS,
-    _NATIVE_RELAY_BUILTIN_TOOLS,
-    _SCHEDULED_TASK_TOOLS,
     _execute_scheduled_task_tool,
 )
 
@@ -247,12 +244,6 @@ def test_update_tool_schema_allows_connected_host_changes() -> None:
     assert "host_id" in properties
     # Switching which agent/harness a task runs is part of the update surface.
     assert "agent_id" in properties
-
-
-def test_tools_in_dispatch_and_relay_sets() -> None:
-    assert _SCHEDULED_TASK_TOOLS == _ALL_NAMES
-    assert _ALL_NAMES <= _ALL_LOCAL_TOOLS
-    assert _ALL_NAMES <= _NATIVE_RELAY_BUILTIN_TOOLS
 
 
 class _KindClient(_RecordingClient):

@@ -41,19 +41,11 @@ pytestmark = pytest.mark.asyncio
 _VALID_JSON_BODY = {"hello": "world"}
 
 
-# All seven handlers guarded by ``require_json_content_type``. A fake
+# All handlers guarded by ``require_json_content_type``. A fake
 # session id is sufficient: the content-type dependency runs before any
 # session lookup, so the 415 fires regardless of whether the session
 # exists. ``term_x`` / ``env_x`` are likewise never resolved.
 _JSON_ONLY_ENDPOINTS = [
-    pytest.param(
-        "/v1/sessions/5eca720dc2bc6cdc3a99028d7bd0f917/hooks/permission-request",
-        id="claude_permission_request_hook",
-    ),
-    pytest.param(
-        "/v1/sessions/5eca720dc2bc6cdc3a99028d7bd0f917/hooks/codex-elicitation-request",
-        id="codex_elicitation_request_hook",
-    ),
     pytest.param(
         "/v1/sessions/5eca720dc2bc6cdc3a99028d7bd0f917/policies/evaluate",
         id="evaluate_policy",
@@ -166,40 +158,6 @@ async def test_json_only_endpoint_rejects_missing_content_type(
 # the chosen input, which is never 415. That proves the guard let the
 # request through (the gate passed) AND the handler behaves exactly as it
 # did before this change.
-
-
-@pytest.mark.parametrize(
-    "url",
-    [
-        pytest.param(
-            "/v1/sessions/5eca720dc2bc6cdc3a99028d7bd0f917/hooks/permission-request",
-            id="claude_permission_request_hook",
-        ),
-        pytest.param(
-            "/v1/sessions/5eca720dc2bc6cdc3a99028d7bd0f917/hooks/codex-elicitation-request",
-            id="codex_elicitation_request_hook",
-        ),
-    ],
-)
-async def test_hook_handlers_reached_with_application_json(
-    client: httpx.AsyncClient,
-    url: str,
-) -> None:
-    """
-    ``application/json`` reaches the hook handlers (400, not 415).
-
-    A JSON array body passes the content-type guard, then the handler's
-    own "body must be a JSON object" validation rejects it with 400 —
-    before any elicitation publish or long-poll. A 415 here would mean a
-    valid JSON request was wrongly blocked at the gate.
-    """
-    # ``json=[]`` sends a valid application/json body that is a JSON array,
-    # which both hook handlers reject as "not a JSON object" with 400.
-    resp = await client.post(url, json=[])
-    assert resp.status_code == 400, (
-        f"{url} returned {resp.status_code} for an application/json array body; "
-        "expected the handler's own 400 (proves the guard passed it through)."
-    )
 
 
 async def test_evaluate_policy_reached_with_application_json(

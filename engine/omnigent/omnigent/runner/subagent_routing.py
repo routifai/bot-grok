@@ -51,6 +51,7 @@ import json
 import logging
 import os
 import secrets
+import stat
 import tempfile
 import threading
 import time
@@ -60,6 +61,8 @@ from dataclasses import dataclass, field, replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
+
+from omnigent._platform import stable_user_id
 
 if TYPE_CHECKING:
     import httpx
@@ -97,16 +100,6 @@ HOOK_REQUEST_TIMEOUT_S = 15.0
 #: ``model_override``, so the child-sessions API can join the two without
 #: a new column or a transcript scan.
 ROUTING_DECISION_LABEL_KEY = "omnigent.routing.decision_id"
-
-#: Conversation label fingerprinting the prompt a create-time route scored.
-#: A native Smart Routing create routes the prompt the user typed on the
-#: landing screen, and that same prompt is then submitted inside the harness —
-#: where the first-prompt hook would score it a second time, seconds later, for
-#: the same verdict. The fingerprint lets that hook recognize its own prompt
-#: and reuse the create's decision. A hash, not the text: a label is metadata
-#: that travels into listings and telemetry, and the user's prompt does not
-#: belong there.
-CREATE_ROUTE_PROMPT_LABEL_KEY = "omnigent.routing.create_prompt"
 
 #: Conversation label marking a session created in auto-harness mode. The
 #: ``harness_override`` sentinel is replaced the moment first-message routing
@@ -217,18 +210,10 @@ class SessionRoutingClass:
         model.
     :param auto_harness: The session also let Smart Routing pick the
         harness, so the router may move its spawns across families.
-    :param turn_routing: The session still needs the ``UserPromptSubmit``
-        first-message routing hook. False once something has already routed
-        the session — a web create that routed the model before the pane
-        launched, or an earlier turn — because the hook's only remaining
-        answer is "already routed", paid for with a round trip per prompt.
-        Independent of ``routing_enabled``: a routed session keeps the
-        extended catalog and its spawn routing.
     """
 
     routing_enabled: bool = False
     auto_harness: bool = False
-    turn_routing: bool = False
 
 
 #: The class a session with no recorded routing state is treated as. Read by
@@ -262,16 +247,7 @@ def routing_class_from_snapshot(
     # the label implies routing is on even for a row whose cost-control field
     # was never stamped.
     routes = routing_enabled(cost_control_mode) or auto
-    # The same label the turn hook reads as its "route once" gate: when it is
-    # already there the hook can only ever answer "already routed", so the
-    # launch omits it instead of registering a per-prompt round trip. A create
-    # whose routing failed stamps nothing, and keeps the hook as its retry.
-    already_routed = bool(labels is not None and labels.get(ROUTING_DECISION_LABEL_KEY))
-    return SessionRoutingClass(
-        routing_enabled=routes,
-        auto_harness=auto,
-        turn_routing=routes and not already_routed,
-    )
+    return SessionRoutingClass(routing_enabled=routes, auto_harness=auto)
 
 
 def subagent_routing_enabled(subagent_routing_override: str | None) -> bool:
@@ -972,7 +948,6 @@ def write_advertisement(
     url: str,
     token: str,
     session_id: str | None = None,
-    filename: str = ADVERTISEMENT_FILE,
 ) -> Path:
     """Advertise the endpoint to hook scripts.
 
@@ -982,14 +957,10 @@ def write_advertisement(
     :param session_id: Session the endpoint serves. Included so a hook
         with no session env var of its own still knows which session to
         route for.
-    :param filename: Advertisement file name. Defaults to this module's
-        ``subagent_router.json``; ``omnigent.runner.turn_routing`` passes
-        its own so the two endpoints share one writer (and its token
-        hardening) without sharing a file.
     :returns: Path of the written advertisement.
     """
     bridge_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
-    path = bridge_dir / filename
+    path = bridge_dir / ADVERTISEMENT_FILE
     payload: dict[str, Any] = {
         "url": url,
         "token": token,
@@ -1002,7 +973,7 @@ def write_advertisement(
     # for the instant between the write and a follow-up chmod. A unique temp
     # name also keeps two concurrent re-advertisements from clobbering each
     # other's partial file.
-    fd, tmp_name = tempfile.mkstemp(dir=bridge_dir, prefix=f"{filename}.", suffix=".tmp")
+    fd, tmp_name = tempfile.mkstemp(dir=bridge_dir, prefix=f"{ADVERTISEMENT_FILE}.", suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             os.fchmod(handle.fileno(), 0o600)
@@ -1462,15 +1433,67 @@ def shutdown_session_router(session_id: str, router: SubagentRouter | None = Non
     _prune_router_dirs(router)
 
 
+def subagent_router_root() -> Path:
+    """Root for the subagent router's per-session advertisement directories.
+
+    Namespaced by uid under the temp dir (``$TMPDIR/omnigent-<uid>/subagent-router``)
+    so other Unix users on the host cannot read the bearer token or pre-create
+    the tree as a symlink — see :func:`_ensure_owner_only_dir`.
+
+    :returns: The subagent-router root directory (not created here).
+    """
+    return Path(tempfile.gettempdir()) / f"omnigent-{stable_user_id()}" / "subagent-router"
+
+
+def _ensure_owner_only_dir(target: Path) -> None:
+    """Create or validate *target* as an owner-only directory chain.
+
+    ``Path.mkdir(mode=0o700, parents=True)`` only applies the mode to the leaf
+    and silently trusts any pre-existing ancestor. Walk every ancestor below the
+    temp dir instead: create missing ones ``0o700`` and reject a symlink, a
+    non-directory, or a directory owned by another uid; reset a repairable
+    group/other mode on a directory we own. On Windows, where Python exposes no
+    POSIX uid/mode model, protection relies on the OS ACLs.
+
+    :param target: Directory to ensure, below the temp dir.
+    :raises RuntimeError: If *target* is not below the temp dir or an ancestor
+        fails validation.
+    """
+    trusted_parent = Path(os.path.abspath(tempfile.gettempdir()))
+    target = Path(os.path.abspath(os.fspath(target)))
+    if not target.is_relative_to(trusted_parent) or target == trusted_parent:
+        raise RuntimeError(f"router dir {target!s} is not under {trusted_parent!s}")
+    getuid = getattr(os, "getuid", None)
+    my_uid = getuid() if getuid is not None else None
+    for ancestor in reversed([target, *target.parents]):
+        if not ancestor.is_relative_to(trusted_parent) or ancestor == trusted_parent:
+            continue
+        try:
+            os.mkdir(ancestor, mode=0o700)
+            continue
+        except FileExistsError:
+            pass
+        st = os.lstat(ancestor)
+        if stat.S_ISLNK(st.st_mode):
+            raise RuntimeError(f"refusing to use {ancestor!s}: is a symlink")
+        if not stat.S_ISDIR(st.st_mode):
+            raise RuntimeError(f"refusing to use {ancestor!s}: not a directory")
+        if my_uid is not None and st.st_uid != my_uid:
+            raise RuntimeError(
+                f"refusing to use {ancestor!s}: owned by uid {st.st_uid}, "
+                f"not current user ({my_uid})"
+            )
+        if my_uid is not None and (st.st_mode & 0o077) != 0:
+            os.chmod(ancestor, 0o700)
+
+
 def _prune_router_dirs(router: SubagentRouter) -> None:
     """Remove the router's own (now empty) advertisement dirs.
 
-    Only dirs under the subagent-router root: the native harnesses' bridge
-    dirs are advertised in too and belong to the bridge, not to this router.
+    Only dirs under the subagent-router root are removed; any other advertised
+    dir belongs to its owner, not to this router.
     """
-    from omnigent.harnesses.claude_native.bridge import subagent_router_bridge_root
-
-    root = subagent_router_bridge_root()
+    root = subagent_router_root()
     for bridge_dir in (*router.advertised_dirs, router.bridge_dir):
         # Strictly below the root: the root itself is shared by every session.
         if bridge_dir != root and bridge_dir.is_relative_to(root):
@@ -1481,10 +1504,9 @@ def _prune_router_dirs(router: SubagentRouter) -> None:
 def router_dir_for_session(session_id: str) -> Path:
     """Return the advertisement directory for a session with no bridge dir.
 
-    The claude-agent-sdk harness has no bridge
-    directory of their own, so the router gets a private owner-only one
-    beside the native bridges. Created through the shared bridge-dir
-    hardening: the advertisement holds a bearer token, and
+    The claude-agent-sdk harness has no bridge directory of its own, so the
+    router gets a private owner-only one. Created through
+    :func:`_ensure_owner_only_dir`: the advertisement holds a bearer token, and
     ``mkdir(mode=0o700, parents=True)`` would trust a pre-created
     world-writable or symlinked ancestor.
 
@@ -1492,14 +1514,9 @@ def router_dir_for_session(session_id: str) -> Path:
     :returns: Created directory, mode ``0o700``.
     :raises RuntimeError: If an ancestor fails the ownership check.
     """
-    from omnigent.harnesses.claude_native.bridge import (
-        ensure_secure_dir,
-        subagent_router_bridge_root,
-    )
-
     digest = hashlib.sha256(session_id.encode("utf-8")).hexdigest()[:32]
-    path = subagent_router_bridge_root() / digest
-    ensure_secure_dir(path)
+    path = subagent_router_root() / digest
+    _ensure_owner_only_dir(path)
     return path
 
 

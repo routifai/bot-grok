@@ -1,7 +1,7 @@
 """Tests for the built-in agent bundle builders in ``omnigent/server/app.py``.
 
-The server seeds Web-UI-launchable agents (claude-native and
-the shipped ``debby`` / ``polly`` examples) by materializing each spec into a
+The server seeds Web-UI-launchable agents (the shipped ``debby`` /
+``polly`` examples) by materializing each spec into a
 gzipped tarball at startup. These builders were previously exercised only
 transitively by the agents' e2e suites; a packaging regression (a dropped
 ``config.yaml``, a spec that no longer materializes) would surface late and
@@ -20,17 +20,8 @@ import pytest
 import yaml
 
 from omnigent.errors import OmnigentError
-from omnigent.harness_plugins import native_provider_for_key
-from omnigent.native.native_coding_agents import NATIVE_CODING_AGENTS as _NATIVE_CODING_AGENTS
 from omnigent.server import app
 from omnigent.spec import load, materialize_bundle
-
-# Native built-ins are seeded through one registry-driven builder,
-# ``_build_native_bundle(provider)`` (PR 1.7). We exercise EVERY native agent
-# (not a sample) so each harness's materialize path is covered directly rather
-# than only transitively via e2e.
-# Each spec entry is ``<agent_name>.yaml``, proving the right spec materialized.
-_NATIVE_BUILDERS = [(agent.key, f"{agent.agent_name}.yaml") for agent in _NATIVE_CODING_AGENTS]
 
 # Shipped-example built-ins keep their hand-written named builders. The bool is
 # whether the source is a shipped example a stripped deployment may omit.
@@ -68,24 +59,6 @@ def _assert_valid_tarball_with_entry(blob: bytes, spec_entry: str, label: str) -
     # arcname='.' prefixes every member with './'; match on the trailing path.
     assert any(m.lstrip("./") == spec_entry or m.endswith("/" + spec_entry) for m in members), (
         f"{label} tarball is missing its spec entry {spec_entry!r}; members={members!r}."
-    )
-
-
-@pytest.mark.parametrize(("key", "spec_entry"), _NATIVE_BUILDERS)
-def test_native_bundle_builder_produces_valid_tarball(key: str, spec_entry: str) -> None:
-    """The registry-driven native builder yields a tarball with the agent's spec."""
-    provider = native_provider_for_key(key)
-    assert provider is not None, f"no native provider for {key!r}"
-    _assert_valid_tarball_with_entry(app._build_native_bundle(provider), spec_entry, key)
-
-
-@pytest.mark.parametrize(("key", "spec_entry"), _NATIVE_BUILDERS)
-def test_native_bundle_builder_is_reproducible(key: str, spec_entry: str) -> None:
-    """The native builder is byte-for-byte reproducible (content-addressable seed)."""
-    provider = native_provider_for_key(key)
-    assert provider is not None, f"no native provider for {key!r}"
-    assert app._build_native_bundle(provider) == app._build_native_bundle(provider), (
-        f"native builder for {key!r} is not byte-for-byte reproducible."
     )
 
 
@@ -219,47 +192,3 @@ def test_shipped_example_survives_unknown_harness_sub_agent(
     # itself would have failed validation on the missing-directory check.
     assert "future_worker" not in spec.tools.agents
     assert expected_sub_agents <= set(spec.tools.agents)
-
-
-# ── Byte-stability of built-in agent ids (PR 1.7 seeding loop) ──────────────
-#
-# The startup seeder derives each built-in's id from its NAME via
-# builtin_agent_id (a pure sha256 of "builtin:<name>"). Persisted
-# conversation.agent_id rows point at these ids, so a rename — or a seeding
-# loop that seeds a different name — silently orphans every session on the old
-# agent after a redeploy. This freezes the expected id for every native
-# built-in as it is today; a change here is a loud signal to migrate, not a
-# value to blindly update.
-_EXPECTED_BUILTIN_AGENT_IDS = {
-    "claude-native-ui": "58a1bc5bf0bba6d31ceeb7661f8d751c",
-}
-
-
-def test_native_seed_ids_are_byte_stable() -> None:
-    """Every native built-in seeds under its frozen, name-derived id.
-
-    Guards the redeploy-safety invariant the seeding loop must preserve: the
-    id is a hash of the agent name, so the set of names AND their ids must not
-    drift.
-    """
-    from omnigent.db.utils import builtin_agent_id
-    from omnigent.native.native_coding_agents import NATIVE_CODING_AGENTS
-
-    actual = {a.agent_name: builtin_agent_id(a.agent_name) for a in NATIVE_CODING_AGENTS}
-    assert actual == _EXPECTED_BUILTIN_AGENT_IDS, (
-        "built-in native agent ids drifted; a redeploy would orphan persisted "
-        "conversation.agent_id rows. Migrate deliberately, do not just update this table."
-    )
-
-
-def test_native_seed_loop_covers_every_native_agent() -> None:
-    """The seeding loop can resolve a provider for every native coding agent.
-
-    A native agent with no provider row would be silently dropped from the
-    seeded set (the loop raises instead — this pins that contract).
-    """
-    from omnigent.harness_plugins import native_provider_for_key
-    from omnigent.native.native_coding_agents import NATIVE_CODING_AGENTS
-
-    missing = [a.key for a in NATIVE_CODING_AGENTS if native_provider_for_key(a.key) is None]
-    assert missing == [], f"native agents without a provider row to seed from: {missing}"

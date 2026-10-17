@@ -22,8 +22,6 @@ import pytest
 
 from omnigent.server.routes import sessions as _sessions_mod
 from omnigent.server.routes.sessions import (
-    _CLAUDE_NATIVE_WRAPPER_LABEL_KEY,
-    _CODEX_NATIVE_SUBAGENT_WRAPPER_LABEL_VALUE,
     _background_task_delivery_status,
     _publish_status,
     _session_status_with_child_rollup,
@@ -157,45 +155,27 @@ def test_background_tasks_detail_cleared_on_failure() -> None:
 # ── background-task delivery status (ended-turn collapse) ───────────────────
 
 
-def test_subagent_background_waiting_delivers_as_idle() -> None:
-    # Regression: a claude-native sub-agent relabels its Stop turn-end to
-    # `waiting` for background shells, but the parent's terminal-delivery gate
-    # keys off idle/failed — `waiting` would hang the orchestrator. The turn
-    # ended, so deliver `idle` (the tally still drives the child spinner).
-    assert _background_task_delivery_status("waiting", 1, _conv("sub_agent")) == "idle"
-
-
 def test_top_level_background_waiting_delivers_as_idle() -> None:
     # A top-level session's turn has ended too: `waiting` would spin the
     # sidebar, gate the composer into queue/"Steer", and let a reconnect reopen
     # the settled turn's streaming bubble. The tally carries the shells instead.
-    assert _background_task_delivery_status("waiting", 1, _conv("session")) == "idle"
+    assert _background_task_delivery_status("waiting", 1) == "idle"
 
 
 def test_top_level_waiting_without_background_count_unchanged() -> None:
     # A genuine async-work park (the runtime's own `waiting`, no tally) is a
     # real busy state and must survive the collapse.
-    assert _background_task_delivery_status("waiting", None, _conv("session")) == "waiting"
-    assert _background_task_delivery_status("waiting", 0, _conv("session")) == "waiting"
+    assert _background_task_delivery_status("waiting", None) == "waiting"
+    assert _background_task_delivery_status("waiting", 0) == "waiting"
 
 
 def test_subagent_waiting_without_background_count_unchanged() -> None:
     # A genuine async-park `waiting` (no background tally) is a real waiting
     # state, not a relabeled turn-end — it must not be collapsed.
-    assert _background_task_delivery_status("waiting", None, _conv("sub_agent")) == "waiting"
-    assert _background_task_delivery_status("waiting", 0, _conv("sub_agent")) == "waiting"
-
-
-def test_codex_native_subagent_waiting_unchanged() -> None:
-    # Codex-internal children are excluded from the native delivery branch, so
-    # the collapse must not touch them either.
-    codex_child = _conv(
-        "sub_agent",
-        labels={_CLAUDE_NATIVE_WRAPPER_LABEL_KEY: _CODEX_NATIVE_SUBAGENT_WRAPPER_LABEL_VALUE},
-    )
-    assert _background_task_delivery_status("waiting", 1, codex_child) == "waiting"
+    assert _background_task_delivery_status("waiting", None) == "waiting"
+    assert _background_task_delivery_status("waiting", 0) == "waiting"
 
 
 def test_non_waiting_status_passes_through() -> None:
-    assert _background_task_delivery_status("idle", 1, _conv("sub_agent")) == "idle"
-    assert _background_task_delivery_status("failed", 1, _conv("sub_agent")) == "failed"
+    assert _background_task_delivery_status("idle", 1) == "idle"
+    assert _background_task_delivery_status("failed", 1) == "failed"

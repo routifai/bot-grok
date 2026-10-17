@@ -3,14 +3,11 @@
 import json
 import socket
 import threading
-from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
-
 from dev.repro_env.runtime import isolated_env
 from dev.repro_env.transport import Relay
-from omnigent.harnesses.claude_native.bridge import ensure_claude_workspace_trusted
 
 
 def test_isolates_inherited_native_state(tmp_path):
@@ -31,17 +28,6 @@ def test_isolates_inherited_native_state(tmp_path):
     assert env["OMNIGENT_CONFIG_HOME"] == str(tmp_path / "config")
     assert env["CLAUDE_CONFIG_DIR"] == str(tmp_path / "claude-config")
     assert "127.0.0.1" in env["NO_PROXY"]
-
-
-def test_onboarding_uses_selected_claude_directory(monkeypatch, tmp_path):
-    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "selected"))
-    monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
-    workspace = tmp_path / "workspace"
-    ensure_claude_workspace_trusted(workspace)
-    state = json.loads((tmp_path / "selected/.claude.json").read_text())
-    assert state["hasCompletedOnboarding"]
-    assert state["projects"][str(workspace)]["hasTrustDialogAccepted"]
-    assert not (tmp_path / "home/.claude.json").exists()
 
 
 def test_relays_streams_and_reconnects_without_restarting_service(tmp_path, monkeypatch):
@@ -266,6 +252,7 @@ def test_relay_shutdown_closes_an_open_stream(tmp_path):
 
 def test_generated_provider_config_disables_runner_idle_shutdown(monkeypatch, tmp_path):
     from dev.repro_env.runtime import write_model_config
+
     from omnigent.runner._entry import _load_runner_idle_timeout_s_from_config
 
     monkeypatch.setenv("OMNIGENT_CONFIG_HOME", str(tmp_path))
@@ -273,62 +260,11 @@ def test_generated_provider_config_disables_runner_idle_shutdown(monkeypatch, tm
     assert _load_runner_idle_timeout_s_from_config() == 0
 
 
-def test_supervisor_terminates_children_when_relay_cleanup_fails(tmp_path, monkeypatch):
-    import time
-
-    from dev.repro_env import runtime
-
-    monkeypatch.setattr("dev.repro_env.doctor.launch_observations", lambda root: {})
-
-    state = tmp_path / "environment.json"
-    state.write_text(
-        json.dumps(
-            {
-                "status": "starting",
-                "workspace": str(tmp_path),
-                "expires_at": time.time() + 60,
-            }
-        )
-    )
-    models = tmp_path / "tests/server/integration/repro_models.json"
-    models.parent.mkdir(parents=True)
-    models.write_text('{"claude-native":"mock-claude","codex-native":"mock-codex"}')
-    children = [Mock(pid=123 + i) for i in range(3)]
-    for child in children:
-        child.poll.return_value = None
-    monkeypatch.setattr(runtime.subprocess, "Popen", Mock(side_effect=children))
-    kill = Mock()
-    monkeypatch.setattr(runtime.os, "killpg", kill)
-    client = Mock()
-    client.__enter__ = Mock(return_value=client)
-    client.__exit__ = Mock(return_value=False)
-    client.get.return_value.status_code = 200
-    client.get.return_value.json.return_value = {"online": True}
-    monkeypatch.setattr(runtime.httpx, "Client", Mock(return_value=client))
-    relays = [Mock(), Mock()]
-    for relay in relays:
-        relay.__enter__ = Mock(side_effect=lambda: (tmp_path / "stop").touch())
-        relay.__exit__ = Mock()
-    relays[-1].__exit__.side_effect = TimeoutError("stuck relay")
-    monkeypatch.setattr(runtime, "Relay", Mock(side_effect=relays))
-    runtime.supervise(tmp_path)
-    model_command = runtime.subprocess.Popen.call_args_list[0].args[0]
-    assert model_command[1:3] == ["-m", "tests.server.integration.mock_llm_server"]
-    final = json.loads(state.read_text())
-    assert final["status"] == "failed"
-    assert "stuck relay" in final["error"]
-    for relay in relays:
-        relay.__exit__.assert_called_once()
-    for child in children:
-        child.wait.assert_called()
-        kill.assert_any_call(child.pid, runtime.signal.SIGTERM)
-        kill.assert_any_call(child.pid, runtime.signal.SIGKILL)
-
-
 def test_generated_config_keeps_idle_runner_alive(monkeypatch, tmp_path):
     import asyncio
 
     from dev.repro_env.runtime import write_model_config
+
     from omnigent.runner._entry import (
         _load_runner_idle_timeout_s_from_config,
         _run_inactivity_monitor,

@@ -117,38 +117,6 @@ def test_build_usage_report_summary_from_daily_rollup(
     assert report.daily_costs == []
 
 
-def test_build_usage_report_includes_page_details_when_enabled(
-    db_uri: str,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    store = SqlAlchemyConversationStore(db_uri)
-    store.add_daily_cost(RESERVED_USER_LOCAL, "2026-07-22", 1.25)
-    session_id = _add_session(
-        store,
-        monkeypatch,
-        ts=1_784_678_400,
-        cost=1.25,
-        by_model={"model-a": {"total_cost_usd": 1.25}},
-        title="page session",
-    )
-    monkeypatch.setattr("omnigent.db.utils.now_epoch", lambda: 1_784_678_400)
-    monkeypatch.setattr(
-        "omnigent.server.routes.usage._resolve_session_harness",
-        lambda _conv: "codex-native",
-    )
-    monkeypatch.setattr(
-        "omnigent.server.routes.usage._resolve_llm_model",
-        lambda _conv: "model-a",
-    )
-
-    report = _build_usage_report(store, None, include_page_details=True)
-
-    assert [(item.day, item.cost_usd) for item in report.daily_costs] == [("2026-07-22", 1.25)]
-    session = next(item for item in report.sessions if item.id == session_id)
-    assert session.harness == "codex-native"
-    assert session.llm_model == "model-a"
-
-
 def test_build_usage_report_skips_page_resolution_while_disabled(
     db_uri: str,
     monkeypatch: pytest.MonkeyPatch,

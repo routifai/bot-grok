@@ -29,7 +29,6 @@ import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Protocol, TextIO
 
 if TYPE_CHECKING:
@@ -50,26 +49,6 @@ from omnigent._terminal_picker_theme import (
 from omnigent._terminal_picker_theme import (
     PICKER_MUTED as _MUTED,
 )
-
-# Wrapper label sentinel — single source of truth in
-# ``omnigent._wrapper_labels``. Imported here so the picker module
-# stays decoupled from the heavy ``claude_native`` import graph (tmux
-# / websocket code) while still rendering the right badge.
-from omnigent._wrapper_labels import (
-    CLAUDE_NATIVE_WRAPPER_VALUE as _CLAUDE_NATIVE_WRAPPER_LABEL_VALUE,
-)
-from omnigent._wrapper_labels import (
-    WRAPPER_LABEL_KEY as _CLAUDE_NATIVE_WRAPPER_LABEL_KEY,
-)
-from omnigent.harness_plugins import CODEX_NATIVE_CODING_AGENT
-
-# Client-side persistent launch state. The picker reads this per row
-# to render workspace metadata for native wrapper sessions. Decoupled
-# from the heavy wrapper import graphs; these state modules have no
-# tmux / websocket dependencies.
-from omnigent.harnesses.claude_native.state import read_launch_state as _read_claude_launch_state
-from omnigent.harnesses.codex_native.state import read_launch_state as _read_codex_launch_state
-from omnigent.native.native_coding_agents import native_coding_agent_for_wrapper_label
 
 # Page size for the paginated picker.
 # Small enough that a 24-line terminal shows the whole page; big enough
@@ -165,13 +144,9 @@ class _ConversationRow(Protocol):
         user hasn't named it yet.
     :param created_at: Creation time as seconds since epoch.
         Both row sources expose this as :class:`int`.
-    :param labels: Session-scoped labels (read for the Runtime
-        metadata badge — the ``omnigent.wrapper`` key identifies
-        wrapper-style sessions like claude-native). Empty dict
-        when the row has no labels; ``None`` is tolerated for
-        callers (legacy fakes in tests) that do not surface
-        labels on the row. :func:`_runtime_badge` treats both as
-        "no wrapper" and falls through to ``[chat]``.
+    :param labels: Session-scoped labels. Empty dict when the row has
+        no labels; ``None`` is tolerated for callers (legacy fakes in
+        tests) that do not surface labels on the row.
     """
 
     @property
@@ -187,49 +162,11 @@ class _ConversationRow(Protocol):
     def labels(self) -> Mapping[str, str] | None: ...
 
 
-class _LaunchState(Protocol):
-    @property
-    def working_directory(self) -> str: ...
-
-
-def _runtime_badge(row: _ConversationRow) -> str:
-    """
-    Compute the runtime metadata label string for one picker row.
-
-    The badge surfaces which Omnigent wrapper owns the session so a
-    cross-agent picker can be skimmed at a glance. For now we
-    distinguish terminal-native wrappers; other agents render as
-    ``[chat]`` because the picker
-    drives the chat REPL when the row is selected.
-
-    Returned as a literal string with brackets. Callers that hand it
-    to Rich for rendering must use a ``Text`` node rather than Rich
-    markup, otherwise Rich treats ``[claude]`` / ``[chat]`` as style
-    tags and renders nothing.
-
-    :param row: One conversation row from the SDK / store list.
-    :returns: Native runtime badge, or ``"[chat]"`` otherwise.
-        Reads ``row.labels`` defensively so legacy fakes (test rows
-        without a ``labels`` attribute) fall through to the default
-        without raising.
-    """
-    labels = getattr(row, "labels", None)
-    if isinstance(labels, Mapping):
-        native_agent = native_coding_agent_for_wrapper_label(
-            labels.get(_CLAUDE_NATIVE_WRAPPER_LABEL_KEY)
-        )
-        if native_agent is not None:
-            return f"[{native_agent.key}]"
-    return "[chat]"
-
-
 def pick_conversation(
     conversations: Sequence[_ConversationRow],
     *,
     agent_name: str,
     previews: dict[str, _Preview | None] | None = None,
-    show_runtime: bool = False,
-    show_workspace: bool = False,
     out: TextIO | None = None,
     in_: TextIO | None = None,
 ) -> str | None:
@@ -254,24 +191,6 @@ def pick_conversation(
         :func:`_collect_previews_sync` before invoking this
         function; callers driving the pure picker can pass ``None``
         and preview lines are omitted entirely.
-    :param show_runtime: When ``True``, render runtime metadata
-        showing ``[claude]`` for claude-native conversations
-        and ``[chat]`` for everything else. Used by the cross-agent
-        picker (``omnigent resume``) where a user is choosing
-        across multiple wrappers and needs to see which runtime each
-        row belongs to. Per-agent pickers leave this off because the
-        runtime is implicit from the agent.
-    :param show_workspace: When ``True``, render workspace metadata
-        between the timestamp and conversation id showing the cwd
-        each session was launched from (read per row from the
-        wrapper's client-side persistent state, not from the
-        conversation row). Rows with no recorded workspace omit that
-        metadata segment. Rows whose recorded workspace differs from
-        the current cwd are flagged with a ``↪ cd`` suffix so the
-        user sees at a glance which picks will trigger the
-        resume-time chdir prompt. Used by the claude-native wrapper
-        picker because Claude Code's ``--resume`` requires the cwd
-        to match the original; other pickers leave this off.
     :param out: Output stream for the rendered picker. Default
         ``sys.stderr``. Override in tests with a ``StringIO``.
     :param in_: Input stream for user keystrokes. Default
@@ -291,8 +210,6 @@ def pick_conversation(
             conversations,
             agent_name=agent_name,
             previews=previews,
-            show_runtime=show_runtime,
-            show_workspace=show_workspace,
             out=out_stream,
             in_=in_stream,
         )
@@ -300,8 +217,6 @@ def pick_conversation(
         conversations,
         agent_name=agent_name,
         previews=previews,
-        show_runtime=show_runtime,
-        show_workspace=show_workspace,
         out=out_stream,
         in_=in_stream,
     )
@@ -312,8 +227,6 @@ def _pick_conversation_line_buffered(
     *,
     agent_name: str,
     previews: dict[str, _Preview | None] | None,
-    show_runtime: bool,
-    show_workspace: bool,
     out: TextIO,
     in_: TextIO,
 ) -> str | None:
@@ -329,8 +242,6 @@ def _pick_conversation_line_buffered(
     :param agent_name: Agent label shown in the header,
         e.g. ``"resume_test"``.
     :param previews: Optional preview map used for preview lines.
-    :param show_runtime: Whether runtime metadata is present.
-    :param show_workspace: Whether workspace metadata is present.
     :param out: Output stream for rendered pages.
     :param in_: Line-buffered input stream.
     :returns: Selected conversation id, or ``None`` on cancel / EOF.
@@ -347,8 +258,6 @@ def _pick_conversation_line_buffered(
             agent_name,
             out,
             previews,
-            show_runtime=show_runtime,
-            show_workspace=show_workspace,
         )
         choice = _read_line_choice(in_)
         if choice is None or choice in _QUIT_TOKENS:
@@ -404,16 +313,12 @@ class _PromptToolkitPickerState:
     :param agent_name: Agent label shown in the header,
         e.g. ``"resume_test"``.
     :param previews: Optional preview map used for preview lines.
-    :param show_runtime: Whether runtime metadata is present.
-    :param show_workspace: Whether workspace metadata is present.
     :param selected_index: Zero-based selected conversation index.
     """
 
     conversations: Sequence[_ConversationRow]
     agent_name: str
     previews: dict[str, _Preview | None] | None
-    show_runtime: bool
-    show_workspace: bool
     selected_index: int = 0
 
     @property
@@ -478,8 +383,6 @@ def _pick_conversation_prompt_toolkit(
     *,
     agent_name: str,
     previews: dict[str, _Preview | None] | None,
-    show_runtime: bool,
-    show_workspace: bool,
     out: TextIO,
     in_: TextIO,
 ) -> str | None:
@@ -495,8 +398,6 @@ def _pick_conversation_prompt_toolkit(
     :param agent_name: Agent label shown in the header,
         e.g. ``"resume_test"``.
     :param previews: Optional preview map used for preview lines.
-    :param show_runtime: Whether runtime metadata is present.
-    :param show_workspace: Whether workspace metadata is present.
     :param out: Output stream for the prompt-toolkit renderer.
     :param in_: Input stream for keypresses.
     :returns: Selected conversation id, or ``None`` when cancelled.
@@ -513,8 +414,6 @@ def _pick_conversation_prompt_toolkit(
         conversations=conversations,
         agent_name=agent_name,
         previews=previews,
-        show_runtime=show_runtime,
-        show_workspace=show_workspace,
     )
     control = FormattedTextControl(lambda: _prompt_toolkit_fragments(state), focusable=True)
     key_bindings = _prompt_toolkit_key_bindings(state)
@@ -678,7 +577,6 @@ def _prompt_toolkit_fragments(state: _PromptToolkitPickerState) -> list[tuple[st
     """
     fragments: list[tuple[str, str]] = []
     _append_prompt_toolkit_header(fragments, state)
-    current_cwd = Path.cwd().resolve() if state.show_workspace else None
     page_start = state.page_start
     page = state.page
     for offset, conv in enumerate(page):
@@ -688,9 +586,6 @@ def _prompt_toolkit_fragments(state: _PromptToolkitPickerState) -> list[tuple[st
             absolute_index=page_start + offset,
             selected_index=state.selected_index,
             previews=state.previews,
-            show_runtime=state.show_runtime,
-            show_workspace=state.show_workspace,
-            current_cwd=current_cwd,
             is_last=offset == len(page) - 1,
         )
     _append_prompt_toolkit_footer(fragments)
@@ -732,9 +627,6 @@ def _append_prompt_toolkit_item(
     absolute_index: int,
     selected_index: int,
     previews: dict[str, _Preview | None] | None,
-    show_runtime: bool,
-    show_workspace: bool,
-    current_cwd: Path | None,
     is_last: bool,
 ) -> None:
     """
@@ -745,10 +637,6 @@ def _append_prompt_toolkit_item(
     :param absolute_index: Zero-based index in the full conversation list.
     :param selected_index: Zero-based selected conversation index.
     :param previews: Optional preview map used for preview lines.
-    :param show_runtime: Whether runtime metadata is present.
-    :param show_workspace: Whether workspace metadata is present.
-    :param current_cwd: Resolved current cwd when
-        ``show_workspace=True``; otherwise ``None``.
     :param is_last: Whether this is the last visible item.
     :returns: None.
     """
@@ -776,9 +664,6 @@ def _append_prompt_toolkit_item(
     _append_prompt_toolkit_metadata(
         fragments,
         conv,
-        show_runtime=show_runtime,
-        show_workspace=show_workspace,
-        current_cwd=current_cwd,
     )
     if previews is not None:
         _append_prompt_toolkit_preview(fragments, previews.get(conv.id))
@@ -789,49 +674,21 @@ def _append_prompt_toolkit_item(
 def _append_prompt_toolkit_metadata(
     fragments: list[tuple[str, str]],
     conv: _ConversationRow,
-    *,
-    show_runtime: bool,
-    show_workspace: bool,
-    current_cwd: Path | None,
 ) -> None:
     """
     Append one prompt-toolkit metadata line.
 
     :param fragments: Fragment list being built.
     :param conv: Conversation row being rendered.
-    :param show_runtime: Whether runtime metadata is present.
-    :param show_workspace: Whether workspace metadata is present.
-    :param current_cwd: Resolved current cwd when
-        ``show_workspace=True``; otherwise ``None``.
     :returns: None.
     """
     fragments.append(("class:muted", f"    {_format_when(conv.created_at)}"))
-    if show_workspace:
-        assert current_cwd is not None
-        workspace = _workspace_metadata(conv, current_cwd=current_cwd)
-        if workspace is not None:
-            working_directory, requires_cd = workspace
-            fragments.extend(
-                [
-                    ("class:muted", _METADATA_SEPARATOR),
-                    ("class:muted", working_directory),
-                ]
-            )
-            if requires_cd:
-                fragments.append(("class:accent", "  ↪\xa0cd"))
     fragments.extend(
         [
             ("class:muted", _METADATA_SEPARATOR),
             ("class:muted", str(conv.id)),
         ]
     )
-    if show_runtime:
-        fragments.extend(
-            [
-                ("class:muted", _METADATA_SEPARATOR),
-                ("class:muted", _runtime_badge(conv)),
-            ]
-        )
     fragments.append(("class:muted", "\n"))
 
 
@@ -987,94 +844,6 @@ async def pick_conversation_from_sdk(
     return pick_conversation(convos, agent_name=agent_name, previews=previews, out=out, in_=in_)
 
 
-async def pick_conversation_by_wrapper_label_from_sdk(
-    client: OmnigentClient,
-    *,
-    wrapper_value: str,
-    agent_name: str,
-    host_id: str | None = None,
-    out: TextIO | None = None,
-    in_: TextIO | None = None,
-) -> str | None:
-    """Picker scoped to one wrapper kind (``omnigent.wrapper=<value>``).
-
-    Wrapper invocations (claude-native today) upload a fresh agent
-    bundle per session, so ``agents.get_by_name`` returns no canonical
-    record — agent-id filtering can't be used. List the caller's own
-    sessions and filter by the wrapper label client-side. Native children
-    are listed too, but only for callers that pass ``host_id``: a child's
-    resumable host is inherited from its ancestry, so without a host to
-    compare against the picker keeps its top-level-only listing.
-
-    Renders workspace metadata so the user can see which cwd each
-    session was launched from -- claude --resume requires cwd parity
-    with the original session, and the row-level hint prepares the
-    user for the chdir prompt the wrapper raises after they pick.
-    The cwd comes from the wrapper's client-side persistent state
-    (``~/.omnigent/claude-native/``); sessions created on a
-    different machine will show as having no recorded cwd.
-
-    :param host_id: When set, keep only rows running on this host (the
-        invoking machine). Native transcript and workspace state are
-        host-local, so a wrapper session bound to another host is a
-        dead end in this picker — resuming it cannot work here. A native
-        child inherits the host of its nearest bound ancestor; a child whose
-        ancestry is not fully listed is dropped because its host is unknown.
-        Rows without a recorded host (never bound, or an older
-        server that predates the field) are kept: dropping them would
-        hide resumable local sessions. ``None`` disables host
-        filtering (explicit ``--resume <id>`` stays unrestricted for
-        diagnostics / migration workflows — it never routes through
-        this picker).
-    """
-    all_convos = await _list_sessions_with_retry(client, limit=200, agent_id=None, order="desc")
-    if host_id is not None:
-        # Children get their own page so they never displace top-level rows, and
-        # only host-scoped callers see them: their host comes from their ancestry.
-        children = await _list_sessions_with_retry(
-            client, limit=200, agent_id=None, order="desc", kind="sub_agent"
-        )
-        listed = {c.id for c in all_convos}
-        all_convos = sorted(
-            [*all_convos, *(c for c in children if c.id not in listed)],
-            key=lambda c: getattr(c, "created_at", 0),
-            reverse=True,
-        )
-    rows_by_id = {c.id: c for c in all_convos}
-
-    def _resumable_here(c: SessionListItem) -> bool:
-        # A native child runs on the host of its nearest bound ancestor. The walk
-        # is bounded by the page size, so a corrupt parent cycle cannot hang it.
-        node: SessionListItem | None = c
-        for _ in range(len(rows_by_id)):
-            if node is None:
-                return False  # an ancestor is off-page, so ownership is unknown
-            if getattr(node, "host_id", None) is not None:
-                return node.host_id == host_id
-            parent_id = getattr(node, "parent_session_id", None)
-            if parent_id is None:
-                return True  # unbound root: never bound, or an older server
-            node = rows_by_id.get(parent_id)
-        return False
-
-    convos = [
-        c
-        for c in all_convos
-        if getattr(c, "labels", None)
-        and c.labels.get(_CLAUDE_NATIVE_WRAPPER_LABEL_KEY) == wrapper_value
-        and (host_id is None or _resumable_here(c))
-    ]
-    previews = await _collect_previews_async(client, convos)
-    return pick_conversation(
-        convos,
-        agent_name=agent_name,
-        previews=previews,
-        show_workspace=True,
-        out=out,
-        in_=in_,
-    )
-
-
 async def pick_conversation_cross_agent_from_sdk(
     client: OmnigentClient,
     *,
@@ -1104,7 +873,6 @@ async def pick_conversation_cross_agent_from_sdk(
         convos,
         agent_name="all runtimes",
         previews=previews,
-        show_runtime=True,
         out=out,
         in_=in_,
     )
@@ -1161,9 +929,6 @@ def _print_page(
     agent_name: str,
     out: TextIO,
     previews: dict[str, _Preview | None] | None = None,
-    *,
-    show_runtime: bool = False,
-    show_workspace: bool = False,
 ) -> None:
     """
     Render one page of the picker as a keyboard-selectable list.
@@ -1181,23 +946,16 @@ def _print_page(
         ``StringIO`` in tests.
     :param previews: Optional preview map. When present, the page
         renders one preview under each list item.
-    :param show_runtime: When ``True``, include runtime metadata.
-    :param show_workspace: When ``True``, include launch-workspace
-        metadata and compare recorded cwd against current cwd.
     :returns: None.
     """
     console = _make_console(out)
     console.print(_page_header_text(page_start, len(page), total, agent_name))
-    current_cwd = Path.cwd().resolve() if show_workspace else None
     for offset, conv in enumerate(page):
         rendered = _list_item_lines(
             conv,
             absolute_index=page_start + offset,
             selected_index=selected_index,
             previews=previews,
-            show_runtime=show_runtime,
-            show_workspace=show_workspace,
-            current_cwd=current_cwd,
         )
         _print_list_item(console, rendered, is_last=offset == len(page) - 1)
     _print_page_footer(console)
@@ -1238,9 +996,6 @@ def _list_item_lines(
     absolute_index: int,
     selected_index: int,
     previews: dict[str, _Preview | None] | None,
-    show_runtime: bool,
-    show_workspace: bool,
-    current_cwd: Path | None,
 ) -> _PageRowRender:
     """
     Build the rendered lines for one resume-picker list item.
@@ -1249,10 +1004,6 @@ def _list_item_lines(
     :param absolute_index: Zero-based index in the full conversation list.
     :param selected_index: Zero-based selected conversation index.
     :param previews: Optional preview map used for preview lines.
-    :param show_runtime: Whether runtime metadata is present.
-    :param show_workspace: Whether workspace metadata is present.
-    :param current_cwd: Resolved current cwd when
-        ``show_workspace=True``; otherwise ``None``.
     :returns: Rendered item lines and selected state.
     """
     selected = absolute_index == selected_index
@@ -1260,9 +1011,6 @@ def _list_item_lines(
         _list_item_title(conv, absolute_index=absolute_index, selected=selected),
         _list_item_metadata(
             conv,
-            show_runtime=show_runtime,
-            show_workspace=show_workspace,
-            current_cwd=current_cwd,
         ),
     ]
     if previews is not None:
@@ -1297,37 +1045,19 @@ def _list_item_title(conv: _ConversationRow, *, absolute_index: int, selected: b
 
 def _list_item_metadata(
     conv: _ConversationRow,
-    *,
-    show_runtime: bool,
-    show_workspace: bool,
-    current_cwd: Path | None,
 ) -> Text:
     """
     Build the metadata line for a resume-picker list item.
 
     :param conv: Conversation row being rendered.
-    :param show_runtime: Whether to include runtime metadata.
-    :param show_workspace: Whether to include recorded workspace
-        metadata when available.
-    :param current_cwd: Resolved current cwd when
-        ``show_workspace=True``; otherwise ``None``.
     :returns: A :class:`rich.text.Text` metadata line.
     """
     from rich.text import Text
 
     text = Text("    ", style=_MUTED)
     text.append(_format_when(conv.created_at), style=_MUTED)
-    if show_workspace:
-        assert current_cwd is not None
-        workspace = _render_workspace_cell(conv, current_cwd=current_cwd)
-        if workspace is not None:
-            text.append(_METADATA_SEPARATOR, style=_MUTED)
-            text.append_text(workspace)
     text.append(_METADATA_SEPARATOR, style=_MUTED)
     text.append(str(conv.id), style=_MUTED)
-    if show_runtime:
-        text.append(_METADATA_SEPARATOR, style=_MUTED)
-        text.append(_runtime_badge(conv), style=_MUTED)
     return text
 
 
@@ -1462,94 +1192,6 @@ def _render_preview_cell(preview: _Preview | None) -> Text:
     return Text.from_markup(
         f"[{_ACCENT}]{glyph}[/]  [{_MUTED}]{_escape_for_markup(preview.text)}[/]"
     )
-
-
-def _render_workspace_cell(row: _ConversationRow, *, current_cwd: Path) -> Text | None:
-    """
-    Render the workspace metadata value for one picker row.
-
-    Looks up the wrapper's client-side persistent launch state for
-    *row.id* via the matching native state module.
-    When state is present, renders the recorded path in muted gray
-    and appends a ``↪ cd`` flag in accent color if it differs from
-    *current_cwd* (resolved). When state is absent -- legacy session
-    pre-dating this tracking, session created on a different
-    machine, or a non-wrapper session that never set it -- returns
-    ``None`` so the picker omits the workspace metadata segment.
-
-    The flag uses ``↪`` ("return / leftwards arrow with hook") +
-    a no-break space + ``cd`` so the badge stays on one visual
-    unit when the line wraps. Picked deliberately over ``[cd]``
-    so Rich's markup parser doesn't try to interpret it as a
-    style tag (we'd otherwise need :func:`_escape_for_markup`).
-
-    Reads happen once per row at render time. With the default
-    :data:`_PREVIEW_PREFETCH_CAP` of 100 conversations the picker
-    issues at most 100 small JSON reads from
-    ``~/.omnigent/claude-native/<hash>/launch.json`` -- fast on
-    local disk. We deliberately do not async / parallelize these
-    because the picker is single-threaded and a stat+read of a
-    sub-200-byte file is microseconds on any reasonable storage.
-
-    :param row: One conversation row from the SDK / store list.
-    :param current_cwd: The wrapper's current working directory,
-        already resolved, captured once per page render.
-    :returns: A :class:`rich.text.Text` ready to print in a list item,
-        or ``None`` when no workspace was recorded.
-    """
-    from rich.text import Text
-
-    workspace = _workspace_metadata(row, current_cwd=current_cwd)
-    if workspace is None:
-        return None
-    working_directory, requires_cd = workspace
-    if not requires_cd:
-        return Text(working_directory, style=_MUTED)
-    return Text.from_markup(
-        f"[{_MUTED}]{_escape_for_markup(working_directory)}[/]  [{_ACCENT}]↪\xa0cd[/]"
-    )
-
-
-def _workspace_metadata(row: _ConversationRow, *, current_cwd: Path) -> tuple[str, bool] | None:
-    """
-    Read the recorded workspace for one conversation.
-
-    :param row: One conversation row from the SDK / store list.
-    :param current_cwd: The wrapper's current working directory,
-        already resolved.
-    :returns: ``(working_directory, requires_cd)`` when recorded, or
-        ``None`` when no workspace state exists.
-    """
-    state = _launch_state_for_row(row)
-    if state is None:
-        return None
-    working_directory = state.working_directory
-    # Resolve so a recorded ``/repo`` and a current ``/home/me/repo``
-    # (symlink) don't falsely flag as different. ``Path.resolve()``
-    # doesn't raise on non-existent paths, so this is safe even when
-    # the recorded directory has since been deleted -- the
-    # downstream chdir-prompt path handles that case loudly.
-    recorded = Path(working_directory).resolve()
-    return working_directory, recorded != current_cwd
-
-
-def _launch_state_for_row(row: _ConversationRow) -> _LaunchState | None:
-    """
-    Read native launch state using the row's wrapper label.
-
-    :param row: One conversation row from the SDK / store list.
-    :returns: Native launch state object with ``working_directory``,
-        or ``None`` when the row has no supported wrapper state.
-    """
-    labels = getattr(row, "labels", None)
-    if not isinstance(labels, Mapping):
-        return None
-    wrapper = labels.get(_CLAUDE_NATIVE_WRAPPER_LABEL_KEY)
-    if wrapper == _CLAUDE_NATIVE_WRAPPER_LABEL_VALUE:
-        return _read_claude_launch_state(row.id)
-    if wrapper == CODEX_NATIVE_CODING_AGENT.wrapper_label:
-        return _read_codex_launch_state(row.id)
-    return None
 
 
 def _escape_for_markup(text: str) -> str:

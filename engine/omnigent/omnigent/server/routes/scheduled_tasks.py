@@ -416,9 +416,7 @@ def create_scheduled_tasks_router(
             model_override=model_override,
             reasoning_effort=reasoning_effort,
         )
-        # Gate permission_mode on the resolved agent's harness (Claude Code
-        # only), mirroring the web dialog's capability gate. A non-Claude agent
-        # carrying a mode would break the fire (unknown --permission-mode flag).
+        # No available harness takes a permission_mode launch flag.
         await validate_permission_mode_agent_support(
             permission_mode=permission_mode,
             agent=agent,

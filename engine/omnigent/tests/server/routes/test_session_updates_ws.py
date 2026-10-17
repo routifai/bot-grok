@@ -790,35 +790,6 @@ def test_daily_cost_recorded_for_owned_session_without_a_policy(app: FastAPI, st
     assert conversation_store.get_daily_cost(ALICE, today) == pytest.approx(0.5)
 
 
-def test_daily_cost_tracks_display_cost_not_policy_cost(app: FastAPI, stores) -> None:
-    """The daily rollup follows ``total_cost_usd`` (S), not ``policy_cost_usd``.
-
-    claude-native posts the statusLine total ``S`` as ``cumulative_cost_usd``
-    (display) and a higher ``max(S, C)`` as ``policy_cost_usd`` (the real-time
-    gate value, inflated mid-turn by in-flight sub-agent spend). The per-user
-    daily report must reflect real spend, so its delta comes from
-    ``total_cost_usd`` = ``S``. A regression that fed ``policy_cost_usd`` into
-    the rollup would over-report the daily total by the gate's mid-turn lead.
-    """
-    conversation_store = stores[0]
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    sid = _seed_session(stores, owner=ALICE, title="cost split session")
-    resp = TestClient(app).post(
-        f"/v1/sessions/{sid}/events",
-        json={
-            "type": "external_session_usage",
-            # Display S = 0.20; enforcement value 0.90 leads it (sub-agent mid-run).
-            "data": {"cumulative_cost_usd": 0.20, "policy_cost_usd": 0.90},
-        },
-        headers={"X-Forwarded-Email": ALICE},
-    )
-    assert resp.status_code == 202, resp.text
-    # Daily = S (0.20), NOT the 0.90 enforcement figure. A value of 0.90 would
-    # mean the rollup tracked policy_cost_usd and inherited the gate's
-    # mid-turn inflation — the daily over-report this split prevents.
-    assert conversation_store.get_daily_cost(ALICE, today) == pytest.approx(0.20)
-
-
 def test_daily_cost_attributed_via_root_for_sub_agent_without_owner_grant(
     app: FastAPI, stores
 ) -> None:

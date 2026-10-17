@@ -105,11 +105,7 @@ def test_import_graph_is_single_threaded() -> None:
             "_import_runner_graph()",
             "print(threading.active_count())",
             "print([t.name for t in threading.enumerate()])",
-            "print(all(name in sys.modules for name in (",
-            "    'omnigent.runner.background_titles.claude_native',",
-            "    'omnigent.runner.background_titles.codex_native',",
-            "    'omnigent.runner.background_titles.sdk',",
-            ")))",
+            "print('omnigent.runner.background_titles.sdk' in sys.modules)",
         ]
     )
     result = subprocess.run(

@@ -341,38 +341,6 @@ async def test_hosts_api_configured_harnesses_null_for_older_host(
     assert resp.json()["hosts"][0]["configured_harnesses"] is None
 
 
-async def test_hosts_api_surfaces_gateway_inference(
-    host_api_app: tuple[FastAPI, HostRegistry, HostStore, SqlAlchemyConversationStore],
-) -> None:
-    """
-    Verify the gateway-inference map a host reports in its hello is held in
-    memory and surfaced by both GET /v1/hosts and GET /v1/hosts/{id}.
-
-    This is the signal the web UI gates Smart Routing on. If it is dropped
-    anywhere along hello → host registry → hosts route, the UI would offer
-    Smart Routing on a host whose apply layer cannot work.
-    """
-    app, registry, _hs, _cs = host_api_app
-    _comm = await _connect_host(
-        app,
-        registry,
-        configured_harnesses={"claude-native": True, "codex": True},
-        gateway_inference={"claude-native": True, "codex": False},
-    )
-
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        listing = await client.get("/v1/hosts")
-        single = await client.get(f"/v1/hosts/{_HOST_ID}")
-
-    assert listing.status_code == 200
-    assert listing.json()["hosts"][0]["gateway_inference"] == {
-        "claude-native": True,
-        "codex": False,
-    }
-    assert single.status_code == 200
-    assert single.json()["gateway_inference"] == {"claude-native": True, "codex": False}
-
-
 async def test_hosts_api_gateway_inference_null_for_older_host(
     host_api_app: tuple[FastAPI, HostRegistry, HostStore, SqlAlchemyConversationStore],
 ) -> None:
@@ -394,68 +362,6 @@ async def test_hosts_api_gateway_inference_null_for_older_host(
     assert listing.json()["hosts"][0]["gateway_inference"] is None
     assert single.status_code == 200
     assert single.json()["gateway_inference"] is None
-
-
-async def test_gateway_inference_reconverges_after_a_server_restart(
-    db_uri: str,
-) -> None:
-    """
-    Verify a restarted server re-learns gateway backing from the reconnect, with
-    no database state behind it, and that router selection follows.
-
-    The restart→unknown window is the cost of holding the map in memory, so it
-    has to be bounded by the handshake: while the fresh replica has no report,
-    the unknown-is-backed rule keeps the external router in play; the moment the
-    host reconnects and re-reports "claude is off-gateway", selection drops back
-    to the built-in judge — permanently, with nothing to migrate or backfill.
-    """
-    from omnigent.server.routes._sessions.common import set_server_host_registry
-    from omnigent.server.routing_backend import RoutingBackends, gateway_backs_all, select_router
-
-    external = object()
-    local = object()
-    backends = RoutingBackends(external=external, local=local)  # type: ignore[arg-type]
-
-    def _source(host: object) -> str | None:
-        choice = select_router(
-            backends, gateway_backed=gateway_backs_all(host, ("claude-native",))
-        )
-        return choice.source if choice is not None else None
-
-    app, registry, host_store, _cs = _build_host_api_app(db_uri)
-    set_server_host_registry(registry)
-    try:
-        comm = await _connect_host(app, registry, gateway_inference={"claude-native": False})
-        host = host_store.get_host(_HOST_ID)
-        assert host is not None
-        assert _source(host) == "oss-llm"
-
-        # Restart: the hosts row survives, every in-memory report is gone.
-        with contextlib.suppress(Exception):
-            await comm.send_input({"type": "websocket.disconnect", "code": 1000})
-        restarted_app, restarted_registry, restarted_store, _cs2 = _build_host_api_app(db_uri)
-        set_server_host_registry(restarted_registry)
-        restarted_host = restarted_store.get_host(_HOST_ID)
-        assert restarted_host is not None
-        assert restarted_registry.gateway_inference(_HOST_ID) is None
-        assert _source(restarted_host) == "databricks-aigw"
-
-        # The host reconnects and re-reports; the replica converges.
-        _recomm = await _connect_host(
-            restarted_app,
-            restarted_registry,
-            gateway_inference={"claude-native": False},
-        )
-        assert restarted_registry.gateway_inference(_HOST_ID) == {"claude-native": False}
-        assert _source(restarted_host) == "oss-llm"
-
-        async with AsyncClient(
-            transport=ASGITransport(app=restarted_app), base_url="http://test"
-        ) as client:
-            single = await client.get(f"/v1/hosts/{_HOST_ID}")
-        assert single.json()["gateway_inference"] == {"claude-native": False}
-    finally:
-        set_server_host_registry(None)
 
 
 async def test_get_host_404(
@@ -974,38 +880,6 @@ async def test_get_host_403_wrong_owner(
         f"Expected 403 for wrong owner, got {resp.status_code}. "
         "Owner check on GET /v1/hosts/{{id}} is missing."
     )
-
-
-@pytest.mark.parametrize("user,status", [(None, 401), ("bob@test.com", 403)])
-async def test_host_skills_requires_owner(
-    multi_user_app: tuple[FastAPI, HostRegistry, HostStore, SqlAlchemyConversationStore],
-    user: str | None,
-    status: int,
-) -> None:
-    from fastapi.responses import JSONResponse
-
-    from omnigent.errors import OmnigentError
-
-    app, registry, host_store, _cs = multi_user_app
-
-    @app.exception_handler(OmnigentError)
-    async def handle_error(request: Request, exc: OmnigentError) -> JSONResponse:
-        return JSONResponse(status_code=exc.http_status, content={"detail": exc.message})
-
-    host_id = "294391bc835cde1130ef2a02dcd2b7b3"
-    host_store.upsert_on_connect(host_id, "alice-laptop", "alice@test.com")
-    _register_fake_host(registry, host_id, "alice@test.com")
-    conn = registry.get(host_id)
-    assert conn is not None
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.get(
-            "/v1/skills",
-            params={"host_id": host_id, "harness": "claude-native", "path": "~"},
-            headers={"x-test-user": user} if user else {},
-        )
-    assert response.status_code == status, response.text
-    assert conn.outbound_queue.empty()
-    assert conn.pending_skills == {}
 
 
 async def test_launch_runner_403_wrong_owner(

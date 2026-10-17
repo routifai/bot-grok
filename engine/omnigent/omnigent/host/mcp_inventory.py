@@ -14,8 +14,6 @@ from collections.abc import Mapping
 from pathlib import Path
 from urllib.parse import urlsplit
 
-import tomllib
-
 from omnigent.spec.skill_sources import (
     SkillSourceContext,
     _enabled_plugin_keys,
@@ -93,7 +91,7 @@ def _claude_servers(home: Path, env: Mapping[str, str]) -> list[McpServerSummary
         skills_filter="all",
         bundle_dir=None,
         claude_config_dir=config_dir,
-        is_native=True,
+        use_claude_config_dir=True,
     )
     for key, install_path in _plugin_install_paths(ctx, _enabled_plugin_keys(ctx)).items():
         plugin = key.split("@", 1)[0]
@@ -109,28 +107,6 @@ def _claude_servers(home: Path, env: Mapping[str, str]) -> list[McpServerSummary
     return out
 
 
-def _codex_servers() -> list[McpServerSummary]:
-    """``[mcp_servers.*]`` tables from the user's Codex ``config.toml``."""
-    from omnigent.inner.codex_executor import _codex_home_config_source_from_env
-
-    path = _codex_home_config_source_from_env() / "config.toml"
-    try:
-        config = tomllib.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return []
-    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError):
-        _logger.warning("Skipping unreadable codex MCP config at %s", path)
-        return []
-    servers = config.get("mcp_servers")
-    if not isinstance(servers, Mapping):
-        return []
-    return [
-        summary
-        for name, table in servers.items()
-        if (summary := _summary(name, table, "codex")) is not None
-    ]
-
-
 def _cursor_servers(home: Path) -> list[McpServerSummary]:
     """Global ``~/.cursor/mcp.json``, shared by the Cursor app and ``cursor-agent``."""
     data = _read_config(home / ".cursor" / "mcp.json", "cursor")
@@ -142,7 +118,7 @@ def _cursor_servers(home: Path) -> list[McpServerSummary]:
 
 
 def discover_mcp_servers() -> list[McpServerSummary]:
-    """List user-level MCP servers across Claude, Codex, and Cursor on this host.
+    """List user-level MCP servers across Claude and Cursor on this host.
 
     Each harness is read independently, so a missing or broken config for one
     never hides another's servers.
@@ -150,7 +126,6 @@ def discover_mcp_servers() -> list[McpServerSummary]:
     home = Path.home()
     readers = (
         ("claude", lambda: _claude_servers(home, os.environ)),
-        ("codex", _codex_servers),
         ("cursor", lambda: _cursor_servers(home)),
     )
     out: list[McpServerSummary] = []

@@ -12,7 +12,6 @@ import asyncio
 import contextlib
 import functools
 import gc
-import json
 import logging
 import os
 import signal
@@ -26,7 +25,7 @@ from typing import TYPE_CHECKING, cast
 import httpx
 from fastapi import FastAPI
 
-from omnigent._platform import IS_WINDOWS, normalize_interactive_shells
+from omnigent._platform import IS_WINDOWS
 from omnigent.debug_logging import debug_event, runner_primary_session_id
 from omnigent.inner import _proc
 from omnigent.runner.transports.ws_tunnel.serve import RUNNER_TUNNEL_REJECTION_PREFIX
@@ -36,9 +35,8 @@ from omnigent.version import VERSION
 if TYPE_CHECKING:
     from types import TracebackType
 
-    from omnigent.runner.native import ResolvedSpec
+    from omnigent.runner.spec_entries import ResolvedSpec
     from omnigent.runner.transports.ws_tunnel.serve import _ASGIApp
-    from omnigent.spec.types import AgentSpec
 
 _RUNNER_SERVER_URL_ENV_VAR = "RUNNER_SERVER_URL"
 _RUNNER_PREWARM_SPEC_PATH_ENV_VAR = "RUNNER_PREWARM_SPEC_PATH"
@@ -72,34 +70,6 @@ _logger = logging.getLogger(__name__)
 # shares the proxy bearer, even after RUNNER_INITIAL_AUTH_TOKEN has been
 # popped from the environment.
 _runner_auth_factory: Callable[[], str | None] | None = None
-
-
-def _host_interactive_shells_from_env() -> list[str] | None:
-    """Read the host daemon's ordered shell inventory from runner wiring."""
-    from omnigent.runner.identity import RUNNER_INTERACTIVE_SHELLS_ENV_VAR
-
-    raw = os.environ.get(RUNNER_INTERACTIVE_SHELLS_ENV_VAR)
-    if raw is None:
-        return None
-    try:
-        decoded = json.loads(raw)
-    except json.JSONDecodeError:
-        return None
-    shells = normalize_interactive_shells(decoded)
-    return shells or None
-
-
-def _apply_host_interactive_shells(spec: AgentSpec) -> None:
-    """Replace a native wrapper's portable terminals with its host inventory."""
-    from omnigent.native.native_coding_agents import (
-        native_coding_agent_for_agent_name,
-        native_shell_terminal_specs,
-    )
-
-    shells = _host_interactive_shells_from_env()
-    if shells is None or native_coding_agent_for_agent_name(getattr(spec, "name", None)) is None:
-        return
-    spec.terminals = native_shell_terminal_specs(shells)
 
 
 def _set_runner_auth_factory(factory: Callable[[], str | None] | None) -> None:
@@ -1262,7 +1232,7 @@ async def _resolve_agent_spec_from_server(
     :raises RuntimeError: If the server returns a non-200 status
         other than 404.
     """
-    from omnigent.runner.native import ResolvedSpec
+    from omnigent.runner.spec_entries import ResolvedSpec
     from omnigent.spec import load
 
     if session_id is None:
@@ -1308,7 +1278,6 @@ async def _resolve_agent_spec_from_server(
         dest.mkdir(parents=True)
         load(resp.content, dest=dest, expand_env=expand_env, prune_invalid_sub_agents=True)
     spec = load(dest, expand_env=expand_env, prune_invalid_sub_agents=True)
-    _apply_host_interactive_shells(spec)
     return ResolvedSpec(spec=spec, workdir=dest)
 
 
@@ -1318,7 +1287,7 @@ def create_app(
     """Factory for the runner FastAPI app exposing the harness-contract subset.
 
     :param auth_token_factory: Pre-built server bearer factory to reuse for the
-        HTTP client and native terminal helpers, e.g. the delegated factory
+        HTTP client, e.g. the delegated factory
         ``_run_tunnel_from_env`` already built for the WS tunnel. When ``None``,
         the app builds its own.
     :returns: A runner FastAPI app exposing the harness-contract subset.
@@ -1346,9 +1315,9 @@ def create_app(
     # every process this runner spawns can detect it is running inside an
     # Omnigent agent session, the way Claude Code sets CLAUDE_CODE and
     # Codex sets CODEX. Harness workers inherit it (the process manager
-    # merges os.environ), native CLI terminals copy os.environ, and the
-    # claude-sdk SDK merges os.environ. The deny-by-default env scrubbers
-    # (os_env, codex, pi) allowlist it so it survives their scrub.
+    # merges os.environ), terminals copy os.environ, and the claude-sdk SDK
+    # merges os.environ. The deny-by-default env scrubbers (os_env, pi)
+    # allowlist it so it survives their scrub.
     os.environ[OMNIGENT_SESSION_ENV_VAR] = OMNIGENT_SESSION_ENV_VALUE
 
     # Keep the harness manager on its default /tmp/omnigent root.
@@ -1460,18 +1429,6 @@ def create_app(
                 extra={"session_id": runner_primary_session_id()},
             )
 
-        try:
-            from omnigent.native.native_bridge_common import reap_orphaned_native_bridge_dirs
-
-            _reaped_bridge_dirs = reap_orphaned_native_bridge_dirs()
-            if _reaped_bridge_dirs:
-                _logger.info(
-                    "Reaped %d orphaned native bridge dir(s) from prior runs",
-                    _reaped_bridge_dirs,
-                )
-        except Exception:
-            _logger.debug("native bridge-dir orphan sweep failed", exc_info=True)
-
     # Reuse the tunnel binding token for runner-side request auth.
     # The same secret is already shared between the
     # CLI launcher and this runner process via env var.
@@ -1486,7 +1443,6 @@ def create_app(
         per_session_workspace=isolate_session,
         mcp_manager=mcp_manager,
         auth_token=runner_auth_token,
-        auth_token_factory=auth_token_factory,
     )
 
     async def _start_pm() -> None:
@@ -1515,17 +1471,6 @@ def create_app(
                     prewarm_path,
                     extra={"session_id": runner_primary_session_id()},
                 )
-        # Native-pane idle reaper (#1349): reclaims idle native CLI panes.
-        _pane_reaper = getattr(app.state, "native_pane_reaper", None)
-        if _pane_reaper is not None:
-            await _pane_reaper.start()
-        if not host_owns_global_cleanup:
-            from omnigent.harnesses.codex_native.process_registry import (
-                reconcile_codex_native_process_registry,
-            )
-
-            with contextlib.suppress(Exception):
-                await asyncio.to_thread(reconcile_codex_native_process_registry)
         # Liveness backstop for sub-agent dispatches wedged in ``launching``:
         # a child that never emits any edge would otherwise hold the parent's
         # work handle open forever with no error surfaced. The app's
@@ -1551,14 +1496,6 @@ def create_app(
             _launch_reaper.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await _launch_reaper
-        _pane_reaper = getattr(app.state, "native_pane_reaper", None)
-        if _pane_reaper is not None:
-            await _pane_reaper.shutdown()
-        # Host shutdown skips per-session deletion, so close native servers here.
-        from omnigent.runner.native import teardown_all_codex_native_app_servers
-
-        with contextlib.suppress(Exception):
-            await teardown_all_codex_native_app_servers()
         await pm.shutdown()
         await _terminal_registry.shutdown()
         if mcp_manager is not None:
@@ -2037,29 +1974,6 @@ def _install_crash_logging() -> None:
     sys.excepthook = _log_uncaught
 
 
-def _maybe_prewarm_ambient_detection() -> None:
-    """Prewarm ambient provider detection for claude-native launches.
-
-    Terminal auto-create resolves the session's provider config, and on a
-    machine with no explicit provider that runs ambient detection — on macOS
-    a ``claude auth status`` subprocess (~0.6-0.9s) — inside the
-    user-visible "Starting up…" window. Starting the sweep at boot overlaps
-    it with tunnel connect and session init instead.
-
-    Gated on the launch-harness stamp the host injects (absent for CLI-local
-    runners and hosts that predate it), so other harnesses don't pay a
-    speculative subprocess on every launch.
-    """
-    from omnigent.harness_plugins import CLAUDE_NATIVE_CODING_AGENT
-    from omnigent.runner.identity import RUNNER_LAUNCH_HARNESS_ENV_VAR
-
-    if os.environ.get(RUNNER_LAUNCH_HARNESS_ENV_VAR) != CLAUDE_NATIVE_CODING_AGENT.harness:
-        return
-    from omnigent.onboarding.ambient import prewarm_detect_providers
-
-    prewarm_detect_providers()
-
-
 def main() -> None:
     """Console entry point for the runner tunnel process.
 
@@ -2076,7 +1990,6 @@ def main() -> None:
 
     configure_process_logging("runner", force=True)
     _install_crash_logging()
-    _maybe_prewarm_ambient_detection()
     try:
         asyncio.run(_run_tunnel_from_env())
     except RuntimeError as exc:

@@ -156,53 +156,6 @@ def test_session_import_creates_session(tmp_path: Path) -> None:
     assert body["initial_items"][1]["data"]["agent"] == "claude-native-ui"
 
 
-@respx.mock
-def test_session_import_falls_back_to_native_agent(tmp_path: Path) -> None:
-    """When the exported agent_id 404s, import retries with the native agent."""
-    from omnigent.db.utils import builtin_agent_id
-    from omnigent.native.native_coding_agents import native_coding_agent_for_harness
-
-    native = native_coding_agent_for_harness("claude-native")
-    assert native is not None
-    fallback_id = builtin_agent_id(native.agent_name)
-
-    src = tmp_path / "s.jsonl"
-    _write_export(
-        src,
-        meta={"id": "conv_old", "agent_id": "ag_missing", "harness": "claude-native"},
-        items=[
-            {
-                "id": "msg_1",
-                "type": "message",
-                "status": "completed",
-                "response_id": "resp_1",
-                "role": "user",
-                "content": [{"type": "input_text", "text": "hi"}],
-            }
-        ],
-    )
-
-    seen_agent_ids: list[str] = []
-
-    def _responder(request: httpx.Request) -> httpx.Response:
-        agent_id = json.loads(request.content)["agent_id"]
-        seen_agent_ids.append(agent_id)
-        if agent_id == "ag_missing":
-            return httpx.Response(404, json={"error": {"message": "Agent not found"}})
-        return httpx.Response(200, json={"id": "conv_new"})
-
-    respx.post(f"{_BASE}/v1/sessions").mock(side_effect=_responder)
-
-    runner = CliRunner()
-    with _patch_server():
-        result = runner.invoke(cli, ["session", "import", "-i", str(src)])
-
-    assert result.exit_code == 0, result.output
-    assert "conv_new" in result.output
-    # First tried the exported id, then fell back to the native agent id.
-    assert seen_agent_ids == ["ag_missing", fallback_id]
-
-
 def test_session_import_missing_meta_errors(tmp_path: Path) -> None:
     """A file with no session_meta line is rejected with a clear message."""
     src = tmp_path / "bad.jsonl"

@@ -116,27 +116,6 @@ async def test_create_without_harness_override_reports_spec_default(
     assert resp.json().get("harness") == "claude-sdk"
 
 
-async def test_create_harness_override_alias_canonicalizes(
-    client: httpx.AsyncClient,
-) -> None:
-    """The ``native-claude`` alias persists as canonical ``claude-native``.
-
-    A raw alias on the row would miss the runner's harness-module
-    registry at dispatch (it keys on canonical names).
-    """
-    agent = await create_test_agent(client)
-    resp = await client.post(
-        "/v1/sessions",
-        json={
-            "agent_id": agent["id"],
-            "initial_items": [],
-            "harness_override": "native-claude",
-        },
-    )
-    assert resp.status_code == 201, resp.text
-    assert resp.json().get("harness") == "claude-native"
-
-
 async def test_create_rejects_unknown_harness_override(
     client: httpx.AsyncClient,
 ) -> None:

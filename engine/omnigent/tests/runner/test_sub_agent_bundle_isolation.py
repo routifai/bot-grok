@@ -30,15 +30,9 @@ from omnigent.entities.session_resources import SessionResourceView
 from omnigent.runner import create_runner_app
 from omnigent.runner import tool_dispatch as _tool_dispatch
 from omnigent.runner.app import _resolve_harness_config, _spec_with_workdir_paths
-from omnigent.runner.native.orchestration import (
-    ResolvedSpec,
-    _ensure_orchestrator_skills_in_bundle,
-    _resolve_sub_agent_spec_entry,
-)
-from omnigent.runner.resource_registry import SessionResourceRegistry
+from omnigent.runner.spec_entries import ResolvedSpec, _resolve_sub_agent_spec_entry
 from omnigent.spec.parser import parse
 from omnigent.spec.types import AgentSpec, LocalToolInfo
-from omnigent.terminals import TerminalRegistry
 from tests.runner.conftest import (
     _FakeProcessManager,
     _runner_client,
@@ -226,68 +220,6 @@ async def _no_terminal(self: object, session_id: str, terminal_id: str) -> None:
     return
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("terminal", "target"),
-    [
-        ("claude", "_auto_create_claude_terminal"),
-    ],
-)
-async def test_native_terminal_ensure_launches_against_child_bundle(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    terminal: str,
-    target: str,
-) -> None:
-    """The native ensure paths launch rooted at the CHILD's bundle dir.
-
-    ``bundle_dir`` is what becomes claude-native's ``--plugin-dir`` root. The ensure endpoint
-    resolves the session spec from the bound ``agent_id``, which is the
-    PARENT — so without re-resolving the workdir alongside the sub-agent
-    swap, the child's TUI comes up carrying the parent's skills.
-    """
-    root, child = _bundle_with_child(tmp_path, harness=f"{terminal}-native")
-    calls: list[dict[str, Any]] = []
-
-    async def _resolver(agent_id: str, session_id: str | None = None) -> Any:
-        del agent_id, session_id
-        return ResolvedSpec(spec=parse(root), workdir=root)
-
-    # The ensure endpoint dispatches through the native provider registry's
-    # launch adapter, which forwards ``ctx.bundle_dir`` to the builder — so the
-    # builder is patched where the adapter looks it up.
-    monkeypatch.setattr(
-        f"omnigent.runner.native.orchestration.{target}", _capture_auto_create(calls)
-    )
-    monkeypatch.setattr(SessionResourceRegistry, "get_terminal_resource", _no_terminal)
-
-    app = create_runner_app(
-        process_manager=_FakeProcessManager(_ScriptedHarnessClient([])),  # type: ignore[arg-type]
-        spec_resolver=_resolver,
-        server_client=_ChildSnapshotServer(),  # type: ignore[arg-type]
-        terminal_registry=TerminalRegistry(),
-    )
-
-    async with _runner_client(app) as client:
-        resp = await client.post(
-            f"/v1/sessions/{_CHILD_SESSION_ID}/resources/terminals",
-            json={
-                "terminal": terminal,
-                "session_key": "main",
-                "ensure_native_terminal": True,
-            },
-        )
-
-    assert resp.status_code == 200, resp.text
-    assert calls, f"the {terminal} ensure branch never reached auto-create"
-    bundle_dir = calls[0].get("bundle_dir")
-    assert bundle_dir == child, (
-        f"{terminal}-native ensure launched with bundle_dir={bundle_dir!r}; expected "
-        f"the child bundle {child!r}. The parent root {root!r} puts the parent's "
-        "skills on the child's plugin dir."
-    )
-
-
 def test_child_bundle_skills_exclude_the_parents(tmp_path: Path) -> None:
     """The resolved child spec carries only its own bundled skills.
 
@@ -305,36 +237,6 @@ def test_child_bundle_skills_exclude_the_parents(tmp_path: Path) -> None:
     skill_names = {s.name for s in child_entry.spec.skills}
     assert skill_names == {"child-only"}
     assert not (child_entry.workdir / "skills" / "parent-only").exists()
-
-
-def test_isolated_framework_bundle_carries_only_the_framework_skill(
-    tmp_path: Path,
-) -> None:
-    """A child with no bundle dir gets a fresh dir, never parent content.
-
-    Pins the native auto-create fallback: when no bundle dir resolves, the
-    runner mints an EMPTY temp dir and seeds at most the framework-owned
-    ``build-omnigent`` skill, which every agent gets unconditionally. It
-    never copies from the parent — which is why those two call sites need
-    no change. This fails loudly if that fallback ever starts sourcing a
-    parent bundle.
-
-    The seeding is a no-op in a source checkout (its skill source resolves
-    under ``omnigent/runner/onboarding``, which does not exist), so the
-    upper bound is asserted as a subset rather than an exact match.
-    """
-    root, _child = _bundle_with_child(tmp_path)
-    isolated = tmp_path / "isolated-bundle"
-    isolated.mkdir()
-
-    _ensure_orchestrator_skills_in_bundle(isolated, parse(root))
-
-    skills_dir = isolated / "skills"
-    seeded = {p.name for p in skills_dir.iterdir()} if skills_dir.is_dir() else set()
-    assert seeded <= {"build-omnigent"}
-    # No parent asset reached the isolated bundle by any route.
-    assert not list(isolated.rglob("parent-only"))
-    assert not list(isolated.rglob("config.yaml"))
 
 
 # ── Turn dispatch (site B): cache wrapper + local-tool rooting ─

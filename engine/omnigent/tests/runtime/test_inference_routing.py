@@ -2,25 +2,14 @@
 
 from __future__ import annotations
 
-import copy
-import json
-import os
 from pathlib import Path
-from unittest.mock import AsyncMock, Mock, patch
 
 import httpx
 import pytest
 import yaml
 
-from omnigent.errors import OmnigentError
-from omnigent.harnesses.claude_native.main import resolve_native_claude_config
-from omnigent.harnesses.codex_native.app_server import resolve_native_codex_launch
-from omnigent.inner.pi_credentials import (
-    _live_family_model_entries,
-    resolve_pi_native_provider,
-)
-from omnigent.host.connect import _build_runner_env, _write_runner_inference_config
-from omnigent.inference_config import inference_config_scope, validate_inference_credentials
+from omnigent.host.connect import _build_runner_env
+from omnigent.inference_config import inference_config_scope
 from omnigent.models.model_catalog import (
     list_models_for_worker,
 )
@@ -87,31 +76,6 @@ def _spec(harness: str, model: str | None = None, provider: str | None = None) -
     )
 
 
-def test_native_and_sdk_claude_keep_distinct_bindings() -> None:
-    with inference_config_scope(_profile()):
-        native = resolve_native_claude_config(spec=_spec("claude-native"))
-        sdk = _build_claude_sdk_spawn_env(_spec("claude-sdk"))
-    assert native is not None
-    assert native.env["ANTHROPIC_BASE_URL"] == "https://unity.example/anthropic"
-    assert native.routable_models == ("model-a", "databricks-literal/model-b")
-    assert sdk["HARNESS_CLAUDE_SDK_GATEWAY_BASE_URL"] == "https://bifrost.example/anthropic"
-
-
-def test_pi_legacy_config_error_keeps_native_login_fallback(monkeypatch) -> None:
-    monkeypatch.setattr(
-        "omnigent.onboarding.provider_config._load_config", Mock(side_effect=OSError("unreadable"))
-    )
-    assert resolve_pi_native_provider() is None
-
-
-def test_pi_invalid_saved_profile_does_not_fall_back_to_native_login(
-    monkeypatch, tmp_path
-) -> None:
-    monkeypatch.setenv("OMNIGENT_INFERENCE_CONFIG", str(tmp_path / "missing-profile.json"))
-    with pytest.raises(OmnigentError, match="saved inference configuration"):
-        resolve_pi_native_provider()
-
-
 @pytest.mark.parametrize("harness", ["claude-sdk", "pi"])
 def test_unbound_host_keeps_its_explicit_provider_and_model(harness, tmp_path) -> None:
     from omnigent.runner.app import _HARNESS_MODEL_ENV_KEY, _build_spawn_env_from_spec
@@ -147,17 +111,6 @@ def test_bound_sdk_selected_model_precedes_an_obsolete_spec_pin(harness: str) ->
         )
     assert env is not None
     assert env[_HARNESS_MODEL_ENV_KEY[harness]] == "model-a"
-
-
-def test_sdk_harness_override_resolves_its_own_provider_binding() -> None:
-    from omnigent.runner.app import _build_spawn_env_from_spec
-
-    with inference_config_scope(_profile()):
-        env = _build_spawn_env_from_spec(
-            _spec("claude-native", "model-a"), "claude-sdk", model_override="model-a"
-        )
-    assert env is not None
-    assert env["HARNESS_CLAUDE_SDK_GATEWAY_BASE_URL"] == "https://bifrost.example/anthropic"
 
 
 def test_bound_claude_sdk_preserves_a_literal_anthropic_prefix() -> None:
@@ -204,144 +157,6 @@ async def test_bound_pi_sdk_preserves_literal_suffix_through_executor_factory(
     assert env["HARNESS_PI_GATEWAY_OPENAI_WIRE_API"] == "responses"
 
 
-@pytest.mark.asyncio
-async def test_bound_claude_launch_never_falls_back_to_cli_login() -> None:
-    from omnigent.runner.native.orchestration import _auto_create_claude_terminal
-
-    resources = Mock(terminal_registry=None)
-    resources.launch_required_terminal = AsyncMock()
-    resolver = AsyncMock(side_effect=ValueError("credential unavailable"))
-    async with httpx.AsyncClient(
-        base_url="http://test-server",
-        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={"labels": {}})),
-    ) as client:
-        with inference_config_scope(_profile()), pytest.raises(ValueError, match="credential"):
-            await _auto_create_claude_terminal(
-                "bound-claude-failure",
-                resources,
-                lambda _session, _event: None,
-                server_client=client,
-                resolve_launch_config=resolver,
-            )
-    resources.launch_required_terminal.assert_not_called()
-
-
-def test_codex_binding_routes_without_spec_auth_or_family_default() -> None:
-    with inference_config_scope(_profile()):
-        native = resolve_native_codex_launch(model=None, spec=_spec("codex-native"))
-    assert native.model == "model-a"
-    assert "https://bifrost.example/v1" in " ".join(native.config_overrides)
-    assert native.profile is None
-
-
-def test_explicit_conflicting_provider_is_rejected() -> None:
-    with inference_config_scope(_profile()), pytest.raises(OmnigentError, match="conflicts"):
-        _resolve_provider_for_build(
-            _spec("claude-native", provider="bifrost"), harness_type="claude-sdk"
-        )
-
-
-def test_bound_codex_does_not_fallback_when_credential_disappears(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.delenv("BIFROST_TEST_KEY")
-    monkeypatch.delenv("OMNIGENT_BIFROST_TEST_KEY", raising=False)
-    with inference_config_scope(_profile()), pytest.raises(ValueError, match="cannot route Codex"):
-        resolve_native_codex_launch(model=None)
-
-
-def test_pi_single_model_policy_preserves_literal_ids_and_stays_curated() -> None:
-    profile = _profile()
-    profile["inference"] = {
-        "harnesses": {
-            "pi-native": {
-                "provider": "bifrost",
-                "default_model": "databricks-literal/model-b",
-                "model_allowlist": ["databricks-literal/model-b"],
-            }
-        }
-    }
-    with inference_config_scope(profile):
-        provider = resolve_pi_native_provider()
-        assert provider is not None
-        assert provider.model == "databricks-literal/model-b"
-        assert provider.curated_models
-        assert [row["id"] for row in _live_family_model_entries(provider, transport=None)] == [
-            "databricks-literal/model-b"
-        ]
-        with pytest.raises(OmnigentError, match="configured model list"):
-            resolve_pi_native_provider(model="unlisted")
-
-
-def test_saved_runner_config_keeps_old_route_after_host_profile_edit(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    original = _profile()
-    saved = _write_runner_inference_config("old-session", original)
-    edited = copy.deepcopy(original)
-    edited["inference"] = {
-        "harnesses": {
-            "claude-native": {
-                "provider": "bifrost",
-                "default_model": "model-a",
-                "model_allowlist": ["model-a"],
-            }
-        }
-    }
-    (tmp_path / "config.yaml").write_text(yaml.safe_dump(edited))
-    current = resolve_native_claude_config(spec=_spec("claude-native"))
-    monkeypatch.setenv("OMNIGENT_INFERENCE_CONFIG", str(saved))
-    resumed = resolve_native_claude_config(spec=_spec("claude-native"))
-    assert current is not None and resumed is not None
-    assert current.env["ANTHROPIC_BASE_URL"] == "https://bifrost.example/anthropic"
-    assert resumed.env["ANTHROPIC_BASE_URL"] == "https://unity.example/anthropic"
-    assert json.loads(saved.read_text()) == original
-    assert saved.stat().st_mode & 0o777 == 0o600
-
-
-@pytest.mark.parametrize(
-    "reference", ["env:CUSTOM_GATEWAY_KEY", "$CUSTOM_GATEWAY_KEY", "${CUSTOM_GATEWAY_KEY}"]
-)
-@pytest.mark.parametrize("host_config_unreadable", [False, True])
-def test_saved_credential_references_survive_runner_launch(
-    reference, host_config_unreadable, tmp_path, monkeypatch
-) -> None:
-    profile = _profile()
-    for provider in profile["providers"].values():
-        for family in ("anthropic", "openai"):
-            provider[family]["api_key_ref"] = reference
-    validate_inference_credentials(profile)
-    with monkeypatch.context() as host:
-        host.setattr(
-            "omnigent.onboarding.provider_config.load_config",
-            Mock(side_effect=OSError("unreadable"))
-            if host_config_unreadable
-            else Mock(return_value={}),
-        )
-        env = _build_runner_env(
-            {
-                "CUSTOM_GATEWAY_KEY": "saved-test-token",
-                "UNRELATED_SECRET": "private",
-                "HOME": str(tmp_path),
-                "OMNIGENT_CONFIG_HOME": str(tmp_path),
-            },
-            server_url="https://omnigent.example",
-            runner_id="runner",
-            binding_token="binding",
-            workspace="/tmp",
-            parent_pid=1,
-            inference_config=profile,
-        )
-    assert env["CUSTOM_GATEWAY_KEY"] == "saved-test-token"
-    assert "UNRELATED_SECRET" not in env
-    with patch.dict(os.environ, env, clear=True), inference_config_scope(profile):
-        claude = resolve_native_claude_config(spec=_spec("claude-native"))
-        codex = resolve_native_codex_launch(model=None, spec=_spec("codex-native"))
-    assert claude is not None and "saved-test-token" in claude.api_key_helper
-    assert "saved-test-token" in " ".join(codex.config_overrides)
-
-
 def test_ordinary_host_keeps_legacy_credential_forwarding(monkeypatch) -> None:
     config = _profile()
     config.pop("inference")
@@ -379,41 +194,3 @@ def test_worker_catalog_intersects_live_inventory_without_rejecting_private_alia
         listing = list_models_for_worker(_spec("claude-sdk"), "claude-sdk", transport=transport)
     assert listing.verified
     assert [row.id for row in listing.models] == ["model-a", "databricks-literal/model-b"]
-
-
-def test_child_dispatch_keeps_bound_provider_model_ids_literal() -> None:
-    from omnigent.runner.tool_dispatch import _dispatch_model_mismatch, _normalize_subagent_model
-
-    with inference_config_scope(_profile()):
-        assert _dispatch_model_mismatch("codex-native", "model-a") is None
-        assert _dispatch_model_mismatch("codex-native", "unlisted") is not None
-        assert (
-            _normalize_subagent_model(
-                "databricks-literal/model-b",
-                sub_agent_name="child",
-                agent_spec=None,
-                harness="codex-native",
-            )
-            == "databricks-literal/model-b"
-        )
-
-
-def test_pi_mixed_shortlist_registers_each_models_wire() -> None:
-    profile = _profile()
-    profile["inference"] = {
-        "harnesses": {
-            "pi-native": {
-                "provider": "bifrost",
-                "default_model": "claude-primary",
-                "model_allowlist": ["claude-primary", "gpt-primary"],
-            }
-        }
-    }
-    with inference_config_scope(profile):
-        provider = resolve_pi_native_provider()
-    assert provider is not None
-    rendered = provider.to_models_config()["providers"]
-    assert rendered["omnigent"]["api"] == "anthropic-messages"
-    assert [row["id"] for row in rendered["omnigent"]["models"]] == ["claude-primary"]
-    assert rendered["omnigent-openai"]["api"] == "openai-responses"
-    assert [row["id"] for row in rendered["omnigent-openai"]["models"]] == ["gpt-primary"]

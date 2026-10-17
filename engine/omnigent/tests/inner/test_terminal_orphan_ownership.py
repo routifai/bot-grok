@@ -12,7 +12,7 @@ from types import SimpleNamespace
 import pytest
 
 import omnigent.inner.terminal as terminal_mod
-from omnigent.native import owner_claim
+from omnigent.inner import terminal_owner_claim as owner_claim
 
 
 @pytest.mark.parametrize("failure", ["spawn", "timeout", "nonzero"])

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import copy
 import json
 import random
 import uuid
@@ -212,32 +211,6 @@ def test_oversized_legacy_snapshot_cannot_create_child_or_fork(
         store.fork_conversation(source.id)
     with store._conv_engine.connect() as connection:
         assert connection.scalar(sa.select(sa.func.count()).select_from(SqlConversation)) == 1
-
-
-@pytest.mark.parametrize("bundled", [False, True], ids=["existing-agent", "bundle"])
-def test_snapshot_isolated_from_input_edits_and_later_sessions(
-    store: SqlAlchemyConversationStore, bundled: bool
-) -> None:
-    snapshot = _snapshot()
-    original = copy.deepcopy(snapshot)
-    created = _create_session(store, bundled=bundled, snapshot=snapshot)
-    snapshot["revision"] = "edited-revision"
-    snapshot["runtime_config"]["providers"]["bifrost"]["openai"]["base_url"] = (
-        "https://other.example/v1"
-    )
-    snapshot["runtime_config"]["inference"]["harnesses"]["codex-native"]["model_allowlist"] = []
-    later = _create_session(store, bundled=bundled, snapshot=snapshot)
-
-    fetched = store.get_conversation(created.id)
-    assert fetched is not None
-    assert fetched.inference_snapshot == original
-    assert created.inference_snapshot == original
-    assert later.inference_snapshot == snapshot
-    assert fetched.inference_snapshot is not None
-    fetched.inference_snapshot["runtime_config"]["providers"].clear()
-    reloaded = store.get_conversation(created.id)
-    assert reloaded is not None
-    assert reloaded.inference_snapshot == original
 
 
 @pytest.mark.parametrize("bundled", [False, True], ids=["existing-agent", "bundle"])

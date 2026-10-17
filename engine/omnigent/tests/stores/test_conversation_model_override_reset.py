@@ -77,50 +77,6 @@ def _snapshot(
     return dict(conversation), dict(metadata)
 
 
-@pytest.mark.parametrize("with_siblings", [False, True], ids=["only-model", "sibling-settings"])
-def test_clear_matching_model_preserves_other_settings(
-    store: SqlAlchemyConversationStore,
-    monkeypatch: pytest.MonkeyPatch,
-    with_siblings: bool,
-) -> None:
-    conversation = store.create_conversation(
-        title="Keep this title", runner_id="runner-original", workspace="/tmp/model-reset"
-    )
-    store.update_conversation(conversation.id, terminal_launch_args=["--existing"])
-    store.set_labels(conversation.id, {"keep": "label"})
-    siblings = (
-        {
-            "reasoning_effort": "high",
-            "reported_model": "last-reported-model",
-            "cost_control_mode_override": "off",
-            "subagent_routing_override": "on",
-            "harness_override": "codex-native",
-            "future_setting": {"keep": True},
-        }
-        if with_siblings
-        else {}
-    )
-    _write_overrides(
-        store, conversation.id, json.dumps({"model_override": "unavailable-model", **siblings})
-    )
-    before, metadata_before = _snapshot(store, conversation.id)
-    monkeypatch.setattr(sqlalchemy_store, "now_epoch", lambda: 200)
-
-    assert store.clear_model_override_if_matches(conversation.id, "unavailable-model") is True
-
-    after, metadata_after = _snapshot(store, conversation.id)
-    encoded = json.dumps(siblings, separators=(",", ":")) if siblings else None
-    assert after == {**before, "session_overrides": encoded, "updated_at": 200}
-    assert metadata_after == metadata_before
-    fetched = store.get_conversation(conversation.id)
-    assert fetched is not None
-    assert fetched.model_override is None
-    assert fetched.labels == {"keep": "label"}
-    monkeypatch.setattr(sqlalchemy_store, "now_epoch", lambda: 300)
-    assert store.clear_model_override_if_matches(conversation.id, "unavailable-model") is False
-    assert _snapshot(store, conversation.id) == (after, metadata_after)
-
-
 @pytest.mark.parametrize(
     "raw",
     [

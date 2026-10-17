@@ -17,7 +17,6 @@ import pytest
 from omnigent.util.reasoning_effort import (
     ANTHROPIC_EFFORTS,
     CODEX_EFFORTS,
-    CODEX_NATIVE_EFFORTS,
     DEFAULT_MODEL_EFFORT_CAPS,
     EFFORT_VALUES,
     PI_EFFORTS,
@@ -39,17 +38,6 @@ def test_ultra_coerces_to_xhigh_for_codex() -> None:
 def test_max_coerces_to_xhigh_for_codex() -> None:
     """The retired ``max`` wire value maps to ``xhigh`` on the codex ladder."""
     assert validate_effort("max", "codex", CODEX_EFFORTS) == "xhigh"
-
-
-def test_codex_native_accepts_max_and_ultra() -> None:
-    """Codex-native honors the real per-model ladder — max/ultra pass through.
-
-    The SDK/Responses codex ladder still caps at ``xhigh`` (see the tests
-    above), but codex-native drives the real codex process, which accepts
-    Sol's ``max``/``ultra``, so they must not fold to ``xhigh``.
-    """
-    assert validate_effort("ultra", "codex", CODEX_NATIVE_EFFORTS) == "ultra"
-    assert validate_effort("max", "codex", CODEX_NATIVE_EFFORTS) == "max"
 
 
 def test_ultra_preserved_in_session_metadata_vocabulary() -> None:
@@ -239,7 +227,6 @@ def test_efforts_for_harness_distinguishes_known_from_unknown() -> None:
     from omnigent.util.reasoning_effort import efforts_for_harness
 
     assert efforts_for_harness("claude-sdk") == ANTHROPIC_EFFORTS
-    assert efforts_for_harness("claude-native") == ANTHROPIC_EFFORTS
     # pi declares its own family, so it resolves to a real vocabulary.
     assert efforts_for_harness("pi") == PI_EFFORTS
     # Not in the registry at all — unclassifiable, not unsupported.

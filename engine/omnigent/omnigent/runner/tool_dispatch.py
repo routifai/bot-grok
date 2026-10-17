@@ -38,7 +38,6 @@ from typing import TYPE_CHECKING, Protocol, cast
 from omnigent.context.labels import (
     SUBAGENT_LABEL_KEY,
     inheritable_context_labels,
-    is_rollover,
     is_superside_chat,
     uses_omnigent_context,
 )
@@ -70,11 +69,7 @@ if TYPE_CHECKING:
 import httpx
 
 from omnigent.debug_logging import runner_primary_session_id
-from omnigent.harness_aliases import (
-    canonicalize_harness,
-    is_native_harness,
-    native_terminal_name,
-)
+from omnigent.harness_aliases import canonicalize_harness
 from omnigent.inner.executor import ToolCallStatus, classify_tool_result
 from omnigent.models.model_override import (
     harness_supports_model_override,
@@ -82,7 +77,6 @@ from omnigent.models.model_override import (
     normalize_model_for_provider,
     validate_model_override,
 )
-from omnigent.native.native_coding_agents import public_agent_name
 from omnigent.runtime import pending_elicitations
 from omnigent.runtime.mcp_tool_result import encode_mcp_image_result, native_image_payload
 from omnigent.tools import ToolManager
@@ -474,63 +468,12 @@ _BROWSER_TIMEOUT_ERROR = (
     '{"error": "browser action timed out — is the session open in the Omnigent desktop app?"}'
 )
 
-# Builtin tools the claude-native / codex-native relay advertises to the
-# real CLI, beyond the always-relayed ``sys_os_*`` family. Native harnesses
-# ignore the harness ``tools`` list, so the relay is their ONLY tool
-# surface; this set is the runner-/server-proxied builtin surface that
-# rides through the Omnigent ``/mcp`` endpoint (comment, session read/write,
-# async inbox, task lifecycle, agent-discovery, and terminal families —
-# the same dispatch posture non-native harnesses get via
-# ``request.tools``). ``sys_terminal_*`` inherits the spec gate for
-# free: the relay only advertises names that ``ToolManager(spec)``
-# actually registered, and terminal tools register only when the spec
-# declares a non-empty ``terminals:`` block.
-# ``sys_os_*`` is intentionally excluded: the
-# bridge exposes static ``sys_os_*`` tools and the relay overrides them
-# unconditionally for policy enforcement (independent of the spec's
-# ``os_env`` gate), so the native relay assembles them separately.
-_NATIVE_RELAY_BUILTIN_TOOLS = (
-    _COMMENT_TOOLS
-    | _SESSION_QUERY_TOOLS
-    | _SESSION_SELF_WRITE_TOOLS
-    | _ASYNC_INBOX_TOOLS
-    | _SUBAGENT_TOOLS
-    | _LIST_MODELS_TOOLS
-    | _ADVISE_MODELS_TOOLS
-    | _SESSION_CREATE_TOOLS
-    | _TASK_LIFECYCLE_TOOLS
-    | _AGENT_TOOLS
-    | _POLICY_TOOLS
-    | _SCHEDULED_TASK_TOOLS
-    | FEATURE_TOOL_NAMES
-    | _TERMINAL_TOOLS
-    # ``browser_*`` must ride the native relay: the Omnigent desktop app
-    # runs native (claude/codex/pi) sessions, which ignore ``request.tools``
-    # and see ONLY this relay surface — without this union member the
-    # feature is dead for its real target. ToolManager auto-registers these
-    # framework-owned schemas for every spec, so the native relay surface is
-    # session-static and always includes them.
-    | _BROWSER_TOOLS
-    # Skills ride the relay: ``load_skill`` is what discovers host-scope
-    # skills (``.agents/skills`` and friends), and a native session's only
-    # tool surface is this relay.
-    | _SKILL_TOOLS
-    # session_history: ToolManager registers it only for a rollover session
-    # (label-driven — see ToolManager._register_session_history_tool), so it
-    # rides the relay only when that gate passes, same as the spec-gated
-    # tools above.
-    | _SESSION_HISTORY_TOOLS
-)
-
 
 def strip_browser_tool_schemas(schemas: list[_JsonObject]) -> list[_JsonObject]:
     """Drop the ``browser_*`` tool schemas from a tool-schema list.
 
     Used for request-driven harnesses when the turn's dispatch says no
-    renderer is subscribed to the session stream. Native harnesses use a
-    session-scoped relay surface instead of the per-turn schema list, so they
-    retain the browser tools and rely on the server's prompt failure path.
-    Handles both the nested OpenAI shape
+    renderer is subscribed to the session stream. Handles both the nested OpenAI shape
     (``{"function": {"name": ...}}``) and the flat relay shape
     (``{"name": ...}``).
 
@@ -547,130 +490,6 @@ def strip_browser_tool_schemas(schemas: list[_JsonObject]) -> list[_JsonObject]:
             continue
         kept.append(schema)
     return kept
-
-
-def build_native_relay_tool_schemas(
-    spec: AgentSpec | None,
-    *,
-    labels: Mapping[str, str] | None = None,
-) -> list[_JsonObject]:
-    """Build the flat Omnigent tool surface for native harness bridges.
-
-    Returns the same tool set the claude-native / codex-native relay advertises
-    and that pi-native registers via ``pi.registerTool``: the spec-gated builtin
-    surface (``_NATIVE_RELAY_BUILTIN_TOOLS`` — comment, session read/write,
-    agent-discovery, policy, and terminal families) plus the ``sys_os_*`` tools,
-    relayed unconditionally so they override any harness-static versions and get
-    centralized policy enforcement on the Omnigent server.
-
-    Each entry is a flat ``{"name", "description", "parameters"}`` dict (the
-    ``"function"`` sub-dict of an OpenAI tool schema), which is exactly what
-    ``pi.registerTool`` and the claude-native relay both consume.
-
-    :param spec: The session's resolved agent spec. ``None`` falls back to the
-        always-on read/discovery surface (never the opt-in spawn writes, whose
-        gate can't be evaluated without the spec), mirroring the relay.
-    :param labels: The session's labels, when known. Decides label-gated
-        registrations (currently: ``session_history`` for a rollover
-        session — ``omnigent.context.labels.is_rollover``). ``None`` (the
-        default) registers nothing label-gated, matching upstream behavior
-        for every caller that doesn't pass labels.
-    :returns: Flat tool schemas for native bridges.
-    """
-    from omnigent.tools.builtins.agents import (
-        SysAgentDownloadTool,
-        SysAgentGetTool,
-        SysAgentListTool,
-    )
-    from omnigent.tools.builtins.list_comments import ListCommentsTool
-    from omnigent.tools.builtins.spawn import (
-        SysSessionGetHistoryTool,
-        SysSessionGetInfoTool,
-        SysSessionListTool,
-    )
-    from omnigent.tools.builtins.update_comment import UpdateCommentTool
-
-    schemas: list[_JsonObject] = []
-
-    def _append(function_dict: _JsonObject) -> None:
-        name = function_dict.get("name")
-        if not isinstance(name, str):
-            return
-        description = function_dict.get("description")
-        parameters = _string_object_dict(function_dict.get("parameters")) or {
-            "type": "object",
-            "properties": {},
-        }
-        schemas.append(
-            {
-                "name": name,
-                "description": description if isinstance(description, str) else "",
-                "parameters": parameters,
-            }
-        )
-
-    if spec is not None:
-        from omnigent.tools.manager import ToolManager
-
-        manager = ToolManager(spec, os_env_schema_only=True, labels=labels)
-        for schema in manager.get_tool_schemas():
-            function = _string_object_dict(schema.get("function"))
-            if function is not None and function.get("name") in _NATIVE_RELAY_BUILTIN_TOOLS:
-                _append(function)
-    else:
-        from omnigent.tools.builtins.policy import SysAddPolicyTool, SysPolicyRegistryTool
-
-        fallback_classes: tuple[type[Tool], ...] = (
-            ListCommentsTool,
-            UpdateCommentTool,
-            SysSessionListTool,
-            SysSessionGetHistoryTool,
-            SysSessionGetInfoTool,
-            SysSessionRenameTool,
-            SysAgentGetTool,
-            SysAgentListTool,
-            SysAgentDownloadTool,
-            SysAddPolicyTool,
-            SysPolicyRegistryTool,
-        )
-        # No spec means no ToolManager, so the label gate is applied directly
-        # here — session_history's and the memory_* tools' schemas are
-        # spec-independent (static).
-        if is_rollover(labels):
-            from omnigent.superchat.memory.tools import (
-                MemoryExplainTool,
-                MemoryForgetTool,
-                MemoryGetTool,
-                MemoryRememberTool,
-                MemorySearchTool,
-            )
-
-            fallback_classes = (
-                *fallback_classes,
-                SessionHistoryTool,
-                MemoryRememberTool,
-                MemorySearchTool,
-                MemoryGetTool,
-                MemoryExplainTool,
-                MemoryForgetTool,
-            )
-        for _cls in fallback_classes:
-            fallback_schema = _string_object_dict(_cls().get_schema())
-            if fallback_schema is None:
-                continue
-            function = _string_object_dict(fallback_schema.get("function"))
-            if function is not None:
-                _append(function)
-
-    # Relay OS tools unconditionally for centralized policy enforcement.
-    # Their schemas are static and need no OS environment or working directory.
-    for tool_cls in OS_ENV_TOOL_TYPES:
-        tool_schema = _string_object_dict(tool_cls.get_schema())
-        function = _string_object_dict(tool_schema.get("function")) if tool_schema else None
-        if function is not None:
-            _append(function)
-
-    return schemas
 
 
 # sys_agent_list: locally-authored agent config YAMLs live under this
@@ -994,13 +813,13 @@ def _effective_harness_name(agent_spec: AgentSpec, effective_harness: str | None
     """Return the canonical harness a session actually runs.
 
     The session's override outranks the spec: a spec declaring ``claude-sdk``
-    can run ``claude-native`` (and the reverse) when the server pinned a
-    harness at session create or Smart Routing picked one.
+    can run ``pi`` (and the reverse) when the server pinned a harness at
+    session create or Smart Routing picked one.
 
     :param agent_spec: The session's resolved agent spec.
     :param effective_harness: The session's harness override, or ``None`` when
         the caller doesn't know it and the spec's declaration stands.
-    :returns: Canonical harness id, e.g. ``"claude-native"``, or ``None``.
+    :returns: Canonical harness id, e.g. ``"claude-sdk"``, or ``None``.
     """
     raw = (
         effective_harness or agent_spec.executor.config.get("harness") or agent_spec.executor.type
@@ -1018,16 +837,13 @@ def _granted_tool_names(
 ) -> frozenset[str]:
     """Return the non-MCP tool surface advertised for *agent_spec* on *harness*.
 
-    Mirrors advertisement: the names ``ToolManager`` registers, spec-local
-    tools by declared name (no workdir load needed), and ``sys_os_*`` when the
-    session runs a native harness, whose relay advertises them unconditionally
-    (see :func:`build_native_relay_tool_schemas`). MCP tools are runner-owned
+    Mirrors advertisement: the names ``ToolManager`` registers and spec-local
+    tools by declared name (no workdir load needed). MCP tools are runner-owned
     and resolved by the MCP manager, never by this set.
 
     :param agent_spec: The session's resolved agent spec.
     :param harness: Canonical harness the session runs, from
-        :func:`_effective_harness_name`. Only the native/non-native split
-        matters here.
+        :func:`_effective_harness_name`; part of the cache key.
     :param labels: The session's labels, when known — decides label-gated
         registrations (currently: ``session_history`` and ``memory_*`` for a
         rollover or superside-chat session, ``side_chat_open`` for a
@@ -1054,8 +870,6 @@ def _granted_tool_names(
     finally:
         manager.shutdown()
     names.update(info.name for info in agent_spec.local_tools)
-    if is_native_harness(harness):
-        names.update(_OS_ENV_TOOLS)
     granted = frozenset(names)
     if len(_granted_tool_names_cache) >= _GRANTED_TOOL_NAMES_CACHE_MAX:
         _granted_tool_names_cache.clear()
@@ -2395,7 +2209,7 @@ def _harness_has_inference_binding(harness: str) -> bool:
     profile; ``_dispatch_model_mismatch`` has already vetted the id against
     the binding's allowlist by the time inheritance consults this.
 
-    :param harness: The child's resolved harness, e.g. ``"pi-native"``.
+    :param harness: The child's resolved harness, e.g. ``"pi"``.
     :returns: ``True`` when a binding is configured for the harness.
     """
     from omnigent.inference_config import binding_for_harness, load_runtime_inference_config
@@ -2404,14 +2218,13 @@ def _harness_has_inference_binding(harness: str) -> bool:
 
 
 def _harness_vendor_key(canon: str) -> str:
-    """Return a vendor key that unifies a harness's native/SDK spellings.
+    """Return a vendor key that unifies a harness's spellings.
 
-    Single-vendor harnesses key on their ``ModelFamily`` (claude / gpt),
-    so ``claude-native``, ``claude-sdk`` and ``claude_sdk`` all collapse to
-    ``"claude"`` and ``codex`` / ``codex-native`` to ``"gpt"``. Multi-model
-    harnesses have no single family, so they key on the base name with
-    ``-native`` dropped (``pi`` ↔ ``pi-native``). The ``_``→``-`` fold lets
-    the executor-type spelling ``claude_sdk`` resolve to the ``claude-sdk`` capability row.
+    Single-vendor harnesses key on their ``ModelFamily`` (claude / gpt), so
+    ``claude-sdk`` and ``claude_sdk`` collapse to ``"claude"``. Multi-model
+    harnesses have no single family, so they key on their own name. The
+    ``_``→``-`` fold lets the executor-type spelling ``claude_sdk`` resolve to
+    the ``claude-sdk`` capability row.
 
     :param canon: A canonical harness id, e.g. ``"claude-sdk"``.
     :returns: The vendor key, e.g. ``"claude"``.
@@ -2423,7 +2236,7 @@ def _harness_vendor_key(canon: str) -> str:
     cap = caps.get(canon) or caps.get(canon.replace("_", "-"))
     if cap is not None and cap.model_family is not ModelFamily.MULTI:
         return cap.model_family.value
-    return native_terminal_name(canon) or canon
+    return canon
 
 
 def _child_is_foreign_harness(child_harness: str, parent_harness: object) -> bool:
@@ -5182,12 +4995,7 @@ async def _session_get_info_via_rest(
             "last_activity_at": snap.get("updated_at"),
             "title": snap.get("title"),
             "agent_id": snap.get("agent_id"),
-            # Present the public agent name: a native-UI wrapper session
-            # (e.g. ``pi-native-ui``) reports its clean display name (``Pi``)
-            # so the internal ``-native-ui`` wrapper name never leaks to the
-            # model answering "what agent are you?". Non-wrapper names are
-            # unchanged.
-            "agent_name": public_agent_name(snap_agent_name),
+            "agent_name": snap_agent_name,
             "runner_id": snap.get("runner_id"),
             "runner_online": runner_online,
             "host_id": snap.get("host_id"),
@@ -6212,11 +6020,7 @@ async def _collect_global_sessions(
         [
             {
                 "session_id": r.get("id"),
-                # Hide the internal ``-native-ui`` wrapper name (e.g.
-                # ``pi-native-ui`` -> ``Pi``) in the global listing too, matching
-                # ``sys_session_get_info``. The server-side ``agent_name`` filter
-                # above still receives the caller's raw argument unchanged.
-                "agent_name": public_agent_name(_optional_string(r.get("agent_name"))),
+                "agent_name": _optional_string(r.get("agent_name")),
                 "title": r.get("title"),
                 "status": r.get("status"),
                 "runner_id": r.get("runner_id"),
@@ -7483,14 +7287,7 @@ async def _execute_os_env_tool(
             )
             owns_environment = False
         else:
-            additional_read_roots = (
-                [resource_registry.codex_skills_dir(conversation_id)]
-                if resource_registry is not None and conversation_id is not None
-                else []
-            )
-            os_env = create_os_environment(
-                effective_spec, additional_read_roots=additional_read_roots
-            )
+            os_env = create_os_environment(effective_spec)
         if os_env is None:
             return "Error: unable to create OSEnvironment"
 
@@ -8926,149 +8723,6 @@ def _cached_subagent_cancel_result(task_id: str, status: str) -> str:
     )
 
 
-def _best_effort_cancel_result(task_id: str, status: str) -> str:
-    """Return an explicit unconfirmed cancel for harnesses without a hard-stop."""
-    return json.dumps(
-        {
-            "cancel_requested": True,
-            "cancel_confirmed": False,
-            "best_effort": True,
-            "task_id": task_id,
-            "status": status,
-            "message": (
-                "Interrupt forwarded, but no runner-side hard-stop is wired for "
-                "this harness; the child may keep running and no terminal inbox "
-                "status is guaranteed."
-            ),
-        }
-    )
-
-
-def _unconfirmed_hard_stop_result(task_id: str, *, status: str) -> str:
-    """Return an explicit failed-to-confirm hard-stop.
-
-    A ``stop_session`` 503 is a kill failure, not proof the pane is gone
-    (Claude already maps ``TmuxSessionNotAdvertised`` to 204; other stop
-    paths 503 any ``RuntimeError``, including a transient tmux error on a
-    live pane). Callers must not treat this as a cached terminal / ``absent``
-    result.
-    """
-    return json.dumps(
-        {
-            "cancelled": False,
-            "cancel_requested": True,
-            "cancel_confirmed": False,
-            "best_effort": True,
-            "task_id": task_id,
-            "status": status,
-            "message": (
-                "Hard-stop failed; the native worker may still be running. "
-                "Cleanup is not confirmed."
-            ),
-        }
-    )
-
-
-async def _native_child_pane_alive(task_id: str, wrapper_label: str | None) -> bool:
-    """Probe whether a failed native child's pane still answers.
-
-    ``failed`` does not say whether the harness process is still resident: a
-    required-terminal exit fails the entry after the process died, while a
-    harness-side failure can leave the pane alive. A failed entry earns a
-    hard-stop only when its registered pane is verifiably alive; a dead pane
-    is already gone, so the cached terminal failure is the truthful answer.
-    A later ``stop_session`` 503 is *not* used as a gone signal — that status
-    means the kill attempt failed (see :func:`_unconfirmed_hard_stop_result`).
-
-    The probe reads this runner's terminal registry, which sees the child's
-    pane only because sub-agent sessions run co-located on the parent's
-    runner. If that ever changes, this returns ``False`` and a live failed
-    child degrades to the cached status instead of a hard-stop.
-    """
-    from omnigent.runner.native.interrupt import native_agent_for_cancel
-    from omnigent.runtime import get_terminal_registry
-
-    agent = native_agent_for_cancel(wrapper_label)
-    if agent is None:
-        return False
-    try:
-        instance = get_terminal_registry().get(task_id, agent.terminal_name, "main")
-    except RuntimeError:
-        return False
-    if instance is None:
-        return False
-    try:
-        return await instance.is_alive()
-    except (OSError, RuntimeError):
-        return False
-
-
-async def _post_session_stop(
-    server_client: httpx.AsyncClient, task_id: str
-) -> tuple[int | None, str | None]:
-    """Hard-stop one stop-capable native child through the server.
-
-    :returns: ``(status_code, error)``. ``error`` is ``None`` on 2xx.
-        Transport failures use ``status_code is None``.
-    """
-    try:
-        resp = await server_client.post(
-            f"/v1/sessions/{task_id}/events",
-            json={"type": "stop_session", "data": {}},
-            timeout=30.0,
-        )
-    except httpx.HTTPError as exc:
-        return None, f"Error: sys_cancel_task stop_session failed: {type(exc).__name__}: {exc}"
-    if resp.status_code >= 400:
-        return resp.status_code, (
-            f"Error: sys_cancel_task stop_session returned {resp.status_code}: {resp.text[:200]}"
-        )
-    return resp.status_code, None
-
-
-async def _cancel_evicted_native_subagent(
-    task_id: str,
-    *,
-    conversation_id: str,
-    server_client: httpx.AsyncClient | None,
-) -> str:
-    """Stop an owned stop-capable native child after its work entry was evicted.
-
-    Ownership is still verified against the snapshot's ``parent_session_id``
-    and the wrapper must name a harness with a runner-side hard-stop — an
-    evicted entry means the parent no longer knows the child's state, so
-    trusting the caller's task id alone could stop someone else's session.
-    """
-    from omnigent.runner.native.interrupt import native_cancel_capability
-
-    if server_client is None:
-        return "Error: sys_cancel_task requires server access for sub-agent tasks"
-    try:
-        resp = await server_client.get(f"/v1/sessions/{task_id}", timeout=10.0)
-    except httpx.HTTPError as exc:
-        return f"Error: sys_cancel_task lookup failed: {type(exc).__name__}: {exc}"
-    if resp.status_code != 200:
-        return f"Error: no in-flight task with task_id {task_id}"
-    snapshot = resp.json()
-    labels = snapshot.get("labels") if isinstance(snapshot, dict) else None
-    wrapper = labels.get(_SESSION_WRAPPER_LABEL_KEY) if isinstance(labels, dict) else None
-    if (
-        not isinstance(snapshot, dict)
-        or snapshot.get("parent_session_id") != conversation_id
-        or not isinstance(wrapper, str)
-        or native_cancel_capability(wrapper) != "stop"
-    ):
-        return f"Error: no in-flight task with task_id {task_id}"
-    # A 503 is a failed kill, not proof the pane is gone. Report an explicit
-    # unconfirmed result rather than ``absent`` / a cached terminal status.
-    status_code, stop_error = await _post_session_stop(server_client, task_id)
-    if stop_error is not None:
-        if status_code == 503:
-            return _unconfirmed_hard_stop_result(task_id, status="unknown")
-        return stop_error
-    return json.dumps({"cancelled": True, "task_id": task_id, "status": "cancelled"})
-
-
 async def _cancel_subagent_task(
     args: _JsonObject,
     *,
@@ -9076,26 +8730,11 @@ async def _cancel_subagent_task(
     server_client: httpx.AsyncClient | None,
 ) -> str:
     """
-    Cancel a running sub-agent worker, routing by the child's harness.
+    Cancel a running sub-agent worker by interrupting its turn.
 
-    The cancel event is chosen from ``native_cancel_capability``, which
-    mirrors the child runner's ``NativeInterruptRunner.stop`` dispatch:
-
-    * stop-capable natives — POST ``stop_session``: the child runner
-      hard-stops the worker, marks the work entry cancelled, delivers a
-      terminal payload to the parent inbox and auto-wakes it. A bare
-      interrupt only cancelled the current turn and left the worker
-      process alive; a stop frees it. A ``failed`` stop-capable entry
-      still routes when its pane answers the liveness probe — failed
-      does not mean exited. A dead pane returns the cached terminal
-      failure without a stop attempt (already gone). A live pane whose
-      ``stop_session`` returns 503 is reported as an unconfirmed /
-      best-effort cancel: the kill failed and the worker may still be
-      running.
-    * best-effort natives (Codex, Pi) and
-      in-process harnesses — POST ``interrupt``. No runner-side
-      hard-stop is wired for them, so the result is reported
-      best-effort rather than implying process termination.
+    POSTs ``interrupt`` to the child session; the child runner cancels the
+    in-process turn and the parent observes the terminal status through its
+    inbox.
 
     :param args: Tool arguments containing ``task_id`` or
         ``handle_id``, e.g. ``{"task_id": "conv_child456"}``.
@@ -9105,7 +8744,6 @@ async def _cancel_subagent_task(
     :returns: JSON cancellation result.
     """
     from omnigent.runner import app as _runner_app
-    from omnigent.runner.native.interrupt import native_cancel_capability
 
     task_id = args.get("task_id") or args.get("handle_id")
     if not task_id:
@@ -9113,53 +8751,32 @@ async def _cancel_subagent_task(
     if conversation_id is None:
         return "Error: sys_cancel_task requires conversation_id"
     entry = _runner_app.get_subagent_work(str(task_id))
-    if entry is None:
-        return await _cancel_evicted_native_subagent(
-            str(task_id),
-            conversation_id=conversation_id,
-            server_client=server_client,
-        )
-    if entry.parent_session_id != conversation_id:
+    if entry is None or entry.parent_session_id != conversation_id:
         return f"Error: no in-flight task with task_id {task_id}"
     # A dispatched child sits in ``launching`` until its runtime emits a real
     # busy edge (see ``mark_subagent_work_started``). Cancellation must still
     # route to the child during that window — otherwise cancelling a slow-to-
-    # start sub-agent would silently no-op and leave it running. A failed
-    # stop-capable native entry still falls through when its pane is alive.
-    capability = native_cancel_capability(entry.wrapper_label)
-    can_stop_failed = (
-        capability == "stop"
-        and entry.status == "failed"
-        and await _native_child_pane_alive(str(task_id), entry.wrapper_label)
-    )
-    if entry.status not in ("launching", "running", "waiting") and not can_stop_failed:
+    # start sub-agent would silently no-op and leave it running.
+    if entry.status not in ("launching", "running", "waiting"):
         return _cached_subagent_cancel_result(str(task_id), entry.status)
     if server_client is None:
         return "Error: sys_cancel_task requires server access for sub-agent tasks"
-
-    event_type = "stop_session" if capability == "stop" else "interrupt"
 
     try:
         resp = await server_client.post(
             f"/v1/sessions/{task_id}/events",
             # Bare control events 422 on servers that require body.data.
-            json={"type": event_type, "data": {}},
+            json={"type": "interrupt", "data": {}},
             timeout=30.0,
         )
     except httpx.HTTPError as exc:
-        return f"Error: sys_cancel_task {event_type} failed: {type(exc).__name__}: {exc}"
+        return f"Error: sys_cancel_task interrupt failed: {type(exc).__name__}: {exc}"
     if resp.status_code >= 400:
-        if capability == "stop" and resp.status_code == 503:
-            return _unconfirmed_hard_stop_result(str(task_id), status=entry.status)
-        return (
-            f"Error: sys_cancel_task {event_type} returned {resp.status_code}: {resp.text[:200]}"
-        )
+        return f"Error: sys_cancel_task interrupt returned {resp.status_code}: {resp.text[:200]}"
 
     updated = _runner_app.get_subagent_work(str(task_id)) or entry
     if updated.status == "cancelled":
         return json.dumps({"cancelled": True, "task_id": task_id, "status": "cancelled"})
-    if capability == "best_effort":
-        return _best_effort_cancel_result(str(task_id), updated.status)
     return json.dumps(
         {
             "cancel_requested": True,

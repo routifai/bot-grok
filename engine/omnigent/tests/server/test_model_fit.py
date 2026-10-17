@@ -32,13 +32,6 @@ from omnigent.superchat.vault.store import VAULT_KEY_ENV
 from .test_inference_catalog import _state, _transport, credentials  # noqa: F401
 
 
-def test_family_comes_from_harness_capabilities() -> None:
-    assert harness_family("claude-sdk") == "claude"
-    assert harness_family("claude-native") == "claude"
-    assert harness_family("pi") == "multi"
-    assert harness_family("not-a-harness") == "multi"
-
-
 def test_providers_that_cannot_serve_the_family_are_excluded() -> None:
     every = ("anthropic", "openrouter", "litellm")
     assert preferred_providers(harness_family("claude-sdk")) == every

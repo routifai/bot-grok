@@ -151,8 +151,11 @@ async def test_remember_stores_inferred_explicitness(
     session_id = await _make_session(db_uri)
     resp = await client.post(
         f"/v1/sessions/{session_id}/memory/remember",
-        json={"text": "The user likes Corporate Clean", "kind": "preference",
-              "explicitness": "inferred"},
+        json={
+            "text": "The user likes Corporate Clean",
+            "kind": "preference",
+            "explicitness": "inferred",
+        },
         headers=_headers(),
     )
     assert resp.status_code == 200

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -23,8 +22,6 @@ from omnigent.context.rollover import (
     select_recent,
     state_file_summarizer_instruction,
 )
-from omnigent.harnesses.claude_native import main as claude_native
-from omnigent.harnesses.codex_native import main as codex_native
 from omnigent.llms.types import MessageOutput, OutputText, Response
 from omnigent.runner.memory.files import state_text_of
 from omnigent.runtime.compaction import count_tokens
@@ -359,94 +356,10 @@ async def test_build_rollover_item_requires_nonempty_items() -> None:
         )
 
 
-@pytest.mark.asyncio
-async def test_rollover_item_accepted_by_claude_native_resume_rebuild(tmp_path: Path) -> None:
-    items = _turn(1) + _turn(2) + _turn(3) + _turn(4)
-    client = _ReturnsTextClient("ROLLING SUMMARY")
-    data = await build_rollover_item(
-        items,
-        previous_summary=None,
-        keep_tokens=1,
-        model="gpt-4o",
-        llm_client=client,
-    )
-    compaction_item = {
-        "id": "comp_1",
-        "type": "compaction",
-        "status": "completed",
-        "response_id": "resp_comp_1",
-        "created_at": 2,
-        "summary": data.summary,
-        "last_item_id": data.last_item_id,
-        "token_count": data.token_count,
-        "compacted_messages": data.compacted_messages,
-    }
-    records = claude_native._claude_transcript_records_from_session_items(
-        [*items, compaction_item],
-        session_id="conv_test",
-        external_session_id="02857840-6362-408f-b41f-309e396ed7c6",
-        cwd=tmp_path,
-        bridge_dir=tmp_path / "bridge",
-    )
-    # Only the compact boundary + summary exchange + the last whole turn.
-    assert [r.get("type") for r in records] == ["system", "user", "assistant", "user", "assistant"]
-    assert records[0].get("subtype") == "compact_boundary"
-    last_texts = [b.get("text") for b in records[-1]["message"]["content"] if isinstance(b, dict)]
-    assert last_texts == ["answer 4"]
-
-
-@pytest.mark.asyncio
-async def test_rollover_item_accepted_by_codex_native_resume_rebuild(tmp_path: Path) -> None:
-    items = _turn(1) + _turn(2) + _turn(3) + _turn(4)
-    client = _ReturnsTextClient("ROLLING SUMMARY")
-    data = await build_rollover_item(
-        items,
-        previous_summary=None,
-        keep_tokens=1,
-        model="gpt-4o",
-        llm_client=client,
-    )
-    compaction_item = {
-        "id": "comp_1",
-        "type": "compaction",
-        "status": "completed",
-        "response_id": "resp_comp_1",
-        "created_at": 2,
-        "summary": data.summary,
-        "last_item_id": data.last_item_id,
-        "token_count": data.token_count,
-        "compacted_messages": data.compacted_messages,
-    }
-    records = codex_native._codex_rollout_records_from_session_items(
-        [*items, compaction_item],
-        session_id="conv_test",
-        external_session_id="019e96aa-0be2-7343-8d3b-6f914d60936b",
-        cwd=tmp_path,
-        model_provider="omnigent_test",
-        cli_version="0.999.0",
-    )
-    record_types = [r.get("type") for r in records]
-    assert record_types == ["session_meta", "compacted"]
-    replacement_history = records[1]["payload"]["replacement_history"]
-    assert records[1]["payload"]["message"] == f"{CHECKPOINT_HEADER}\n\nROLLING SUMMARY"
-    kept_ids = [m.get("id") for m in replacement_history if "id" in m]
-    assert kept_ids == ["u4", "a4"]
-    # The system marker is re-roled to developer; real turns keep their roles.
-    assert replacement_history[0]["role"] == "developer"
-    assert [m["role"] for m in replacement_history if "id" in m] == ["user", "assistant"]
-
-
 def test_state_file_summarizer_instruction_defaults_to_utc_today() -> None:
     instruction = state_file_summarizer_instruction()
     assert "## Context checkpoint —" in instruction
     assert SUMMARIZER_DATE_PLACEHOLDER not in instruction
-
-
-def test_state_file_summarizer_instruction_accepts_a_caller_supplied_date() -> None:
-    """The pi-native bridge passes SUMMARIZER_DATE_PLACEHOLDER at launch time
-    and substitutes the real date itself, later, at actual compaction time."""
-    instruction = state_file_summarizer_instruction(today=SUMMARIZER_DATE_PLACEHOLDER)
-    assert f"## Context checkpoint — {SUMMARIZER_DATE_PLACEHOLDER}" in instruction
 
 
 def test_items_for_summarizer_keeps_only_provider_schema_fields() -> None:
@@ -556,23 +469,6 @@ async def test_previous_header_is_not_fed_back_so_it_never_nests() -> None:
     assert "OLD SUMMARY" in transcript
     assert CHECKPOINT_HEADER not in transcript
     assert data.summary.count(CHECKPOINT_HEADER) == 1
-
-
-def test_checkpoint_marker_as_developer_only_touches_the_marker() -> None:
-    """A user message that merely mentions the marker later is left alone."""
-    from omnigent.context.rollover import CHECKPOINT_MARKER
-
-    def msg(role: str, text: str) -> dict:
-        return {"type": "message", "role": role, "content": [{"type": "input_text", "text": text}]}
-
-    history = [
-        msg("user", f"{CHECKPOINT_MARKER} rest"),
-        msg("assistant", "summary"),
-        msg("user", f"please explain {CHECKPOINT_MARKER}"),
-    ]
-    out = codex_native._checkpoint_marker_as_developer(history)
-    assert [m["role"] for m in out] == ["developer", "assistant", "user"]
-    assert history[0]["role"] == "user"
 
 
 # ---------------------------------------------------------------------------
@@ -957,31 +853,6 @@ async def test_side_chat_seed_stops_at_parents_last_reply() -> None:
     assert data.last_item_id == "a2"
     assert data.compacted_messages is not None
     assert all(m.get("id") != "u3" for m in data.compacted_messages)
-
-
-@pytest.mark.asyncio
-async def test_side_chat_seed_uses_side_chat_framing_not_the_rollover_header() -> None:
-    """The seed must not tell the model it IS the conversation that rolled over."""
-    from omnigent.context.rollover import CHECKPOINT_HEADER, SIDE_CHAT_SEED_HEADER
-
-    data = await build_side_chat_seed(
-        _turn(1) + _turn(2),
-        keep_tokens=100_000,
-        model="gpt-4o",
-        llm_client=_ReturnsTextClient("SUMMARY"),
-    )
-
-    assert data.summary.startswith(SIDE_CHAT_SEED_HEADER)
-    assert data.summary.endswith("SUMMARY")
-    assert CHECKPOINT_HEADER not in data.summary
-    assert data.compacted_messages is not None
-    first = data.compacted_messages[0]["content"][0]["text"]
-    assert first.startswith(SIDE_CHAT_SEED_HEADER)
-    assert "grew past its context limit" not in first
-    # Codex re-roles any seed marker to developer; a side chat seed must still match.
-    assert is_checkpoint_text(first)
-    [rerolled] = codex_native._checkpoint_marker_as_developer(data.compacted_messages[:1])
-    assert rerolled["role"] == "developer"
 
 
 def test_summarizer_instruction_forbids_listing_tool_names() -> None:

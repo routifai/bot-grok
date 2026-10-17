@@ -19,7 +19,6 @@ from omnigent.server.managed_hosts import (
     ManagedSandboxDeployment,
     parse_sandbox_config,
 )
-from omnigent.spec.types import ProviderAuth
 
 
 @pytest.fixture(autouse=True)
@@ -30,9 +29,7 @@ def credentials(monkeypatch):
         model_catalog._listing_cache.clear()
 
 
-def _state(
-    *, allowed=("gateway/fast", "gateway/main"), default="gateway/main", harness="codex-native"
-):
+def _state(*, allowed=("gateway/fast", "gateway/main"), default="gateway/main", harness="pi"):
     binding = {"provider": "bifrost"}
     if allowed is not None:
         binding["model_allowlist"] = list(allowed)
@@ -93,7 +90,7 @@ async def test_unconfigured_sandboxes_preserve_legacy_credentials(provider, infe
         {"provider": provider, "server_url": "https://server.example", "host_config": config}
     )
     service = SandboxInferenceService(SimpleNamespace(sandbox_config=deployment))
-    assert await service.prepare(provider, "codex-native", "alice") is None
+    assert await service.prepare(provider, "pi", "alice") is None
     assert deployment.default.host_config == config
 
 
@@ -103,7 +100,7 @@ async def test_preview_uses_server_discovery_and_never_resolves_pod_credentials(
     requests = []
     snapshot = await SandboxInferenceService(
         state, transport=_transport(requests=requests)
-    ).prepare("computer", "codex-native", "alice")
+    ).prepare("computer", "pi", "alice")
     assert snapshot is not None
     assert requests[0].url == "https://catalog.example/v1/models"
     assert requests[0].headers["authorization"] == "Bearer catalog-test-secret"
@@ -130,75 +127,17 @@ async def test_preview_uses_server_discovery_and_never_resolves_pod_credentials(
 async def test_empty_single_and_absent_allowlists_remain_distinct(allowed, expected):
     snapshot = await SandboxInferenceService(
         _state(allowed=allowed, default=None), transport=_transport()
-    ).prepare("computer", "codex-native", "alice")
+    ).prepare("computer", "pi", "alice")
     assert snapshot is not None
     assert [row["id"] for row in snapshot["catalog"]["models"]] == expected
     assert snapshot["catalog"]["status"] == ("ready" if expected else "empty")
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "harness,family",
-    [("claude-native", "anthropic"), ("codex-native", "openai"), ("pi-native", "openai")],
-)
-@pytest.mark.parametrize("request_alias", [False, True])
-@pytest.mark.parametrize("mode", ["discovery", "filtered", "static"])
-async def test_native_aliases_share_catalog_and_saved_default(
-    harness, family, request_alias, mode
-):
-    alias = "native-" + harness.removesuffix("-native")
-    state = _state(
-        harness=alias,
-        allowed=None if mode == "discovery" else ("fast", "gateway/main"),
-        default=None,
-    )
-    target = state.sandbox_config.default
-    provider = target.host_config["providers"]["bifrost"]
-    provider[family] = provider.pop("openai")
-    provider[family]["models"] = {"fast": "gateway/fast"}
-    if mode == "static":
-        target.model_discovery.clear()
-    requests = []
-    service = SandboxInferenceService(state, transport=_transport(requests=requests))
-    snapshot = await service.prepare("computer", alias if request_alias else harness, "alice")
-    assert snapshot is not None
-    catalog = snapshot["catalog"]
-    assert catalog["status"] == "ready", catalog
-    expected = (
-        ["gateway/main", "gateway/fast", "gateway/noisy"]
-        if mode == "discovery"
-        else ["gateway/fast", "gateway/main"]
-    )
-    assert [row["id"] for row in catalog["models"]] == expected
-    assert catalog["default_model"] == expected[0]
-    assert (
-        snapshot["runtime_config"]["inference"]["harnesses"][alias]["default_model"] == expected[0]
-    )
-    assert (await service.catalog(snapshot)) == catalog
-    assert snapshot["harness"] == harness
-    assert await service.prepare("computer", harness, "alice") == snapshot
-    assert bool(requests) is (mode != "static")
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("harnesses", [("pi", "pi-native")])
-async def test_revision_distinguishes_native_and_sdk_identities(harnesses):
-    state = _state(harness=harnesses[0])
-    bindings = state.sandbox_config.default.host_config["inference"]["harnesses"]
-    bindings[harnesses[1]] = copy.deepcopy(bindings[harnesses[0]])
-    state.sandbox_config.default.model_discovery.clear()
-    service = SandboxInferenceService(state)
-    first, second = [await service.prepare("computer", harness, "alice") for harness in harnesses]
-    assert first["catalog"]["status"] == second["catalog"]["status"] == "ready"
-    assert first["configuration_revision"] != second["configuration_revision"]
-    assert (first["harness"], second["harness"]) == harnesses
-
-
-@pytest.mark.asyncio
 async def test_unavailable_default_is_not_inserted_into_live_catalog():
     snapshot = await SandboxInferenceService(
         _state(), transport=_transport(("gateway/fast",))
-    ).prepare("computer", "codex-native", "alice")
+    ).prepare("computer", "pi", "alice")
     assert snapshot is not None
     assert snapshot["catalog"]["status"] == "unavailable"
     assert snapshot["catalog"]["models"] == []
@@ -212,11 +151,11 @@ async def test_saved_profile_ignores_later_target_edits_and_credential_rotation_
     state = _state()
     requests = []
     service = SandboxInferenceService(state, transport=_transport(requests=requests))
-    snapshot = await service.prepare("computer", "codex-native", "alice")
+    snapshot = await service.prepare("computer", "pi", "alice")
     assert snapshot is not None
     original = copy.deepcopy(snapshot)
     target = state.sandbox_config.default
-    target.host_config["inference"]["harnesses"]["codex-native"]["model_allowlist"] = ["other"]
+    target.host_config["inference"]["harnesses"]["pi"]["model_allowlist"] = ["other"]
     target.model_discovery["bifrost"]["base_url"] = "https://new.example/v1"
     monkeypatch.setenv("INFERENCE_CATALOG_KEY", "rotated-secret")
     preview = await service.catalog(snapshot)
@@ -234,7 +173,7 @@ async def test_discovery_failure_is_redacted_and_distinct_from_empty():
 
     snapshot = await SandboxInferenceService(
         _state(), transport=httpx.MockTransport(fail)
-    ).prepare("computer", "codex-native", "alice")
+    ).prepare("computer", "pi", "alice")
     assert snapshot is not None
     assert snapshot["catalog"]["status"] == "unavailable"
     assert "upstream-secret" not in json.dumps(snapshot)
@@ -247,7 +186,7 @@ async def test_missing_discovery_serves_static_allowlist_without_pod_key_or_publ
     # no gateway call was made and no pod credential was resolved.
     state = _state()
     state.sandbox_config.default.model_discovery.clear()
-    snapshot = await SandboxInferenceService(state).prepare("computer", "codex-native", "alice")
+    snapshot = await SandboxInferenceService(state).prepare("computer", "pi", "alice")
     assert snapshot is not None
     catalog = snapshot["catalog"]
     assert catalog["status"] == "ready"
@@ -266,7 +205,7 @@ async def test_missing_discovery_without_allowlist_reports_configuration_error()
     # Without discovery AND without an allowlist there is nothing to enumerate.
     state = _state(allowed=None, default=None)
     state.sandbox_config.default.model_discovery.clear()
-    snapshot = await SandboxInferenceService(state).prepare("computer", "codex-native", "alice")
+    snapshot = await SandboxInferenceService(state).prepare("computer", "pi", "alice")
     assert snapshot is not None
     assert snapshot["catalog"]["status"] == "unavailable"
     assert "model_allowlist" in snapshot["catalog"]["error"]
@@ -280,7 +219,7 @@ async def test_static_catalog_preserves_empty_and_singleton_allowlists(allowed):
     requests = []
     snapshot = await SandboxInferenceService(
         state, transport=_transport(requests=requests)
-    ).prepare("computer", "codex-native", "alice")
+    ).prepare("computer", "pi", "alice")
     assert requests == []
     assert [row["id"] for row in snapshot["catalog"]["models"]] == list(allowed)
     assert snapshot["catalog"]["status"] == ("ready" if allowed else "empty")
@@ -319,7 +258,7 @@ async def test_literal_credentials_rejected_at_startup_and_before_snapshot(locat
     requests = []
     with pytest.raises(OmnigentError, match="api_key_ref") as error:
         await SandboxInferenceService(state, transport=_transport(requests=requests)).prepare(
-            "computer", "codex-native", "alice"
+            "computer", "pi", "alice"
         )
     assert "literal-test-token" not in str(error.value)
     assert requests == []
@@ -344,7 +283,7 @@ async def test_pod_references_are_validated_without_resolution(reference):
     )
     assert parsed is not None
     snapshot = await SandboxInferenceService(state, transport=_transport()).prepare(
-        "computer", "codex-native", "alice"
+        "computer", "pi", "alice"
     )
     assert snapshot["catalog"]["status"] == "ready"
     assert snapshot["runtime_config"]["providers"]["bifrost"]["openai"]["api_key_ref"] == reference
@@ -356,16 +295,16 @@ async def test_aliases_resolve_and_cycles_fail():
     family = state.sandbox_config.default.host_config["providers"]["bifrost"]["openai"]
     family["models"] = {"primary": "gateway/main", "fast": "gateway/fast"}
     service = SandboxInferenceService(state, transport=_transport())
-    snapshot = await service.prepare("computer", "codex-native", "alice")
+    snapshot = await service.prepare("computer", "pi", "alice")
     assert snapshot is not None
     assert snapshot["catalog"]["default_model"] == "gateway/main"
     family["models"] = {"primary": "fast", "fast": "primary"}
     with pytest.raises(OmnigentError, match="cycle"):
-        await service.prepare("computer", "codex-native", "alice")
+        await service.prepare("computer", "pi", "alice")
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("harness", ["pi-native", "pi"])
+@pytest.mark.parametrize("harness", ["pi"])
 @pytest.mark.parametrize("discovery", [False, True])
 async def test_dual_family_aliases_resolve_for_live_and_static_catalogs(harness, discovery):
     state = _state(allowed=("fast", "primary", "gateway/literal"), default="fast", harness=harness)
@@ -393,7 +332,7 @@ async def test_dual_family_aliases_resolve_for_live_and_static_catalogs(harness,
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("harness", ["pi-native"])
+@pytest.mark.parametrize("harness", ["pi"])
 @pytest.mark.parametrize("same_target", [False, True])
 async def test_duplicate_family_aliases_must_agree(harness, same_target):
     state = _state(allowed=("fast",), default="fast", harness=harness)
@@ -414,37 +353,6 @@ async def test_duplicate_family_aliases_must_agree(harness, same_target):
 
 
 @pytest.mark.asyncio
-async def test_fixed_family_alias_ignores_other_family_definition():
-    state = _state(allowed=("fast",), default="fast")
-    provider = state.sandbox_config.default.host_config["providers"]["bifrost"]
-    provider["openai"]["models"] = {"fast": "gateway/fast"}
-    provider["anthropic"] = {
-        "base_url": "https://anthropic.example",
-        "api_key_ref": "env:POD_INFERENCE_KEY",
-        "models": {"fast": "gateway/claude-fast"},
-    }
-    snapshot = await SandboxInferenceService(state, transport=_transport()).prepare(
-        "computer", "codex-native", "alice"
-    )
-    assert snapshot["catalog"]["default_model"] == "gateway/fast"
-
-
-@pytest.mark.asyncio
-async def test_conflicting_spec_auth_and_unsupported_transport_fail():
-    state = _state()
-    service = SandboxInferenceService(state, transport=_transport())
-    with pytest.raises(OmnigentError, match="conflicts"):
-        await service.prepare(
-            "computer", "codex-native", "alice", ProviderAuth(type="provider", name="other")
-        )
-    state.sandbox_config.default.host_config["providers"]["bifrost"]["openai"]["wire_api"] = "chat"
-    snapshot = await service.prepare("computer", "codex-native", "alice")
-    assert snapshot is not None
-    assert snapshot["catalog"]["status"] == "unavailable"
-    assert "Responses endpoint" in snapshot["catalog"]["error"]
-
-
-@pytest.mark.asyncio
 async def test_metadata_filters_wrong_wire_but_preserves_unknown_private_aliases(monkeypatch):
     entries = (
         ModelEntry(
@@ -462,7 +370,7 @@ async def test_metadata_filters_wrong_wire_but_preserves_unknown_private_aliases
         lambda *_args, **_kwargs: ModelListing("gateway", True, entries, ""),
     )
     snapshot = await SandboxInferenceService(_state(default=None)).prepare(
-        "computer", "codex-native", "alice"
+        "computer", "pi", "alice"
     )
     assert snapshot is not None
     assert snapshot["catalog"]["status"] == "ready"
@@ -480,15 +388,15 @@ async def test_unbound_harness_keeps_its_baseline_when_a_binding_is_added_later(
 
     state = _state()
     service = SandboxInferenceService(state)
-    snapshot = await service.prepare("computer", "claude-native", "alice")
+    snapshot = await service.prepare("computer", "claude-sdk", "alice")
     assert snapshot is not None
     assert snapshot["catalog"]["configured"] is False
     assert snapshot["catalog"]["status"] == "unconfigured"
-    state.sandbox_config.default.host_config["inference"]["harnesses"]["claude-native"] = {
+    state.sandbox_config.default.host_config["inference"]["harnesses"]["claude-sdk"] = {
         "provider": "bifrost"
     }
     restored = deployment_with_inference_snapshot(state.sandbox_config, snapshot)
-    assert binding_for_harness(restored.default.host_config, "claude-native") is None
+    assert binding_for_harness(restored.default.host_config, "claude-sdk") is None
     assert (await service.catalog(snapshot))["configured"] is False
 
 
@@ -509,9 +417,7 @@ def test_legacy_restore_does_not_adopt_new_inference_bindings():
 async def test_target_without_profiles_keeps_legacy_create_contract():
     state = _state()
     del state.sandbox_config.default.host_config["inference"]
-    assert (
-        await SandboxInferenceService(state).prepare("computer", "claude-native", "alice") is None
-    )
+    assert await SandboxInferenceService(state).prepare("computer", "claude-sdk", "alice") is None
 
 
 @pytest.mark.asyncio
@@ -525,7 +431,7 @@ async def test_all_child_bindings_are_normalized_in_saved_profile():
         "default_model": "main",
     }
     snapshot = await SandboxInferenceService(state, transport=_transport()).prepare(
-        "computer", "codex-native", "alice"
+        "computer", "pi", "alice"
     )
     assert snapshot is not None
     saved = snapshot["runtime_config"]["inference"]["harnesses"]["pi"]
@@ -549,7 +455,7 @@ async def test_another_saved_binding_cannot_persist_embedded_credentials(field, 
     config["inference"]["harnesses"]["pi"] = {"provider": "other"}
     with pytest.raises(OmnigentError) as error:
         await SandboxInferenceService(state, transport=_transport()).prepare(
-            "computer", "codex-native", "alice"
+            "computer", "pi", "alice"
         )
     assert "inline-test-secret" not in str(error.value)
     assert "user:secret" not in str(error.value)

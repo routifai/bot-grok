@@ -1402,7 +1402,7 @@ def _patch_daemon_launch(monkeypatch: pytest.MonkeyPatch, captured: dict[str, ob
     monkeypatch.setattr("omnigent.host.daemon_launch.wait_for_host_online", _no_host_wait)
     monkeypatch.setattr("omnigent.host.daemon_launch.launch_or_reuse_daemon_runner", _fake_launch)
     monkeypatch.setattr("omnigent.host.daemon_launch.wait_for_runner_online", _no_runner_wait)
-    monkeypatch.setattr("omnigent.native.native_terminal.bind_session_runner", _fake_bind)
+    monkeypatch.setattr("omnigent.host.daemon_launch.bind_session_runner", _fake_bind)
 
 
 def test_prepare_chat_session_via_daemon_creates_fresh_and_launches(
@@ -1906,7 +1906,6 @@ def test_apply_overrides_flat_harness_creates_no_config_for_single_file_yaml() -
     ("alias", "canonical"),
     [
         ("claude", "claude-sdk"),
-        ("native-claude", "claude-native"),
         ("pi", "pi"),
     ],
 )
@@ -4168,115 +4167,3 @@ def test_spec_used_families_pi_brain_agent_contributes_pi_surface(tmp_path) -> N
     # The pi brain contributes the pi surface; the codex-native sub-agent
     # contributes openai. Sorted, pi lands last — the header order.
     assert _spec_used_families(root) == ["openai", "pi"]
-
-
-def test_redirect_native_resume_handles_claude(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A claude-native resume hands off to the Claude wrapper (direct attach).
-
-    Without the redirect the resume fell through to the Omnigent REPL, which
-    drove an Omnigent turn per message (persisting its own user item) *while*
-    the transcript forwarder mirrored the same message from the native store —
-    recording each user message twice. The redirect keeps the TUI the single
-    source of turns.
-    """
-    from omnigent._wrapper_labels import CLAUDE_NATIVE_WRAPPER_VALUE
-
-    monkeypatch.setattr(
-        chat_module,
-        "_wrapper_label_for_conversation",
-        lambda **_kw: CLAUDE_NATIVE_WRAPPER_VALUE,
-    )
-    captured: dict[str, object] = {}
-
-    def _fake_run_claude_native(**kwargs: object) -> None:
-        captured.update(kwargs)
-
-    monkeypatch.setattr(
-        "omnigent.harnesses.claude_native.main.run_claude_native", _fake_run_claude_native
-    )
-
-    handled = chat_module._redirect_native_resume_if_needed(
-        base_url="https://example.com",
-        conversation_id="conv_abc123",
-        auto_open_conversation=True,
-    )
-
-    assert handled is True
-    assert captured == {
-        "server": "https://example.com",
-        "session_id": "conv_abc123",
-        "extra_args": (),
-        "auto_open_conversation": True,
-    }
-
-
-def test_redirect_native_resume_ignores_non_native_wrapper(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A non-native (or absent) wrapper label leaves the resume to the REPL."""
-    monkeypatch.setattr(
-        chat_module,
-        "_wrapper_label_for_conversation",
-        lambda **_kw: None,
-    )
-
-    handled = chat_module._redirect_native_resume_if_needed(
-        base_url="https://example.com",
-        conversation_id="conv_plain",
-        auto_open_conversation=False,
-    )
-
-    assert handled is False
-
-
-def test_claude_native_resume_never_drives_an_omnigent_turn(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Resuming a claude-native conversation must not enter the turn-driving REPL.
-
-    This is the behavior that makes the user's message appear exactly once. The
-    duplicate had two sources: (1) the Omnigent turn the REPL drives, which
-    persists its own user item, and (2) the transcript forwarder mirroring the
-    same message back from the native store. ``_chat_with_server`` must short-circuit
-    on the wrapper redirect *before* either ``_run_repl`` or ``_run_one_shot``
-    is reached, so source (1) never happens and only the forwarder records the
-    turn.
-    """
-    from omnigent._wrapper_labels import CLAUDE_NATIVE_WRAPPER_VALUE
-
-    monkeypatch.setattr(
-        chat_module,
-        "_wrapper_label_for_conversation",
-        lambda **_kw: CLAUDE_NATIVE_WRAPPER_VALUE,
-    )
-    redirected: dict[str, object] = {}
-    monkeypatch.setattr(
-        "omnigent.harnesses.claude_native.main.run_claude_native",
-        lambda **kwargs: redirected.update(kwargs),
-    )
-
-    def _fail_repl(*_args: object, **_kwargs: object) -> None:
-        raise AssertionError("_run_repl drove an Omnigent turn for a claude-native resume")
-
-    def _fail_one_shot(*_args: object, **_kwargs: object) -> None:
-        raise AssertionError("_run_one_shot drove an Omnigent turn for a claude-native resume")
-
-    monkeypatch.setattr(chat_module, "_run_repl", _fail_repl)
-    monkeypatch.setattr(chat_module, "_run_one_shot", _fail_one_shot)
-    # _pick_agent runs only on the non-redirect path; tripping it also signals
-    # the redirect failed to short-circuit.
-    monkeypatch.setattr(
-        chat_module,
-        "_pick_agent",
-        lambda *_a, **_k: pytest.fail("reached the non-redirect path"),
-    )
-
-    # Returns cleanly via the redirect; the AssertionError stubs above fire if
-    # it ever falls through to a turn-driving path.
-    chat_module._chat_with_server(
-        "https://example.com",
-        None,
-        resume_conversation_id="conv_abc123",
-    )
-
-    assert redirected["session_id"] == "conv_abc123"

@@ -337,26 +337,6 @@ def test_session_created_event_round_trips_through_union() -> None:
     assert parsed.child_session_id == "conv_child"
 
 
-def test_session_created_event_optional_agent_id() -> None:
-    """``agent_id`` defaults to None for back-compat with legacy spawn paths.
-
-    The spec recommends populating ``agent_id`` always, but the
-    field is optional on the wire so older runners that haven't
-    been updated do not fail validation against the typed union.
-    Production code in
-    :func:`omnigent.tools.builtins.spawn._publish_session_created_on_parent`
-    raises ``ValueError`` when ``agent_id`` is empty — that's the
-    fail-loud check at the emit site, not on the schema.
-    """
-    event = SessionCreatedEvent(
-        type="session.created",
-        conversation_id="conv_parent",
-        child_session_id="conv_child",
-    )
-    assert event.agent_id is None
-    assert event.parent_session_id is None
-
-
 def test_session_created_event_is_known() -> None:
     """``session.created`` is registered in the union's known-set."""
     # The wire-name audit (test_emit_sites_referenced_by_grep_are_
@@ -512,31 +492,3 @@ def test_publish_session_status_rejects_unknown_status() -> None:
 
     with pytest.raises(ValidationError):
         _publish_session_status("conv_abc", "bogus")
-
-
-def test_session_created_event_payload_shape() -> None:
-    """``SessionCreatedEvent`` validates the payload shape the runner publishes.
-
-    The DBOS-removal cutover folded the standalone
-    ``_publish_session_created_on_parent`` helper from
-    ``spawn.py`` into the runner's sub-agent dispatch (see
-    ``omnigent/runner/tool_dispatch.py::_execute_subagent_tool``).
-    The wire-level invariants the helper used to encode are still
-    enforced by the model itself — that the event identifies a
-    parent-side ``conversation_id``, a ``child_session_id``, the
-    ``agent_id``, and the discriminator. Pin them here against the
-    typed model so a future renamed/dropped field can't drift past
-    the SSE union silently.
-    """
-    payload = {
-        "type": "session.created",
-        "conversation_id": "conv_parent",
-        "child_session_id": "conv_child",
-        "agent_id": "agent_xyz",
-        "parent_session_id": "conv_parent",
-    }
-    parsed = _ADAPTER.validate_python(payload)
-    assert isinstance(parsed, SessionCreatedEvent)
-    assert parsed.conversation_id == "conv_parent"
-    assert parsed.child_session_id == "conv_child"
-    assert parsed.agent_id == "agent_xyz"

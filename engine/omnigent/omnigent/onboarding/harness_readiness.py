@@ -29,10 +29,9 @@ from __future__ import annotations
 import logging
 from concurrent.futures import ThreadPoolExecutor
 
-from omnigent._platform import IS_WINDOWS, resolve_cli_binary
-from omnigent.harness_aliases import HARNESS_ALIASES, NATIVE_HARNESSES, canonicalize_harness
+from omnigent._platform import resolve_cli_binary
+from omnigent.harness_aliases import HARNESS_ALIASES, canonicalize_harness
 from omnigent.harness_availability import (
-    CODEX_CANONICAL_HARNESSES,
     HARNESS_BINARY_MISSING,
     HARNESS_NEEDS_AUTH,
     HARNESS_VERSION_TOO_LOW,
@@ -74,12 +73,10 @@ _READINESS_PROBE_MAX_WORKERS = 4
 # (``claude_sdk``) and the ``claude`` alias normalize onto this first.
 _SDK_HARNESSES: frozenset[str] = frozenset({"claude-sdk"})
 
-# CLI-wrapping pi harnesses. Both the bare ``pi`` surface and the native
-# ``pi-native`` wrapper launch the same ``pi`` binary (``canonicalize_harness``
-# folds ``native-pi`` → ``pi-native``). Unlike claude/codex they have no
-# ``_HARNESS_FAMILY`` entry — pi uses the ``PI_SURFACE`` sentinel — so they must
-# be gated explicitly or they fail open like an unknown harness.
-_PI_HARNESSES: frozenset[str] = frozenset({PI_SURFACE, "pi-native"})
+# The CLI-wrapping pi harness. Unlike claude it has no ``_HARNESS_FAMILY``
+# entry — pi uses the ``PI_SURFACE`` sentinel — so it must be gated explicitly
+# or it fails open like an unknown harness.
+_PI_HARNESSES: frozenset[str] = frozenset({PI_SURFACE})
 
 
 def _canonical_harness(harness: str) -> str:
@@ -123,9 +120,6 @@ def _harness_availability_core(harness: str) -> HarnessAvailability:
         ``False`` or a reason string otherwise.
     """
     canonical = _canonical_harness(harness)
-    if IS_WINDOWS and canonical in NATIVE_HARNESSES:
-        # Native harnesses require tmux/PTY, which the runner does not support on Windows.
-        return False
     if canonical in _SDK_HARNESSES:
         # Launch gate only: never block an SDK launch (spec-level auth is
         # invisible here). The picker map's credential check lives in
@@ -140,21 +134,6 @@ def _harness_availability_core(harness: str) -> HarnessAvailability:
         # version skew).
         return True
     return _installer_only_availability(_install_key(canonical))
-
-
-# Native CLI harnesses that authenticate via their own login command and can
-# report auth state locally, so the picker map can distinguish "installed but
-# not signed in" (``needs-auth``) from "not installed" (``binary-missing``) —
-# the same two-step signal Codex already provides. This is picker-facing ONLY;
-# the launch gate (:func:`harness_is_configured`) stays binary-only, so a
-# not-signed-in harness is never blocked from launching (its login surfaces at
-# run time). Pi is handled separately in :func:`_harness_availability` (it has
-# no CLI login, so it can't use the login-command path here — its credential is
-# an omnigent-managed provider).
-_AUTH_AWARE_NATIVE_HARNESSES: dict[str, str] = {
-    "claude-native": "anthropic",
-    "native-claude": "anthropic",
-}
 
 
 # Provider kinds the in-process SDK executors cannot consume. Launch's
@@ -498,53 +477,8 @@ def _binary_availability_reason(install_key: str) -> HarnessAvailability:
     return HARNESS_BINARY_MISSING
 
 
-def _cli_family_availability(canonical: str, install_key: str) -> HarnessAvailability:
-    """Two-step availability for a login-command CLI harness.
-
-    :returns: ``"binary-missing"`` when the CLI isn't installed,
-        ``"version-too-low"`` when the CLI is present but too old,
-        ``"needs-auth"`` when installed but neither a configured provider
-        credential nor a CLI login is present, else ``True``.
-    """
-    binary_state = _binary_availability_reason(install_key)
-    if binary_state is not True:
-        return binary_state
-    # claude: ready when EITHER an omnigent-managed provider serves the family
-    # (an API key / gateway the user set, incl. from the UI) OR the harness's
-    # own subscription login is present (`claude auth status`, a subprocess —
-    # the same probe the setup wizard uses; runs off the event loop on the
-    # throttled readiness refresh). Checking the config first avoids the
-    # subprocess on the common key-configured path.
-    from omnigent.onboarding.harness_install import harness_cli_logged_in
-
-    if _family_provider_configured(canonical):
-        return True
-    # Claude Code's own managed settings can carry a complete gateway credential
-    # (enterprise ``ANTHROPIC_BASE_URL`` + ``apiKeyHelper``) that omnigent's
-    # config knows nothing about, and that is what a claude-native launch
-    # actually routes through. Credit it structurally (one local file read, no
-    # subprocess) before the status probe, so an enterprise host reads ready
-    # without depending on the probe resolving the CLI on PATH.
-    if install_key == ANTHROPIC_FAMILY and _claude_managed_gateway_configured():
-        return True
-    return (
-        True
-        if harness_cli_logged_in(install_key, timeout=READINESS_CLI_PROBE_TIMEOUT_S)
-        else "needs-auth"
-    )
-
-
 def _harness_availability(canonical: str) -> HarnessAvailability:
     """Return picker-facing availability for one canonical harness spelling."""
-    if IS_WINDOWS and canonical in NATIVE_HARNESSES:
-        return False
-    if _is_codex_family_harness(canonical):
-        from omnigent.harnesses.codex_native.main import _codex_auth_unavailable_reason
-
-        return _codex_auth_unavailable_reason() or True
-    install_key = _AUTH_AWARE_NATIVE_HARNESSES.get(canonical)
-    if install_key is not None:
-        return _cli_family_availability(canonical, install_key)
     if canonical in _PI_HARNESSES:
         # pi has no CLI login — its only credential is either an omnigent-managed
         # provider (an API key / gateway) or a pi-subscription ("Pi original auth",
@@ -601,13 +535,6 @@ def harness_is_configured(harness: str) -> bool:
     return _harness_availability_core(harness) is True
 
 
-def _is_codex_family_harness(canonical: str) -> bool:
-    """Return whether a canonical harness uses Codex readiness semantics."""
-    return (
-        canonical in CODEX_CANONICAL_HARNESSES and _HARNESS_FAMILY.get(canonical) == OPENAI_FAMILY
-    )
-
-
 def configured_harness_map() -> dict[str, HarnessAvailability]:
     """Return per-harness readiness for every accepted harness spelling.
 
@@ -624,8 +551,7 @@ def configured_harness_map() -> dict[str, HarnessAvailability]:
         ``{"claude-native": False, "codex-native": "needs-auth",
         "claude-sdk": "needs-auth", "pi": True}``.
     """
-    spellings: set[str] = set(_HARNESS_FAMILY)
-    spellings.update(valid_harnesses())
+    spellings: set[str] = set(valid_harnesses())
     spellings.update(harness_install_keys())
     spellings.update(_EXECUTOR_TYPE_HARNESS_ALIASES)
     spellings.update(HARNESS_ALIASES)
@@ -634,13 +560,7 @@ def configured_harness_map() -> dict[str, HarnessAvailability]:
     cache_key_by_spelling: dict[str, tuple[str, ...]] = {}
     for spelling in spellings:
         canonical = _canonical_harness(spelling)
-        # Windows-native Codex must not share plain Codex's readiness cache entry.
-        if _is_codex_family_harness(canonical) and not (
-            IS_WINDOWS and canonical in NATIVE_HARNESSES
-        ):
-            cache_key: tuple[str, ...] = ("codex",)
-        else:
-            cache_key = ("harness", canonical)
+        cache_key = ("harness", canonical)
         canonical_by_cache_key.setdefault(cache_key, canonical)
         cache_key_by_spelling[spelling] = cache_key
 

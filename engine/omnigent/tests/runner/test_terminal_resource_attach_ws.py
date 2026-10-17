@@ -292,7 +292,7 @@ def test_runner_resource_attach_recreates_dead_repl_terminal(
         agent_spec: object = None,
     ) -> SessionResourceView:
         """
-        Stand-in for ``_auto_create_repl_terminal`` that registers a
+        Stand-in for ``auto_create_repl_terminal`` that registers a
         live pane without spawning real tmux.
 
         :param session_id: Session being recreated, e.g. ``"conv_abc"``.
@@ -313,7 +313,7 @@ def test_runner_resource_attach_recreates_dead_repl_terminal(
             name="tui",
         )
 
-    monkeypatch.setattr("omnigent.runner.app._auto_create_repl_terminal", fake_auto_create)
+    monkeypatch.setattr("omnigent.runner.app.auto_create_repl_terminal", fake_auto_create)
 
     attach_sockets: list[str] = []
 
@@ -407,7 +407,7 @@ def test_runner_resource_attach_dead_non_repl_terminal_keeps_4404(
             "recreate path must be gated on OMNIGENT_REPL_TERMINAL_ROLE."
         )
 
-    monkeypatch.setattr("omnigent.runner.app._auto_create_repl_terminal", must_not_recreate)
+    monkeypatch.setattr("omnigent.runner.app.auto_create_repl_terminal", must_not_recreate)
 
     with TestClient(app).websocket_connect(
         "/v1/sessions/conv_abc/resources/terminals/terminal_bash_s1/attach"

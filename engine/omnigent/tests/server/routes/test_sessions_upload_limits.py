@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import Mock
 
 import httpx
 import pytest
@@ -13,9 +12,7 @@ from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 
 from omnigent.errors import OmnigentError
-from omnigent.harness_plugins import CLAUDE_NATIVE_CODING_AGENT
 from omnigent.host.frames import HOST_CAPABILITIES, HostHelloFrame
-from omnigent.inner.native_attachments import MAX_FILESYSTEM_ATTACHMENT_UPLOAD_BYTES
 from omnigent.runtime.content_resolver import (
     MAX_TEXT_UPLOAD_BYTES,
 )
@@ -44,8 +41,6 @@ def upload_client(db_uri: str, tmp_path) -> Iterator[tuple[TestClient, str]]:
     conv = conversation_store.create_conversation(
         title="upload session", agent_id="087b7cb7ac30abf4debfaa578d052ec6"
     )
-    # A Claude Code session, so filesystem types are accepted.
-    conversation_store.set_labels(conv.id, CLAUDE_NATIVE_CODING_AGENT.presentation_labels)
     conversation_store.set_host_id(
         conv.id, "d75381f2c94b4e49a3c684946d4ddbc4", workspace=str(tmp_path)
     )
@@ -102,27 +97,6 @@ def _upload(
     )
 
 
-@pytest.mark.parametrize(
-    "filename,content_type",
-    [
-        ("notes.txt", "text/plain"),
-        ("archive.zip", "application/zip"),
-        ("deck.pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"),
-        ("app.db", "application/octet-stream"),
-        ("report.docx", "application/zip"),
-        ("data.csv", "application/vnd.ms-excel"),
-    ],
-)
-def test_upload_supported_types(
-    upload_client: tuple[TestClient, str], filename: str, content_type: str
-) -> None:
-    """Supported extensions remain usable even with common browser MIME mismatches."""
-    client, session_id = upload_client
-    response = _upload(client, session_id, filename, content_type=content_type)
-    assert response.status_code == 201, response.text
-    assert response.json()["name"] == filename
-
-
 def test_upload_rejects_unsupported_type(upload_client: tuple[TestClient, str]) -> None:
     """Unsupported formats are rejected with 415."""
     client, session_id = upload_client
@@ -134,7 +108,7 @@ def test_upload_rejects_unsupported_type(upload_client: tuple[TestClient, str]) 
 def test_upload_rejects_filesystem_types_for_an_unsupported_harness(
     upload_client: tuple[TestClient, str], db_uri: str
 ) -> None:
-    """An SDK session refuses formats requiring native filesystem tools."""
+    """An SDK session refuses formats requiring filesystem tools."""
     client, _ = upload_client
     sdk_session = SqlAlchemyConversationStore(db_uri).create_conversation(
         title="sdk session", agent_id="087b7cb7ac30abf4debfaa578d052ec6"
@@ -144,7 +118,7 @@ def test_upload_rejects_filesystem_types_for_an_unsupported_harness(
         files={"file": ("archive.zip", b"PK\x03\x04 fake zip", "application/zip")},
     )
     assert resp.status_code == 415, resp.text
-    assert "Claude Code or Codex" in resp.text
+    assert "cannot open this file type" in resp.text
 
 
 @pytest.mark.parametrize(
@@ -175,93 +149,6 @@ def test_message_cannot_inline_a_filesystem_attachment(
     )
     assert resp.status_code == 400, resp.text
     assert "payload.zip" in resp.text
-
-
-@pytest.mark.parametrize("transition", ["switch-agent", "fork"])
-@pytest.mark.parametrize(
-    "filename,target_harness,event_type,block_type,status",
-    [
-        ("archive.zip", "pi", "message", "input_file", 415),
-        ("archive.zip", "claude-sdk", "message", "input_image", 415),
-        ("archive.zip", "pi", "slash_command", "input_file", 415),
-        ("archive.zip", "claude-native", "message", "input_file", 202),
-        ("notes.txt", "pi", "message", "input_file", 202),
-    ],
-)
-def test_send_rechecks_unsent_upload_after_harness_transition(
-    upload_client: tuple[TestClient, str],
-    db_uri: str,
-    monkeypatch: pytest.MonkeyPatch,
-    transition: str,
-    filename: str,
-    target_harness: str,
-    event_type: str,
-    block_type: str,
-    status: int,
-) -> None:
-    """Stored filenames govern admission before policy, persistence, or runner dispatch."""
-    from omnigent.server.routes import sessions
-    from omnigent.server.routes.sessions import routes_events
-
-    client, source_id = upload_client
-    uploaded = _upload(client, source_id, filename)
-    assert uploaded.status_code == 201, uploaded.text
-    target = SqlAlchemyAgentStore(db_uri).create("c" * 32, "target", "target/bundle")
-
-    def load(_agent_id: str, bundle_location: str, **_kwargs: object) -> SimpleNamespace:
-        harness = target_harness if bundle_location == target.bundle_location else "claude-native"
-        return SimpleNamespace(
-            spec=SimpleNamespace(executor=SimpleNamespace(harness_kind=harness))
-        )
-
-    monkeypatch.setattr(sessions, "get_agent_cache", lambda: SimpleNamespace(load=load))
-    changed = client.post(f"/v1/sessions/{source_id}/{transition}", json={"agent_id": target.id})
-    assert changed.status_code == (201 if transition == "fork" else 200), changed.text
-    session_id = changed.json()["id"]
-    files = SqlAlchemyFileStore(db_uri).list(session_id).data
-    assert len(files) == 1
-    assert files[0].filename == filename
-    conversations = SqlAlchemyConversationStore(db_uri)
-    before = conversations.list_items(session_id).data
-
-    # Stop admitted inputs at policy so the test never needs a live runner.
-    policy = AsyncMock(return_value={"verdict": "deny", "reason": "test policy"})
-    dispatch = AsyncMock()
-    monkeypatch.setattr(routes_events, "_evaluate_input_policy", policy)
-    monkeypatch.setattr(routes_events, "_persist_policy_deny_sentinel", AsyncMock())
-    monkeypatch.setattr(routes_events, "_dispatch_session_event_to_runner", dispatch)
-    response = client.post(
-        f"/v1/sessions/{session_id}/events",
-        json={
-            "type": event_type,
-            "data": {
-                "role": "user",
-                "content": [
-                    {"type": block_type, "file_id": files[0].id, "filename": "renamed.txt"}
-                ],
-            },
-        },
-    )
-    assert response.status_code == status, response.text
-    if status == 415:
-        assert filename in response.text
-        assert "Claude Code or Codex" in response.text
-        policy.assert_not_awaited()
-    else:
-        assert response.json()["denied"] is True
-        policy.assert_awaited_once()
-    dispatch.assert_not_awaited()
-    assert conversations.list_items(session_id).data == before
-
-
-def test_upload_rejects_oversized_filesystem_file(
-    upload_client: tuple[TestClient, str],
-) -> None:
-    """A zip over the filesystem per-file cap is rejected with 413."""
-    client, session_id = upload_client
-    oversized = b"\x00" * (MAX_FILESYSTEM_ATTACHMENT_UPLOAD_BYTES + 1)
-    resp = _upload(client, session_id, "huge.zip", oversized, "application/zip")
-    assert resp.status_code == 413, resp.status_code
 
 
 def test_upload_rejects_undecodable_oversized_image(
@@ -335,104 +222,6 @@ async def test_read_upload_capped_boundary(size: int, rejected: bool) -> None:
         assert await _read_upload_capped(upload, 100) == data
 
 
-@pytest.mark.parametrize(
-    "filename,content_type,status",
-    [
-        ("archive.zip", "application/zip", 415),
-        ("archive.zip", "text/plain", 415),
-        ("report.docx", "application/zip", 201),
-    ],
-)
-def test_upload_denylist_uses_filename(
-    upload_client: tuple[TestClient, str],
-    monkeypatch: pytest.MonkeyPatch,
-    filename: str,
-    content_type: str,
-    status: int,
-) -> None:
-    """The denylist rejects matching extensions regardless of the declared MIME."""
-    monkeypatch.setattr(
-        "omnigent.server.server_config.filesystem_attachment_denied_extensions",
-        lambda: frozenset({".zip"}),
-    )
-    client, session_id = upload_client
-    response = _upload(client, session_id, filename, content_type=content_type)
-    assert response.status_code == status, response.text
-    if status == 415:
-        assert "not accepted by this deployment" in response.text
-    else:
-        assert response.json()["name"] == filename
-
-
-@pytest.mark.parametrize(
-    "existing,limit,status",
-    [(["a.zip", "b.zip"], 2, 413), (["a.txt", "b.txt", "c.txt"], 1, 201)],
-)
-def test_upload_quota_counts_only_filesystem_types(
-    upload_client: tuple[TestClient, str],
-    monkeypatch: pytest.MonkeyPatch,
-    existing: list[str],
-    limit: int,
-    status: int,
-) -> None:
-    """Only filesystem formats spend the quota across successive uploads."""
-    monkeypatch.setattr(
-        "omnigent.server.server_config.filesystem_attachment_file_limit", lambda: limit
-    )
-    client, session_id = upload_client
-    for filename in existing:
-        response = _upload(client, session_id, filename)
-        assert response.status_code == 201, response.text
-    response = _upload(client, session_id, "bundle.zip")
-    assert response.status_code == status, response.text
-    if status == 413:
-        assert "file attachments" in response.text
-
-
-async def test_parallel_uploads_cannot_overspend_the_filesystem_quota(
-    upload_client: tuple[TestClient, str],
-    db_uri: str,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Two uploads racing for the last free slot: exactly one is stored."""
-    import asyncio
-
-    import httpx
-
-    from omnigent.server.routes.sessions import routes_resources
-
-    monkeypatch.setattr(
-        "omnigent.server.server_config.filesystem_attachment_file_limit",
-        lambda: 1,
-    )
-    real_read = routes_resources._read_upload_capped
-
-    async def slow_read(file, limit):  # type: ignore[no-untyped-def]
-        # Widen the gap between the quota check and the store.
-        await asyncio.sleep(0.05)
-        return await real_read(file, limit)
-
-    monkeypatch.setattr(routes_resources, "_read_upload_capped", slow_read)
-    client, session_id = upload_client
-    transport = httpx.ASGITransport(app=client.app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as http:
-        responses = await asyncio.gather(
-            *(
-                http.post(
-                    f"/v1/sessions/{session_id}/resources/files",
-                    files={"file": (f"race{i}.zip", b"PK\x03\x04 fake zip", "application/zip")},
-                )
-                for i in range(2)
-            )
-        )
-
-    assert sorted(r.status_code for r in responses) == [201, 413]
-    stored = SqlAlchemyFileStore(db_uri).list(session_id=session_id, limit=10).data
-    assert [f.filename for f in stored if f.filename.endswith(".zip")] == [
-        next(r.json()["name"] for r in responses if r.status_code == 201)
-    ]
-
-
 def test_quota_counts_filesystem_files_past_any_page_boundary(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -476,19 +265,6 @@ def test_quota_counts_filesystem_files_past_any_page_boundary(
     assert exc.value.status_code == 413
 
 
-@pytest.mark.parametrize("filename", ["archive.zip", "report.docx", "state.sqlite"])
-def test_old_host_refuses_new_types_without_storing(
-    upload_client: tuple[TestClient, str], db_uri: str, filename: str
-) -> None:
-    """A legacy hello cannot promise cold resume; rejection leaves no file row."""
-    client, session_id = upload_client
-    client.app.state.host_registry.get("d75381f2c94b4e49a3c684946d4ddbc4").hello.capabilities = []
-    response = _upload(client, session_id, filename, b"data", "application/octet-stream")
-    assert response.status_code == 409, response.text
-    assert "Update Omnigent" in response.text
-    assert SqlAlchemyFileStore(db_uri).list(session_id).data == []
-
-
 def test_old_host_keeps_existing_attachment_types(upload_client: tuple[TestClient, str]) -> None:
     """The upgrade requirement does not change existing text/image uploads."""
     from io import BytesIO
@@ -505,152 +281,3 @@ def test_old_host_keeps_existing_attachment_types(upload_client: tuple[TestClien
     ):
         response = _upload(client, session_id, filename, data, mime)
         assert response.status_code == 201, response.text
-
-
-@pytest.mark.asyncio
-async def test_first_managed_upload_waits_for_host_binding(
-    upload_client: tuple[TestClient, str], db_uri: str, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """An upload racing provisioning waits, then checks the newly bound host."""
-    import asyncio
-
-    import httpx
-
-    from omnigent.server.managed_hosts import ManagedLaunchTracker
-    from omnigent.server.routes.sessions import routes_resources
-
-    client, session_id = upload_client
-    store = SqlAlchemyConversationStore(db_uri)
-    store.clear_host_binding(session_id)
-    tracker = ManagedLaunchTracker()
-    tracker.begin(session_id)
-    client.app.state.managed_launches = tracker
-    waiting = asyncio.Event()
-    original = routes_resources._await_settled_managed_launch
-
-    async def observe_wait(launch):
-        waiting.set()
-        await original(launch)
-
-    monkeypatch.setattr(routes_resources, "_await_settled_managed_launch", observe_wait)
-    async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=client.app), base_url="http://test"
-    ) as async_client:
-        upload = asyncio.create_task(
-            async_client.post(
-                f"/v1/sessions/{session_id}/resources/files",
-                files={"file": ("archive.zip", b"data", "application/zip")},
-            )
-        )
-        await asyncio.wait_for(waiting.wait(), timeout=5)
-        assert not upload.done()
-        assert SqlAlchemyFileStore(db_uri).list(session_id).data == []
-        store.set_host_id(
-            session_id, "d75381f2c94b4e49a3c684946d4ddbc4", workspace="/tmp/test-upload"
-        )
-        tracker.finish(session_id)
-        response = await upload
-    assert response.status_code == 201, response.text
-
-
-def test_recovered_host_ignores_stale_managed_launch_failure(
-    upload_client: tuple[TestClient, str],
-) -> None:
-    """A retained failure does not block uploads after the session has recovered."""
-    from omnigent.server.managed_hosts import ManagedLaunchTracker
-
-    client, session_id = upload_client
-    tracker = ManagedLaunchTracker()
-    tracker.begin(session_id)
-    tracker.fail(session_id, "earlier provision failed")
-    client.app.state.managed_launches = tracker
-    response = _upload(client, session_id, "archive.zip", b"data", "application/zip")
-    assert response.status_code == 201, response.text
-
-
-def test_unbound_upload_requires_a_connected_runtime(
-    upload_client: tuple[TestClient, str],
-    db_uri: str,
-) -> None:
-    """An unknown host cannot be assumed current just because the server is new."""
-    client, session_id = upload_client
-    SqlAlchemyConversationStore(db_uri).clear_host_binding(session_id)
-    response = _upload(client, session_id, "archive.zip", b"data", "application/zip")
-    assert response.status_code == 409, response.text
-    assert "Connect an updated" in response.text
-    assert SqlAlchemyFileStore(db_uri).list(session_id).data == []
-
-
-def test_upload_wakes_a_sleeping_runtime_before_checking_support(
-    upload_client: tuple[TestClient, str],
-    db_uri: str,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A first attachment can wake a managed sandbox without requiring a text turn."""
-    from unittest.mock import AsyncMock
-
-    from omnigent.server.routes.sessions import routes_resources
-
-    client, session_id = upload_client
-    registry = client.app.state.host_registry
-    connection = registry.get("d75381f2c94b4e49a3c684946d4ddbc4")
-    registry.deregister(connection.host_id)
-
-    async def wake(**kwargs):
-        registry.register(connection.host_id, Mock(), connection.hello, owner=None)
-        return None, SqlAlchemyConversationStore(db_uri).get_conversation(session_id)
-
-    ensure = AsyncMock(side_effect=wake)
-    monkeypatch.setattr(routes_resources, "ensure_runner_connected", ensure)
-    response = _upload(client, session_id, "archive.zip", b"data", "application/zip")
-    assert response.status_code == 201, response.text
-    ensure.assert_awaited_once()
-
-
-@pytest.mark.parametrize("partial_write", [False, True])
-@pytest.mark.parametrize("filename", ["archive.zip", "notes.txt"])
-def test_failed_upload_releases_quota_and_can_retry(
-    upload_client: tuple[TestClient, str],
-    db_uri: str,
-    tmp_path,
-    monkeypatch: pytest.MonkeyPatch,
-    partial_write: bool,
-    filename: str,
-) -> None:
-    """Blob failures leave no metadata, partial bytes, or resource event behind."""
-    monkeypatch.setattr(
-        "omnigent.server.server_config.filesystem_attachment_file_limit", lambda: 1
-    )
-    monkeypatch.setattr(
-        "omnigent.server.server_config.filesystem_attachment_total_bytes_limit", lambda: 4
-    )
-    client, session_id = upload_client
-    original_put = LocalArtifactStore.put
-    attempted_ids: list[str] = []
-
-    def fail_put(store: LocalArtifactStore, key: str, data: bytes) -> None:
-        attempted_ids.append(key)
-        if partial_write:
-            original_put(store, key, data[:1])
-        raise OSError("test storage write failure")
-
-    url = f"/v1/sessions/{session_id}/resources/files"
-    upload = {"file": (filename, b"data", "application/octet-stream")}
-    with monkeypatch.context() as storage_failure:
-        storage_failure.setattr(LocalArtifactStore, "put", fail_put)
-        failed = client.post(url, files=upload)
-    assert failed.status_code == 500, failed.text
-    assert "Failed to upload file" in failed.text
-    assert len(attempted_ids) == 1
-    assert SqlAlchemyFileStore(db_uri).list(session_id).data == []
-    artifacts = LocalArtifactStore(str(tmp_path / "artifacts"))
-    assert not artifacts.exists(attempted_ids[0])
-    conversations = SqlAlchemyConversationStore(db_uri)
-    assert conversations.list_items(session_id, type="resource_event").data == []
-
-    retried = client.post(url, files=upload)
-    assert retried.status_code == 201, retried.text
-    assert artifacts.get(retried.json()["id"]) == b"data"
-    files = SqlAlchemyFileStore(db_uri).list(session_id).data
-    assert [stored.id for stored in files] == [retried.json()["id"]]
-    assert len(conversations.list_items(session_id, type="resource_event").data) == 1

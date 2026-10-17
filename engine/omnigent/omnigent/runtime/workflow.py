@@ -336,9 +336,6 @@ def configure_agent_harness_with_provider(
         the harness requires, or no model can be resolved for it.
     """
     if entry.kind == BEDROCK_KIND:
-        # Bedrock mode is wired only into the native ``omnigent claude`` launch
-        # (:func:`omnigent.harnesses.claude_native.main._bedrock_config_for_native_claude`),
-        # which sets CLAUDE_CODE_USE_BEDROCK + AWS_BEARER_TOKEN_BEDROCK directly.
         # The in-process / gateway harnesses have no Bedrock path, so emitting
         # the generic ``HARNESS_*_GATEWAY_*`` vars would silently point the
         # harness at the Bedrock endpoint as if it spoke the Anthropic Messages

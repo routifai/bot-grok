@@ -14,9 +14,6 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
-from fastapi import FastAPI
-
-from omnigent.server.feature_flags import Feature, FeatureFlags
 
 pytestmark = pytest.mark.asyncio
 
@@ -122,30 +119,6 @@ async def test_info_single_user_false_without_marker(
     # Auth shape is unchanged — single_user is orthogonal to it.
     assert data["accounts_enabled"] is False
     assert data["login_url"] is None
-
-
-async def test_info_advertises_installable_harnesses_when_enabled(
-    app: FastAPI,
-    client: httpx.AsyncClient,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """With the feature on, ``/v1/info`` publishes the install allowlist.
-
-    The SPA gates its setup offer on membership in this set, so it must carry
-    the ids the route accepts — including the native spellings a session
-    declares (``codex-native``), not just the bare ids.
-    """
-    from omnigent.onboarding.harness_install import ui_installable_harnesses
-
-    enabled = FeatureFlags(frozenset({Feature.HARNESS_INSTALL}))
-    monkeypatch.setattr(app.state, "feature_flags", enabled)
-    resp = await client.get("/v1/info")
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["features"]["harness_install"] is True
-    assert data["harness_install_enabled"] is True
-    assert set(data["installable_harnesses"]) == set(ui_installable_harnesses())
-    assert "codex-native" in data["installable_harnesses"]
 
 
 # ── GET /v1/info: smart_routing_enabled ──────────────────

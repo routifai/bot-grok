@@ -32,10 +32,6 @@ from omnigent.entities import (
 )
 from omnigent.entities.session_resources import session_resource_view_to_dict
 from omnigent.errors import ErrorCode, OmnigentError
-from omnigent.native.native_coding_agents import (
-    native_coding_agent_for_agent_name,
-    native_coding_agent_for_terminal_name,
-)
 from omnigent.runner.routing import RunnerRouter
 from omnigent.runtime.policies.approval import _ELICITATION_MODE
 from omnigent.server._elicitation_registry import (
@@ -68,7 +64,6 @@ from omnigent.server.routes._origin import require_trusted_origin
 from omnigent.server.routes._sessions.common import (
     _logger,
     get_server_runner_router,
-    host_interactive_shells_for_request,
     set_server_runner_router,
 )
 from omnigent.server.routes._sessions.helpers import (
@@ -199,7 +194,7 @@ def register_resources_routes(
     async def _require_filesystem_attachment_support(
         request: Request, conv: Conversation, filename: str
     ) -> None:
-        await _require_filesystem_attachment_harness(conv, filename)
+        await _require_filesystem_attachment_harness(filename)
         tracker = getattr(request.app.state, "managed_launches", None)
         launch = tracker.get(conv.id) if tracker is not None else None
         if launch is not None and conv.host_id is None and conv.runner_id is None:
@@ -1385,17 +1380,7 @@ def register_resources_routes(
 
         User-initiated creates are gated on the agent's terminal
         access: the requested ``terminal`` must be one of the names
-        declared in the agent spec's ``terminals:`` block. Native
-        harness bootstrap requests (marked ``ensure_native_terminal``
-        or ``bridge_inject_dir`` — the ``omnigent claude`` / ``codex``
-        wrappers launching the session's own CLI terminal) are exempt:
-        they launch undeclared names via the runner's
-        synthesize-from-body path and predate the gate. The markers
-        are client-controlled, so the exemption is narrowed to the
-        exact shape those wrappers send — a registered native terminal
-        name with ``session_key`` ``"main"`` — anything else carrying a
-        marker still goes through the declared-name gate (it would
-        otherwise be an arbitrary-terminal bypass).
+        declared in the agent spec's ``terminals:`` block.
 
         :param session_id: Session/conversation identifier.
         :param request: JSON body with ``terminal`` and
@@ -1407,36 +1392,17 @@ def register_resources_routes(
         """
         conv = await _validate_session(session_id, request, LEVEL_EDIT)
         body = await request.json()
-        is_native_bootstrap = (
-            bool(body.get("ensure_native_terminal") or body.get("bridge_inject_dir"))
-            and native_coding_agent_for_terminal_name(body.get("terminal")) is not None
-            and body.get("session_key") == "main"
-        )
-        if not is_native_bootstrap:
-            spec = await asyncio.to_thread(_load_agent_spec_for_session, conv, agent_store)
-            declared = list(spec.terminals or {}) if spec is not None else []
-            if (
-                spec is not None
-                and conv.host_id is not None
-                and host_registry is not None
-                and native_coding_agent_for_agent_name(spec.name) is not None
-            ):
-                reported = host_interactive_shells_for_request(
-                    conv.host_id,
-                    host_registry=host_registry,
-                    runner_router=runner_router or get_server_runner_router(),
-                )
-                if reported:
-                    declared = reported
-            if body.get("terminal") not in declared:
-                raise OmnigentError(
-                    (
-                        f"Terminal {body.get('terminal')!r} is not declared by this "
-                        f"agent. Terminals can only be created for agents whose spec "
-                        f"declares them; this agent declares: {declared or 'none'}."
-                    ),
-                    code=ErrorCode.INVALID_INPUT,
-                )
+        spec = await asyncio.to_thread(_load_agent_spec_for_session, conv, agent_store)
+        declared = list(spec.terminals or {}) if spec is not None else []
+        if body.get("terminal") not in declared:
+            raise OmnigentError(
+                (
+                    f"Terminal {body.get('terminal')!r} is not declared by this "
+                    f"agent. Terminals can only be created for agents whose spec "
+                    f"declares them; this agent declares: {declared or 'none'}."
+                ),
+                code=ErrorCode.INVALID_INPUT,
+            )
         # A session whose runner merely went to sleep (host still up, or a
         # resumable managed sandbox) is transparently reconnected here, so
         # opening a shell from the web wakes it instead of dead-ending on a

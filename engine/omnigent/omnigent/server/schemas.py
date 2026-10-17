@@ -19,7 +19,6 @@ from pydantic import (
     ConfigDict,
     Field,
     SerializerFunctionWrapHandler,
-    Strict,
     field_validator,
     model_serializer,
     model_validator,
@@ -2253,9 +2252,6 @@ class SessionResponse(BaseModel):
         sessions are hidden from the default sidebar listing and
         surface only behind the "Show archived" toggle. ``False``
         for normal sessions. Toggled via ``PATCH /v1/sessions/{id}``.
-    :param todos: Current native Plan items reported by a harness. Each has
-        ``content``, ``status``, and ``activeForm``. Persisted in conversation
-        metadata; empty before the first report or after an explicit clear.
     :param model_options: Runner-owned model-picker options for native
         sessions. Claude supplies launch-time gateway aliases; Codex includes
         each model's supported reasoning efforts. Empty while unavailable.
@@ -2341,7 +2337,6 @@ class SessionResponse(BaseModel):
     workspace: str | None = None
     git_branch: str | None = None
     archived: bool = False
-    todos: list[dict[str, Any]] = Field(default_factory=list)
     model_options: list[NativeModelOption] = Field(default_factory=list)
     inference_configured: bool = False
     inference_error: str | None = None
@@ -2394,29 +2389,6 @@ class UpdateSessionRequest(BaseModel):
         models. Clear aliases such as ``"default"``, ``"off"``, or
         ``"reset"`` remove the override (matching the REPL's
         ``/model`` semantics). ``None`` leaves unchanged.
-    :param collaboration_mode: Codex-native collaboration-mode string.
-        ``"plan"`` enters Plan mode and ``"default"`` returns to Default
-        mode for subsequent Codex turns. Only valid for sessions stamped
-        with the codex-native wrapper label. Omitted leaves unchanged.
-    :param permission_mode: Claude-native permission mode to switch a
-        running session to, e.g. ``"auto"``. Only the modes Claude Code's
-        shift+tab cycle can reach are accepted (``default``,
-        ``acceptEdits``, ``plan``, ``auto``) — ``dontAsk`` and
-        ``bypassPermissions`` are launch-only. Only valid for sessions
-        stamped with the claude-native wrapper label. Unlike the other
-        fields here the switch is applied by the live TUI, so a failure
-        to reach the mode is surfaced as an error rather than persisted.
-        Omitted leaves unchanged.
-    :param approval_mode: Codex-native approval mode to switch a running
-        session to, one of ``"ask-for-approval"``, ``"approve-for-me"``,
-        ``"full-access"``, ``"read-only"`` — Codex's own ``/permissions``
-        presets (the set is codex-version-dependent, so an older build may not
-        offer every one). Only valid for sessions stamped with the codex-native
-        wrapper label. The runner applies it by driving Codex's ``/permissions``
-        popup and confirms the switch echoed before returning, so a failure to
-        reach the mode surfaces as an error. The confirmed mode is stored on the
-        read-back label only (Codex owns the durable approval state), so it is
-        not written to ``terminal_launch_args``. Omitted leaves unchanged.
     :param cost_control_mode_override: Per-session cost-control
         switch: ``"on"`` activates the spec's configured cost-control
         mode, ``"off"`` disables cost control for this session.
@@ -2480,9 +2452,6 @@ class UpdateSessionRequest(BaseModel):
     labels: dict[str, str] | None = None
     reasoning_effort: str | None = None
     model_override: str | None = None
-    collaboration_mode: str | None = None
-    permission_mode: str | None = None
-    approval_mode: str | None = None
     cost_control_mode_override: str | None = None
     subagent_routing_override: str | None = None
     share_workspace_files: bool | None = None
@@ -2545,103 +2514,6 @@ class BackgroundSessionTitleResponse(BaseModel):
     title: str | None = None
 
 
-class CodexGoalObject(BaseModel):
-    """
-    Current Codex goal state for a Codex-native session.
-
-    Mirrors Codex app-server's ``ThreadGoal`` shape using Omnigent's
-    snake-case API convention. ``created_at`` and ``updated_at`` are optional
-    because older app-server documentation examples omit them even though the
-    current protocol includes them.
-
-    :param thread_id: Codex app-server thread id, e.g. ``"thr_123"``.
-    :param objective: Goal objective text, e.g.
-        ``"Finish the migration and keep tests green"``.
-    :param status: Raw Codex goal lifecycle status, e.g. ``"active"``.
-    :param token_budget: Optional token budget, e.g. ``40000``.
-        ``None`` means no explicit budget is set.
-    :param tokens_used: Tokens spent while pursuing this goal, e.g. ``1024``.
-    :param time_used_seconds: Wall-clock seconds spent on this goal,
-        e.g. ``60``.
-    :param created_at: Unix timestamp when the goal was created, e.g.
-        ``1776272400``. ``None`` when not provided by Codex.
-    :param updated_at: Unix timestamp when the goal was last updated, e.g.
-        ``1776272460``. ``None`` when not provided by Codex.
-    """
-
-    thread_id: str
-    objective: str
-    status: str
-    token_budget: Annotated[int, Strict(), Field(gt=0)] | None = None
-    tokens_used: Annotated[int, Strict(), Field(ge=0)]
-    time_used_seconds: Annotated[int, Strict(), Field(ge=0)]
-    created_at: int | None = None
-    updated_at: int | None = None
-
-
-class CodexGoalResponse(BaseModel):
-    """
-    Response body for reading or setting a Codex-native session goal.
-
-    :param goal: Current goal state, or ``None`` when the session has no
-        persisted Codex goal.
-    """
-
-    goal: CodexGoalObject | None
-
-
-class SetCodexGoalRequest(BaseModel):
-    """
-    Request body for ``PUT /v1/sessions/{id}/codex_goal``.
-
-    :param objective: Goal objective text, e.g.
-        ``"Finish the migration and keep tests green"``. Must be non-empty
-        after trimming and no longer than 4000 characters, matching Codex
-        app-server's goal contract.
-    :param token_budget: Optional positive token budget, e.g. ``40000``.
-        Explicit JSON ``null`` clears the Codex goal budget; omitting the
-        field leaves it absent from the forwarded request.
-    :param status: Optional user-selected goal status. ``"active"`` starts or
-        resumes the goal, and ``"paused"`` stores it paused. Omit this field
-        to preserve Codex's current lifecycle state.
-    """
-
-    objective: str = Field(min_length=1, max_length=4000)
-    token_budget: Annotated[int, Strict(), Field(gt=0)] | None = None
-    status: Literal["active", "paused"] | None = None
-
-    model_config = ConfigDict(extra="forbid")
-
-
-class UpdateCodexGoalStatusRequest(BaseModel):
-    """
-    Request body for ``PATCH /v1/sessions/{id}/codex_goal/status``.
-
-    Codex app-server represents pause/resume as ``thread/goal/set`` status
-    updates. Omnigent exposes the two user-driven transitions explicitly:
-    ``"paused"`` pauses an active goal, and ``"active"`` resumes a paused,
-    blocked, or usage-limited goal.
-
-    :param status: Target Codex goal status, either ``"paused"`` or
-        ``"active"``.
-    """
-
-    status: Literal["active", "paused"]
-
-    model_config = ConfigDict(extra="forbid")
-
-
-class ClearCodexGoalResponse(BaseModel):
-    """
-    Response body for ``DELETE /v1/sessions/{id}/codex_goal``.
-
-    :param cleared: ``True`` when Codex removed an existing goal; ``False``
-        when no goal was present.
-    """
-
-    cleared: bool
-
-
 class SessionForkRequest(BaseModel):
     """
     Request body for ``POST /v1/sessions/{source_id}/fork``.
@@ -2681,15 +2553,6 @@ class SessionForkRequest(BaseModel):
         are carried on a same-agent fork and dropped on an agent switch. A
         list (including ``[]``, which clears them) replaces them wholesale.
         Bounds (count / length) are validated server-side.
-    :param codex_bypass_sandbox: Opt-in for the DANGEROUS codex-native
-        full-bypass (``--dangerously-bypass-approvals-and-sandbox``) on the
-        fork. The source's bypass label is ALWAYS dropped on a fork (a
-        bypass-armed source can never silently re-arm its clone), so this is
-        the only way a fork enables it — an explicit, banner-gated opt-in
-        from the dialog, mirroring the new-session approval selector. ``True``
-        stamps ``omnigent.codex_native.bypass_sandbox`` on the fork; ``False``
-        / omitted leaves the fork in Codex's normal approval/sandbox stance.
-        Only meaningful for a codex-native target; ignored otherwise.
     :param host_type: How the fork's host is obtained — ``"external"``
         (the default: the caller binds one afterwards, via
         ``POST /v1/hosts/{host_id}/runners`` from the web dialog or
@@ -2716,7 +2579,6 @@ class SessionForkRequest(BaseModel):
     model_override: str | None = None
     reasoning_effort: str | None = None
     terminal_launch_args: list[str] | None = None
-    codex_bypass_sandbox: bool = False
     host_type: Literal["external", "managed"] = "external"
     sandbox_provider: str | None = None
     workspace: str | None = None
@@ -3461,79 +3323,6 @@ class SessionReasoningEffortEvent(_SSEEventBase):
     reasoning_effort: str | None = None
 
 
-class SessionCollaborationModeEvent(_SSEEventBase):
-    """
-    Active collaboration-mode update from a Codex-native session.
-
-    Emitted after the web UI toggles Codex collaboration mode, and after the
-    Codex forwarder observes a ``thread/settings/updated`` notification from
-    the native Codex TUI. Lets connected clients show a clear Plan-mode
-    indicator without a reload.
-
-    :param type: Always ``"session.collaboration_mode"``.
-    :param conversation_id: Session identifier, e.g. ``"conv_abc123"``.
-    :param mode: The active collaboration mode string, e.g. ``"plan"`` or
-        ``"default"``.
-
-    Category: **transient** (SSE-only). The server also writes
-    ``omnigent.codex_native.collaboration_mode`` on the conversation labels,
-    so reconnect clients restore the same state from the session snapshot.
-    """
-
-    type: Literal["session.collaboration_mode"]
-    conversation_id: str
-    mode: str
-
-
-class SessionPermissionModeEvent(_SSEEventBase):
-    """
-    Active permission-mode update from a claude-native session.
-
-    Emitted after the web UI switches the mode, and after the Claude forwarder
-    observes a different mode in the pane footer — a shift+tab pressed inside
-    the TUI, which Omnigent has no other way to see. Lets the composer's mode
-    picker track the pane without a reload.
-
-    :param type: Always ``"session.permission_mode"``.
-    :param conversation_id: Session identifier, e.g. ``"conv_abc123"``.
-    :param permission_mode: The active mode, e.g. ``"auto"`` or ``"plan"``.
-
-    Category: **transient** (SSE-only). The server also writes
-    ``omnigent.claude_native.permission_mode`` on the conversation labels, so
-    reconnecting clients restore the same state from the session snapshot.
-    """
-
-    type: Literal["session.permission_mode"]
-    conversation_id: str
-    permission_mode: str
-
-
-class SessionCodexApprovalModeEvent(_SSEEventBase):
-    """
-    Active approval/sandbox-mode update from a codex-native session.
-
-    Emitted after the web UI switches the mode, and after the Codex forwarder
-    observes a ``thread/settings/updated`` notification — an approval change the
-    user made inside Codex's ``/permissions`` popup, which Omnigent has no other
-    way to see. Lets the composer's approval picker track the thread without a
-    reload.
-
-    :param type: Always ``"session.codex_approval_mode"``.
-    :param conversation_id: Session identifier, e.g. ``"conv_abc123"``.
-    :param approval_mode: The active mode, one of ``"ask-for-approval"``,
-        ``"approve-for-me"``, ``"full-access"``, ``"read-only"``.
-
-    Category: **transient** (SSE-only). The server also writes
-    ``omnigent.codex_native.approval_mode`` on the conversation labels (and
-    ``terminal_launch_args``), so reconnecting clients restore the same state
-    from the session snapshot.
-    """
-
-    type: Literal["session.codex_approval_mode"]
-    conversation_id: str
-    approval_mode: str
-
-
 class SessionAgentChangedEvent(_SSEEventBase):
     """
     Bound-agent change on a live session.
@@ -3564,35 +3353,6 @@ class SessionAgentChangedEvent(_SSEEventBase):
     conversation_id: str
     agent_id: str
     agent_name: str
-
-
-class SessionTodosEvent(_SSEEventBase):
-    """
-    Plan/TODO update from a native terminal-backed session.
-
-    Emitted after an ``external_session_todos`` POST from a native
-    harness forwarder, which captures structured Plan updates from
-    Claude or Codex and forwards them to the Omnigent server. Lets web
-    render a live todo panel in the right column without polling.
-
-    :param type: Always ``"session.todos"``.
-    :param conversation_id: Session identifier,
-        e.g. ``"conv_abc123"``.
-    :param todos: Current native Plan/TODO items from a harness.
-        Each entry is a raw dict with ``content`` (str),
-        ``status`` (``"pending"`` | ``"in_progress"`` |
-        ``"completed"``), and ``activeForm`` (str, display activity)
-        keys, e.g. ``[{"content": "Fix the bug", "status":
-        "in_progress", "activeForm": "Fixing the bug"}]``.
-
-    Category: **transient** (SSE-only). On reconnect, clients seed
-    the panel from the session snapshot's ``todos`` field, which is
-    restored from persisted metadata at snapshot build time.
-    """
-
-    type: Literal["session.todos"]
-    conversation_id: str
-    todos: list[dict[str, Any]]
 
 
 class SessionTerminalPendingEvent(_SSEEventBase):
@@ -5019,11 +4779,7 @@ ServerStreamEvent = Annotated[
     | SessionModelEvent
     | SessionTitleEvent
     | SessionReasoningEffortEvent
-    | SessionCollaborationModeEvent
-    | SessionPermissionModeEvent
-    | SessionCodexApprovalModeEvent
     | SessionAgentChangedEvent
-    | SessionTodosEvent
     | SessionTerminalPendingEvent
     | SessionSandboxStatusEvent
     | SessionMcpStartupEvent

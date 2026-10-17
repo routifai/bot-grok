@@ -19,7 +19,6 @@ import pytest
 from fastapi import FastAPI, Request
 from PIL import Image
 
-from omnigent.native.native_coding_agents import CLAUDE_NATIVE_AGENT_NAME
 from omnigent.runtime.agent_cache import AgentCache
 from omnigent.server import app as server_app
 from omnigent.stores.agent_store.sqlalchemy_store import SqlAlchemyAgentStore
@@ -872,61 +871,6 @@ def test_generic_credentials_route_does_not_shadow_detected(
     assert endpoint_for("/v1/hosts/h1/credentials/github") == "host_credential"
 
 
-@pytest.mark.asyncio
-async def test_health_unbound_imported_session_reads_offline(
-    db_uri: str,
-    tmp_path: Path,
-) -> None:
-    """
-    An unbound imported transcript reads offline; a plain session online.
-
-    Both are unbound (no runner, no host). The ``omnigent.import.source``
-    label is the difference: an import has no live executor anywhere, so it
-    must launch a runner on a host first and reads ``runner_online: false``
-    (routing the open view to the resume picker). A plain unbound session
-    resumes in-process and stays online. Regression guard for the
-    ``imported`` branch of ``_bulk_session_liveness``.
-    """
-    from omnigent.server.app import create_app
-    from omnigent.stores.conversation_store.sqlalchemy_store import (
-        SqlAlchemyConversationStore,
-    )
-    from omnigent.stores.file_store.sqlalchemy_store import SqlAlchemyFileStore
-    from omnigent.stores.host_store import HostStore
-
-    conversation_store = SqlAlchemyConversationStore(db_uri)
-    host_store = HostStore(db_uri)
-    artifact_store = LocalArtifactStore(str(tmp_path / "artifacts"))
-
-    imported = conversation_store.create_conversation()
-    conversation_store.set_labels(imported.id, {"omnigent.import.source": "claude"})
-    plain = conversation_store.create_conversation()
-
-    app = create_app(
-        agent_store=SqlAlchemyAgentStore(db_uri),
-        file_store=SqlAlchemyFileStore(db_uri),
-        conversation_store=conversation_store,
-        artifact_store=artifact_store,
-        host_store=host_store,
-        agent_cache=AgentCache(
-            artifact_store=artifact_store,
-            cache_dir=tmp_path / "cache",
-        ),
-    )
-    ids = f"{imported.id},{plain.id}"
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
-        resp = await c.get(f"/health?session_ids={ids}")
-
-    assert resp.status_code == 200
-    sessions = resp.json()["sessions"]
-    # Imported → offline (needs a host). A True here means the unbound branch
-    # ignored the import marker (the pre-fix behavior).
-    assert sessions[imported.id]["runner_online"] is False
-    # Plain unbound session → reachable in-process.
-    assert sessions[plain.id]["runner_online"] is True
-
-
 @dataclass(frozen=True)
 class _SeedStores:
     """
@@ -1059,107 +1003,6 @@ def test_ensure_extra_builtin_agents_skips_bad_path_and_seeds_good(
     assert seed_stores.agent_store.get_by_name("does-not-exist") is None
 
 
-def test_ensure_default_native_agents_seeds_claude_card(seed_stores: _SeedStores) -> None:
-    """
-    The native seeding loop registers the Claude Code native agent as a
-    picker-renderable built-in.
-
-    The new-session picker reads built-ins from ``GET /v1/agents``; without this
-    seeder Claude Code would be absent from the Web UI dropdown.
-    """
-    server_app._ensure_default_native_agents(
-        seed_stores.agent_store,
-        seed_stores.artifact_store,
-        seed_stores.agent_cache,
-    )
-
-    seeded = seed_stores.agent_store.get_by_name(CLAUDE_NATIVE_AGENT_NAME)
-    assert seeded is not None, f"{CLAUDE_NATIVE_AGENT_NAME} was not registered"
-    assert seeded.name == CLAUDE_NATIVE_AGENT_NAME
-    # The bundle must be retrievable, not just referenced.
-    assert seed_stores.artifact_store.get(seeded.bundle_location) is not None
-
-
-def test_ensure_default_native_agents_seeds_every_native_agent(
-    seed_stores: _SeedStores,
-) -> None:
-    """
-    The loop seeds every ``NATIVE_CODING_AGENTS`` entry under its stable id.
-
-    Guards the whole seeded set (not just one card): each native agent must be
-    registered as a session-scope-NULL built-in, keyed by its name-derived
-    :func:`builtin_agent_id`, with a retrievable bundle. A harness dropped from
-    the loop — or seeded under the wrong name/id — is caught here.
-    """
-    from omnigent.db.utils import builtin_agent_id
-    from omnigent.native.native_coding_agents import NATIVE_CODING_AGENTS
-
-    server_app._ensure_default_native_agents(
-        seed_stores.agent_store,
-        seed_stores.artifact_store,
-        seed_stores.agent_cache,
-    )
-
-    for agent in NATIVE_CODING_AGENTS:
-        seeded = seed_stores.agent_store.get_by_name(agent.agent_name)
-        assert seeded is not None, f"{agent.agent_name} was not registered"
-        assert seeded.id == builtin_agent_id(agent.agent_name)
-        assert seeded.session_id is None, "built-ins must be session-scope NULL"
-        assert seed_stores.artifact_store.get(seeded.bundle_location) is not None
-
-
-def test_ensure_default_native_agents_raises_when_provider_missing(
-    seed_stores: _SeedStores, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A native agent with no provider row raises instead of silently unseeding."""
-    from omnigent.errors import OmnigentError
-
-    monkeypatch.setattr(server_app, "native_provider_for_key", lambda _key: None)
-    with pytest.raises(OmnigentError, match="no provider row to seed from"):
-        server_app._ensure_default_native_agents(
-            seed_stores.agent_store,
-            seed_stores.artifact_store,
-            seed_stores.agent_cache,
-        )
-
-
-def test_build_native_bundle_raises_without_materialize_hook() -> None:
-    """A provider missing its ``materialize_agent_spec`` hook raises loudly."""
-    from omnigent.errors import OmnigentError
-    from omnigent.harness_plugins import NativeHarnessProvider
-
-    provider = NativeHarnessProvider(
-        key="ghost",
-        run_native="omnigent.ghost_native:run_ghost_native",
-        auto_create_terminal="omnigent.runner.native:_launch_ghost",
-        input_ready_probe="omnigent.ghost_native.bridge:native_input_ready",
-        materialize_agent_spec=None,
-    )
-    with pytest.raises(OmnigentError, match="no materialize_agent_spec hook"):
-        server_app._build_native_bundle(provider)
-
-
-def test_ensure_default_native_agents_is_idempotent(seed_stores: _SeedStores) -> None:
-    """A second seed call is a no-op — startup runs the seeder every boot."""
-    server_app._ensure_default_native_agents(
-        seed_stores.agent_store,
-        seed_stores.artifact_store,
-        seed_stores.agent_cache,
-    )
-    first = seed_stores.agent_store.get_by_name(CLAUDE_NATIVE_AGENT_NAME)
-    assert first is not None
-    server_app._ensure_default_native_agents(
-        seed_stores.agent_store,
-        seed_stores.artifact_store,
-        seed_stores.agent_cache,
-    )
-    page = seed_stores.agent_store.list(limit=100)
-    claude_rows = [a for a in page.data if a.name == CLAUDE_NATIVE_AGENT_NAME]
-    assert len(claude_rows) == 1
-    assert claude_rows[0].id == first.id
-    assert claude_rows[0].version == first.version == 1
-
-
 def test_ensure_default_polly_agent_seeds_card(seed_stores: _SeedStores) -> None:
     """
     Seeding registers polly as a built-in the picker can render.
@@ -1179,53 +1022,6 @@ def test_ensure_default_polly_agent_seeds_card(seed_stores: _SeedStores) -> None
     assert seeded.name == "polly"
     # The bundle must be retrievable, not just referenced.
     assert seed_stores.artifact_store.get(seeded.bundle_location) is not None
-
-
-def test_ensure_default_claude_native_agent_carries_native_harness(
-    seed_stores: _SeedStores,
-) -> None:
-    """
-    Seeding registers the Claude Code native agent as a built-in the picker renders.
-
-    The agent must be session-scope NULL (a built-in) and carry the
-    ``claude-native`` harness so the runner boots the native terminal rather
-    than an SDK harness.
-    """
-    server_app._ensure_default_native_agents(
-        seed_stores.agent_store,
-        seed_stores.artifact_store,
-        seed_stores.agent_cache,
-    )
-
-    seeded = seed_stores.agent_store.get_by_name(CLAUDE_NATIVE_AGENT_NAME)
-    assert seeded is not None, f"{CLAUDE_NATIVE_AGENT_NAME} was not registered"
-    assert seeded.name == CLAUDE_NATIVE_AGENT_NAME
-    # Built-ins are session-scope NULL so ``GET /v1/agents`` (which filters on
-    # ``session_id IS NULL``) returns them to the picker.
-    assert seeded.session_id is None
-    # The bundle must be retrievable, not just referenced.
-    assert seed_stores.artifact_store.get(seeded.bundle_location) is not None
-    # The materialized spec must carry the native harness — the contract the
-    # server's _native_terminal_runtime + runner auto-create key off.
-    loaded = seed_stores.agent_cache.load(seeded.id, seeded.bundle_location, expand_env=False)
-    assert loaded.spec.executor.config.get("harness") == "claude-native"
-
-
-def test_ensure_default_agents_includes_claude_native(seed_stores: _SeedStores) -> None:
-    """
-    The startup seeder registers the Claude Code native built-in alongside the others.
-
-    ``_ensure_default_agents`` is the single call the server lifespan makes; a
-    regression that drops the native seeding would silently remove it from the
-    picker even though its helper still works.
-    """
-    server_app._ensure_default_agents(
-        seed_stores.agent_store,
-        seed_stores.artifact_store,
-        seed_stores.agent_cache,
-    )
-
-    assert seed_stores.agent_store.get_by_name(CLAUDE_NATIVE_AGENT_NAME) is not None
 
 
 def test_ensure_default_polly_agent_is_idempotent(seed_stores: _SeedStores) -> None:

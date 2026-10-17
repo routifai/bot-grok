@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock
 import pytest
 import pytest_asyncio
 from fastapi import FastAPI
-from httpx import ASGITransport, AsyncClient, MockTransport, Request, Response
+from httpx import ASGITransport, AsyncClient, Request, Response
 
 from omnigent.db.utils import generate_agent_id
 from omnigent.runtime.agent_cache import AgentCache
@@ -227,76 +227,6 @@ async def _multipart_create(env: _Env, **metadata: Any):
     )
 
 
-@pytest.mark.parametrize(
-    "harness,family,agent_harness",
-    [
-        ("claude-native", "anthropic", "claude-native"),
-        ("claude-native", "anthropic", "native-claude"),
-    ],
-)
-@pytest.mark.parametrize("discovery", [False, True])
-async def test_native_alias_preview_and_create_use_canonical_harness(
-    env: _Env, harness, family, agent_harness, discovery, monkeypatch: pytest.MonkeyPatch
-):
-    from omnigent.server.inference_catalog import SandboxInferenceService
-
-    target = env.app.state.sandbox_config.default
-    config = target.host_config
-    alias = "native-" + harness.removesuffix("-native")
-    config["inference"]["harnesses"] = {alias: {"provider": "bifrost"}}
-    provider = config["providers"]["bifrost"]
-    provider[family] = provider.pop("openai")
-    monkeypatch.setenv("ALIAS_DISCOVERY_KEY", "test-catalog-key")
-    if discovery:
-        target.model_discovery["bifrost"] = {
-            "base_url": "https://catalog.example/v1",
-            "api_key_ref": "env:ALIAS_DISCOVERY_KEY",
-        }
-    else:
-        config["inference"]["harnesses"][alias]["model_allowlist"] = ["gateway/main"]
-    env.app.state.inference_catalog = SandboxInferenceService(
-        env.app.state,
-        transport=MockTransport(
-            lambda request: Response(200, json={"data": [{"id": "gateway/main"}]})
-        ),
-    )
-    agent = await create_test_agent(
-        env.client,
-        executor={"type": "omnigent", "config": {"harness": agent_harness}},
-        include_llm=False,
-    )
-    preview = await env.client.get(
-        f"/v1/sandbox-providers/computer/harnesses/{harness}/model-options",
-        params={"agent_id": agent["id"]},
-    )
-    assert preview.status_code == 200, preview.text
-    assert preview.json()["status"] == "ready", preview.text
-    created = await env.client.post(
-        "/v1/sessions",
-        json={
-            "agent_id": agent["id"],
-            "host_type": "managed",
-            "sandbox_provider": "computer",
-            "inference_configuration_revision": preview.json()["configuration_revision"],
-        },
-    )
-    assert created.status_code == 201, created.text
-    saved = env.store.get_conversation(created.json()["id"])
-    assert saved is not None
-    assert saved.model_override == "gateway/main"
-    assert saved.inference_snapshot["harness"] == harness
-    assert (
-        saved.inference_snapshot["configuration_revision"]
-        == preview.json()["configuration_revision"]
-    )
-    assert (
-        saved.inference_snapshot["runtime_config"]["inference"]["harnesses"][alias][
-            "default_model"
-        ]
-        == "gateway/main"
-    )
-
-
 @pytest.mark.parametrize("selected", [None, "gateway/fast"])
 async def test_json_create_captures_selected_model_and_configuration(env: _Env, selected):
     response = await _json_create(env, model_override=selected)
@@ -402,77 +332,6 @@ async def test_unlisted_patch_rejects_before_any_metadata_change(env: _Env):
     assert after.model_override == before.model_override
     assert after.reasoning_effort == before.reasoning_effort
     assert after.inference_snapshot == before.inference_snapshot
-
-
-@pytest.mark.parametrize(
-    "previous_model,selection,forwarded_model",
-    [
-        ("gateway/main", "gateway/fast", "gateway/fast"),
-        (None, "gateway/fast", "gateway/fast"),
-        ("gateway/fast", "default", "gateway/main"),
-    ],
-)
-async def test_rejected_native_switch_restores_saved_model(
-    env: _Env,
-    monkeypatch: pytest.MonkeyPatch,
-    previous_model: str | None,
-    selection: str,
-    forwarded_model: str,
-):
-    """An allowed selection must not persist when the live native runner rejects it."""
-    bindings = env.catalog.runtime_config["inference"]["harnesses"]
-    bindings["claude-native"] = copy.deepcopy(bindings["pi"])
-    agent = await create_test_agent(
-        env.client,
-        name="claude-native-ui",
-        executor={"type": "omnigent", "config": {"harness": "claude-native"}},
-        include_llm=False,
-    )
-    created = await env.client.post(
-        "/v1/sessions",
-        json={
-            "agent_id": agent["id"],
-            "host_type": "managed",
-            "sandbox_provider": "computer",
-            "model_override": previous_model,
-        },
-    )
-    assert created.status_code == 201, created.text
-    session_id = created.json()["id"]
-    if previous_model is None:
-        env.store.update_conversation(session_id, _unset_model_override=True)
-    original = env.store.get_conversation(session_id)
-    assert original is not None
-    assert original.model_override == previous_model
-    runner_post = AsyncMock(
-        return_value=Response(
-            503,
-            json={"detail": "The terminal did not confirm the model switch"},
-            request=Request("POST", f"/v1/sessions/{session_id}/events"),
-        )
-    )
-    monkeypatch.setattr(
-        sessions_module,
-        "_get_runner_client",
-        AsyncMock(return_value=SimpleNamespace(post=runner_post)),
-    )
-
-    response = await env.client.patch(
-        f"/v1/sessions/{session_id}", json={"model_override": selection}
-    )
-
-    assert response.status_code == 503, response.text
-    assert "previous selection has been restored" in response.text
-    runner_post.assert_awaited_once()
-    assert runner_post.call_args.args == (f"/v1/sessions/{session_id}/events",)
-    assert runner_post.call_args.kwargs["json"] == {
-        "type": "model_change",
-        "model": forwarded_model,
-    }
-    saved = env.store.get_conversation(session_id)
-    assert saved is not None
-    assert saved.model_override == previous_model
-    assert saved.inference_snapshot == original.inference_snapshot
 
 
 async def test_inherited_child_rejects_conflicting_auth_before_persistence(env: _Env):
@@ -635,25 +494,6 @@ async def _builtin(env: _Env, harness: str) -> str:
         generate_agent_id(), f"builtin-{harness}", stored.bundle_location
     )
     return builtin.id
-
-
-@pytest.mark.parametrize("source_harness", ["claude-native", "native-claude"])
-async def test_saved_profile_fork_accepts_an_alias_for_the_same_harness(env: _Env, source_harness):
-    env.catalog.runtime_config["inference"]["harnesses"][source_harness] = {
-        "provider": "bifrost",
-        "default_model": "gateway/main",
-        "model_allowlist": ["gateway/main"],
-    }
-    source_agent_id = await _builtin(env, source_harness)
-    target_agent_id = await _builtin(
-        env, "native-claude" if source_harness == "claude-native" else "claude-native"
-    )
-    snapshot = await env.catalog.prepare("computer", source_harness, "local")
-    source = env.store.create_conversation(agent_id=source_agent_id, inference_snapshot=snapshot)
-    response = await env.client.post(
-        f"/v1/sessions/{source.id}/fork", json={"agent_id": target_agent_id}
-    )
-    assert response.status_code == 201, response.text
 
 
 async def test_configured_session_switch_captures_the_target_harness_configuration(env: _Env):

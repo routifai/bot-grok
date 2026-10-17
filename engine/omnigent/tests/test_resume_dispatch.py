@@ -2,18 +2,12 @@
 Tests for :mod:`omnigent.resume_dispatch` — the top-level
 ``omnigent resume`` dispatcher.
 
-The dispatcher's job is to translate the user's "take me back to
-where I was" intent into the right wrapper call. The two important
-properties under test are (a) we always preserve the Omnigent
-conversation id end-to-end (no new id minted on resume) and (b)
-claude-native conversations route to ``run_claude_native``,
-everything else surfaces a clear redirect hint.
+The dispatcher translates the user's "take me back to where I was"
+intent into a copy-pasteable ``omnigent run --resume`` hint, always
+preserving the Omnigent conversation id (no new id minted on resume).
 """
 
 from __future__ import annotations
-
-from pathlib import Path
-from typing import Any
 
 import click
 import httpx
@@ -43,122 +37,19 @@ def test_run_resume_picker_form_requires_server() -> None:
 
 def test_run_resume_picker_cancel_exits_cleanly(monkeypatch: pytest.MonkeyPatch) -> None:
     """
-    Picker returns ``None`` (user pressed q / Enter on empty list)
-    → dispatcher MUST return cleanly without calling
-    ``run_claude_native``. A misroute that called the wrapper with
-    ``session_id=None`` would silently create a fresh session the
-    user explicitly chose not to create.
+    Picker returns ``None`` (user pressed q / Enter on empty list) →
+    the dispatcher returns cleanly instead of raising a resume hint.
     """
     monkeypatch.setattr(
         resume_dispatch,
         "_pick_conversation_for_resume",
         lambda *, server: None,
     )
-    invoked: list[str] = []
 
-    def _fail_if_called(**kwargs: Any) -> None:
-        """
-        Marker for ``run_claude_native`` — fails the test if reached.
-
-        :param kwargs: Wrapper kwargs (ignored).
-        """
-        del kwargs
-        invoked.append("run_claude_native")
-
-    monkeypatch.setattr(
-        "omnigent.harnesses.claude_native.main.run_claude_native",
-        _fail_if_called,
-    )
-
-    resume_dispatch.run_resume(
-        target=None,
-        server="https://example.com",
-    )
-    # If the wrapper was invoked we'd see "run_claude_native" here —
-    # which would be the silent-fresh-session bug.
-    assert invoked == []
+    assert resume_dispatch.run_resume(target=None, server="https://example.com") is None
 
 
 # ── _dispatch_by_runtime — id-known dispatch ──────────────
-
-
-def test_dispatch_by_runtime_claude_native_remote_routes_to_wrapper(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    Remote claude-native conv ⇒ ``run_claude_native(server=..., session_id=conv_id)``.
-
-    The Omnigent conv id MUST be preserved as ``session_id`` (the
-    wrapper's resume kwarg). A bug that passed ``None`` would mint a
-    fresh session and the user would lose their prior context.
-    Also asserts ``server`` carries through so the wrapper hits the
-    right Omnigent server.
-    """
-    monkeypatch.setattr(
-        resume_dispatch,
-        "_read_wrapper_label_remote",
-        lambda *, server, conv_id: "claude-code-native-ui",
-    )
-    captured: dict[str, Any] = {}
-
-    def _capture(**kwargs: Any) -> None:
-        """
-        Record the kwargs ``run_claude_native`` was called with.
-
-        :param kwargs: Wrapper kwargs.
-        """
-        captured.update(kwargs)
-
-    monkeypatch.setattr("omnigent.harnesses.claude_native.main.run_claude_native", _capture)
-
-    resume_dispatch._dispatch_by_runtime(
-        target="4e92b5a0c0ee6db3f874f9c4a3f855a5",
-        server="https://example.com/",  # trailing slash — must be normalized
-    )
-
-    # session_id preserves the Omnigent conv id end-to-end.
-    assert captured["session_id"] == "4e92b5a0c0ee6db3f874f9c4a3f855a5"
-    # Trailing slash stripped — the wrapper expects a bare base URL.
-    assert captured["server"] == "https://example.com"
-    # No leaking claude args; the wrapper builds its own.
-    assert captured["extra_args"] == ()
-
-
-def test_dispatch_by_runtime_claude_native_local_still_routes_to_wrapper(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    Local claude-native dispatch remains routed to ``run_claude_native``.
-
-    :param monkeypatch: Pytest monkeypatch fixture.
-    :returns: None.
-    """
-    monkeypatch.setattr(
-        resume_dispatch,
-        "_read_wrapper_label_local",
-        lambda *, conv_id: "claude-code-native-ui",
-    )
-    captured: dict[str, Any] = {}
-
-    def _capture(**kwargs: Any) -> None:
-        """
-        Record the kwargs ``run_claude_native`` was called with.
-
-        :param kwargs: Wrapper kwargs.
-        :returns: None.
-        """
-        captured.update(kwargs)
-
-    monkeypatch.setattr("omnigent.harnesses.claude_native.main.run_claude_native", _capture)
-
-    resume_dispatch._dispatch_by_runtime(
-        target="64a784c3aa907d1774f44313546947c6",
-        server=None,
-    )
-
-    assert captured["session_id"] == "64a784c3aa907d1774f44313546947c6"
-    assert captured["server"] is None
-    assert captured["extra_args"] == ()
 
 
 @pytest.mark.parametrize(
@@ -170,150 +61,52 @@ def test_dispatch_by_runtime_claude_native_local_still_routes_to_wrapper(
         "(7e52264a6dc51b019fc572f221c81e72)",  # parenthesized
     ],
 )
-def test_dispatch_by_runtime_accepts_id_with_paste_punctuation(
-    monkeypatch: pytest.MonkeyPatch,
-    pasted: str,
-) -> None:
-    """
-    An id pasted with surrounding punctuation resolves — the lookup and
-    the wrapper both receive the bare id it contains. Rejecting it (or
-    worse, the raw ``StatementError`` traceback the ``Uuid16`` bind used
-    to raise) would fail a command the user copied in good faith.
-    """
-    seen: dict[str, str] = {}
-
-    def _label(*, conv_id: str) -> str:
-        """Record the id the store lookup receives."""
-        seen["conv_id"] = conv_id
-        return "claude-code-native-ui"
-
-    monkeypatch.setattr(resume_dispatch, "_read_wrapper_label_local", _label)
-    captured: dict[str, Any] = {}
-
-    def _capture(**kwargs: Any) -> None:
-        """Record the kwargs ``run_claude_native`` was called with."""
-        captured.update(kwargs)
-
-    monkeypatch.setattr("omnigent.harnesses.claude_native.main.run_claude_native", _capture)
-
-    resume_dispatch._dispatch_by_runtime(target=pasted, server=None)
-
-    assert seen["conv_id"] == "7e52264a6dc51b019fc572f221c81e72"
-    assert captured["session_id"] == "7e52264a6dc51b019fc572f221c81e72"
-
-
-def test_dispatch_by_runtime_malformed_id_raises_before_any_lookup(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    An argument containing no valid conv id (here: truncated) surfaces
-    a short ``ClickException`` — and never reaches a store or server
-    lookup, where the ``Uuid16`` bind would raise a raw
-    ``StatementError`` traceback at the user.
-    """
-
-    def _fail_if_called(**kwargs: Any) -> None:
-        """Marker — fails the test if any lookup is reached."""
-        del kwargs
-        raise AssertionError("lookup reached with a malformed conv id")
-
-    monkeypatch.setattr(resume_dispatch, "_read_wrapper_label_local", _fail_if_called)
-    monkeypatch.setattr(resume_dispatch, "_read_wrapper_label_remote", _fail_if_called)
-
+def test_dispatch_by_runtime_accepts_id_with_paste_punctuation(pasted: str) -> None:
+    """An id pasted with surrounding punctuation resolves to the bare id it contains."""
     with pytest.raises(click.ClickException) as excinfo:
-        resume_dispatch._dispatch_by_runtime(
-            target="7e52264a",
-            server=None,
-        )
+        resume_dispatch._dispatch_by_runtime(target=pasted, server=None)
+
+    msg = excinfo.value.message
+    assert "run --resume 7e52264a6dc51b019fc572f221c81e72 <agent.yaml>" in msg
+
+
+def test_dispatch_by_runtime_malformed_id_raises_short_error() -> None:
+    """An argument containing no valid conv id surfaces a short ``ClickException``."""
+    with pytest.raises(click.ClickException) as excinfo:
+        resume_dispatch._dispatch_by_runtime(target="7e52264a", server=None)
 
     assert excinfo.value.message == "Invalid session id."
 
 
-def test_dispatch_by_runtime_legacy_prefixed_id_canonicalized_to_bare_hex(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    A legacy ``conv_<hex>`` spelling still resolves — and is
-    canonicalized to bare hex before lookup and wrapper dispatch, so
-    downstream consumers that key sessions on the bare spelling never
-    see the prefixed form.
-    """
-    seen: dict[str, str] = {}
+def test_dispatch_by_runtime_legacy_prefixed_id_canonicalized_to_bare_hex() -> None:
+    """A legacy ``conv_<hex>`` spelling is canonicalized to bare hex in the hint."""
+    with pytest.raises(click.ClickException) as excinfo:
+        resume_dispatch._dispatch_by_runtime(
+            target="conv_415c9954e2fe4b9276083a4d2c66f689",
+            server=None,
+        )
 
-    def _label(*, conv_id: str) -> str:
-        """Record the id the store lookup receives."""
-        seen["conv_id"] = conv_id
-        return "claude-code-native-ui"
-
-    monkeypatch.setattr(resume_dispatch, "_read_wrapper_label_local", _label)
-    captured: dict[str, Any] = {}
-
-    def _capture(**kwargs: Any) -> None:
-        """Record the kwargs ``run_claude_native`` was called with."""
-        captured.update(kwargs)
-
-    monkeypatch.setattr("omnigent.harnesses.claude_native.main.run_claude_native", _capture)
-
-    resume_dispatch._dispatch_by_runtime(
-        target="conv_415c9954e2fe4b9276083a4d2c66f689",
-        server=None,
-    )
-
-    assert seen["conv_id"] == "415c9954e2fe4b9276083a4d2c66f689"
-    assert captured["session_id"] == "415c9954e2fe4b9276083a4d2c66f689"
+    assert "run --resume 415c9954e2fe4b9276083a4d2c66f689 " in excinfo.value.message
 
 
-def test_dispatch_by_runtime_remote_forwards_non_uuid_id(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_dispatch_by_runtime_remote_forwards_non_uuid_id() -> None:
     """
     A remote server owns its id space, so a non-uuid id (e.g. a managed
-    deployment's numeric node id) must reach the lookup and wrapper
-    unchanged. Forcing the local uuid rule on the remote path would
-    reject a valid id before the server — the one thing the server is
-    there to resolve — ever sees it.
+    deployment's numeric node id) reaches the hint unchanged, with the
+    ``--server`` the user passed.
     """
-    seen: dict[str, str] = {}
+    with pytest.raises(click.ClickException) as excinfo:
+        resume_dispatch._dispatch_by_runtime(
+            target="2048200000527758",
+            server="https://example.com",
+        )
 
-    def _label(*, server: str, conv_id: str) -> str:
-        """Record the id the remote lookup receives."""
-        seen["conv_id"] = conv_id
-        return "claude-code-native-ui"
-
-    monkeypatch.setattr(resume_dispatch, "_read_wrapper_label_remote", _label)
-    captured: dict[str, Any] = {}
-
-    def _capture(**kwargs: Any) -> None:
-        """Record the kwargs ``run_claude_native`` was called with."""
-        captured.update(kwargs)
-
-    monkeypatch.setattr("omnigent.harnesses.claude_native.main.run_claude_native", _capture)
-
-    resume_dispatch._dispatch_by_runtime(
-        target="2048200000527758",
-        server="https://example.com",
-    )
-
-    # The raw non-uuid id flows through untouched — not rejected, not reshaped.
-    assert seen["conv_id"] == "2048200000527758"
-    assert captured["session_id"] == "2048200000527758"
+    msg = excinfo.value.message
+    assert "run --resume 2048200000527758 <agent.yaml> --server https://example.com" in msg
 
 
-def test_dispatch_by_runtime_non_wrapper_local_raises_with_hint(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    Local non-wrapper conv surfaces the ``omnigent run --resume`` hint.
-
-    :param monkeypatch: Pytest monkeypatch fixture.
-    :returns: None.
-    """
-    monkeypatch.setattr(
-        resume_dispatch,
-        "_read_wrapper_label_local",
-        lambda *, conv_id: None,
-    )
-
+def test_dispatch_by_runtime_local_raises_with_hint() -> None:
+    """A local conversation surfaces the ``omnigent run --resume`` hint."""
     with pytest.raises(click.ClickException) as excinfo:
         resume_dispatch._dispatch_by_runtime(
             target="11dc2163ab84c5afa09348998a2b6690",
@@ -324,191 +117,6 @@ def test_dispatch_by_runtime_non_wrapper_local_raises_with_hint(
     assert "11dc2163ab84c5afa09348998a2b6690" in msg
     assert "omnigent run --resume" in msg
     assert "<agent.yaml>" in msg
-
-
-def test_read_wrapper_label_local_reads_persistent_store(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    """
-    Local dispatch classifies sessions from ``~/.omnigent/chat.db``.
-
-    :param monkeypatch: Pytest monkeypatch fixture.
-    :param tmp_path: Temporary persistent Omnigent directory.
-    :returns: None.
-    """
-    import omnigent.chat as chat_mod
-    from omnigent.stores.conversation_store.sqlalchemy_store import (
-        SqlAlchemyConversationStore,
-    )
-
-    db_path = tmp_path / "chat.db"
-    store = SqlAlchemyConversationStore(f"sqlite:///{db_path}")
-    created = store.create_session_with_agent(
-        agent_id="12c8c7631b209d1027416b4bf7604999",
-        agent_name="codex-native-ui",
-        agent_bundle_location="12c8c7631b209d1027416b4bf7604999/bundle",
-        agent_description=None,
-        labels={"omnigent.wrapper": "codex-native-ui"},
-    )
-    monkeypatch.setattr(chat_mod, "_omnigent_persistent_dir", lambda: tmp_path)
-
-    result = resume_dispatch._read_wrapper_label_local(conv_id=created.conversation.id)
-
-    assert result == "codex-native-ui"
-
-
-def test_dispatch_by_runtime_non_claude_native_remote_raises_with_hint(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    Remote non-claude-native conv ⇒ ``ClickException`` with a
-    copy-pasteable ``omnigent run --resume`` hint.
-
-    The hint MUST include both the conv id and the original
-    ``--server`` URL so the user's next attempt works without
-    them having to remember additional flags. A regression that
-    surfaced a generic "wrong runtime" error would leave the
-    user stuck.
-    """
-    monkeypatch.setattr(
-        resume_dispatch,
-        "_read_wrapper_label_remote",
-        lambda *, server, conv_id: None,  # no wrapper label
-    )
-
-    def _fail_if_called(**kwargs: Any) -> None:
-        """Marker — fails the test if ``run_claude_native`` is called."""
-        del kwargs
-        raise AssertionError("run_claude_native invoked on non-claude conv")
-
-    monkeypatch.setattr("omnigent.harnesses.claude_native.main.run_claude_native", _fail_if_called)
-
-    with pytest.raises(click.ClickException) as excinfo:
-        resume_dispatch._dispatch_by_runtime(
-            target="12b8fd5b4413ededb99560e847b32b0e",
-            server="https://example.com",
-        )
-    msg = excinfo.value.message
-    # All three load-bearing pieces of the hint must appear.
-    assert "12b8fd5b4413ededb99560e847b32b0e" in msg
-    assert "omnigent run --resume" in msg
-    assert "https://example.com" in msg
-
-
-# ── _read_wrapper_label_remote ────────────────────────────
-
-
-def test_read_wrapper_label_remote_returns_label_when_present(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    Happy path: 200 response with the wrapper label set returns the
-    label value, which the caller compares against the claude-native
-    sentinel.
-    """
-
-    def _fake_get(url: str, *, headers: dict[str, str], timeout: float) -> httpx.Response:
-        """
-        Return a canned ``GET /v1/sessions/{id}`` response.
-
-        :param url: Request URL (used to validate path shape).
-        :param headers: Auth headers (ignored).
-        :param timeout: Request timeout (ignored).
-        :returns: A 200 response with a labelled body.
-        """
-        del headers, timeout
-        assert url.endswith("/v1/sessions/4e92b5a0c0ee6db3f874f9c4a3f855a5"), url
-        return httpx.Response(
-            200,
-            json={
-                "id": "4e92b5a0c0ee6db3f874f9c4a3f855a5",
-                "agent_id": "880b5afda28ad55ff74cbeb9b5fc67fb",
-                "status": "idle",
-                "created_at": 1,
-                "labels": {"omnigent.wrapper": "claude-code-native-ui"},
-            },
-        )
-
-    monkeypatch.setattr(httpx, "get", _fake_get)
-    monkeypatch.setattr(
-        "omnigent.chat._remote_headers",
-        lambda *, server_url, host_id=None: {},
-    )
-
-    result = resume_dispatch._read_wrapper_label_remote(
-        server="https://example.com",
-        conv_id="4e92b5a0c0ee6db3f874f9c4a3f855a5",
-    )
-    assert result == "claude-code-native-ui"
-
-
-def test_read_wrapper_label_remote_returns_none_when_label_missing(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    A conv with no ``omnigent.wrapper`` label returns ``None``, which
-    the caller treats as "not claude-native" (the right call — wrappers
-    stamp their label on every session they own; absence means a
-    different runtime).
-    """
-
-    def _fake_get(url: str, *, headers: dict[str, str], timeout: float) -> httpx.Response:
-        """Return a 200 with no wrapper label."""
-        del url, headers, timeout
-        return httpx.Response(
-            200,
-            json={
-                "id": "4e92b5a0c0ee6db3f874f9c4a3f855a5",
-                "agent_id": "880b5afda28ad55ff74cbeb9b5fc67fb",
-                "status": "idle",
-                "created_at": 1,
-                "labels": {"some.other": "label"},
-            },
-        )
-
-    monkeypatch.setattr(httpx, "get", _fake_get)
-    monkeypatch.setattr(
-        "omnigent.chat._remote_headers",
-        lambda *, server_url, host_id=None: {},
-    )
-
-    result = resume_dispatch._read_wrapper_label_remote(
-        server="https://example.com",
-        conv_id="4e92b5a0c0ee6db3f874f9c4a3f855a5",
-    )
-    assert result is None
-
-
-def test_read_wrapper_label_remote_raises_on_404(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    404 means the conv id doesn't exist — surface a clear error with
-    the conv id and server so the user can fix a typo or check the
-    server. Without this, the caller would proceed with a None label
-    and surface the generic "not claude-native" hint, which would
-    misdirect the user.
-    """
-
-    def _fake_get(url: str, *, headers: dict[str, str], timeout: float) -> httpx.Response:
-        """Return a 404."""
-        del url, headers, timeout
-        return httpx.Response(404, json={"error": {"code": "not_found"}})
-
-    monkeypatch.setattr(httpx, "get", _fake_get)
-    monkeypatch.setattr(
-        "omnigent.chat._remote_headers",
-        lambda *, server_url, host_id=None: {},
-    )
-
-    with pytest.raises(click.ClickException) as excinfo:
-        resume_dispatch._read_wrapper_label_remote(
-            server="https://example.com",
-            conv_id="5eca720dc2bc6cdc3a99028d7bd0f917",
-        )
-    assert "5eca720dc2bc6cdc3a99028d7bd0f917" in excinfo.value.message
-    assert "not found" in excinfo.value.message
 
 
 # ── _resolve_current_user_id ──────────────────────────────

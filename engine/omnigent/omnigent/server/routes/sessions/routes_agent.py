@@ -17,7 +17,6 @@ from fastapi.responses import Response
 
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.host.identity import MANAGED_HOST_TOKEN_HEADER
-from omnigent.native.native_coding_agents import native_coding_agent_for_agent_name
 from omnigent.runner.routing import RunnerRouter
 from omnigent.runtime.agent_cache import AgentCache
 from omnigent.runtime.policies.approval import _ELICITATION_MODE
@@ -60,7 +59,6 @@ from omnigent.server.routes._sessions.common import (
     _TURN_ACTOR_LABEL,
     _logger,
     get_server_runner_router,
-    host_interactive_shells_for_request,
     set_server_runner_router,
 )
 from omnigent.server.routes._sessions.helpers import (
@@ -173,22 +171,9 @@ def register_agent_routes(
             conversation_store,
             conversation=conv,
         )
-        terminals_override = None
-        if (
-            conv.host_id is not None
-            and host_registry is not None
-            and native_coding_agent_for_agent_name(agent.name) is not None
-        ):
-            normalized = host_interactive_shells_for_request(
-                conv.host_id,
-                host_registry=host_registry,
-                runner_router=runner_router or get_server_runner_router(),
-            )
-            terminals_override = normalized or None
         return _to_agent_object(
             agent,
             agent_cache,
-            terminals_override=terminals_override,
             mcp_servers_editable=mcp_servers_editable,
         )
 

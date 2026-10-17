@@ -12,7 +12,6 @@ import contextlib
 import hashlib
 import json
 import math
-import re
 import secrets
 import time
 import uuid
@@ -45,15 +44,9 @@ from omnigent.entities import (
 from omnigent.entities.conversation import (
     FunctionCallData,
     FunctionCallOutputData,
-    parse_item_data,
 )
 from omnigent.entities.permission import SessionPermission
 from omnigent.errors import ElicitationDeclinedError, ErrorCode, OmnigentError
-from omnigent.harness_availability import (
-    HARNESS_BINARY_MISSING,
-    HARNESS_NEEDS_AUTH,
-    HARNESS_VERSION_TOO_LOW,
-)
 from omnigent.host.frames import (
     HARNESS_NOT_CONFIGURED_ERROR_CODE as _HARNESS_NOT_CONFIGURED_ERROR_CODE,
 )
@@ -68,10 +61,6 @@ from omnigent.host.frames import (
 )
 from omnigent.llms.context_window import resolve_effective_context_window
 from omnigent.models.model_metadata import concrete_reported_model
-from omnigent.native.native_coding_agents import (
-    native_coding_agent_for_agent_name,
-    native_coding_agent_for_harness,
-)
 from omnigent.policies.types import (
     ElicitationRequest,
     EvaluationContext,
@@ -162,21 +151,15 @@ from omnigent.server.routes._session_create_validation import (
 # ``__all__`` and the facade's explicit re-exports, preserving its real runtime
 # bindings so a facade-level monkeypatch is honoured in this module too.
 from omnigent.server.routes._sessions.common import (  # noqa: F401
-    _CLAUDE_NATIVE_MESSAGE_TIMEOUT_S,
-    _CLAUDE_NATIVE_MODEL,
     _CLAUDE_NATIVE_UI_LABEL_KEY,
     _CLAUDE_NATIVE_UI_LABEL_VALUE,
     _CLAUDE_NATIVE_WRAPPER_LABEL_KEY,
-    _CLAUDE_NATIVE_WRAPPER_LABEL_VALUE,
-    _CODEX_NATIVE_MODEL,
     _EXTERNAL_SESSION_STATUS_TYPE,
     _FENCE_EXEMPT_EVENT_TYPES,
     _LAST_CONTEXT_TOKENS_LABEL_KEY,
     _LAST_CONTEXT_WINDOW_LABEL_KEY,
     _MANAGED_RESUMABLE_TUNNEL_STALE_S,
-    _MODEL_OPTIONS_ENDPOINT_BY_WRAPPER,
     _MODEL_TOKEN_KEYS,
-    _PI_NATIVE_WRAPPER_LABEL_VALUE,
     _RUNNER_FORWARD_TIMEOUT,
     _RUNNER_RELAY_READY_TIMEOUT_S,
     _RUNNER_SESSION_INIT_TIMEOUT_S,
@@ -190,15 +173,11 @@ from omnigent.server.routes._sessions.common import (  # noqa: F401
     _logger,
     _managed_launch_tasks,
     _MirroredToolCall,
-    _model_options_cache,
-    _model_options_inflight,
-    _model_options_stale,
     _native_mirror_locks,
     _native_popup_forward_tasks,
     _pending_policy_ask_writes,
     _PendingPolicyAskWrites,
     _policy_evaluation_locks,
-    _pushed_model_options_cache,
     _recent_mirrored_tool_calls,
     _RelayHandle,
     _runner_relay_tasks,
@@ -226,56 +205,40 @@ from omnigent.server.routes._sessions.helpers import (
     _build_new_item,
     _build_policy_engine_from_spec,
     _child_session_summary_from_conversation,
-    _codex_subagent_labels_from_body,
     _coerce_cumulative_field,
     _collect_descendant_conversation_ids,
     _consume_pre_resolved_harness_elicitation,
-    _create_and_publish_codex_child,
     _create_session_worktree,
     _delete_stored_session_bundle_after_failure,
-    _derive_terminal_launch_args_from_spec,
     _emit_server_routing_decision,
     _error_item_from_sse,
-    _extract_claude_native_runner_failure,
     _extract_persistent_item_from_sse,
     _extract_user_text_for_routing,
     _extract_user_text_from_event,
-    _find_codex_native_subagent_child,
     _flush_relay_text,
     _forward_approval_to_runner,
     _forward_session_change_to_runner,
     _get_runner_client,
     _handle_advise_models_mcp,
     _invalidate_runner_backed_snapshot_state,
-    _is_codex_native_subagent,
     _is_native_interrupt_record,
     _last_task_error_from_labels,
     _latest_assistant_text_from_store,
     _latest_message_preview,
     _launch_runner_on_host,
     _load_agent_spec_for_session,
-    _load_model_options,
-    _load_model_options_from_host,
     _mcp_error_response,
     _mcp_input_required_response,
     _mcp_ok_response,
     _merge_pending_file_blocks,
     _message_text,
     _model_usage_bucket,
-    _native_coding_agent_for_session,
-    _native_subagent_wrapper_labels_from_spec,
-    _native_terminal_ensure_transport_error,
-    _native_terminal_failure_from_runner_response,
-    _native_terminal_name_for_harness,
-    _NativeTerminalEnsureOutcome,
     _owner_from_grants,
     _parse_external_conversation_item,
     _pending_elicitation_snapshot_for_session,
     _permission_level_from_grants,
-    _persist_native_policy_notice,
     _persist_session_status_error_labels,
     _persist_stored_session_bundle,
-    _policy_notice_from_ensure_response,
     _poll_request_disconnect,
     _priced_cost_for_display,
     _provision_managed_sandbox,
@@ -375,8 +338,6 @@ from omnigent.telemetry.events import TurnEndEvent as _TelTurnEndEvent
 from omnigent.telemetry.installation_id import get_installation_id as _get_installation_id
 from omnigent.telemetry.surface import classify_surface as _classify_surface
 from omnigent.util.session_lifecycle import (
-    CLOSED_LABEL_KEY,
-    CLOSED_LABEL_VALUE,
     labels_with_closed_status,
     title_without_closed_marker,
 )
@@ -1143,7 +1104,6 @@ def _build_session_response(
     viewer_id: str | None = None,
     agent_store: AgentStore | None = None,
     agent_cache: AgentCache | None = None,
-    side_chat_sealed: bool = False,
 ) -> SessionResponse:
     """
     Build a :class:`SessionResponse` from store-side entities.
@@ -1228,19 +1188,6 @@ def _build_session_response(
     # Collapse per-user pin keys to the canonical bare key for this viewer, so
     # the snapshot never carries another user's pin key (see _labels_for_viewer).
     labels = labels_with_closed_status(_labels_for_viewer(conv.labels, viewer_id), conv.title)
-    # Restore terminal access for older custom native sessions. Child mirrors
-    # can inherit the parent's harness without owning a terminal of their own.
-    if agent_name in (_CLAUDE_NATIVE_MODEL, _CODEX_NATIVE_MODEL) or (
-        conv.parent_conversation_id is None
-        and native_coding_agent_for_harness(harness) is not None
-    ):
-        labels = {**labels, _CLAUDE_NATIVE_UI_LABEL_KEY: _CLAUDE_NATIVE_UI_LABEL_VALUE}
-    # A codex /side child whose ephemeral fork's runner is gone (parent resumed
-    # onto a new runner) can never be sent to again. Surface it as closed so the
-    # composer reads-only itself instead of letting the user fire a turn at a
-    # vanished thread. Computed per-response (not persisted) — self-heals.
-    if side_chat_sealed:
-        labels = {**labels, CLOSED_LABEL_KEY: CLOSED_LABEL_VALUE}
     return SessionResponse(
         id=conv.id,
         agent_id=conv.agent_id,
@@ -1303,8 +1250,6 @@ def _build_session_response(
         workspace=conv.workspace,
         git_branch=conv.git_branch,
         archived=conv.archived,
-        # Replay the last native Plan after a Server restart.
-        todos=conv.session_todos,
         model_options=[
             NativeModelOption.model_validate(option) for option in (model_options or [])
         ],
@@ -2189,51 +2134,6 @@ async def _resolve_elicitation(
     await _forward_approval_to_runner(session_id, data, runner_router)
 
 
-def _spawn_native_approval_popup_forward(
-    session_id: str, elicitation_id: str, message: str, policy_name: str | None = None
-) -> None:
-    """
-    Ask the bound runner to pop a native-terminal modal for a parked ASK.
-
-    Fire-and-forget. Forwards the same ``cost_approval_popup`` control event
-    the cost gate uses — the runner dispatch + popup launcher are
-    policy-agnostic — so a user working in the native terminal can answer a
-    parked tool-policy ASK there, not only in the web ApprovalCard. (Native
-    tool-policy ASKs were moved server-side, which took them out of the
-    TUI; this puts them back.) The popup resolves the SAME elicitation via
-    the same resolve endpoint the web card uses, so whichever surface
-    answers first releases the gate. Non-native harnesses 204 no-op on the
-    runner.
-
-    :param session_id: Omnigent session id, e.g. ``"conv_abc123"``.
-    :param elicitation_id: The parked elicitation's id, e.g. ``"elicit_x"``.
-    :param message: The approval reason shown in the popup.
-    :param policy_name: Name of the deciding policy, rendered as the
-        popup header so it reflects the actual policy rather than a
-        hardcoded cost-budget label. ``None`` falls back to a generic
-        header on the runner.
-    :returns: None. Fire-and-forget: forwarding failures (runner offline,
-        no runner bound) are swallowed by ``_forward_session_change_to_runner``
-        and never block the gate — the web ApprovalCard remains the surface.
-    """
-
-    async def _forward() -> None:
-        await _forward_session_change_to_runner(
-            session_id,
-            get_server_runner_router(),
-            {
-                "type": "cost_approval_popup",
-                "elicitation_id": elicitation_id,
-                "message": message,
-                "policy_name": policy_name,
-            },
-        )
-
-    task = asyncio.create_task(_forward())
-    _native_popup_forward_tasks.add(task)
-    task.add_done_callback(_native_popup_forward_tasks.discard)
-
-
 async def _hold_native_ask_gate(*args: Any, **kwargs: Any) -> bool:
     """Call-time proxy so a facade patch of this symbol is honored here."""
     from omnigent.server.routes import sessions as _facade
@@ -2319,13 +2219,9 @@ async def _hold_native_ask_gate_impl(
     # Per-policy ``ask_timeout`` override wins over the spec-level default.
     timeout_s = float(resolve_ask_timeout(engine, result))
     # Use the caller-supplied id when present (hook retries re-attach to
-    # the same elicitation); otherwise mint a fresh one so we can surface
-    # this ASK in the native terminal before parking on the web verdict.
+    # the same elicitation); otherwise mint a fresh one.
     if elicitation_id is None:
         elicitation_id = f"elicit_{secrets.token_hex(16)}"
-    _spawn_native_approval_popup_forward(
-        session_id, elicitation_id, params.message, result.deciding_policy
-    )
     verdict = await _publish_and_wait_for_harness_elicitation(
         request,
         session_id=session_id,
@@ -2353,51 +2249,6 @@ async def _hold_native_ask_gate_impl(
             with contextlib.suppress(ConversationNotFoundError):
                 engine.apply_state_updates(result.state_updates)
     return approved
-
-
-async def _persist_external_codex_subagent_start(
-    parent_id: str,
-    parent_conv: Conversation,
-    body: SessionEventInput,
-    conversation_store: ConversationStore,
-) -> str:
-    """
-    Mint or update a child Conversation for a Codex AgentControl sub-agent.
-
-    Idempotent: repeated POSTs for the same ``thread_id`` return the
-    existing child id and upsert any new labels.
-
-    :param parent_id: Parent codex-native conversation id, e.g.
-        ``"conv_parent987"``.
-    :param parent_conv: Pre-fetched parent row.
-    :param body: POST event body with ``data.thread_id`` required.
-    :param conversation_store: Store for reading/creating child rows.
-    :returns: Child conversation id, e.g. ``"conv_child456"``.
-    :raises OmnigentError: If ``thread_id`` is missing or parent has
-        no bound agent.
-    """
-    thread_id = body.data.get("thread_id")
-    if not isinstance(thread_id, str) or not thread_id:
-        raise OmnigentError(
-            "external_codex_subagent_start requires non-empty data.thread_id",
-            code=ErrorCode.INVALID_INPUT,
-        )
-    if parent_conv.agent_id is None:
-        raise OmnigentError(
-            f"parent session {parent_id!r} has no agent_id; cannot "
-            "create a codex-native sub-agent child",
-            code=ErrorCode.INVALID_INPUT,
-        )
-    existing = await asyncio.to_thread(
-        _find_codex_native_subagent_child, conversation_store, parent_id, thread_id
-    )
-    labels = _codex_subagent_labels_from_body(thread_id, body)
-    if existing is not None:
-        await asyncio.to_thread(conversation_store.set_labels, existing.id, labels)
-        return existing.id
-    return await _create_and_publish_codex_child(
-        parent_id, parent_conv, thread_id, labels, conversation_store
-    )
 
 
 def _native_mirror_lock(session_id: str) -> asyncio.Lock:
@@ -2661,7 +2512,7 @@ async def _persist_external_conversation_item_unlocked(
     # queue in. A concurrent retry that slipped past the probe above comes
     # back deduplicated and its queue entries are unheld.
     try:
-        skipped_new_items = _build_skipped_native_items(session_id, conv, skipped_pending)
+        skipped_new_items = _build_skipped_items(session_id, skipped_pending)
         batch = [*skipped_new_items, item]
         pending_background_title = prepare_background_session_title(
             coordinator=background_title_coordinator,
@@ -2795,78 +2646,6 @@ async def _persist_external_conversation_items(
     return [persisted.id for persisted in persisted_items]
 
 
-def _failed_event_undelivered(event: Mapping[str, Any]) -> bool:
-    """
-    Return whether a ``response.failed`` event says the harness never received the message.
-
-    The harness sets ``undelivered`` on the error when the turn failed before
-    delivery (a launcher sign-in prompt, a missing bridge, a prompt that never
-    rendered). A failure after the harness may have accepted the message must
-    not settle anything: its own mirror can still arrive.
-    """
-    raw_response = event.get("response")
-    raw_error = raw_response.get("error") if isinstance(raw_response, dict) else None
-    if not isinstance(raw_error, dict):
-        raw_error = event.get("error")
-    return isinstance(raw_error, dict) and raw_error.get("undelivered") is True
-
-
-async def _settle_undelivered_native_input(
-    conversation_store: ConversationStore | None,
-    session_id: str,
-    response_id: str | None,
-    input_stable_id: str | None,
-) -> None:
-    """
-    Commit a failed native turn's own queued web message as a user item.
-
-    Only native-terminal sessions queue web messages: the transcript forwarder
-    normally mirrors each one back and drains its entry. When the runner
-    reports the turn failed and names the message it carried
-    (``input_stable_id``), an entry still queued under that id is a message the
-    harness never received. Left in the queue it lingers for the TTL and the
-    next mirrored message drains it instead of its own, so the transcript shows
-    the reply above a still-queued bubble and the failed message vanishes on
-    reload. Settlement is by identity, never by queue order: a turn that fails
-    after its message was mirrored (entry already drained) settles nothing, so
-    a later message still buffered in the runner keeps its own entry.
-
-    :param conversation_store: Store to append to; ``None`` skips persistence.
-    :param session_id: Session/conversation id, e.g. ``"conv_abc123"``.
-    :param response_id: The failed turn's response id, so the message groups
-        with the error item persisted right after it; ``None`` mints one.
-    :param input_stable_id: The web stable id the runner stamped on the failed
-        turn, passed only when the harness reported the failure as undelivered;
-        ``None`` settles nothing.
-    """
-    if conversation_store is None or input_stable_id is None:
-        return
-    pending_id = pending_inputs.pending_id_for_stable_id(session_id, input_stable_id)
-    if pending_id is None:
-        return
-    drained = pending_inputs.resolve(session_id, pending_id)
-    if drained is None:
-        return
-    item = NewConversationItem(
-        type="message",
-        response_id=response_id or generate_task_id(),
-        data=MessageData(role="user", content=drained.content),
-        created_by=drained.created_by,
-        stable_id=drained.stable_id,
-    )
-    try:
-        persisted = await asyncio.to_thread(conversation_store.append, session_id, [item])
-    except Exception:  # noqa: BLE001 — the error item that follows still records the failure
-        _logger.exception(
-            "Relay: could not persist the undelivered native message for session=%s",
-            session_id,
-            extra={"session_id": session_id},
-        )
-        pending_inputs.restore(session_id, drained)
-        return
-    _publish_input_consumed(session_id, persisted[0], cleared_pending_id=drained.pending_id)
-
-
 def _restore_drained_inputs(
     session_id: str,
     skipped: list[pending_inputs.DrainedInput],
@@ -2904,9 +2683,8 @@ def _release_drained_inputs(
             pending_inputs.release(session_id, entry)
 
 
-def _build_skipped_native_items(
+def _build_skipped_items(
     session_id: str,
-    conv: Conversation,
     skipped_entries: list[pending_inputs.DrainedInput],
 ) -> list[NewConversationItem]:
     """
@@ -2921,18 +2699,14 @@ def _build_skipped_native_items(
     returns the whole batch deduplicated.
 
     :param session_id: Session/conversation identifier, e.g. ``"conv_abc123"``.
-    :param conv: Conversation row, used to name the harness in the error.
     :param skipped_entries: Older queue entries skipped by a text-matched drain.
     :returns: The item pairs in queue order, empty when nothing was skipped.
     """
     if not skipped_entries:
         return []
-    native_agent = _native_coding_agent_for_session(conv)
-    display_name = native_agent.display_name if native_agent is not None else "The agent"
     message = (
-        f"{display_name} never recorded this message in its transcript before "
-        "accepting a later one, so it was not delivered. The native terminal may "
-        "have shown the underlying error."
+        "The agent never recorded this message in its transcript before "
+        "accepting a later one, so it was not delivered."
     )
     items: list[NewConversationItem] = []
     for skipped in skipped_entries:
@@ -4867,246 +4641,50 @@ async def _ensure_runner_session_initialized(
     )
 
 
-def _is_native_terminal_session(conv: Conversation) -> bool:
-    """
-    Return whether a session's turns are driven by a native terminal harness.
-
-    True for both a built-in terminal-first wrapper (``omnigent.wrapper``
-    label) and a custom chat-first agent bound to a native harness — see
-    :func:`_native_coding_agent_for_session` for why routing keys on the
-    resolved harness, not the presentation labels.
-
-    :param conv: Conversation row for the target session.
-    :returns: ``True`` when the session's harness is a native terminal harness.
-    """
-    return _native_coding_agent_for_session(conv) is not None
-
-
-def _native_terminal_runtime(conv: Conversation) -> tuple[str, str, str]:
-    """
-    Return native terminal runtime strings for a native-harness session.
-
-    Resolves by wrapper label OR resolved harness (see
-    :func:`_native_coding_agent_for_session`), so a custom chat-first agent on
-    a native harness (no wrapper label) resolves too — otherwise it would raise
-    ``Unsupported native terminal session`` the moment its first web message
-    reached the native dispatch branch.
-
-    :param conv: Conversation row for the target session.
-    :returns: ``(display_name, model, harness)``.
-    :raises OmnigentError: If the session is not a native terminal harness.
-    """
-    native_agent = _native_coding_agent_for_session(conv)
-    if native_agent is not None:
-        return native_agent.display_name, native_agent.agent_name, native_agent.harness
-    raise OmnigentError(
-        "Unsupported native terminal session",
-        code=ErrorCode.INVALID_INPUT,
-    )
-
-
-async def _ensure_native_terminal_ready(
-    runner_client: httpx.AsyncClient,
+async def _wake_parent_on_subagent_launch_failure(
     session_id: str,
     conv: Conversation,
-    *,
-    persist_resource_event: bool = True,
-    runner_router: RunnerRouter | None = None,
-) -> _NativeTerminalEnsureOutcome:
-    """
-    Ask the runner to create or return the native terminal for a message.
-
-    The runner's explicit ``ensure_native_terminal`` endpoint is the
-    authoritative readiness check for native user messages. Any non-2xx
-    response or transport failure fails this user turn quickly with a
-    durable error item; a 2xx response preserves the normal boot grace
-    because the runner has accepted responsibility for terminal startup.
-
-    A runner tunnel that drops while the request is in flight is the one
-    transport failure that is not definitive: the runner is usually alive
-    but stalled and re-registers shortly. With a *runner_router* the probe
-    waits up to ``_NATIVE_TERMINAL_ENSURE_RECONNECT_GRACE_S`` for the
-    session's runner to reconnect and asks once more; the runner-side ensure
-    is idempotent, so a terminal created before the drop is simply returned.
-
-    :param runner_client: HTTP client pointed at the session's runner.
-    :param session_id: Session/conversation identifier, e.g.
-        ``"conv_abc123"``.
-    :param conv: Conversation row used to identify the native harness.
-    :param persist_resource_event: Whether a newly created terminal should be
-        appended to conversation history. Retry recovery disables persistence
-        while retaining the live resource event for connected clients.
-    :param runner_router: Router used to wait for the session's runner to
-        reconnect after a tunnel drop. ``None`` fails a drop immediately.
-    :returns: The probe outcome — a definitive ``error`` when the terminal
-        could not start, else ``error=None``.
-    """
-    display_name, _, harness = _native_terminal_runtime(conv)
-    terminal_name = _native_terminal_name_for_harness(harness)
-
-    async def _post_ensure() -> httpx.Response:
-        return await runner_client.post(
-            f"/v1/sessions/{session_id}/resources/terminals",
-            json={
-                "terminal": terminal_name,
-                "session_key": "main",
-                "ensure_native_terminal": True,
-                "persist_resource_event": persist_resource_event,
-            },
-            timeout=10.0,
-        )
-
-    def _transport_failure(exc: httpx.HTTPError | ConnectionError) -> _NativeTerminalEnsureOutcome:
-        # WSTunnelTransport raises bare ConnectionError on tunnel close
-        # ("tunnel closed before request completed"); without this clause
-        # a runner tunnel drop escaped to the catch-all handler and the
-        # web client showed an opaque 500 ``internal_error`` instead of
-        # the durable ensure-failure turn error below.
-        _logger.warning(
-            "%s terminal ensure transport failed for session=%s",
-            display_name,
-            session_id,
-            exc_info=exc,
-            extra={"session_id": session_id},
-        )
-        return _NativeTerminalEnsureOutcome(
-            error=_native_terminal_ensure_transport_error(exc, display_name=display_name),
-        )
-
-    try:
-        resp = await _post_ensure()
-    except (httpx.HTTPError, ConnectionError) as exc:
-        if (
-            runner_router is None
-            or conv.runner_id is None
-            or not isinstance(exc, ConnectionError | httpx.ConnectError)
-        ):
-            return _transport_failure(exc)
-        _logger.warning(
-            "%s terminal ensure lost the runner tunnel for session=%s; waiting up to "
-            "%.0fs for runner %s to reconnect",
-            display_name,
-            session_id,
-            _NATIVE_TERMINAL_ENSURE_RECONNECT_GRACE_S,
-            conv.runner_id,
-            extra={"session_id": session_id},
-        )
-        if not await runner_router.wait_for_runner(
-            conv.runner_id, timeout_s=_NATIVE_TERMINAL_ENSURE_RECONNECT_GRACE_S
-        ):
-            return _transport_failure(exc)
-        _logger.info(
-            "Runner %s reconnected; repeating %s terminal ensure for session=%s",
-            conv.runner_id,
-            display_name,
-            session_id,
-            extra={"session_id": session_id},
-        )
-        try:
-            resp = await _post_ensure()
-        except (httpx.HTTPError, ConnectionError) as retry_exc:
-            return _transport_failure(retry_exc)
-    if resp.status_code < 400:
-        return _NativeTerminalEnsureOutcome(
-            error=None,
-            policy_notice=_policy_notice_from_ensure_response(resp),
-        )
-    _logger.warning(
-        "%s terminal ensure failed definitively for session=%s status=%s body=%s",
-        display_name,
-        session_id,
-        resp.status_code,
-        resp.text[:500],
-        extra={"session_id": session_id},
-    )
-    return _NativeTerminalEnsureOutcome(
-        error=_native_terminal_failure_from_runner_response(resp, display_name=display_name),
-    )
-
-
-async def _persist_native_terminal_failure(
-    session_id: str,
-    conv: Conversation,
-    body: SessionEventInput,
-    conversation_store: ConversationStore,
     error: ErrorData,
     runner_router: RunnerRouter | None,
-    *,
-    created_by: str | None,
-) -> str:
+) -> None:
     """
-    Persist a consumed user message and terminal-start error.
+    Wake the parent runner when a host-launched sub-agent fails to start.
 
-    Used when a native terminal definitively cannot start. The AP
-    server becomes the writer for this failure turn only: it records
-    the user's message so the input is consumed, records a sibling
-    ``type="error"`` item so refresh/reconnect can render the banner,
-    and publishes the same live error/status events clients already
-    understand.
+    Mirrors the terminal-status path's parent-wake (the ``idle`` /
+    ``failed`` branch of ``external_session_status`` in
+    :func:`post_event`): forward an ``external_session_status: failed``
+    edge — carrying the launch error as ``output`` so it lands in the
+    parent's inbox — to the sub-agent's own runner, then require the
+    forward to land. The runner's ``external_session_status`` handler
+    maps ``failed`` to ``mark_subagent_work_terminal(status="failed")``,
+    which marks the parent's work entry terminal and wakes the parent.
 
-    When the failing session is a native sub-agent, the parent's runner
-    is also notified via an ``external_session_status: failed`` forward
-    (see :func:`_forward_native_subagent_terminal_failure`). The native
-    bypass returns HTTP 200 to the parent's runner ``spawn`` call, so
-    without this forward the parent's work entry would stay ``running``
-    forever — no harness boots, so no Stop hook ever fires the terminal
-    edge the normal completion path relies on.
+    No-ops for non-sub-agent sessions.
 
-    :param session_id: Session/conversation identifier, e.g.
-        ``"conv_abc123"``.
-    :param conv: Conversation row for the session.
-    :param body: Original user message event.
-    :param conversation_store: Store used for the durable append.
-    :param error: Error data derived from the runner's ensure response.
-    :param runner_router: Router used to resolve the (sub-agent's own)
-        runner for the parent-wake forward, or ``None`` in
-        in-process / test setups where the global client is used.
-    :param created_by: Authenticated posting actor, e.g.
-        ``"alice@example.com"``; ``None`` in single-user mode.
-    :returns: Store-assigned id of the consumed user message item.
+    :param session_id: Sub-agent session id, e.g. ``"conv_child123"``.
+    :param conv: Conversation row for the sub-agent session.
+    :param error: Launch error to relay to the parent as the turn result.
+    :param runner_router: Router used to resolve the sub-agent's runner,
+        or ``None`` (then the global client is used).
+    :returns: None.
+    :raises OmnigentError: If the parent's runner could not be reached
+        or rejected the forwarded failure status — dropping it would
+        strand the parent waiting forever.
     """
-    turn_id = generate_task_id()
-    user_item = _build_new_item(body, turn_id, created_by=created_by)
-    persisted_items = await asyncio.to_thread(
-        conversation_store.append,
+    if conv.kind != "sub_agent":
+        return
+    forward_body: dict[str, Any] = {
+        "type": _EXTERNAL_SESSION_STATUS_TYPE,
+        # ``output`` is the parent-inbox result text on a failed edge
+        # (runner: ``output or "...turn failed"``); pass the real error.
+        "data": {"status": "failed", "output": error.message},
+    }
+    runner_result = await _forward_session_change_to_runner(
         session_id,
-        [user_item],
-    )
-    await _seed_missing_title_from_user_message(
-        conv,
-        user_item,
-        conversation_store,
-    )
-    error_persist_result = await _relay_persist_error_once(
-        conversation_store,
-        session_id,
-        NewConversationItem(
-            type="error",
-            response_id=turn_id,
-            data=error,
-        ),
-    )
-    consumed = persisted_items[0]
-    _publish_input_consumed(session_id, consumed)
-    if error_persist_result == "persisted":
-        _publish_error_event(session_id, error)
-    _publish_terminal_pending(session_id, False)
-    _publish_status(
-        session_id,
-        "failed",
-        ErrorDetail(code=error.code, message=error.message),
-        failure_origin="native_terminal_boot_failed",
-    )
-    # A boot failure on a native sub-agent must wake the parent — mirror
-    # the normal terminal-status path (publish + forward), gated on
-    # ``kind == "sub_agent"`` so top-level native sessions are unaffected.
-    await _forward_native_subagent_terminal_failure(
-        session_id,
-        conv,
-        error,
         runner_router,
+        forward_body,
     )
-    return consumed.id
+    _require_external_status_forward(session_id, "failed", runner_result)
 
 
 async def _persist_host_launch_failure_turn(
@@ -5125,13 +4703,11 @@ async def _persist_host_launch_failure_turn(
 
     Used when a message arrives for a host-bound session whose runner is
     dead and the host deterministically refuses the relaunch. The message
-    is the real runner-start attempt, so — exactly like a native terminal
-    that can't boot (:func:`_persist_native_terminal_failure`) — the server
-    records the user's message (so the input is consumed, not silently
-    dropped) and a sibling ``type="error"`` item carrying the host's
-    reason, then publishes the same live error/status events the web
-    renders as an error banner. The host binding is left intact so a
-    later message can relaunch after remediation.
+    is the real runner-start attempt, so the server records the user's
+    message (so the input is consumed, not silently dropped) and a sibling
+    ``type="error"`` item carrying the host's reason, then publishes the same
+    live error/status events the web renders as an error banner. The host
+    binding is left intact so a later message can relaunch after remediation.
 
     :param session_id: Session/conversation identifier, e.g.
         ``"conv_abc123"``.
@@ -5190,266 +4766,10 @@ async def _persist_host_launch_failure_turn(
         ErrorDetail(code=error.code, message=error.message),
         failure_origin="host_launch_failed",
     )
-    # A host-launched sub-agent that cannot start must wake its parent,
-    # the same way a boot failure does — no-ops for top-level sessions.
-    await _forward_native_subagent_terminal_failure(session_id, conv, error, runner_router)
+    # A host-launched sub-agent that cannot start must wake its parent —
+    # no-ops for top-level sessions.
+    await _wake_parent_on_subagent_launch_failure(session_id, conv, error, runner_router)
     return consumed.id
-
-
-async def _forward_native_subagent_terminal_failure(
-    session_id: str,
-    conv: Conversation,
-    error: ErrorData,
-    runner_router: RunnerRouter | None,
-) -> None:
-    """
-    Wake the parent runner when a native sub-agent fails to boot its terminal.
-
-    Mirrors the terminal-status path's parent-wake (the ``idle`` /
-    ``failed`` branch of ``external_session_status`` in
-    :func:`post_event`): forward an ``external_session_status: failed``
-    edge — carrying the boot error as ``output`` so it lands in the
-    parent's inbox — to the sub-agent's own runner, then require the
-    forward to land. The runner's ``external_session_status`` handler
-    maps ``failed`` to ``mark_subagent_work_terminal(status="failed")``,
-    which marks the parent's work entry terminal and wakes the parent.
-
-    No-ops for non-sub-agent sessions and for codex-internal sub-agents
-    (tracked inside the same app-server thread tree, with no runner
-    inbox entry to forward to — identical to the normal path's
-    ``_is_codex_native_subagent`` exclusion).
-
-    :param session_id: Sub-agent session id, e.g. ``"conv_child123"``.
-    :param conv: Conversation row for the sub-agent session.
-    :param error: Boot error to relay to the parent as the turn result.
-    :param runner_router: Router used to resolve the sub-agent's runner,
-        or ``None`` (then the global client is used).
-    :returns: None.
-    :raises OmnigentError: If the parent's runner could not be reached
-        or rejected the forwarded failure status — dropping it would
-        strand the parent waiting forever.
-    """
-    if conv.kind != "sub_agent" or _is_codex_native_subagent(conv):
-        return
-    forward_body: dict[str, Any] = {
-        "type": _EXTERNAL_SESSION_STATUS_TYPE,
-        # ``output`` is the parent-inbox result text on a failed edge
-        # (runner: ``output or "...turn failed"``); pass the real error.
-        "data": {"status": "failed", "output": error.message},
-    }
-    runner_result = await _forward_session_change_to_runner(
-        session_id,
-        runner_router,
-        forward_body,
-    )
-    _require_external_status_forward(session_id, "failed", runner_result)
-
-
-def _build_native_terminal_message_event(
-    conv: Conversation,
-    body: SessionEventInput,
-    model_override: str | None = None,
-) -> dict[str, Any]:
-    """
-    Build the runner event that delivers a web message to a native TUI.
-
-    :param conv: Conversation row for the target session.
-    :param body: Validated Sessions API message event, e.g.
-        ``{"type": "message", "data": {"role": "user",
-        "content": [{"type": "input_text", "text": "Hi"}]}}``.
-    :param model_override: Routed model to apply for THIS turn, e.g.
-        ``"databricks-claude-sonnet-5"``. Carried in-band on the message
-        so the claude-native executor applies ``/model`` and injects the
-        message under one lock (no separate racing ``model_change``
-        event). ``None`` when routing did not pick a model.
-    :returns: Harness ``MessageEvent`` body for the runner-local
-        native terminal harness, including ``agent_id`` so the runner
-        can resolve the harness spec on the first message.
-    :raises OmnigentError: If the event is not a user message.
-    """
-    display_name, model, harness = _native_terminal_runtime(conv)
-    data = parse_item_data(body.type, {"type": body.type, **body.data})
-    if not isinstance(data, MessageData) or data.role != "user":
-        raise OmnigentError(
-            f"{display_name} terminal sessions accept only user message events",
-            code=ErrorCode.INVALID_INPUT,
-        )
-    event: dict[str, Any] = {
-        "type": "message",
-        "role": "user",
-        "content": data.content,
-        "model": model,
-        "harness": harness,
-        # The runner resolves the harness from the agent spec keyed by
-        # agent_id; the forwarded ``harness`` hint is ignored on the turn
-        # path. Without agent_id, the first message of a freshly
-        # host-spawned runner (arriving before POST /v1/sessions caches
-        # the spec) falls back to the test-only "runner-test-default"
-        # harness and is dropped. Match the non-native forward path,
-        # which always includes it.
-        "agent_id": conv.agent_id,
-    }
-    # The web's stable id for this message rides along so the runner can name
-    # it on a turn that fails before the harness receives it; the relay then
-    # settles exactly that queued entry (see _settle_undelivered_native_input).
-    raw_stable_id = body.data.get("stable_id")
-    if isinstance(raw_stable_id, str) and re.fullmatch(r"[0-9a-f]{32}", raw_stable_id):
-        event["stable_id"] = raw_stable_id
-    # Carry the persisted override in-band like the non-native forwards: a
-    # runner whose session cache is cold (fresh process, missed init) must
-    # not resolve this turn from the spec and evict the override harness.
-    if conv.harness_override is not None and conv.harness_override != "auto":
-        event["harness_override"] = conv.harness_override
-    # Ride the routed model in-band as ``model_override`` (extra field the
-    # harness MessageEvent forwards into ExecutorConfig.model). The
-    # claude-native executor applies the ``/model`` switch and the message
-    # inject as ONE locked step, so the switch can't race the message.
-    if model_override is not None:
-        event["model_override"] = model_override
-    return event
-
-
-async def _forward_native_terminal_message(
-    runner_client: httpx.AsyncClient,
-    session_id: str,
-    conv: Conversation,
-    body: SessionEventInput,
-    file_store: FileStore | None = None,
-    artifact_store: ArtifactStore | None = None,
-    model_override: str | None = None,
-) -> None:
-    """
-    Forward one Omnigent web-chat message to the native terminal harness.
-
-    The message is intentionally not persisted here. Claude Code
-    and Codex record the accepted prompt in their terminal/app-server
-    state, and their forwarders later post that terminal-originated
-    item back through ``external_conversation_item``.
-
-    :param runner_client: Runner client selected for ``session_id``.
-    :param session_id: Session/conversation identifier, e.g.
-        ``"conv_abc123"``.
-    :param conv: Conversation row for *session_id*.
-    :param body: Sessions API message event to inject.
-    :param file_store: Optional file metadata store for resolving
-        ``file_id`` references in ``input_image`` / ``input_file``
-        content blocks.
-    :param artifact_store: Optional binary content store for
-        fetching file bytes during resolution.
-    :param model_override: Routed model to apply for this turn, carried
-        in-band on the message so the executor applies ``/model`` and the
-        inject under one lock (no separate racing ``model_change``).
-        ``None`` when routing did not pick a model.
-    :returns: None.
-    :raises HTTPException: 502 when the runner or harness rejects
-        the injection request.
-    """
-    display_name, _, harness = _native_terminal_runtime(conv)
-    event = _build_native_terminal_message_event(conv, body, model_override=model_override)
-    _logger.info(
-        "%s terminal message forward starting: session=%s block_types=%s model_override=%s",
-        display_name,
-        session_id,
-        [block.get("type") for block in event.get("content", []) if isinstance(block, dict)]
-        if isinstance(event.get("content"), list)
-        else type(event.get("content")).__name__,
-        event.get("model_override"),
-        extra={"session_id": session_id},
-    )
-    if (
-        file_store is not None
-        and artifact_store is not None
-        and isinstance(event.get("content"), list)
-    ):
-        from omnigent.runtime.content_resolver import (
-            _resolve_message_content,
-        )
-
-        try:
-            event["content"] = _resolve_message_content(
-                event["content"],
-                file_store,
-                artifact_store,
-                session_id=session_id,
-                # The native runner caches filesystem attachments itself.
-                defer_filesystem_files=True,
-            )
-        except (ValueError, KeyError):
-            _logger.warning(
-                "File reference resolution failed for native session=%s",
-                session_id,
-                exc_info=True,
-                extra={"session_id": session_id},
-            )
-    try:
-        resp = await runner_client.post(
-            f"/v1/sessions/{session_id}/events",
-            json=event,
-            timeout=_CLAUDE_NATIVE_MESSAGE_TIMEOUT_S,
-        )
-        _logger.info(
-            "%s terminal message runner response: session=%s status=%s body=%s",
-            display_name,
-            session_id,
-            resp.status_code,
-            resp.text[:500],
-            extra={"session_id": session_id},
-        )
-    except (httpx.HTTPError, ConnectionError) as exc:
-        # WSTunnelTransport raises bare ConnectionError on tunnel close;
-        # map it to the same 502 as an httpx transport failure so a
-        # runner tunnel drop mid-forward doesn't escape as an opaque 500.
-        _logger.warning(
-            "%s terminal message forward failed for session=%s",
-            display_name,
-            session_id,
-            exc_info=True,
-            extra={"session_id": session_id},
-        )
-        raise HTTPException(
-            status_code=502,
-            detail=f"{display_name} terminal message delivery failed",
-        ) from exc
-    if resp.status_code >= 400:
-        _logger.warning(
-            "%s terminal message forward rejected for session=%s status=%s body=%s",
-            display_name,
-            session_id,
-            resp.status_code,
-            resp.text,
-            extra={"session_id": session_id},
-        )
-        raise HTTPException(
-            status_code=502,
-            detail=f"{display_name} terminal message delivery failed ({resp.status_code})",
-        )
-    failure = _extract_claude_native_runner_failure(resp)
-    if failure is not None:
-        _logger.warning(
-            "%s terminal message forward failed in runner SSE for session=%s: %s",
-            display_name,
-            session_id,
-            failure,
-            extra={"session_id": session_id},
-        )
-        raise HTTPException(
-            status_code=502,
-            detail=f"{display_name} terminal message delivery failed: {failure}",
-        )
-    # Native-terminal counterpart to the SDK path's turn_dispatched (same event
-    # name so a session reads uniformly across harnesses); the message was
-    # injected into the live terminal rather than dispatched as a discrete turn.
-    _logger.info(
-        "%s terminal message dispatched for session=%s",
-        display_name,
-        session_id,
-        extra=debug_event(
-            "turn_dispatched",
-            session_id=session_id,
-            agent=conv.agent_id or "",
-            harness=harness,
-        ),
-    )
 
 
 async def _persist_session_event(
@@ -5494,201 +4814,6 @@ async def _persist_session_event(
     return item_id
 
 
-# How long routing waits on a stale catalog refresh. The fetch itself retries
-# a booting runner for ~30s, and it is only ever awaited to sharpen a routing
-# candidate list — a wait that long would make the whole routing hazard path
-# stall on a catalog rather than on the router. Bounding the AWAIT (not the
-# task) leaves the single-flight running to fill the cache for the next turn.
-_ROUTING_CATALOG_WAIT_S = 3.0
-
-
-async def _refresh_stale_native_model_options(
-    session_id: str,
-    runner_client: httpx.AsyncClient | None,
-) -> None:
-    """
-    Replace a pre-launch claude catalog with the runner's launch-exact one.
-
-    The cache can hold a catalog resolved from the session's *host* before
-    the terminal existed (``_load_model_options_from_host``), whose family
-    aliases carry the workspace default rather than this session's routed
-    pin. Such an entry is marked in ``_model_options_stale``; serving it to
-    turn routing offers a vocabulary the pane does not have. Once a runner
-    is bound its ``claude-model-options`` endpoint reports the pinned
-    aliases, so await that fetch before reading the cache. Leaves the stale
-    entry in place when there is no runner, the fetch fails, or it outruns
-    :data:`_ROUTING_CATALOG_WAIT_S` — a stale vocabulary still beats none,
-    and beats holding a prompt while the catalog retries a booting runner.
-
-    :param session_id: Session/conversation identifier, e.g. ``"conv_abc"``.
-    :param runner_client: HTTP client pointed at the bound runner, or
-        ``None`` when no runner is bound.
-    """
-    if runner_client is None or session_id not in _model_options_stale:
-        return
-    # This wait was the biggest single term in routing's pre-router latency on
-    # a first message, and nothing named it in the logs. Time it, so the ladder
-    # above can be sized against a measurement rather than a guess.
-    started = time.monotonic()
-    inflight = _model_options_inflight.get(session_id)
-    if inflight is None:
-        endpoint = _MODEL_OPTIONS_ENDPOINT_BY_WRAPPER[_CLAUDE_NATIVE_WRAPPER_LABEL_VALUE]
-        inflight = asyncio.create_task(
-            _load_model_options(
-                runner_client,
-                session_id,
-                f"/v1/sessions/{session_id}/model-options",
-                fallback_path=f"/v1/sessions/{session_id}/{endpoint}",
-            )
-        )
-        _model_options_inflight[session_id] = inflight
-        inflight.add_done_callback(
-            lambda _t, sid=session_id: _model_options_inflight.pop(sid, None)
-        )
-    await _await_briefly(inflight)
-    _logger.info(
-        "smart_routing: session=%s stale catalog refresh waited %.3fs (still_stale=%s)",
-        session_id,
-        time.monotonic() - started,
-        session_id in _model_options_stale,
-        extra={"session_id": session_id},
-    )
-
-
-async def _await_briefly(task: asyncio.Task[None]) -> None:
-    """
-    Wait up to :data:`_ROUTING_CATALOG_WAIT_S` for *task*, then give up on it.
-
-    Shielded, so timing out abandons the wait rather than the fetch: the
-    single-flight keeps running and its result lands in the cache for whoever
-    reads it next.
-
-    :param task: The in-flight model-options fetch.
-    """
-    with contextlib.suppress(Exception):
-        await asyncio.wait_for(asyncio.shield(task), timeout=_ROUTING_CATALOG_WAIT_S)
-
-
-async def _native_turn_catalog(
-    session_id: str,
-    conv: Conversation,
-    runner_client: httpx.AsyncClient | None = None,
-) -> list[str] | None:
-    """
-    Return the models a native session's terminal can switch onto.
-
-    A claude-native pane switches by ``/model``, which takes its own picker
-    vocabulary and nothing else — while the gateway behind it serves far
-    more, including generations the pane cannot name. Routing a turn onto
-    one of those would be dropped by the executor, so the picker rows are
-    the candidate list for this session.
-
-    :param session_id: Session/conversation identifier, e.g. ``"conv_abc"``.
-    :param conv: Conversation row, read for the wrapper label.
-    :param runner_client: HTTP client pointed at the bound runner, used to
-        replace a stale pre-launch catalog with the launch-exact one.
-        ``None`` serves whatever is cached.
-    :returns: Model ids, or ``None`` when the session is not a native
-        terminal with a known vocabulary (the caller keeps its own
-        candidate resolution).
-    """
-    if conv.labels.get(_CLAUDE_NATIVE_WRAPPER_LABEL_KEY) != _CLAUDE_NATIVE_WRAPPER_LABEL_VALUE:
-        return None
-    await _refresh_stale_native_model_options(session_id, runner_client)
-    options = _model_options_cache.get(session_id)
-    if not options:
-        return None
-    # ``model`` is optional on a picker row and ``model_dump(exclude_none=True)``
-    # drops it, so fall back to the row key the same way the host-side reader
-    # does — otherwise the turn silently loses its vocabulary constraint.
-    models: list[str] = []
-    for option in options:
-        if not isinstance(option, dict):
-            continue
-        raw = option.get("model") or option.get("id")
-        if isinstance(raw, str) and raw and raw not in models:
-            models.append(raw)
-    return models or None
-
-
-def _routed_turn_model_spelling(
-    session_id: str,
-    conv: Conversation,
-    model: str,
-) -> str | None:
-    """
-    Translate a routed model into the spelling this pane can switch to.
-
-    A mid-turn switch on a Claude Code pane is typed as ``/model``, which
-    takes only this session's own picker vocabulary — its picker values,
-    its family aliases, its one custom slot. An id outside it is skipped by
-    the executor (fail open, the turn runs on the current model), so it
-    must be neither pinned on the row nor recorded as applied. Sessions
-    that are not claude-native panes, and panes whose vocabulary is not
-    known yet (no picker rows cached), keep the routed id: the launch env
-    is the only authority and guessing would be its own inaccuracy.
-
-    :param session_id: Session/conversation identifier, e.g. ``"conv_abc"``.
-    :param conv: Conversation row, read for the wrapper label.
-    :param model: The routed model id, e.g. ``"databricks-claude-opus-4-8"``.
-    :returns: The picker-vocabulary spelling to apply (``model`` itself
-        when no translation applies), or ``None`` when the pane has no
-        spelling for it.
-    """
-    if conv.labels.get(_CLAUDE_NATIVE_WRAPPER_LABEL_KEY) != _CLAUDE_NATIVE_WRAPPER_LABEL_VALUE:
-        return model
-    options = _model_options_cache.get(session_id)
-    if not options:
-        return model
-    from omnigent.models.claude_model_vocabulary import (
-        claude_model_command_arg,
-        model_vocabulary_env,
-        picker_command_values,
-        picker_value_for_model,
-    )
-
-    # Row ids are the pane's picker values, which ``/model`` takes verbatim —
-    # the only spelling a managed row of no Claude family has, and exact
-    # where a family alias would step onto the newest generation.
-    picker_values = picker_command_values(options)
-    picked = picker_value_for_model(model, picker_values)
-    if picked is not None:
-        return picked
-    env = model_vocabulary_env(options)
-    if not env:
-        return model
-    spelling = claude_model_command_arg(model, env)
-    if spelling is None:
-        _logger.warning(
-            "smart_routing: routed model %s has no spelling the claude-native pane "
-            "for session=%s accepts (vocabulary=%s, picker=%s); leaving the session's "
-            "model alone",
-            model,
-            session_id,
-            sorted(env.values()),
-            picker_values,
-            extra={"session_id": session_id},
-        )
-    return spelling
-
-
-def _unapplied_routed_verdict(model: str, verdict: dict[str, Any]) -> dict[str, Any]:
-    """
-    Record on a verdict that the terminal cannot switch to *model*.
-
-    :param model: The routed model id the pane has no spelling for.
-    :param verdict: Router verdict about to be recorded as a chip.
-    :returns: The verdict with ``applied`` cleared and the reason noted.
-    """
-    rationale = verdict.get("rationale")
-    note = f"Not applied: this Claude terminal cannot switch to {model}."
-    return {
-        **verdict,
-        "applied": False,
-        "rationale": f"{rationale} {note}" if isinstance(rationale, str) and rationale else note,
-    }
-
-
 #: Placeholder model on a decision card for a routing call that never answered.
 #: The same spelling the auto-harness path already uses, so the UI renders one
 #: "not routed" outcome however routing failed.
@@ -5710,26 +4835,6 @@ def _unavailable_routing_card(reason: str) -> tuple[str, dict[str, Any]]:
         :func:`_emit_server_routing_decision`.
     """
     return _UNAVAILABLE_ROUTED_MODEL, {"rationale": reason, "applied": False}
-
-
-def _native_pane_harness(conv: Conversation) -> str | None:
-    """The native harness a pane actually runs, past the ``"auto"`` sentinel.
-
-    A forced-auto child keeps ``harness_override="auto"`` until its first
-    message routes, but its terminal is already up on one CLI. Routing that
-    pane off the sentinel offered every family (the sentinel carries none), so
-    the pick could be a model the running CLI cannot speak; its wrapper label
-    names the real harness.
-
-    :param conv: Conversation row for the native session.
-    :returns: The canonical native harness, e.g. ``"claude-native"``, or
-        ``None`` when it cannot be resolved.
-    """
-    harness = _resolve_harness(conv)
-    if harness is not None and harness != "auto":
-        return harness
-    native = _native_coding_agent_for_session(conv)
-    return native.harness if native is not None else harness
 
 
 def _pinned_spawn_family(parent: Conversation | None) -> str | None:
@@ -5785,42 +4890,6 @@ def _reject_out_of_family_child(
     )
 
 
-def _out_of_family_spawn_notice(
-    conv: Conversation,
-    parent: Conversation | None,
-    harness: str | None,
-) -> str | None:
-    """Why a pinned parent's cross-family spawn is not routed, if it is not.
-
-    The fail-safe behind :func:`_reject_out_of_family_child`, which refuses
-    the out-of-family child at its create: a pane that exists anyway (a
-    legacy row, an unresolvable harness at create time) still must not be
-    routed. Cross-family picks belong to sessions whose harness the router
-    owns (Smart Routing / auto): a pinned codex session's spawns stay on
-    codex, so a child pane running another family's CLI has no candidate the
-    parent's family can serve. Same predicate the in-harness spawn gate uses,
-    so "auto" means one thing on both spawn paths.
-
-    :param conv: The child session's row.
-    :param parent: The parent session's row, or ``None`` for a top-level
-        session (nothing to stay in family with).
-    :param harness: The child's resolved harness, e.g. ``"claude-native"``.
-    :returns: The rationale for the declined decision, or ``None`` when the
-        spawn may be routed.
-    """
-    if parent is None or auto_harness_session(conv, parent):
-        return None
-    parent_harness = _resolve_harness(parent)
-    parent_family = harness_family(parent_harness)
-    child_family = harness_family(harness)
-    if parent_family is None or child_family is None or parent_family == child_family:
-        return None
-    return (
-        f"Not routed: a {parent_harness} session's spawns stay in its own model "
-        f"family, and this sub-agent runs on {harness}."
-    )
-
-
 def _publish_routed_model(session_id: str, model: str) -> None:
     """
     Publish a ``session.model`` SSE for a router-selected model.
@@ -5832,14 +4901,9 @@ def _publish_routed_model(session_id: str, model: str) -> None:
     that mirror corrects this value.
 
     :param session_id: Session/conversation identifier, e.g. ``"conv_abc"``.
-    :param model: The model in the spelling this session's picker shows.
-        For a switch applied to a running claude-native pane that is the
-        pane's own ``/model`` vocabulary — a tier alias such as
-        ``"opus"`` (see :func:`_routed_turn_model_spelling`); for a
-        session pinned before its harness starts (a routed child) it is
-        the catalog id the picker lists, e.g.
-        ``"databricks-claude-opus-4-8"``. Either way it must be the value
-        the picker can select, since the client sets its selection from it.
+    :param model: The catalog id the picker lists, e.g.
+        ``"databricks-claude-opus-4-8"`` — the client sets its selection
+        from it.
     :returns: None.
     """
     event = SessionModelEvent(
@@ -6217,9 +5281,6 @@ async def _forward_event_to_runner(
     _routed_model: str | None = None
     _routed_harness: str | None = None
     _verdict: dict[str, Any] | None = None
-    # Set when the pick has no spelling this session can be switched to, so
-    # nothing was pinned and the chip must say so.
-    _turn_unapplied = False
     # Set when the routing call itself failed — on either branch below. The
     # chip then carries the "unavailable" placeholder rather than a model,
     # nothing is pinned, and the route-once label is left unclaimed.
@@ -6361,7 +5422,6 @@ async def _forward_event_to_runner(
                     _user_text,
                     session_id=session_id,
                     runner_client=runner_client,
-                    catalog=await _native_turn_catalog(session_id, conv, runner_client),
                     gateway_backed=_turn_backed,
                     allow_static_fallback=_turn_backed,
                 )
@@ -6371,32 +5431,24 @@ async def _forward_event_to_runner(
                     _routed_model, _verdict = _unavailable_routing_card(_turn_route_err)
                     _route_failed = True
                 if _routed_model is not None and not _route_failed:
-                    # Whether the session can actually be switched onto the
-                    # pick decides everything downstream: an unapplicable
-                    # model must not be pinned (the pin disables routing for
-                    # every later turn) nor reported as this turn's model.
-                    _turn_spelling = _routed_turn_model_spelling(session_id, conv, _routed_model)
-                    if _turn_spelling is None:
-                        _turn_unapplied = True
-                    else:
-                        effective_runner_override = _routed_model
-                        # Persist as the session's model_override so all
-                        # subsequent turns use this model automatically.
-                        try:
-                            await asyncio.to_thread(
-                                conversation_store.update_conversation,
-                                session_id,
-                                model_override=_routed_model,
-                            )
-                            _publish_routed_model(session_id, _turn_spelling)
-                        except (OSError, ValueError):
-                            _logger.warning(
-                                "smart_routing: failed to persist model_override "
-                                "for session=%s; turn still uses routed model",
-                                session_id,
-                                exc_info=True,
-                                extra={"session_id": session_id},
-                            )
+                    effective_runner_override = _routed_model
+                    # Persist as the session's model_override so all
+                    # subsequent turns use this model automatically.
+                    try:
+                        await asyncio.to_thread(
+                            conversation_store.update_conversation,
+                            session_id,
+                            model_override=_routed_model,
+                        )
+                        _publish_routed_model(session_id, _routed_model)
+                    except (OSError, ValueError):
+                        _logger.warning(
+                            "smart_routing: failed to persist model_override "
+                            "for session=%s; turn still uses routed model",
+                            session_id,
+                            exc_info=True,
+                            extra={"session_id": session_id},
+                        )
     # ────────────────────────────────────────────────────────────────
     if effective_runner_override is not None:
         runner_body["model_override"] = effective_runner_override
@@ -6522,8 +5574,6 @@ async def _forward_event_to_runner(
                 )
         if _routed_model is not None and _verdict is not None:
             _decision_scope = "child_session" if _parent_routing_on else "turn"
-            if _turn_unapplied:
-                _verdict = _unapplied_routed_verdict(_routed_model, _verdict)
             # The router wins over the orchestrator's own pick; the attempt is
             # recorded so the UI can show what it overrode. Compared on the bare
             # arm, so another spelling of the same model (a spawn's
@@ -6619,50 +5669,6 @@ async def _stamp_routing_decision_label(
             exc_info=True,
             extra={"session_id": session_id},
         )
-
-
-async def _record_create_route_prompt(
-    conv: Conversation,
-    conversation_store: ConversationStore,
-    prompt: str | None,
-) -> Conversation:
-    """Record which prompt a create-time route scored, as a fingerprint.
-
-    Read by the in-harness first-prompt hook: the same prompt submitted again
-    reuses the create's decision instead of paying a second router call for it
-    (:func:`omnigent.runner.turn_routing.create_route_covers_prompt`).
-
-    Best-effort — a label that cannot be written costs the session one extra
-    routing call, not its turn.
-
-    :param conv: The created conversation row.
-    :param conversation_store: Store exposing ``set_labels``.
-    :param prompt: The routed prompt, e.g. the create's
-        ``smart_routing_message``. Blank records nothing.
-    :returns: The refreshed row, or *conv* when nothing was recorded.
-    """
-    from omnigent.runner.subagent_routing import CREATE_ROUTE_PROMPT_LABEL_KEY
-    from omnigent.runner.turn_routing import create_route_prompt_fingerprint
-
-    fingerprint = create_route_prompt_fingerprint(prompt or "")
-    if not fingerprint:
-        return conv
-    try:
-        await asyncio.to_thread(
-            conversation_store.set_labels,
-            conv.id,
-            {CREATE_ROUTE_PROMPT_LABEL_KEY: fingerprint},
-        )
-    except (OSError, ValueError):
-        _logger.warning(
-            "smart_routing: failed to record the create-time prompt for session=%s",
-            conv.id,
-            exc_info=True,
-            extra={"session_id": conv.id},
-        )
-        return conv
-    conv.labels[CREATE_ROUTE_PROMPT_LABEL_KEY] = fingerprint
-    return conv
 
 
 # Sessions with a message dispatch still awaiting its runner (cold boot). The
@@ -6840,48 +5846,6 @@ async def _dispatch_session_event_to_runner(*args: Any, **kwargs: Any) -> Any:
         return await _facade._dispatch_session_event_to_runner(*args, **kwargs)
 
 
-async def _forward_codex_side_chat_turn(
-    conv: Conversation,
-    body: SessionEventInput,
-    runner_client: httpx.AsyncClient,
-) -> _SessionEventDispatchResult | None:
-    """
-    Forward a Codex ``/side`` child's user turn to the PARENT runner.
-
-    A side-chat child (``kind == "sub_agent"`` + ``_is_codex_native_subagent``) has
-    no Codex process of its own: its thread lives in the parent's app-server. Forward
-    the message to the parent runner's ``/events`` tagged with the child Codex thread
-    id (``codex_side_thread_id``) so the runner drives it via ``turn/start`` on that
-    thread. Not persisted AP-side: the transcript forwarder mirrors the child thread's
-    echo, staying the single writer (same invariant as the native message bypass).
-
-    :param conv: The side-chat child conversation row.
-    :param body: The user message event.
-    :param runner_client: The child's runner client (== the parent's runner).
-    :returns: A no-persist dispatch result, or ``None`` to fall through when the
-        child lacks a parent id or a Codex thread-id label.
-    """
-    from omnigent.harnesses.claude_native.bridge import url_component
-    from omnigent.server.routes._sessions.common import (
-        _CODEX_NATIVE_SUBAGENT_THREAD_ID_LABEL_KEY,
-    )
-
-    parent_id = conv.parent_conversation_id
-    child_thread_id = (conv.labels or {}).get(_CODEX_NATIVE_SUBAGENT_THREAD_ID_LABEL_KEY)
-    if not parent_id or not child_thread_id:
-        return None
-    resp = await runner_client.post(
-        f"/v1/sessions/{url_component(parent_id)}/events",
-        json={
-            "type": "message",
-            "content": body.data.get("content"),
-            "codex_side_thread_id": child_thread_id,
-        },
-    )
-    resp.raise_for_status()
-    return _SessionEventDispatchResult(item_id=None, pending_id=None)
-
-
 async def _dispatch_session_event_to_runner_impl(
     session_id: str,
     conv: Conversation,
@@ -6894,59 +5858,22 @@ async def _dispatch_session_event_to_runner_impl(
     artifact_store: ArtifactStore | None,
     has_mcp_servers: bool = False,
     created_by: str | None = None,
-    runner_router: RunnerRouter | None = None,
-    native_terminal_ready: bool = False,
     host_store: HostStore | None = None,
-    host_registry: HostRegistry | None = None,
-    background_titles_enabled: bool = True,
     persisted_item: ConversationItem | None = None,
 ) -> _SessionEventDispatchResult:
     """
-    Forward an item-event to the runner with harness-aware dispatch.
+    Persist an item-event AP-side and forward it to the bound runner.
 
-    Callers stay harness-agnostic — the claude-native message bypass
-    is encapsulated here. Two dispatch outcomes:
-
-    * **transcript-forwarded native + ``type == "message"``**: web-chat user
-      messages on these sessions must NOT be persisted by the AP
-      server. The Omnigent would otherwise persist an AP-side copy AND
-      let the transcript forwarder mirror the same message back
-      (with its own store-assigned item id), so every web-typed
-      prompt would land as two items in the chat panel. We forward
-      to the bound runner so the native harness types the
-      message into tmux; the transcript forwarder becomes the
-      single writer for the conversation history. Returns a result
-      with ``item_id=None`` (no AP-side persisted item) and a
-      ``pending_id`` for the optimistic-bubble index entry.
-
-    * **All other cases**: persist the item AP-side (invariant I1:
-      persist-before-forward) and forward via the harness's
-      ``/events`` scaffold. Returns the persisted item id and
-      ``pending_id=None``.
-
-    The single-writer invariant is the entire reason the bypass
-    exists; do NOT collapse the two branches into a single forward
-    that always persists. Doing so on a native session causes
-    duplicate items in the chat panel as soon as the transcript
-    forwarder mirrors the same prompt back.
-
-    The pending-input entry recorded on the native path bridges the
-    transcript round-trip: until the forwarder mirrors the message
-    back, it lives nowhere durable, so a client that navigates away /
-    rebinds would lose the optimistic bubble. The entry is replayed
-    into the snapshot and drained when the message persists (see
-    :mod:`omnigent.runtime.pending_inputs`). It is rolled back if the
-    forward fails, so a never-delivered message leaves no ghost.
+    Persist-before-forward (invariant I1): the item is stored, then forwarded
+    via the harness's ``/events`` scaffold.
 
     :param session_id: Session/conversation identifier.
     :param conv: Conversation row for *session_id*.
     :param body: Validated event from the client.
-    :param conversation_store: Used by the non-native path to
-        persist the item.
+    :param conversation_store: Used to persist the item.
     :param runner_client: The session's runner client, already
         resolved by the caller via :func:`_get_runner_client`.
-    :param agent_name: Human-readable agent name for the
-        ``model`` field on non-native forwards.
+    :param agent_name: Human-readable agent name for the ``model`` field.
     :param file_store: Optional file metadata store for resolving
         ``file_id`` references before forwarding.
     :param artifact_store: Optional binary store for the same.
@@ -6954,300 +5881,17 @@ async def _dispatch_session_event_to_runner_impl(
         least one MCP server. Forwarded to the runner as the
         ``has_mcp_servers`` hint. ``False`` by default.
     :param created_by: Authenticated identity of the posting actor,
-        e.g. ``"alice@example.com"``. On the non-native path it is
-        recorded directly on the persisted item. On the claude-native
-        bypass the transcript forwarder is the single writer, so
-        ``created_by`` is stored in the ``pending_inputs`` entry via
-        :func:`omnigent.runtime.pending_inputs.record` and applied
-        to the item when the forwarder mirrors it back (see
-        :func:`_persist_external_conversation_item`).
-    :param runner_router: Router used to resolve the runner for the
-        native-terminal parent-wake forward when a sub-agent fails to
-        boot (see :func:`_persist_native_terminal_failure`). ``None``
-        in in-process / test setups where the global client is used.
-    :param native_terminal_ready: A current initialization response already
-        proved the terminal and forwarder ready, so the immediate duplicate
-        ensure can be skipped.
+        e.g. ``"alice@example.com"``, recorded on the persisted item.
     :param host_store: Host registrations, read only to learn whether this
         session's harness is AI-Gateway-backed (which router may route it).
         ``None`` reads as unknown, which counts as backed — the same posture
         an older host row gets.
     :param persisted_item: The user item when the caller already stored it
-        before waking the runner; the non-native path forwards it instead of
-        appending a second copy.
-    :returns: A :class:`_SessionEventDispatchResult` carrying the
-        persisted item id (non-native) or the pending-input id
-        (claude-native message bypass).
+        before waking the runner; it is forwarded instead of appending a
+        second copy.
+    :returns: A :class:`_SessionEventDispatchResult` carrying the persisted
+        item id.
     """
-    if body.type == "message" and conv.kind == "sub_agent" and _is_codex_native_subagent(conv):
-        # Codex /side follow-up: drive the child on its own Codex thread via the
-        # parent's runner/bridge; do not persist AP-side (the forwarder mirrors
-        # the child thread echo, staying the single writer).
-        side_result = await _forward_codex_side_chat_turn(conv, body, runner_client)
-        if side_result is not None:
-            return side_result
-    if body.type == "message" and _is_native_terminal_session(conv):
-        # Validate before touching the runner. The ensure probe is only
-        # for syntactically valid user messages; assistant/system-shaped
-        # inputs should still fail locally without creating terminals.
-        _build_native_terminal_message_event(conv, body)
-        ensure_outcome = (
-            _NativeTerminalEnsureOutcome(error=None)
-            if native_terminal_ready
-            else await _ensure_native_terminal_ready(
-                runner_client,
-                session_id,
-                conv,
-                runner_router=runner_router,
-            )
-        )
-        if ensure_outcome.error is not None:
-            item_id = await _persist_native_terminal_failure(
-                session_id,
-                conv,
-                body,
-                conversation_store,
-                ensure_outcome.error,
-                runner_router,
-                created_by=created_by,
-            )
-            return _SessionEventDispatchResult(item_id=item_id, pending_id=None)
-        if ensure_outcome.policy_notice is not None:
-            # Terminal is up but policy enforcement is off (fail-open). Post
-            # a durable, non-fatal banner; the user message still forwards.
-            await _persist_native_policy_notice(
-                session_id,
-                conversation_store,
-                ensure_outcome.policy_notice,
-            )
-        # Record the optimistic bubble before forwarding so it's known
-        # server-side immediately (replayed into the snapshot). Roll it
-        # back on any failure/cancellation so a message the TUI never
-        # received doesn't replay as a ghost.
-        content = body.data.get("content")
-        raw_stable_id = body.data.get("stable_id")
-        web_stable_id = (
-            raw_stable_id
-            if isinstance(raw_stable_id, str) and re.fullmatch(r"[0-9a-f]{32}", raw_stable_id)
-            else None
-        )
-        # A codex /side command never reaches the main thread — the executor
-        # forks it into a side chat — so the transcript forwarder never mirrors
-        # it back and this bubble would sit in the parent chat forever.
-        from omnigent.harnesses.codex_native.side_chat import is_side_chat_command
-
-        opens_side_chat = _native_pane_harness(conv) == "codex-native" and is_side_chat_command(
-            _extract_user_text_for_routing(body)
-        )
-        # An older host forwards `/side` to Codex as a plain prompt (no fork), so
-        # the web side chat opens and hangs and the question lands on the main
-        # thread. Refuse here — before the forward — with a clear reason instead.
-        if (
-            opens_side_chat
-            and conv.host_id is not None
-            and host_registry is not None
-            and not host_registry.host_supports_codex_side_chat(conv.host_id)
-        ):
-            raise OmnigentError(
-                "This session's host is too old to open a Codex side chat. Update "
-                "omnigent on the host (>= 0.15.0) and reconnect it, then try again.",
-                code=ErrorCode.INVALID_INPUT,
-            )
-        queues_message = isinstance(content, list) and bool(content) and not opens_side_chat
-        if queues_message and web_stable_id is not None:
-            repeated_pending_id = pending_inputs.pending_id_for_stable_id(
-                session_id, web_stable_id
-            )
-            if repeated_pending_id is not None:
-                # A client retry of a send the runner already received (its
-                # response was lost in flight). Forwarding it again would run
-                # the prompt twice; answer with the queued entry it already has.
-                _logger.info(
-                    "Native message %s is already queued for session=%s; not forwarding again",
-                    repeated_pending_id,
-                    session_id,
-                    extra={"session_id": session_id},
-                )
-                return _SessionEventDispatchResult(item_id=None, pending_id=repeated_pending_id)
-        pending_id: str | None = (
-            pending_inputs.record(
-                session_id,
-                content,
-                created_by=created_by,
-                stable_id=web_stable_id,
-                background_titles_enabled=background_titles_enabled,
-            )
-            if queues_message
-            else None
-        )
-        # ── Server-side routing for native terminal sessions ────────
-        # Same logic as the SDK path in _forward_event_to_runner: if
-        # the toggle is on and no model_override is set, call the
-        # judge and persist the chosen model on the conversation row.
-        # The native CLI reads model_override from the session. A child
-        # routes off its parent's subagent-routing switch.
-        _native_parent_routing_on = False
-        _native_parent_conv: Conversation | None = None
-        if conv.parent_conversation_id is not None:
-            _native_parent_conv = await asyncio.to_thread(
-                conversation_store.get_conversation, conv.parent_conversation_id
-            )
-            _native_parent_routing_on = (
-                _native_parent_conv is not None
-                and subagent_routing_enabled(_native_parent_conv.subagent_routing_override)
-            )
-        _native_routing_enabled = (
-            conv.cost_control_mode_override == "on" and conv.parent_conversation_id is None
-        ) or _native_parent_routing_on
-        _native_routed_model: str | None = None
-        _native_verdict: dict[str, Any] | None = None
-        # Set when nothing was routed — the call failed, or the family rule
-        # below refused a cross-family spawn. The chip then carries the
-        # "unavailable" placeholder, nothing is pinned or switched, and the
-        # route-once label is left unclaimed.
-        _native_route_failed = False
-        _native_scope = "child_session" if _native_parent_routing_on else "turn"
-        # The routed pick in the spelling this pane accepts, or ``None`` when
-        # it has none. Gates the pin AND the in-band switch below: a model the
-        # pane cannot take must not become ``model_override``, which would
-        # disable routing for every later turn and misattribute usage.
-        _native_applied_model: str | None = None
-        if _native_routing_enabled and (
-            conv.model_override is None or conv.parent_conversation_id is not None
-        ):
-            from omnigent.server.smart_routing import route_turn_or_decline
-
-            _harness = _native_pane_harness(conv)
-            _user_text = _extract_user_text_for_routing(body)
-            # Cross-family spawns belong to auto-harness sessions: a pinned
-            # session's children stay in its family (the rule the in-harness
-            # spawn gate applies via ``candidate_models(cross_harness=False)``).
-            # This pane already runs another family's CLI, so the parent's
-            # family has no candidate for it and nothing is routed.
-            _native_out_of_family = _out_of_family_spawn_notice(
-                conv, _native_parent_conv, _harness
-            )
-            if _user_text and _native_out_of_family is not None:
-                _native_routed_model, _native_verdict = _unavailable_routing_card(
-                    _native_out_of_family
-                )
-                _native_route_failed = True
-            elif _user_text:
-                _native_runner_client = await _get_runner_client(session_id, runner_router)
-                # This pane's own family decides which router can serve it: off
-                # the gateway the built-in judge routes off the pane's picker
-                # vocabulary, which is the only reachable candidate set anyway.
-                _native_backed = _gateway_backed(
-                    await _session_routing_host(conv, host_store), (_harness or "",)
-                )
-                # ``_or_decline``: a routing outage must not 500 the message
-                # POST. The pane keeps its own model and the card says why.
-                (
-                    _native_routed_model,
-                    _native_verdict,
-                    _native_route_err,
-                ) = await route_turn_or_decline(
-                    _harness,
-                    _user_text,
-                    session_id=session_id,
-                    runner_client=_native_runner_client,
-                    catalog=await _native_turn_catalog(session_id, conv, _native_runner_client),
-                    gateway_backed=_native_backed,
-                    allow_static_fallback=_native_backed,
-                )
-                if _native_route_err is not None:
-                    _native_routed_model, _native_verdict = _unavailable_routing_card(
-                        _native_route_err
-                    )
-                    _native_route_failed = True
-                if _native_routed_model is not None and not _native_route_failed:
-                    # A pane that already took a routed turn can only be moved
-                    # by ``/model``, so the pick must be in its vocabulary —
-                    # true of every top-level turn (the pane is up before
-                    # routing runs) and of a child from its second spawn on.
-                    # On a pane's first routed turn the launch env carries the
-                    # id, so no spelling exists to require.
-                    _native_pane_routed_before = ROUTING_DECISION_LABEL_KEY in conv.labels
-                    _native_applied_model = (
-                        _routed_turn_model_spelling(session_id, conv, _native_routed_model)
-                        if _native_scope == "turn" or _native_pane_routed_before
-                        else _native_routed_model
-                    )
-                if _native_applied_model is not None:
-                    try:
-                        await asyncio.to_thread(
-                            conversation_store.update_conversation,
-                            session_id,
-                            model_override=_native_routed_model,
-                        )
-                        _publish_routed_model(session_id, _native_applied_model)
-                    except (OSError, ValueError):
-                        _logger.warning(
-                            "smart_routing: persist failed for native session=%s",
-                            session_id,
-                            exc_info=True,
-                            extra={"session_id": session_id},
-                        )
-        # ────────────────────────────────────────────────────────────
-        # Forward the message, carrying any routed model in-band. The
-        # executor applies ``/model`` and injects the message as ONE step
-        # under its pane lock, so the switch can't race the message inject
-        # on the tmux pane (the earlier separate ``model_change`` POST did,
-        # dropping the first message). model_override alone is applied only
-        # at spawn, so the in-band switch is what makes routing take on an
-        # already-running pane.
-        forwarded = False
-        try:
-            await _forward_native_terminal_message(
-                runner_client,
-                session_id,
-                conv,
-                body,
-                file_store=file_store,
-                artifact_store=artifact_store,
-                # The executor speaks the pane's own vocabulary, so it takes the
-                # routed id; ``None`` when the pane has no spelling for it.
-                model_override=(
-                    _native_routed_model if _native_applied_model is not None else None
-                ),
-            )
-            forwarded = True
-        finally:
-            if not forwarded and pending_id is not None:
-                pending_inputs.resolve(session_id, pending_id)
-        # Emit the routing chip AFTER forwarding the message to the
-        # terminal so the live SSE stream delivers the user bubble
-        # (echoed back by the CLI) before the chip.
-        if _native_routed_model is not None and _native_verdict is not None:
-            if _native_applied_model is None and not _native_route_failed:
-                _native_verdict = _unapplied_routed_verdict(_native_routed_model, _native_verdict)
-            _native_decision_id = await _emit_server_routing_decision(
-                session_id,
-                conversation_store,
-                _native_routed_model,
-                _native_verdict,
-                scope=_native_scope,
-                harness=_resolve_harness(conv),
-            )
-            if not _native_route_failed:
-                # The label is the route-once gate, so a failed call must not
-                # claim it — one outage would otherwise stop this pane's
-                # in-harness hook from ever routing.
-                await _stamp_routing_decision_label(
-                    session_id, conversation_store, _native_decision_id
-                )
-            if _native_parent_routing_on and conv.parent_conversation_id is not None:
-                await _emit_server_routing_decision(
-                    conv.parent_conversation_id,
-                    conversation_store,
-                    _native_routed_model,
-                    _native_verdict,
-                    agent=agent_name or "",
-                    scope=_native_scope,
-                    harness=_resolve_harness(conv),
-                    decision_id=_native_decision_id,
-                )
-        return _SessionEventDispatchResult(item_id=None, pending_id=pending_id)
     forwarded = await _forward_event_to_runner(
         session_id,
         conv,
@@ -7273,10 +5917,6 @@ async def _dispatch_session_event_to_runner_impl(
 RUNNER_DISCONNECT_GRACE_S: float = float(RUNNER_LIVENESS_TTL_S)
 # Delay between relay stream reconnect attempts inside the grace window.
 _RELAY_RETRY_INTERVAL_S: float = 0.5
-# A tunnel that drops mid-ensure usually belongs to a runner that is alive but
-# stalled and re-registers once it can (observed: 24 s). Hold the message that
-# long before failing it instead of discarding it on a drop the runner outlives.
-_NATIVE_TERMINAL_ENSURE_RECONNECT_GRACE_S: float = 30.0
 # Session statuses that mean a turn was in flight. A runner going away
 # only interrupts work in one of these states; from any other state the
 # departure is a benign disconnect, carried by liveness rather than a
@@ -8008,22 +6648,6 @@ async def _relay_runner_stream_once(
                         if _deny_reason is not None and text_acc:
                             _llm_response_denied_turns[session_id] = _deny_reason
 
-                    if evt_type == "response.failed":
-                        # The runner could not hand this turn to a native
-                        # harness, so the web message it carried was never
-                        # mirrored back: commit it ahead of the error item.
-                        raw_input_stable_id = event.get("input_stable_id")
-                        await _settle_undelivered_native_input(
-                            conversation_store,
-                            session_id,
-                            current_response_id,
-                            (
-                                raw_input_stable_id
-                                if isinstance(raw_input_stable_id, str)
-                                and _failed_event_undelivered(event)
-                                else None
-                            ),
-                        )
                     error_item = _error_item_from_sse(
                         event,
                         response_id=current_response_id,
@@ -8348,12 +6972,8 @@ async def _relay_runner_stream_once(
         # reused per-session relay task.
         _intentional_stop_sessions.discard(session_id)
         # Relay ended (runner dropped/rebound): re-discover runner-backed
-        # snapshot overlays next time. Cancel in-flight fetches so they can't
-        # land stale values from the dead runner; the model catalog is only
-        # marked stale so the picker keeps serving it while the session sleeps.
-        _invalidate_runner_backed_snapshot_state(
-            session_id, cancel_inflight=True, drop_model_options=False
-        )
+        # snapshot overlays next time.
+        _invalidate_runner_backed_snapshot_state(session_id)
 
 
 def _ensure_runner_relay(
@@ -8971,7 +7591,6 @@ async def _wake_parent_for_blocked_child(
             agent_name=None,
             file_store=None,
             artifact_store=None,
-            runner_router=runner_router,
         )
     except (httpx.HTTPError, OmnigentError):
         _logger.warning(
@@ -9047,76 +7666,6 @@ def configure_subagent_block_notifier(
     return _uninstall
 
 
-def _native_subagent_wrapper_labels(
-    *,
-    agent: Agent,
-    sub_agent_name: str,
-    agent_cache: AgentCache | None,
-) -> dict[str, str]:
-    """
-    Resolve the terminal-first wrapper labels for a native-harness sub-agent.
-
-    A sub-agent dispatched via ``sys_session_send`` whose own spec uses a
-    native terminal harness (``claude-native`` / ``codex-native``) must
-    render with the Chat/Terminal pill in the web UI, exactly like a
-    top-level ``claude-native-ui`` / ``codex-native-ui`` wrapper session.
-    The pill is gated on the conversation's ``omnigent.wrapper`` +
-    ``omnigent.ui`` labels (see ``web`` ``TerminalFirstContext``), but
-    the sub-agent create path never stamps them. This resolves the child
-    sub-agent's spec from the parent bundle and returns the labels to stamp,
-    or an empty dict when the sub-agent is not native (e.g. ``claude-sdk``).
-
-    :param agent: The parent agent row, e.g. the ``polly`` orchestrator,
-        whose bundle contains the sub-agent specs.
-    :param sub_agent_name: The dispatched sub-agent's name, e.g.
-        ``"claude_code"``.
-    :param agent_cache: Cache for loading the parsed parent bundle. ``None``
-        disables resolution (returns an empty dict).
-    :returns: ``{wrapper_key: value, ui_key: "terminal"}`` for a native
-        sub-agent, or ``{}`` when not native / not resolvable.
-    """
-    sub_spec = _resolve_subagent_spec(
-        agent=agent,
-        sub_agent_name=sub_agent_name,
-        agent_cache=agent_cache,
-    )
-    if sub_spec is None:
-        return {}
-    return _native_subagent_wrapper_labels_from_spec(sub_spec)
-
-
-# Host readiness values that mean the native CLI cannot launch. A routed
-# session landing on a missing or unauthenticated binary would fail to open its
-# terminal, so those harnesses are never offered to Smart Routing.
-_NATIVE_UNAVAILABLE_READINESS: frozenset[object] = frozenset(
-    {False, HARNESS_BINARY_MISSING, HARNESS_NEEDS_AUTH, HARNESS_VERSION_TOO_LOW}
-)
-
-
-def _installed_native_harnesses(host: Host | None) -> list[str]:
-    """Return the Smart Routing native harnesses ready to launch on *host*.
-
-    Reads the host's ``configured_harnesses`` readiness map — the same signal
-    the picker uses to gate its "needs setup" rows. Fails open (every
-    candidate) when the host or its map is absent, so a host that reports
-    nothing does not silently disable native Smart Routing.
-
-    :param host: The session's target host, or ``None`` (e.g. a sandbox).
-    :returns: Candidate harness ids in :data:`AUTO_NATIVE_ROUTING_HARNESSES`
-        order, restricted to the ones that can launch.
-    """
-    from omnigent.server.smart_routing import AUTO_NATIVE_ROUTING_HARNESSES
-
-    readiness = getattr(host, "configured_harnesses", None) if host is not None else None
-    if not readiness:
-        return list(AUTO_NATIVE_ROUTING_HARNESSES)
-    return [
-        harness
-        for harness in AUTO_NATIVE_ROUTING_HARNESSES
-        if harness in readiness and readiness[harness] not in _NATIVE_UNAVAILABLE_READINESS
-    ]
-
-
 def _ungatewayed_native_harnesses(host: Host | None, harnesses: Sequence[str]) -> list[str]:
     """Which of *harnesses* this host does not back with the workspace AI gateway.
 
@@ -9144,63 +7693,6 @@ def _gateway_backed(host: Host | None, harnesses: Sequence[str]) -> bool:
     :returns: ``True`` unless the host explicitly reports one as not backed.
     """
     return not _ungatewayed_native_harnesses(host, harnesses)
-
-
-def _oss_routing_available(caps: Any = None) -> bool:  # type: ignore[explicit-any]
-    """Whether the built-in judge can answer for a harness off the gateway.
-
-    The fallback source: with it configured, an ungatewayed pane still routes
-    (with a smaller candidate set), so the refusals below only fire when this
-    is unavailable too.
-
-    :param caps: A ``RuntimeCaps``-shaped object. ``None`` reads the globals.
-    :returns: ``True`` when a built-in routing client is configured.
-    """
-    from omnigent.server.routing_backend import backends_from_caps
-
-    if caps is None:
-        try:
-            from omnigent.runtime._globals import _caps
-        except ImportError:
-            return False
-        caps = _caps
-    return backends_from_caps(caps).local is not None
-
-
-def _external_router_usable(caps: Any = None) -> bool:  # type: ignore[explicit-any]
-    """Whether the external ``routes:select`` router can still answer here.
-
-    False for a deployment that configures none, and for one whose router has
-    latched a permanent failure (its workspace has no routing API) — the
-    surfaces that need a task_v1 menu then take their judge-only shape.
-
-    :param caps: A ``RuntimeCaps``-shaped object. ``None`` reads the globals.
-    :returns: ``True`` when an external routing client can serve a call.
-    """
-    from omnigent.server.routing_backend import backends_from_caps, usable_external
-
-    if caps is None:
-        try:
-            from omnigent.runtime._globals import _caps
-        except ImportError:
-            return False
-        caps = _caps
-    return usable_external(backends_from_caps(caps)) is not None
-
-
-def _judge_only_harness_note(harness: str, verdict: dict[str, Any]) -> str:
-    """Explain on the chip why only the model was routed.
-
-    :param harness: The pane the create kept, e.g. ``"claude-native"``.
-    :param verdict: The routing verdict whose rationale is being extended.
-    :returns: The rationale to show, with the harness note appended.
-    """
-    rationale = str(verdict.get("rationale") or "").strip()
-    note = (
-        f"Harness routing needs the workspace router, which is unavailable here; "
-        f"kept {harness} and routed the model with the built-in judge."
-    )
-    return f"{rationale} {note}".strip()
 
 
 async def _session_routing_host(
@@ -9247,228 +7739,6 @@ async def _spawn_gateway_backed(
     return _gateway_backed(await _session_routing_host(conv, host_store), harnesses)
 
 
-def _harness_labels(harnesses: Sequence[str]) -> str:
-    """Join *harnesses* into user-facing prose, e.g. ``"Claude Code and Codex"``.
-
-    :param harnesses: Harness ids, e.g. ``("claude-native", "codex-native")``.
-    :returns: The display names, comma-joined with a trailing "and".
-    """
-    labels = []
-    for harness in harnesses:
-        native = native_coding_agent_for_harness(harness)
-        labels.append(native.display_name if native is not None else harness)
-    if len(labels) <= 1:
-        return labels[0] if labels else ""
-    return f"{', '.join(labels[:-1])} and {labels[-1]}"
-
-
-def _ungatewayed_auto_routing_error(ungatewayed: Sequence[str]) -> str:
-    """Message for a top-level Smart Routing create no router can serve.
-
-    Both arms are on the menu, so one arm off the gateway takes the AI Gateway's
-    router off the table for the whole pick. That is only fatal when the server
-    has no built-in router either — otherwise the built-in one answers.
-
-    :param ungatewayed: The arms the host does not back, e.g.
-        ``["codex-native"]``.
-    :returns: One sentence naming the arms and the way out.
-    """
-    verb = "is" if len(ungatewayed) == 1 else "are"
-    return (
-        f"Smart Routing has no router available on this host: {_harness_labels(ungatewayed)} "
-        f"{verb} not AI-Gateway-backed, so the workspace router's picks would not be "
-        "reachable, and this server has no built-in routing model to fall back on. Pick a "
-        "harness directly, configure a server `llm:` block, or point the harness at the "
-        f"workspace AI Gateway (`{cli_invocation()} configure harnesses`)."
-    )
-
-
-def _ungatewayed_model_routing_error(harness: str) -> str:
-    """Message for a routing-on create no router can serve.
-
-    Only reached when the harness is off the AI Gateway AND the server has no
-    built-in routing model — either one alone still routes.
-
-    :param harness: The session's native harness, e.g. ``"codex-native"``.
-    :returns: One sentence naming the harness and the way out.
-    """
-    return (
-        f"Smart Routing has no router available for {harness} on this host: "
-        f"{_harness_labels([harness])} is not AI-Gateway-backed, so the workspace router's "
-        "picks would not be reachable from the pane, and this server has no built-in routing "
-        'model to fall back on. Create the session without cost_control_mode_override="on", '
-        "configure a server `llm:` block, or point the harness at the workspace AI Gateway "
-        f"(`{cli_invocation()} configure harnesses`)."
-    )
-
-
-async def _reject_ungatewayed_model_routing(
-    body: SessionCreateInput,
-    request: Request,
-    user_id: str | None,
-    agent: Agent,
-    agent_cache: AgentCache | None,
-) -> None:
-    """Reject a routing-on create no router can serve.
-
-    A pane off the AI Gateway cannot run the workspace router's picks, but the
-    built-in judge names models from the pane's own catalog, so it can. This
-    only refuses when neither source is available — otherwise the create
-    proceeds and the built-in judge answers.
-
-    Children and sub-agent sessions are routed by the spawn/turn paths in their
-    parent's family, so they are left to those gates.
-
-    :param body: The validated create request.
-    :param request: Used to reach the app's host store.
-    :param user_id: Authenticated caller, or ``None`` when auth is disabled.
-    :param agent: The bound agent row.
-    :param agent_cache: Cache for loading the agent's parsed spec.
-    :returns: None when the create may proceed.
-    :raises OmnigentError: 400 when the harness is not AI-Gateway-backed AND
-        the server has no built-in routing model to fall back on.
-    :raises HTTPException: 404/403 from resolving ``body.host_id``.
-    """
-    from omnigent.server.smart_routing import AUTO_NATIVE_ROUTING_HARNESSES
-
-    if body.cost_control_mode_override != "on":
-        return
-    if body.parent_session_id is not None or body.sub_agent_name is not None:
-        return
-    harness = await asyncio.to_thread(
-        _create_resolved_harness, agent, body.harness_override, agent_cache
-    )
-    if harness not in AUTO_NATIVE_ROUTING_HARNESSES:
-        return
-    # The built-in judge routes off the pane's own catalog, so it reaches an
-    # ungatewayed harness the workspace router cannot. Check it before refusing.
-    if _oss_routing_available():
-        return
-    host = await _routing_host_for_create(body, request, user_id)
-    if not _ungatewayed_native_harnesses(host, (harness,)):
-        return
-    raise OmnigentError(_ungatewayed_model_routing_error(harness), code=ErrorCode.INVALID_INPUT)
-
-
-# Per-harness budget for the pre-session host model-options round-trip. This
-# sits on the session-create path, so it stays well under the picker's own
-# 15s ceiling: a slow or silent host degrades to the static table rather than
-# stalling the create.
-_PRE_SESSION_MODEL_OPTIONS_TIMEOUT_S = 5.0
-
-
-async def _host_model_options(
-    host_conn: HostConnection,
-    host_registry: HostRegistry,
-    harness: str,
-) -> list[str]:
-    """Ask a host which models *harness* could launch with right now.
-
-    The pre-launch preview the landing screen's model picker already reads,
-    reused as a routing candidate list, plus every other id the harness's
-    endpoint serves. The picker names only the newest model of each family, so
-    on its own it would drop a frozen arm the workspace still serves
-    (``claude-opus-4-8`` once ``claude-opus-5`` ships) and the router's pick
-    would substitute onto a generation nobody asked for; a launch takes an
-    exact id, so the wider set is genuinely launchable. Hosts answer for the
-    harnesses that can resolve a catalog without a running CLI and reject the
-    rest, so a failure here is expected and yields no candidates.
-
-    :param host_conn: Live host connection to query.
-    :param host_registry: Registry used to enqueue the outbound frame.
-    :param harness: Native harness id, e.g. ``"claude-native"``.
-    :returns: Model ids the host reported, picker rows first, or an empty list.
-    """
-    from omnigent.server.routes._host_model_options import request_host_model_options
-
-    try:
-        result = await request_host_model_options(
-            host_registry=host_registry,
-            host_conn=host_conn,
-            harness=harness,
-            timeout_s=_PRE_SESSION_MODEL_OPTIONS_TIMEOUT_S,
-        )
-    except Exception:  # noqa: BLE001 — a timeout or host error just means no candidates
-        _logger.debug("host model options unavailable for harness %r", harness, exc_info=True)
-        return []
-    if result.get("status") != "ok":
-        return []
-    options = result.get("models")
-    models: list[str] = []
-    if isinstance(options, list):
-        for option in options:
-            # Picker rows carry the launchable id in ``model``; ``id`` is the row key.
-            raw = option.get("model") or option.get("id") if isinstance(option, dict) else None
-            if isinstance(raw, str) and raw and raw not in models:
-                models.append(raw)
-    routable = result.get("routable_models")
-    if isinstance(routable, list):
-        for raw in routable:
-            if isinstance(raw, str) and raw and raw not in models:
-                models.append(raw)
-    return models
-
-
-async def _pre_session_model_catalog(
-    request: Request,
-    host: Host | None,
-    harnesses: Sequence[str],
-) -> dict[str, list[str]]:
-    """Resolve a routing catalog for *harnesses* before any runner exists.
-
-    A create routes with no session, so the live runner catalog
-    (``fetch_runner_models``) is out of reach. The host is: it holds the CLIs and
-    already resolves their pre-launch model options for the picker. Harnesses it
-    cannot answer for are simply absent, and the static table covers them.
-
-    :param request: Used to reach the app's host registry.
-    :param host: The session's target host, or ``None`` (e.g. a sandbox).
-    :param harnesses: Candidate native harness ids to ask about.
-    :returns: ``{harness: model ids}`` for whatever the host answered.
-    """
-    host_registry = getattr(request.app.state, "host_registry", None)
-    if host is None or host_registry is None:
-        return {}
-    host_conn = host_registry.get(host.host_id)
-    if host_conn is None:
-        return {}
-    results = await asyncio.gather(
-        *(_host_model_options(host_conn, host_registry, harness) for harness in harnesses)
-    )
-    return {harness: models for harness, models in zip(harnesses, results, strict=True) if models}
-
-
-async def _routing_host_for_create(
-    body: SessionCreateInput,
-    request: Request,
-    user_id: str | None,
-) -> Host | None:
-    """Resolve the create's target host for routing, authorizing ownership first.
-
-    Routing reads the host's harness readiness and pushes model-options frames
-    over its live connection, so a foreign ``host_id`` must be rejected before
-    anything is read from the host or landed in its owner's connection.
-
-    :param body: The create request; ``host_id`` selects the host.
-    :param request: Used to reach the app's host store.
-    :param user_id: Authenticated caller, or ``None`` when auth is disabled.
-    :returns: The owned host, or ``None`` when the create names none.
-    :raises HTTPException: 404 if ``host_id`` is unknown, 403 if it belongs
-        to another user.
-    """
-    from omnigent.server.routes._host_launch import resolve_host_owner
-
-    host_store = getattr(request.app.state, "host_store", None)
-    if host_store is None or body.host_id is None:
-        return None
-    return await asyncio.to_thread(
-        resolve_host_owner,
-        user_id=user_id,
-        host_id=body.host_id,
-        host_store=host_store,
-    )
-
-
 def _create_resolved_harness(
     agent: Agent,
     harness_override: str | None,
@@ -9483,9 +7753,6 @@ def _create_resolved_harness(
     """
     from omnigent.harness_aliases import canonicalize_harness
 
-    native_agent = native_coding_agent_for_agent_name(agent.name)
-    if native_agent is not None:
-        return native_agent.harness
     if harness_override:
         return canonicalize_harness(harness_override) or harness_override
     if agent_cache is None:
@@ -9500,45 +7767,6 @@ def _create_resolved_harness(
         _logger.debug("create-time routing: agent %r failed to load", agent.name, exc_info=True)
         return None
     return canonicalize_harness(_spec_harness(loaded.spec)) or None
-
-
-def _fixed_native_routing_harness(
-    body: SessionCreateInput,
-    agent: Agent,
-    agent_cache: AgentCache | None,
-) -> str | None:
-    """The native harness whose model a create must route now, if any.
-
-    A native terminal launches with the session row and its turns originate in
-    the TUI, so the server never sees the first message pre-inference: a session
-    pinned to claude-native / codex-native has to route its MODEL during the
-    create or not at all. Everything else routes later — an SDK harness on its
-    first turn through the server, the ``"auto"`` path on its own create branch.
-
-    :param body: The validated create request.
-    :param agent: The bound agent row.
-    :param agent_cache: Cache for loading the agent's parsed spec.
-    :returns: ``"claude-native"`` / ``"codex-native"`` when create-time model
-        routing applies, else ``None``.
-    """
-    from omnigent.server.smart_routing import AUTO_NATIVE_ROUTING_HARNESSES
-
-    if body.cost_control_mode_override != "on":
-        return None
-    if not (body.smart_routing_message or "").strip():
-        return None
-    # The auto path routes harness AND model on its own branch; a child or
-    # sub-agent session is routed by the spawn/turn paths, which know the
-    # parent's family. Neither may take this branch.
-    if body.harness_override == "auto":
-        return None
-    if body.parent_session_id is not None or body.sub_agent_name is not None:
-        return None
-    # A client-pinned model wins over the router, exactly as it does per turn.
-    if body.model_override is not None:
-        return None
-    harness = _create_resolved_harness(agent, body.harness_override, agent_cache)
-    return harness if harness in AUTO_NATIVE_ROUTING_HARNESSES else None
 
 
 def _spec_routes_its_own_harness(
@@ -9622,172 +7850,6 @@ def _spawn_pins_its_harness(
     return sub_spec is not None and spec_harness(sub_spec) is not None
 
 
-async def _resolve_fixed_native_model_routing(
-    body: SessionCreateInput,
-    request: Request,
-    user_id: str | None,
-    harness: str,
-) -> tuple[str | None, dict[str, Any] | None, str | None]:
-    """Route the model for a create already pinned to one native harness.
-
-    Candidates come from the host's pre-launch catalog for that single harness
-    (:func:`_pre_session_model_catalog`) — no runner exists yet — and the pick is
-    constrained to the session's own harness, so routing can only change the
-    model. Fails open: an unavailable router or a pick this harness cannot run
-    yields no model and a rationale for the routing card.
-
-    :param body: The create request; ``smart_routing_message`` carries the
-        routing text and ``host_id`` selects whose CLI catalog is read.
-    :param request: Used to reach the app's host store and host registry.
-    :param user_id: Authenticated caller, or ``None`` when auth is disabled.
-    :param harness: The session's native harness, e.g. ``"claude-native"``.
-    :returns: ``(model, verdict, error)``; ``model`` and ``verdict`` are
-        ``None`` when nothing should be pinned, and ``error`` then explains why.
-    :raises HTTPException: 404 if ``host_id`` is unknown, 403 if it belongs
-        to another user.
-    """
-    from omnigent.server.smart_routing import models_in_family, route_session_harness
-
-    host = await _routing_host_for_create(body, request, user_id)
-    # Off the gateway the built-in judge answers, and the static table's
-    # ``databricks-*`` ids are unreachable — the host's pre-launch catalog is the
-    # only provider-accurate candidate source.
-    backed = _gateway_backed(host, (harness,))
-    _harness, model, verdict, error = await route_session_harness(
-        body.smart_routing_message or "",
-        harness_candidates=(harness,),
-        catalog=await _pre_session_model_catalog(request, host, (harness,)),
-        gateway_backed=backed,
-        allow_static_fallback=backed,
-    )
-    if model is None or verdict is None:
-        return None, None, error or "Routing unavailable; using the harness default model."
-    if not models_in_family(harness, [model]):
-        # With one harness on offer the seam has nothing to redirect an
-        # out-of-family pick onto, and it resolves to the only candidate. The
-        # launch would pass a ``--model`` this CLI cannot run, so leave the
-        # session on its default and say so on the card.
-        return (
-            None,
-            None,
-            f"Not applied: this {harness} session cannot run {model}.",
-        )
-    return model, verdict, None
-
-
-async def _resolve_native_smart_routing(
-    body: SessionCreateInput,
-    request: Request,
-    user_id: str | None,
-) -> tuple[str | None, str | None, dict[str, Any] | None, str | None]:
-    """Route a top-level Smart Routing create onto a native terminal harness.
-
-    The terminal launches as soon as the session row exists, so a native
-    session's harness cannot wait for the first message event the way the
-    bundle-agent auto path does. This routes ``body.smart_routing_message``
-    over the host's installed native CLIs and returns the chosen native
-    WRAPPER agent name, which the caller binds instead of the client's
-    placeholder — from there the create is byte-identical to a normal native
-    create, terminal launch and all, so nothing is launched twice.
-
-    Falls back to the first installed candidate when routing is unavailable, so
-    the session still lands on a terminal (with the CLI's own default model).
-    Same candidate when only the built-in judge is configured: choosing between
-    two panes is the workspace router's job, so a judge-only deployment routes
-    the default pane's MODEL and says so on the chip.
-
-    :param body: The create request; ``smart_routing_message`` carries the
-        routing text and ``host_id`` selects whose CLIs are on offer.
-    Candidate models come from the host's pre-launch catalog
-    (:func:`_pre_session_model_catalog`) — no runner exists yet, so the live
-    per-session catalog is out of reach and the static table is last resort.
-
-    :param request: Used to reach the app's host store for readiness and the
-        host registry for the pre-session model catalog.
-    :param user_id: Authenticated caller, e.g. ``"alice@example.com"``, or
-        ``None`` when auth is disabled. Host ownership is authorized before
-        anything is read from the host or pushed over its connection.
-    :returns: ``(wrapper_agent_name, model, verdict, error)``.
-        ``wrapper_agent_name`` is ``None`` only when no native CLI is
-        installed; ``error`` explains a fallback for the routing card.
-    :raises HTTPException: 404 if ``host_id`` is unknown, 403 if it belongs
-        to another user.
-    """
-    from omnigent.server.smart_routing import (
-        AUTO_NATIVE_ROUTING_HARNESSES,
-        models_in_family,
-        route_session_harness,
-    )
-
-    host = await _routing_host_for_create(body, request, user_id)
-    # Both arms must be gateway-backed before the WORKSPACE router may choose
-    # between them: an arm off the gateway cannot run its picks, and the pick is
-    # made after the create commits, so there is no safe half-menu. That only
-    # ends the create when the built-in judge is unavailable too — it names
-    # models from each arm's own pre-launch catalog, which every arm can run.
-    ungatewayed = _ungatewayed_native_harnesses(host, AUTO_NATIVE_ROUTING_HARNESSES)
-    if ungatewayed and not _oss_routing_available():
-        return None, None, None, _ungatewayed_auto_routing_error(ungatewayed)
-    backed = not ungatewayed
-    installed = _installed_native_harnesses(host)
-    if not installed:
-        return None, None, None, "No native CLI is installed on this host."
-
-    # Choosing BETWEEN native panes belongs to the workspace router: its menu is
-    # what ranks two CLIs against one task, and the pick is baked into the
-    # terminal launch. With no external router usable, this create keeps the
-    # default pane and routes only its model with the built-in judge — a normal
-    # Smart Routing session, minus the harness half — instead of declining.
-    judge_only = not _external_router_usable()
-    candidates = (installed[0],) if judge_only else installed
-    harness, model, verdict, error = await route_session_harness(
-        body.smart_routing_message or "",
-        harness_candidates=candidates,
-        catalog=await _pre_session_model_catalog(request, host, candidates),
-        gateway_backed=backed,
-        allow_static_fallback=backed,
-    )
-    if judge_only:
-        kept = native_coding_agent_for_harness(candidates[0])
-        kept_name = kept.agent_name if kept is not None else None
-        if model is None or verdict is None:
-            return (
-                kept_name,
-                None,
-                None,
-                error or "Routing unavailable; using the default native harness.",
-            )
-        if not models_in_family(candidates[0], [model]):
-            # One pane on offer, so the seam resolves any pick onto it — and an
-            # out-of-family model would reach the launch as a ``--model`` this
-            # CLI cannot run. Keep the pane, pin nothing, say why.
-            return (
-                kept_name,
-                None,
-                None,
-                f"Not applied: this {candidates[0]} session cannot run {model}.",
-            )
-        return (
-            kept_name,
-            model,
-            {**verdict, "rationale": _judge_only_harness_note(candidates[0], verdict)},
-            None,
-        )
-    native_agent = native_coding_agent_for_harness(harness) if harness is not None else None
-    if native_agent is None:
-        # Routing unavailable (or it named something that is not a native
-        # terminal) — land on the first installed CLI so the session still
-        # opens a terminal; the CLI keeps its own default model.
-        fallback = native_coding_agent_for_harness(installed[0])
-        return (
-            fallback.agent_name if fallback is not None else None,
-            None,
-            None,
-            error or "Routing unavailable; using the default native harness.",
-        )
-    return native_agent.agent_name, model, verdict, None
-
-
 async def _create_session_from_existing_agent(
     conversation_store: ConversationStore,
     agent_store: AgentStore,
@@ -9863,80 +7925,12 @@ async def _create_session_from_existing_agent(
         conversation_store=conversation_store,
     )
 
-    # Top-level Smart Routing: "auto" on a native wrapper agent means the client
-    # picked Smart Routing with no bundle agent, and its ``agent_id`` is only a
-    # placeholder. Route now (the terminal launches with the row, so there is no
-    # first-message event to wait for) and rebind to the wrapper the router
-    # chose; the rest of this function then runs as a plain native create.
-    _native_smart_routing = (
-        body.harness_override == "auto"
-        and body.parent_session_id is None
-        and native_coding_agent_for_agent_name(agent.name) is not None
-    )
-    _native_routed_model: str | None = None
-    _native_routing_verdict: dict[str, Any] | None = None
-    _native_routing_error: str | None = None
-    if _native_smart_routing:
-        (
-            _routed_agent_name,
-            _native_routed_model,
-            _native_routing_verdict,
-            _native_routing_error,
-        ) = await _resolve_native_smart_routing(body, request, user_id)
-        if _routed_agent_name is None:
-            raise OmnigentError(
-                _native_routing_error
-                or "No native CLI is available for Smart Routing on this host.",
-                code=ErrorCode.INVALID_INPUT,
-            )
-        _routed_agent_row = await asyncio.to_thread(agent_store.get_by_name, _routed_agent_name)
-        if _routed_agent_row is None:
-            raise OmnigentError(
-                f"Native wrapper agent {_routed_agent_name!r} is not registered on this server.",
-                code=ErrorCode.INTERNAL_ERROR,
-            )
-        agent = await validate_session_agent(
-            user_id=user_id,
-            agent_id=_routed_agent_row.id,
-            agent_store=agent_store,
-            permission_store=permission_store,
-            conversation_store=conversation_store,
-        )
-
-    # Routing on a native pane whose CLI is not AI-Gateway-backed can never
-    # apply, so an explicit request for it is an error rather than a session
-    # that silently ignores it. (The auto path checks both arms itself, above.)
-    if not _native_smart_routing:
-        await _reject_ungatewayed_model_routing(body, request, user_id, agent, agent_cache)
-
-    # Fixed native harness + Smart Routing on: the harness is the caller's own
-    # choice, so only the MODEL is routed — and it has to happen here, since the
-    # terminal launches with the row and its turns originate in the TUI (the
-    # server never sees the first message pre-inference). Fails open: no pin, a
-    # decision card with the reason, and the CLI's default model.
     # A spec that hands its brain harness to the router (``smart_routing_harness:
-    # auto``) takes the sentinel path below instead of any create-time pick: the
-    # harness is not decided until the first message, so there is no single
-    # harness whose model could be routed here.
-    _spec_auto_brain = not _native_smart_routing and await asyncio.to_thread(
+    # auto``) takes the sentinel path below: the harness is not decided until the
+    # first message.
+    _spec_auto_brain = await asyncio.to_thread(
         _spec_routes_its_own_harness, body, agent, agent_cache
     )
-    _fixed_native_harness = (
-        None
-        if _native_smart_routing or _spec_auto_brain
-        else await asyncio.to_thread(_fixed_native_routing_harness, body, agent, agent_cache)
-    )
-    _fixed_routed_model: str | None = None
-    _fixed_routing_verdict: dict[str, Any] | None = None
-    _fixed_routing_error: str | None = None
-    if _fixed_native_harness is not None:
-        (
-            _fixed_routed_model,
-            _fixed_routing_verdict,
-            _fixed_routing_error,
-        ) = await _resolve_fixed_native_model_routing(
-            body, request, user_id, _fixed_native_harness
-        )
 
     # Authorize parent_session_id before inheriting anything.
     # The caller must own or have READ access to the parent session;
@@ -9967,18 +7961,9 @@ async def _create_session_from_existing_agent(
             agent_cache=agent_cache,
         )
 
-    # The persisted override reaches a native CLI as a ``--model`` argv
-    # element at terminal launch, so reject shell-/flag-shaped values
-    # before any row or worktree exists.
+    # Reject shell-/flag-shaped values before any row or worktree exists.
     model_override, reasoning_effort = validate_session_model_metadata(
-        # Native Smart Routing bakes the routed model into the terminal launch;
-        # the client sends none of its own on that path. A fixed-harness routed
-        # create does the same, and only ever ran because the client sent none.
-        model_override=(
-            _native_routed_model
-            if _native_smart_routing
-            else _fixed_routed_model or body.model_override
-        ),
+        model_override=body.model_override,
         reasoning_effort=body.reasoning_effort,
     )
 
@@ -10066,7 +8051,6 @@ async def _create_session_from_existing_agent(
     # nothing routes there, so nothing reads the switch.
     if subagent_routing_override is None and (
         cost_control_mode_override == "on"
-        or _native_smart_routing
         or (
             _parent_for_routing is not None
             and subagent_routing_enabled(_parent_for_routing.subagent_routing_override)
@@ -10080,13 +8064,7 @@ async def _create_session_from_existing_agent(
     # "auto" defers harness + model selection to the first-message routing
     # path; validate executor type now but store the sentinel unchanged.
     harness_override: str | None
-    if _native_smart_routing:
-        # The harness is already decided and the agent rebound, so the row keeps
-        # no sentinel: a native wrapper rejects harness_override, and leaving
-        # "auto" behind would make the first message re-route an already-running
-        # terminal. The auto marker is stamped as a label below instead.
-        harness_override = None
-    elif _force_auto_for_child or _spec_auto_brain or body.harness_override == "auto":
+    if _force_auto_for_child or _spec_auto_brain or body.harness_override == "auto":
         await asyncio.to_thread(_validated_harness_override_executor_type, agent)
         harness_override = "auto"
         # Ignore any orchestrator-supplied model; routing picks it. (The spec
@@ -10251,21 +8229,13 @@ async def _create_session_from_existing_agent(
     # args, the agent's own trusted spec seeds them below — explicit
     # opt-ins only, never the headless worker default bypass.
     sub_spec: AgentSpec | None = None
+    validated_launch_args: list[str] | None = None
     if body.sub_agent_name:
         sub_spec = _resolve_subagent_spec(
             agent=agent,
             sub_agent_name=body.sub_agent_name,
             agent_cache=agent_cache,
         )
-        try:
-            validated_launch_args = (
-                _derive_terminal_launch_args_from_spec(sub_spec) if sub_spec is not None else None
-            )
-        except ValueError as exc:
-            raise OmnigentError(
-                f"invalid terminal_launch_args in sub-agent spec: {exc}",
-                code=ErrorCode.INVALID_INPUT,
-            ) from exc
     else:
         try:
             validated_launch_args = _validate_terminal_launch_args(body.terminal_launch_args)
@@ -10276,16 +8246,10 @@ async def _create_session_from_existing_agent(
             ) from exc
 
     # Spec-seeded defaults: a self-resolved agent's stored spec supplies the
-    # spec-level reasoning effort and, when the body carried no launch args,
-    # its explicit native-bypass opt-ins; one tolerant load serves both.
+    # spec-level reasoning effort.
     own_spec: AgentSpec | None = None
-    needs_launch_args_from_spec = not body.sub_agent_name and validated_launch_args is None
     needs_effort_from_spec = reasoning_effort is None and sub_spec is None
-    if (
-        (needs_launch_args_from_spec or needs_effort_from_spec)
-        and agent_cache is not None
-        and agent.bundle_location is not None
-    ):
+    if needs_effort_from_spec and agent_cache is not None and agent.bundle_location is not None:
         try:
             own_loaded = await asyncio.to_thread(
                 agent_cache.load,
@@ -10297,21 +8261,10 @@ async def _create_session_from_existing_agent(
         except (OSError, ValueError, RuntimeError, KeyError, AttributeError, ImportError):
             _logger.warning(
                 "create: spec load for spec-seeded defaults failed "
-                "(agent=%s); session starts with no spec-level effort or launch args",
+                "(agent=%s); session starts with no spec-level effort",
                 agent.id,
                 exc_info=True,
             )
-
-    if needs_launch_args_from_spec and own_spec is not None:
-        try:
-            validated_launch_args = _derive_terminal_launch_args_from_spec(
-                own_spec, headless_defaults=False
-            )
-        except ValueError as exc:
-            raise OmnigentError(
-                f"invalid terminal_launch_args in agent spec: {exc}",
-                code=ErrorCode.INVALID_INPUT,
-            ) from exc
 
     if reasoning_effort is None:
         effort_spec: AgentSpec | None = sub_spec if sub_spec is not None else own_spec
@@ -10322,7 +8275,6 @@ async def _create_session_from_existing_agent(
                 reasoning_effort=spec_effort,
             )
 
-    native_agent = native_coding_agent_for_agent_name(agent.name)
     initial_labels = dict(body.labels) if body.labels else {}
     if body.parent_session_id is not None:
         from omnigent.context.labels import LAUNCHING_LABEL_KEY
@@ -10335,24 +8287,7 @@ async def _create_session_from_existing_agent(
         )
 
         initial_labels[WORKTREE_ROOT_LABEL_KEY] = worktree_root_fingerprint(created_worktree_path)
-    if native_agent is not None:
-        initial_labels.update(native_agent.presentation_labels)
-    elif (
-        body.sub_agent_name
-        and sub_spec is not None
-        and not _force_auto_for_child
-        and (_subagent_labels := _native_subagent_wrapper_labels_from_spec(sub_spec))
-    ):
-        initial_labels.update(_subagent_labels)
-    elif (
-        body.sub_agent_name is None
-        and native_coding_agent_for_harness(
-            await asyncio.to_thread(_create_resolved_harness, agent, harness_override, agent_cache)
-        )
-        is not None
-    ):
-        initial_labels[_CLAUDE_NATIVE_UI_LABEL_KEY] = _CLAUDE_NATIVE_UI_LABEL_VALUE
-    elif body.sub_agent_name is None and body.host_id is not None:
+    if body.sub_agent_name is None and body.host_id is not None:
         repl_labels = _repl_terminal_ui_labels(
             agent=agent,
             agent_cache=agent_cache,
@@ -10361,7 +8296,7 @@ async def _create_session_from_existing_agent(
         if repl_labels:
             initial_labels.update(repl_labels)
 
-    if harness_override == "auto" or _native_smart_routing:
+    if harness_override == "auto":
         from omnigent.runner.subagent_routing import AUTO_HARNESS_LABEL_KEY
 
         initial_labels[AUTO_HARNESS_LABEL_KEY] = "1"
@@ -10455,60 +8390,6 @@ async def _create_session_from_existing_agent(
     session_created(conv.id, conv.runner_id)
     telemetry.set_session_id(conv.id)
 
-    if _native_smart_routing:
-        # Surface the create-time pick as a transcript card, so the user sees
-        # which native harness + model was chosen (or why it fell back).
-        _routed_native = native_coding_agent_for_agent_name(agent.name)
-        if _native_routed_model is not None and _native_routing_verdict is not None:
-            await _emit_server_routing_decision(
-                conv.id,
-                conversation_store,
-                _native_routed_model,
-                _native_routing_verdict,
-                scope="session",
-                harness=_routed_native.harness if _routed_native is not None else None,
-            )
-            # The same prompt is submitted again inside the harness, where the
-            # first-prompt hook would score it a second time for the verdict
-            # this session is already pinned to. Fingerprint what was routed so
-            # that hook reuses this decision — and an edited prompt still
-            # routes on its own.
-            conv = await _record_create_route_prompt(
-                conv, conversation_store, body.smart_routing_message
-            )
-        elif _native_routing_error is not None:
-            await _emit_server_routing_decision(
-                conv.id,
-                conversation_store,
-                "unavailable",
-                {"rationale": _native_routing_error, "applied": False},
-                scope="session",
-            )
-    elif _fixed_native_harness is not None:
-        # Same card for a create that routed only the model. The decision label
-        # records what pinned the row's model, the way a routed turn does.
-        if _fixed_routed_model is not None and _fixed_routing_verdict is not None:
-            _fixed_decision_id = await _emit_server_routing_decision(
-                conv.id,
-                conversation_store,
-                _fixed_routed_model,
-                _fixed_routing_verdict,
-                scope="session",
-                harness=_fixed_native_harness,
-            )
-            await _stamp_routing_decision_label(conv.id, conversation_store, _fixed_decision_id)
-            if _fixed_decision_id is not None:
-                conv.labels[ROUTING_DECISION_LABEL_KEY] = _fixed_decision_id
-        elif _fixed_routing_error is not None:
-            await _emit_server_routing_decision(
-                conv.id,
-                conversation_store,
-                "unavailable",
-                {"rationale": _fixed_routing_error, "applied": False},
-                scope="session",
-                harness=_fixed_native_harness,
-            )
-
     # Emit session.created exactly once at creation time.
     # Best-effort: skip if the host opted out via HostHelloFrame.
     try:
@@ -10534,9 +8415,7 @@ async def _create_session_from_existing_agent(
             # the result is independent of _globals._agent_store (which is
             # only set when the server is started via the CLI).
             _tel_harness: str | None
-            if native_agent is not None:
-                _tel_harness = native_agent.harness
-            elif conv.harness_override:
+            if conv.harness_override:
                 _tel_harness = conv.harness_override
             elif agent_cache is not None:
                 _tel_loaded = agent_cache.load(
@@ -10617,9 +8496,7 @@ async def _create_session_from_existing_agent(
                     file_store=file_store,
                     artifact_store=artifact_store,
                     created_by=_attribution_user(user_id),
-                    runner_router=runner_router,
                     host_store=getattr(request.app.state, "host_store", None),
-                    background_titles_enabled=background_session_titles_enabled(request.headers),
                 )
                 if pending_background_title is not None:
                     pending_background_title.schedule(expected_seed_title=conv.title)
@@ -10710,31 +8587,6 @@ def _create_session_from_bundle(
             reasoning_effort=spec.executor.reasoning_effort,
         )
         metadata = metadata.model_copy(update={"reasoning_effort": seeded_effort})
-
-    if metadata.parent_session_id is not None:
-        try:
-            terminal_launch_args = _derive_terminal_launch_args_from_spec(spec)
-        except ValueError as exc:
-            raise OmnigentError(
-                f"invalid terminal_launch_args in bundled child spec: {exc}",
-                code=ErrorCode.INVALID_INPUT,
-            ) from exc
-        metadata = metadata.model_copy(update={"terminal_launch_args": terminal_launch_args})
-    elif metadata.terminal_launch_args is None:
-        # Top-level bundle create (the ``omnigent run <dir>`` shape): honor the
-        # spec's explicit bypass opt-ins (e.g. codex-native ``yolo: true``);
-        # an interactive session never inherits the headless default bypass.
-        try:
-            terminal_launch_args = _derive_terminal_launch_args_from_spec(
-                spec, headless_defaults=False
-            )
-        except ValueError as exc:
-            raise OmnigentError(
-                f"invalid terminal_launch_args in bundled spec: {exc}",
-                code=ErrorCode.INVALID_INPUT,
-            ) from exc
-        if terminal_launch_args is not None:
-            metadata = metadata.model_copy(update={"terminal_launch_args": terminal_launch_args})
 
     agent_id = generate_agent_id()
     agent_bundle_location = bundle_location(agent_id, bundle_bytes)
@@ -11262,129 +9114,6 @@ async def _handle_mcp_tools_call(
     )
 
 
-async def _fetch_model_options(
-    runner_client: httpx.AsyncClient | None,
-    session_id: str,
-    conv: Conversation,
-) -> list[dict[str, Any]]:
-    """
-    Resolve the Web UI model-picker options for a native session.
-
-    Two shapes:
-
-    * **codex-native** — a *live* catalog only
-      the bound runner can read from the installed CLI. This stays
-      off the snapshot hot path: the first snapshot kicks a background fetch
-      and returns ``[]``; subsequent snapshots serve the cache. The cache
-      outlives the runner: with no runner bound (asleep session) it keeps
-      serving, and a stale-marked entry serves while a live re-fetch replaces
-      it.
-    * **claude-native** — the provider-neutral aliases from the exact launch
-      config, refreshed from Databricks before each new terminal starts.
-      With no runner bound and a cold cache (server restart while the
-      session slept), the session's host resolves a pre-launch preview
-      instead — the same source the new-session picker uses.
-
-    pi-native's catalog is pushed by its extension instead (see below).
-
-    :param runner_client: HTTP client pointed at the bound runner, or
-        ``None`` when no runner is bound.
-    :param session_id: Session/conversation identifier,
-        e.g. ``"conv_abc123"``.
-    :param conv: Conversation row whose labels identify the wrapper.
-    :returns: Model options, or ``[]`` when the session has no model picker or
-        the runner-owned options are not yet available.
-    """
-    wrapper = conv.labels.get(_CLAUDE_NATIVE_WRAPPER_LABEL_KEY)
-    if wrapper == _PI_NATIVE_WRAPPER_LABEL_VALUE:
-        # pi-native's catalog is PUSHED by its extension (its live
-        # ``ctx.modelRegistry``), not fetched: that reflects the models pi
-        # actually loaded regardless of auth path (Omnigent provider OR pi's
-        # own ``/login``), so the picker populates even when no ``models.json``
-        # is written into the bridge dir. Empty until the extension posts
-        # ``external_model_options`` on session start.
-        return _pushed_model_options_cache.get(session_id, [])
-    endpoint = _MODEL_OPTIONS_ENDPOINT_BY_WRAPPER.get(wrapper or "")
-    if endpoint is None:
-        return []
-    cached = _model_options_cache.get(session_id)
-    if runner_client is None:
-        # No runner to ask (asleep / stranded): serve the last-fetched
-        # catalog so the picker stays usable for offline model changes.
-        if cached:
-            return cached
-        # Cold cache too (e.g. the server restarted while the session
-        # slept). claude-native's catalog is also resolvable by the
-        # session's host — the same pre-launch source the new-session
-        # picker uses — so fill it from there in the background.
-        if (
-            wrapper == _CLAUDE_NATIVE_WRAPPER_LABEL_VALUE
-            and conv.host_id is not None
-            and session_id not in _model_options_inflight
-        ):
-            task = asyncio.create_task(_load_model_options_from_host(session_id, conv.host_id))
-            _model_options_inflight[session_id] = task
-
-            def _clear_host_options_inflight(_task: asyncio.Task[None]) -> None:
-                _model_options_inflight.pop(session_id, None)
-
-            task.add_done_callback(_clear_host_options_inflight)
-        return []
-    if cached is not None and session_id not in _model_options_stale:
-        return cached
-    if session_id not in _model_options_inflight:
-        # Unified route first; the harness-named route is the fallback for
-        # an older runner (deprecated aliases, removed in 0.11.0).
-        task = asyncio.create_task(
-            _load_model_options(
-                runner_client,
-                session_id,
-                f"/v1/sessions/{session_id}/model-options",
-                fallback_path=f"/v1/sessions/{session_id}/{endpoint}",
-            )
-        )
-        _model_options_inflight[session_id] = task
-
-        def _clear_runner_options_inflight(_task: asyncio.Task[None]) -> None:
-            _model_options_inflight.pop(session_id, None)
-
-        task.add_done_callback(_clear_runner_options_inflight)
-    # A stale catalog serves while the re-fetch runs; success publishes
-    # ``session.model_options`` so open clients re-read the snapshot.
-    return cached or []
-
-
-_SIDE_CHAT_NICKNAME = "Side chat"
-
-
-async def _codex_side_chat_fork_sealed(conv: Conversation, conv_store: ConversationStore) -> bool:
-    """
-    Whether a codex ``/side`` child's ephemeral fork is no longer reachable.
-
-    The fork lives only in the runner process that created it. A side-chat child
-    keeps its birth ``runner_id`` while the parent's changes on resume/relaunch,
-    so a divergence means the fork's owning runner is gone and a follow-up turn
-    would hit a vanished thread. Gated to ``/side`` children (the "Side chat"
-    nickname) so ordinary codex sub-agents are unaffected; a plain reload with
-    the same live runner does not diverge, so a still-live side chat stays
-    sendable.
-    """
-    from omnigent.server.routes._sessions.common import (
-        _CODEX_NATIVE_SUBAGENT_NICKNAME_LABEL_KEY,
-    )
-
-    if (
-        not _is_codex_native_subagent(conv)
-        or conv.parent_conversation_id is None
-        or not conv.runner_id
-        or (conv.labels or {}).get(_CODEX_NATIVE_SUBAGENT_NICKNAME_LABEL_KEY)
-        != _SIDE_CHAT_NICKNAME
-    ):
-        return False
-    parent = await asyncio.to_thread(conv_store.get_conversation, conv.parent_conversation_id)
-    return parent is not None and bool(parent.runner_id) and parent.runner_id != conv.runner_id
-
-
 # The tunnel transport does not enforce httpx timeouts, so the runner status
 # probe below is bounded here. Healthy runners answer from memory (99.85% of
 # production probes finish inside 5 s), and the runner's own launch-config
@@ -11632,11 +9361,7 @@ async def _get_session_snapshot(
         runner_client = get_runner_client()
 
     if refresh_state:
-        _invalidate_runner_backed_snapshot_state(
-            session_id,
-            cancel_inflight=False,
-            drop_model_options=runner_client is not None,
-        )
+        _invalidate_runner_backed_snapshot_state(session_id)
 
     # A server recycle clears this cache while the persisted relay status survives.
     # Prefer it because native injection can finish before an external harness turn,
@@ -11738,14 +9463,12 @@ async def _get_session_snapshot(
     # from this).
     if reported_model := concrete_reported_model(conv.reported_model):
         llm_model = reported_model
-    # Codex model options are also runner-owned: they come from the
-    # session's live Codex app-server ``model/list`` response. Best-effort
-    # and cache-backed so a snapshot poll cannot wedge the
-    # runner while a turn is active.
+    # A configured inference profile owns the session's model picker rows.
     from omnigent.server.routes.sandbox_inference import configured_snapshot, inference_service
 
     inference_configured = configured_snapshot(conv.inference_snapshot)
     inference_error = None
+    model_options: list[dict[str, Any]] | None = None
     if inference_configured and conv.inference_snapshot is not None:
         catalog = (
             await inference_service(request).catalog(conv.inference_snapshot)
@@ -11756,8 +9479,6 @@ async def _get_session_snapshot(
         inference_error = catalog.get("error")
         if not conv.reported_model:
             llm_model = conv.model_override or catalog.get("default_model")
-    else:
-        model_options = await _fetch_model_options(runner_client, session_id, conv)
     # Dynamic override from the forwarder (real Claude Code window).
     # Only present after the first statusLine tick; before that the
     # spec default applies.
@@ -11806,7 +9527,6 @@ async def _get_session_snapshot(
         items,
         status,
         permission_level,
-        side_chat_sealed=await _codex_side_chat_fork_sealed(conv, conv_store),
         background_task_count=_session_background_task_count_cache.get(session_id),
         background_tasks=_session_background_tasks_cache.get(session_id),
         llm_model=llm_model,
@@ -11844,7 +9564,6 @@ __all__ = [
     "_archive_stop",
     "_best_effort_stop",
     "_bind_and_launch_managed_runner",
-    "_build_native_terminal_message_event",
     "_build_session_list_item",
     "_build_session_response",
     "_cancel_pending_archive_stop",
@@ -11855,37 +9574,28 @@ __all__ = [
     "_dispatch_session_event_to_runner",
     "_drive_terminal_resolved_elicitation",
     "_enrich_terminal_status_with_subagent_output",
-    "_ensure_native_terminal_ready",
     "_ensure_runner_relay",
     "_ensure_runner_relay_ready",
     "_ensure_runner_session_initialized",
     "_evaluate_input_policy",
     "_evaluate_tool_call_policy",
-    "_fetch_model_options",
     "_forward_event_to_runner",
-    "_forward_native_subagent_terminal_failure",
-    "_forward_native_terminal_message",
     "_gateway_backed",
     "_get_session_snapshot",
     "_handle_mcp_tools_call",
     "_heal_subagent_runner_binding_via_parent",
     "_hold_native_ask_gate",
-    "_is_native_terminal_session",
     "_kick_managed_relaunch",
     "_kick_managed_wake",
     "_labels_for_viewer",
     "_maybe_relaunch_managed_sandbox",
     "_maybe_wake_stale_resumable_managed_sandbox",
-    "_native_subagent_wrapper_labels",
-    "_native_terminal_runtime",
-    "_persist_external_codex_subagent_start",
     "_persist_external_conversation_item",
     "_persist_external_conversation_items",
     "_persist_external_session_usage",
     "_persist_host_launch_failure_turn",
     "_persist_model_change_note",
     "_persist_native_cumulative_usage",
-    "_persist_native_terminal_failure",
     "_persist_session_event",
     "_persist_user_event_item",
     "_publish_and_wait_for_harness_elicitation",
@@ -11901,7 +9611,6 @@ __all__ = [
     "_schedule_deferred_elicitation_clear",
     "_spawn_archive_stop",
     "_spawn_gateway_backed",
-    "_spawn_native_approval_popup_forward",
     "_wait_for_host_bound_runner_client",
     "_wake_parent_for_blocked_child",
     "configure_subagent_block_notifier",

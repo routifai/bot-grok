@@ -667,6 +667,7 @@ _STREAM_READ_CHUNK_SIZE = 65536
 # inject a CancelledError that bypasses the SIGKILL path.
 _RPC_SESSION_CLOSE_REAP_TIMEOUT_S = 2.0
 
+
 def _pi_version(executable: str) -> tuple[int, int, int] | None:
     """Return the Pi CLI version as ``(major, minor, patch)``, or ``None``.
 

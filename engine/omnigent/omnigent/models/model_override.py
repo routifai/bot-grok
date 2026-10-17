@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 
-from omnigent.harness_aliases import canonicalize_harness, is_native_harness
+from omnigent.harness_aliases import canonicalize_harness
 from omnigent.harness_availability import CODEX_CANONICAL_HARNESSES
 from omnigent.harness_plugins import model_env_keys
 
@@ -53,14 +53,10 @@ def validate_model_override(value: str) -> str:
 
 
 # Single-vendor harnesses only run their own vendor's models; multi-model
-# harnesses (pi) accept any validated id.
-# Reversed native spellings are valid harness ids (NATIVE_HARNESSES)
-# that canonicalize_harness passes through, so list them explicitly —
-# likewise the executor-type spelling ("claude_sdk") that spec_harness()
-# yields when a claude spec declares no config harness.
-_CLAUDE_FAMILY_HARNESSES: frozenset[str] = frozenset(
-    {"claude-native", "native-claude", "claude-sdk", "claude_sdk"}
-)
+# harnesses (pi) accept any validated id. The executor-type spelling
+# ("claude_sdk") that spec_harness() yields when a claude spec declares no
+# config harness is listed too.
+_CLAUDE_FAMILY_HARNESSES: frozenset[str] = frozenset({"claude-sdk", "claude_sdk"})
 # CODEX_CANONICAL_HARNESSES is restricted to the codex-compatible families
 # (see is_codex_compatible_model): the gateway serves codex over the
 # Anthropic-incompatible Responses wire, and codex >= 0.137 dropped the
@@ -230,19 +226,14 @@ def harness_supports_model_override(harness: str | None) -> bool:
     """
     Return whether *harness* has per-session model-override plumbing.
 
-    Native CLIs receive the override as
-    ``--model`` at terminal launch; the SDK harnesses receive it via
-    ``HARNESS_<H>_MODEL`` in the spawn env. Anything else (e.g.
-    unknown harnesses) silently ignores the
+    The SDK harnesses receive the override via ``HARNESS_<H>_MODEL`` in the
+    spawn env. Anything else (e.g. unknown harnesses) silently ignores the
     persisted value, so callers must reject the override up front.
 
-    :param harness: Harness id from a spec, e.g. ``"codex-native"`` or
+    :param harness: Harness id from a spec, e.g. ``"pi"`` or
         ``"claude"``; ``None`` when the harness could not be resolved.
     :returns: ``True`` when the override reaches the harness process.
     """
     if harness is None:
         return False
-    return (
-        is_native_harness(harness)
-        or canonicalize_harness(harness) in _SDK_MODEL_OVERRIDE_HARNESSES
-    )
+    return canonicalize_harness(harness) in _SDK_MODEL_OVERRIDE_HARNESSES

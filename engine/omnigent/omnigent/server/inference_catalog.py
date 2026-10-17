@@ -67,11 +67,9 @@ def _endpoint(value: object) -> str:
 
 def _family(provider: ProviderEntry, harness: str, model: str | None = None) -> str:
     canonical = canonicalize_harness(normalize_inference_harness(harness))
-    if canonical in {"claude-native", "claude-sdk"}:
+    if canonical == "claude-sdk":
         family = "anthropic"
-    elif canonical == "codex-native":
-        family = "openai"
-    elif canonical in {"pi", "pi-native"}:
+    elif canonical == "pi":
         preferred = (
             ("openai", "anthropic")
             if model and "claude" not in model.lower()
@@ -90,9 +88,6 @@ def _wire(provider: ProviderEntry, harness: str, model: str | None = None) -> Mo
     if family == "anthropic":
         return ModelWireAPI.ANTHROPIC_MESSAGES
     protocol = provider.families[family].wire_api
-    canonical = canonicalize_harness(normalize_inference_harness(harness))
-    if canonical == "codex-native" and protocol == "chat":
-        raise _invalid("Codex requires a Responses endpoint; configure wire_api: responses.")
     return ModelWireAPI.OPENAI_CHAT if protocol == "chat" else ModelWireAPI.OPENAI_RESPONSES
 
 

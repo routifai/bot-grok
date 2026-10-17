@@ -177,7 +177,9 @@ def test_header_mode_is_unchanged_next_to_bearer_jwts(key: rsa.RSAPrivateKey) ->
     assert provider.get_user_id(proxied) == "superchat-user@example.com"
     assert provider.get_tenant(proxied) == "space-1"
     # Without the proxy secret the identity header (and its tenant) is ignored.
-    forged = _request({"X-Forwarded-Email": "superchat-user@example.com", "X-Omnigent-Tenant": "x"})
+    forged = _request(
+        {"X-Forwarded-Email": "superchat-user@example.com", "X-Omnigent-Tenant": "x"}
+    )
     assert provider.get_user_id(forged) is None
     assert provider.get_tenant(forged) is None
 

@@ -125,32 +125,17 @@ class HostMaintenanceJanitor:
 
             await sweep_orphaned_harness_processes(tmp_parent=resolved_harness_tmp_parent)
 
-        async def _reconcile_codex_processes() -> object:
-            from omnigent.harnesses.codex_native.process_registry import (
-                reconcile_codex_native_process_registry,
-            )
-
-            return await _run_sync_stage(reconcile_codex_native_process_registry)
-
         async def _reap_terminals() -> object:
             from omnigent.inner.terminal import reap_orphaned_terminals
 
             return await _run_sync_stage(reap_orphaned_terminals)
 
-        async def _reap_native_bridge_dirs() -> object:
-            from omnigent.native.native_bridge_common import reap_orphaned_native_bridge_dirs
-
-            return await _run_sync_stage(reap_orphaned_native_bridge_dirs)
-
         return cls(
             stages=(
                 ("harness_process_orphans", _reap_harness_processes),
-                ("codex_process_registry", _reconcile_codex_processes),
                 ("terminal_orphans", _reap_terminals),
-                ("native_bridge_orphans", _reap_native_bridge_dirs),
             ),
             lock_path=data_dir().resolve() / "locks" / "host-maintenance.lock",
-            stage_skip_reasons={"native_bridge_orphans": {"runner_superseded"}},
         )
 
     def start(self) -> None:

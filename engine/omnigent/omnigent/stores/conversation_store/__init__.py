@@ -15,52 +15,18 @@ from omnigent.entities import (
     NewConversationItem,
     PagedList,
 )
-from omnigent.session_import import IMPORT_PROVENANCE_LABEL_KEYS
 
 if TYPE_CHECKING:
     from omnigent.db.account_authority import AccountAuthority
 
-# Label set on a fork of a session that had a working directory, or a
-# runner-bound native session whose working-directory metadata was lost.
-# Its value is the source session id. Presence marks the (unbound) clone
-# as needing a host + working directory before it can run, so the
-# online-dot reports it offline until bound and the UI opens the directory
-# picker instead of silently dropping the first message. Forks of
-# chat-only sources get no label and resume in-process like a brand-new
-# chat session. Canonical home is the store layer; the server route and
-# the SQLAlchemy store both import it.
+# Label set on a fork of a session that had a working directory. Its value
+# is the source session id. Presence marks the (unbound) clone as needing a
+# host + working directory before it can run, so the online-dot reports it
+# offline until bound and the UI opens the directory picker instead of
+# silently dropping the first message. Forks of chat-only sources get no label
+# and resume in-process like a brand-new chat session. Canonical home is the
+# store layer; the server route and the SQLAlchemy store both import it.
 FORK_SOURCE_LABEL_KEY = "omnigent.fork.source_id"
-
-# One-shot fork directive: the SOURCE session's runtime-native session id
-# (e.g. the source claude-native Claude Code session uuid), stamped on the
-# clone at fork time when the source had one. A native harness launching
-# the (still-unbound) clone uses it to locate the source's local transcript
-# and clone it into the clone's OWN project dir under a freshly assigned
-# uuid (rewriting sessionId/cwd), then launch plain ``--resume <our_uuid>``
-# (see ``omnigent.harnesses.claude_native.main._clone_claude_transcript`` and the
-# fork-resume branch in ``omnigent.runner.app``), so the clone opens with
-# the prior history instead of a blank session. Once the clone captures its
-# OWN native session id (``external_session_id`` set on first launch), this
-# directive is inert — the launch path only consults it while
-# ``external_session_id`` is still NULL. Cleared/ignored thereafter.
-FORK_SOURCE_EXTERNAL_SESSION_LABEL_KEY = "omnigent.fork.source_external_session_id"
-
-# Fork directive: set when the fork binds a NATIVE target harness
-# (claude-native / codex-native) whose history should carry over. A native
-# CLI ignores the Omnigent transcript, so the runner rebuilds the target's
-# on-disk transcript before launch. Two rebuild paths share this directive:
-# when the source was a SAME-FAMILY native session its captured
-# ``external_session_id`` is also stamped (see
-# FORK_SOURCE_EXTERNAL_SESSION_LABEL_KEY) and the runner clones that
-# transcript; otherwise (an SDK or cross-family source) the runner builds
-# the native transcript from the fork's copied Omnigent items
-# (``_ensure_local_claude_resume_transcript`` /
-# ``_ensure_local_codex_resume_rollout`` — the converters consume Omnigent's
-# normalized item shape, so the source harness doesn't matter). Set by the
-# route whenever the target is native. Inert once the clone captures its
-# own native session id (the launch path consults it only while
-# ``external_session_id`` is NULL).
-FORK_CARRY_HISTORY_LABEL_KEY = "omnigent.fork.carry_history"
 
 # Set by an in-place agent switch (``POST /v1/sessions/{id}/switch-agent``):
 # the BUILT-IN agent id the session was switched away from, so the UI can
@@ -69,19 +35,6 @@ FORK_CARRY_HISTORY_LABEL_KEY = "omnigent.fork.carry_history"
 # fresh harness), not a transactional undo. Persisted (not instance-scoped),
 # so it survives across turns and is overwritten by each subsequent switch.
 SWITCH_PREVIOUS_BUILTIN_LABEL_KEY = "omnigent.switch.previous_builtin_id"
-
-# Opt-in DANGEROUS launch directive for a codex-native session: when set to
-# ``"1"`` the runner launches Codex with
-# ``--dangerously-bypass-approvals-and-sandbox`` and puts the app-server
-# threads into the matching no-approval / no-sandbox stance (see
-# ``omnigent.runner.app._codex_native_launch_config`` and
-# ``codex_native_app_server.build_codex_remote_args``). Stored as a plain
-# conversation label (cheap thread metadata, like the fork directives above)
-# so it survives reload without a schema migration. The web UI gates turning
-# this on behind a typed confirmation + a persistent red warning banner; any
-# value other than ``"1"`` (incl. absent) leaves the session in Codex's
-# normal approval/sandbox stance.
-CODEX_NATIVE_BYPASS_SANDBOX_LABEL_KEY = "omnigent.codex_native.bypass_sandbox"
 
 # Reserved label key that stores a session's sidebar "project" membership
 # (implicit collections — a project exists while ≥1 session carries this key).
@@ -192,38 +145,18 @@ def pinned_label_key(user_id: str | None) -> str:
 ARCHIVED_AT_LABEL_KEY = "omnigent.archived_at"
 
 
-# Labels that must NOT cross into a new session context — deliberately
-# dropped both when forking (not copied to the clone) and on an in-place
-# agent switch (deleted from the switched session). Two distinct reasons
-# put a key here:
-#
-#   * Runtime state bound to ONE running instance — the native bridge-id
-#     labels would route the new context's terminal + web injection to the
-#     SOURCE's claude/codex bridge (whose active-session marker isn't the
-#     clone → "session no longer active"); the context-size metrics would
-#     display the source's last usage. The bridge-id literals mirror the
-#     harness modules' ``*_BRIDGE_ID_LABEL_KEY`` constants; a store test
-#     cross-checks them so a rename in those modules fails loudly here.
-#
-#   * Per-context safety opt-in — the DANGEROUS codex full-bypass directive
-#     (:data:`CODEX_NATIVE_BYPASS_SANDBOX_LABEL_KEY`). Letting it ride into a
-#     fork (a new session + workspace) or survive an agent switch would
-#     silently re-arm ``--dangerously-bypass-approvals-and-sandbox`` with no
-#     typed re-confirmation and no banner, violating the "impossible to
-#     enable accidentally" contract (#657). Dropping it forces each session
-#     that runs bypass to make its own explicit opt-in.
+# Labels bound to ONE running instance that must NOT cross into a new session
+# context — dropped both when forking (not copied to the clone) and on an
+# in-place agent switch (deleted from the switched session): the context-size
+# metrics would otherwise display the source's last usage.
 _INSTANCE_SCOPED_LABEL_KEYS = frozenset(
     {
-        "omnigent.claude_native.bridge_id",
-        "omnigent.codex_native.bridge_id",
         "omnigent.last_context_tokens",
         "omnigent.last_context_window",
-        CODEX_NATIVE_BYPASS_SANDBOX_LABEL_KEY,
     }
 )
 
-# Source identity belongs only to the original imported session, and a fork is
-# born unarchived so it must not inherit its parent's archive time. The sandbox
+# A fork is born unarchived so it must not inherit its parent's archive time. The sandbox
 # repository records what THIS session's sandbox was built from and a relaunch
 # re-clones from it, so a fork that asked for an empty sandbox would otherwise
 # have the source's repo re-cloned into it on the first relaunch; the fork's own
@@ -243,12 +176,7 @@ _SANDBOX_REPO_LABEL_KEY = "omnigent.sandbox.repo"
 # ``omnigent.superchat.muse.MUSE_LABEL_KEY`` / ``MUSE_KEY_LABEL_KEY``.
 _MUSE_LABEL_KEYS = frozenset({"omnigent.superchat.muse", "omnigent.superchat.muse.key"})
 _FORK_ONLY_DROPPED_LABEL_KEYS = (
-    IMPORT_PROVENANCE_LABEL_KEYS
-    | {
-        ARCHIVED_AT_LABEL_KEY,
-        _SANDBOX_REPO_LABEL_KEY,
-    }
-    | _MUSE_LABEL_KEYS
+    frozenset({ARCHIVED_AT_LABEL_KEY, _SANDBOX_REPO_LABEL_KEY}) | _MUSE_LABEL_KEYS
 )
 
 
@@ -287,12 +215,6 @@ class SessionConnectivity:
         dot off while ``runner_id``/``host_id`` are still ``None`` so
         the UI prompts for a host + directory before the clone can run,
         rather than treating it as an in-process session.
-    :param imported: ``True`` when this session was imported from a local
-        harness transcript (the ``omnigent.import.source`` label is set).
-        Like ``needs_workspace``, forces the online dot off while unbound:
-        an imported transcript has no live executor anywhere, so it must
-        launch a runner on a host before it can run — reporting it offline
-        routes the first message into the resume picker.
     :param runner_last_seen: Epoch seconds the bound runner's tunnel was
         last observed alive, written by the replica holding the tunnel.
         ``None`` when never observed (or cleared on graceful disconnect).
@@ -304,7 +226,6 @@ class SessionConnectivity:
     runner_id: str | None
     host_id: str | None
     needs_workspace: bool
-    imported: bool = False
     runner_last_seen: int | None = None
 
 
@@ -1288,14 +1209,6 @@ class ConversationStore(ABC):
         """
         ...
 
-    def set_session_todos(
-        self,
-        conversation_id: str,
-        todos: list[dict[str, Any]],
-    ) -> bool:
-        """Persist the native Plan snapshot; empty clears, missing metadata returns false."""
-        raise NotImplementedError
-
     @abstractmethod
     def set_conversation_project(
         self,
@@ -1885,10 +1798,7 @@ class ConversationStore(ABC):
         override_reasoning_effort_set: bool = False,
         override_terminal_launch_args: list[str] | None = None,
         override_terminal_launch_args_set: bool = False,
-        dropped_label_keys: frozenset[str] = frozenset(),
         extra_labels: dict[str, str] | None = None,
-        carry_history_into_native: bool = False,
-        resume_source_native_session: bool = True,
         presentation_labels: dict[str, str] | None = None,
         up_to_response_id: str | None = None,
         up_to_item_id: str | None = None,
@@ -1954,35 +1864,14 @@ class ConversationStore(ABC):
             — then it supersedes the ``copy_terminal_launch_args`` copy.
         :param override_terminal_launch_args_set: Whether the caller chose
             explicit launch args.
-        :param dropped_label_keys: Source labels to NOT copy onto the fork,
-            beyond the always-dropped instance-scoped set (e.g. the
-            permission-mode / codex-bypass label keys when the dialog picks
-            explicit launch args, so a stale copied label can't shadow the
-            freshly chosen mode).
         :param extra_labels: Labels stamped on the fork AFTER copy/drop, so a
-            deliberate opt-in beats the always-drop rule — e.g. the fork
-            dialog re-arming the DANGEROUS ``codex_native.bypass_sandbox``
-            label (the only path that sets it; the source's is always dropped).
-        :param carry_history_into_native: When ``True``, stamp
-            :data:`FORK_CARRY_HISTORY_LABEL_KEY` on the fork so a native
-            target harness rebuilds its transcript (clone the source's
-            native transcript, or build from the copied Omnigent items) instead
-            of starting fresh. Set by the route only for native targets whose
-            harness can replay fork history.
-        :param resume_source_native_session: When ``True`` (default), a
-            full fork of a source with a native session stamps
-            :data:`FORK_SOURCE_EXTERNAL_SESSION_LABEL_KEY` so the runner
-            clones the source's local native transcript. ``False`` when the
-            fork switches to an agent in a DIFFERENT provider family: the
-            source's native transcript is the wrong format for the target
-            harness, so the directive is skipped and the runner builds the
-            native transcript from the copied Omnigent items instead.
+            deliberate opt-in beats the always-drop rule (e.g. the side-chat
+            label).
         :param presentation_labels: When not ``None``, replace the source's
             harness-presentation labels (``omnigent.ui`` /
             ``omnigent.wrapper``) on the clone with these. Used when the
             fork switches agents so the clone's UI mode matches the TARGET
-            harness: a native target supplies ``{ui: terminal, wrapper:
-            ...}``; an SDK target supplies ``{}`` (drop them → chat mode).
+            harness.
             ``None`` (default, same-agent fork) keeps the copied labels.
         :param up_to_item_id: When set, copy only the items up to and including this item (by
             position, so later items of the same turn, errors and notices are never copied) and
@@ -2029,7 +1918,6 @@ class ConversationStore(ABC):
         new_agent_bundle_location: str,
         new_agent_description: str | None,
         copy_model_settings: bool,
-        carry_history_into_native: bool,
         presentation_labels: dict[str, str],
         previous_builtin_id: str | None,
     ) -> Conversation:
@@ -2069,11 +1957,6 @@ class ConversationStore(ABC):
             switch stays in the same provider family). When ``False``,
             both are reset to ``None`` so the new agent's defaults
             apply (a cross-family switch — a model id is provider-bound).
-        :param carry_history_into_native: When ``True``, stamp
-            :data:`FORK_CARRY_HISTORY_LABEL_KEY` so a native target
-            rebuilds its transcript from this session's own AP items on
-            the next turn; when ``False``, that label is removed. Set by
-            the route only when the target is native AND same-family.
         :param presentation_labels: Replace the session's
             ``omnigent.ui`` / ``omnigent.wrapper`` labels with these so
             the UI mode matches the TARGET harness (native →

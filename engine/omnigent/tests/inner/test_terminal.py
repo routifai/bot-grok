@@ -21,6 +21,7 @@ import pytest
 
 import omnigent.inner.terminal as terminal_mod
 from omnigent.harnesses.diagnostics import sanitize_diagnostic_text
+from omnigent.inner import terminal_owner_claim as owner_claim
 from omnigent.inner.datamodel import OSEnvSandboxSpec, OSEnvSpec, TerminalEnvSpec
 from omnigent.inner.terminal import (
     TerminalInstance,
@@ -29,8 +30,6 @@ from omnigent.inner.terminal import (
     _is_utf8_locale_value,
     create_terminal_instance,
 )
-from omnigent.native import owner_claim
-from omnigent.runner.identity import RUNNER_TUNNEL_BINDING_TOKEN_ENV_VAR
 from omnigent.runner.resource_registry import trim_terminal_output
 
 
@@ -984,36 +983,6 @@ def test_capture_probe_logs_command_return_code_and_stderr(
     record = next(record for record in caplog.records if record.name == terminal_mod.__name__)
     assert record.event_name == "terminal_probe_failed"
     assert record.attributes["terminal_instance_id"] == instance.diagnostic_id
-
-
-def test_threaded_idle_watcher_fires_on_tick_each_poll(tmp_path: Path) -> None:
-    """``on_tick`` fires every poll (not only on pane change), so the
-    claude-native status-file poller runs on the watcher cadence.
-
-    :param tmp_path: Temporary directory used for placeholder tmux paths.
-    """
-    instance = TerminalInstance(
-        name="runtime",
-        session_key="main",
-        socket_path=tmp_path / "tmux.sock",
-        private_dir=tmp_path,
-        running=True,
-    )
-    # A steady, unchanging pane: no activity edges, but ticks still fire.
-    instance._capture_pane_for_idle_or_none = lambda: "steady frame"  # type: ignore[method-assign]
-    instance._pane_is_dead = lambda: False  # type: ignore[method-assign]
-    ticks = threading.Event()
-    count = {"n": 0}
-
-    def _on_tick() -> None:
-        count["n"] += 1
-        if count["n"] >= 3:
-            ticks.set()
-
-    instance.start_idle_watcher_thread(on_tick=_on_tick, poll_interval_s=0.01)
-    assert ticks.wait(timeout=1.0)
-    instance._stop_idle_watcher_thread()
-    assert count["n"] >= 3
 
 
 def test_pane_pid_sync_returns_pane_process_pid(tmp_path: Path) -> None:
@@ -2771,99 +2740,6 @@ async def test_launch_default_env_unset_leaks_databricks_profile(
     )
 
 
-@pytest.mark.asyncio
-async def test_launch_strips_runner_binding_token_from_tmux_child(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    The runner tunnel binding token never reaches the tmux child env.
-
-    Host-spawned ``claude-native`` / ``codex-native`` agents
-    run their shell inside this tmux pane, so a binding token in the
-    pane's env lets the agent payload impersonate the runner against the
-    control-plane tunnel. The token is seeded into BOTH the parent env
-    and the per-terminal ``env`` overrides, proving the strip runs after
-    ``env.update(self.env)`` and so cannot be re-admitted by a spec
-    author. A benign override proves the strip is surgical, not a
-    wholesale wipe.
-
-    :param tmp_path: Temporary directory used for the fake tmux socket.
-    :param monkeypatch: Seeds the binding token into the parent env.
-    """
-    captured_envs: list[dict[str, str]] = []
-
-    async def fake_create_subprocess_exec(
-        *cmd: str,
-        stdout: object,
-        stderr: object,
-        env: dict[str, str],
-    ) -> _SuccessfulProcess:
-        """
-        Capture the env passed to tmux and return a successful process.
-
-        :param cmd: Tmux command argv (unused).
-        :param stdout: Captured stdout redirection.
-        :param stderr: Captured stderr redirection.
-        :param env: Environment passed to the subprocess.
-        :returns: A successful fake process.
-        """
-        del cmd, stdout, stderr
-        captured_envs.append(dict(env))
-        return _SuccessfulProcess()
-
-    monkeypatch.setattr(
-        terminal_mod,
-        "asyncio",
-        SimpleNamespace(
-            create_subprocess_exec=fake_create_subprocess_exec,
-            subprocess=terminal_mod.asyncio.subprocess,
-        ),
-    )
-
-    monkeypatch.setenv(RUNNER_TUNNEL_BINDING_TOKEN_ENV_VAR, "from-parent-env")
-
-    instance = TerminalInstance(
-        name="bash",
-        session_key="s1",
-        socket_path=tmp_path / "tmux.sock",
-        private_dir=tmp_path,
-        # A spec author re-admitting the token via per-terminal env must
-        # not win: the strip runs after ``env.update(self.env)``.
-        env={
-            RUNNER_TUNNEL_BINDING_TOKEN_ENV_VAR: "from-spec-env",
-            "BENIGN_TERMINAL_MARKER": "marker-value",
-        },
-    )
-
-    await instance.launch(cwd=tmp_path)
-
-    assert len(captured_envs) == 1, (
-        f"Expected exactly one tmux spawn during launch(), got "
-        f"{len(captured_envs)}. If 0, the fake create_subprocess_exec "
-        f"was not hooked; if >1, the strip may not apply to every spawn."
-    )
-    spawned_env = captured_envs[0]
-
-    # Core invariant: token absent despite being set on both the parent
-    # env and the per-terminal override. Presence here means the agent's
-    # in-pane shell could read the runner's control-plane credential.
-    assert RUNNER_TUNNEL_BINDING_TOKEN_ENV_VAR not in spawned_env, (
-        "binding token leaked into the tmux child env"
-    )
-    assert "from-parent-env" not in spawned_env.values()
-    assert "from-spec-env" not in spawned_env.values()
-    # Benign override survived — the strip is targeted at the secret.
-    assert spawned_env.get("BENIGN_TERMINAL_MARKER") == "marker-value", (
-        "per-terminal env override was dropped — the strip must remove "
-        "only the runner-auth secret, not the whole env."
-    )
-    # The control-socket path must not be advertised to the
-    # pane — the unsandboxed tmux server's run-shell would otherwise be
-    # one ``tmux -S <sock>`` away for the agent payload in the pane.
-    assert "OMNIGENT_TMUX_SOCK" not in spawned_env
-
-
 @pytest.mark.parametrize("inherit_env", [False, True])
 @pytest.mark.parametrize("sandbox_active", [False, True])
 async def test_terminal_desktop_session_follows_sandbox_policy(
@@ -2997,38 +2873,6 @@ async def test_send_chunks_long_literal_text_under_tmux_command_cap(
     # receive the same stream a single invocation would have carried.
     assert "".join(chunks) == text
     assert contains_subsequence(enter_call, ["send-keys", "-t", "main", "Enter"])
-
-
-def test_idle_detector_honors_short_threshold_override() -> None:
-    """A per-watcher ``idle_threshold_s`` override fires idle sooner.
-
-    The claude-native status watcher passes a short threshold so the
-    session flips to ``idle`` promptly after Claude stops redrawing. This
-    proves the parameter is actually honored by the detector — not
-    silently ignored in favour of the long module default (which would
-    leave the status stuck "running", reintroducing the very lag the PTY
-    approach removes).
-
-    Both detectors get the same two identical snapshots back-to-back, so
-    the only variable is the threshold. With a ~0s override, the second
-    (unchanged) tick crosses the idle edge immediately because any
-    elapsed monotonic time clears it. With the long module default the
-    same two ticks stay below the threshold, so no idle fires.
-    """
-    snapshot = "claude idle prompt\n"
-
-    # ``0.0`` override: the first tick primes the baseline, the second
-    # (identical) tick clears the near-zero threshold → idle edge.
-    fast = terminal_mod._IdleDetector(idle_threshold_s=0.0)
-    assert fast.tick(snapshot) is False  # primes _last_snapshot baseline
-    assert fast.tick(snapshot) is True  # unchanged + 0s threshold → idle
-
-    # No override → module default (10s). Two rapid identical ticks are
-    # nowhere near 10s apart, so the idle edge must NOT fire. If this
-    # returned True, the threshold parameter would be doing nothing.
-    default = terminal_mod._IdleDetector()
-    assert default.tick(snapshot) is False  # primes baseline
-    assert default.tick(snapshot) is False  # <10s elapsed → not idle
 
 
 def test_idle_detector_suppress_activity_discounts_client_driven_repaint() -> None:

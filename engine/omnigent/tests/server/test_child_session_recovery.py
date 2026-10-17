@@ -137,22 +137,6 @@ async def test_do_not_restore_excluded_children(
 
 
 @pytest.mark.asyncio
-async def test_mirror_rebinds_without_independent_terminal_or_success_status(
-    recovery_tree: Any,
-) -> None:
-    store, parent, child, relay, recovered, initializer = recovery_tree
-    row = child()
-    store.set_labels(row.id, {"omnigent.wrapper": "codex-native-ui-subagent"})
-    async with httpx.AsyncClient(
-        transport=httpx.MockTransport(lambda _: pytest.fail("mirror initialized"))
-    ) as client:
-        await restore_active_children(parent, client, store, initializer)
-    assert store.get_conversation(row.id).runner_id == "new"
-    relay.assert_called_once()
-    recovered.assert_not_awaited()
-
-
-@pytest.mark.asyncio
 async def test_failed_child_init_does_not_recover_its_descendants_or_block_siblings(
     recovery_tree: Any,
 ) -> None:

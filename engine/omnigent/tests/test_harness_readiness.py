@@ -7,27 +7,25 @@ import pytest
 from omnigent.onboarding import harness_readiness as hr
 
 
-@pytest.mark.parametrize("harness", ["pi", "pi-native"])
-def test_pi_harnesses_gate_on_pi_cli(harness: str, monkeypatch: pytest.MonkeyPatch) -> None:
-    """``pi`` and ``pi-native`` are both gated on the ``pi`` CLI being installed.
+def test_pi_harness_gates_on_pi_cli(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``pi`` is gated on the ``pi`` CLI being installed.
 
-    Regression guard: ``pi-native`` has no ``_HARNESS_FAMILY`` entry (pi uses
-    the ``PI_SURFACE`` sentinel), so it used to hit the unknown-harness
-    fail-open branch and report configured even when ``pi`` was missing — the
-    host pre-spawn check then let a doomed launch through. Both spellings must
-    track ``harness_cli_installed``.
+    Regression guard: pi has no ``_HARNESS_FAMILY`` entry (it uses the
+    ``PI_SURFACE`` sentinel), so it must not hit the unknown-harness fail-open
+    branch and report configured when ``pi`` is missing — the host pre-spawn
+    check would then let a doomed launch through.
     """
     monkeypatch.setattr(hr, "harness_cli_installed", lambda _key, **_kw: False)
-    assert hr.harness_is_configured(harness) is False
+    assert hr.harness_is_configured("pi") is False
 
     monkeypatch.setattr(hr, "harness_cli_installed", lambda _key, **_kw: True)
-    assert hr.harness_is_configured(harness) is True
+    assert hr.harness_is_configured("pi") is True
 
 
 def test_sdk_and_unknown_harnesses_still_fail_open(monkeypatch: pytest.MonkeyPatch) -> None:
     """SDK and unknown harnesses are never gated, even with no CLI installed.
 
-    Pins that the pi-native fix narrowed only the pi surface — SDK harnesses
+    Pins that the pi gate narrowed only the pi surface — SDK harnesses
     (runtime/ambient credentials) and unknown harnesses must keep failing open
     so a working launch is never blocked.
     """
@@ -36,11 +34,11 @@ def test_sdk_and_unknown_harnesses_still_fail_open(monkeypatch: pytest.MonkeyPat
     assert hr.harness_is_configured("totally-unknown-harness") is True
 
 
-def test_configured_harness_map_exposes_pi_native(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The readiness map carries a ``pi-native`` key for the web picker lookup.
+def test_configured_harness_map_exposes_pi(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The readiness map carries a ``pi`` key for the web picker lookup.
 
     The agent picker warns "needs setup" by looking up the agent's harness
-    (``pi-native``) in this map; without the key the Pi row could never warn.
+    (``pi``) in this map; without the key the Pi row could never warn.
     A missing binary now reports the richer ``"binary-missing"`` reason (Pi
     gained the credential axis) rather than a bare ``False``.
     """
@@ -49,7 +47,6 @@ def test_configured_harness_map_exposes_pi_native(monkeypatch: pytest.MonkeyPatc
     # ``"version-too-low"`` instead.
     monkeypatch.setattr(hr, "resolve_cli_binary", lambda _binary: None)
     cmap = hr.configured_harness_map()
-    assert cmap.get("pi-native") == "binary-missing"
     assert cmap.get("pi") == "binary-missing"
 
 
@@ -66,7 +63,6 @@ def test_configured_harness_map_pi_installed_no_provider_needs_auth(
     monkeypatch.setattr(hr, "_family_provider_configured", lambda _h: False)
     cmap = hr.configured_harness_map()
     assert cmap.get("pi") == "needs-auth"
-    assert cmap.get("pi-native") == "needs-auth"
 
 
 def test_configured_harness_map_pi_installed_with_provider_ready(
@@ -77,4 +73,3 @@ def test_configured_harness_map_pi_installed_with_provider_ready(
     monkeypatch.setattr(hr, "_family_provider_configured", lambda _h: True)
     cmap = hr.configured_harness_map()
     assert cmap.get("pi") is True
-    assert cmap.get("pi-native") is True

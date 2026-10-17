@@ -15,11 +15,6 @@ from typing import Any
 import httpx
 import pytest
 
-from omnigent.runner.tool_dispatch import (
-    _granted_tool_names,
-    _ungranted_tool_reason,
-    build_native_relay_tool_schemas,
-)
 from omnigent.spec.types import AgentSpec
 from omnigent.superchat.feature import HandlerCtx
 from omnigent.superchat.memory.handlers import handle_memory_tool
@@ -295,80 +290,7 @@ async def test_non_2xx_response_surfaces_as_a_clean_error() -> None:
 # ── Grant gate: advertised only where actually callable ──────────────────────
 
 
-@pytest.mark.parametrize("name", _MEMORY_TOOL_NAMES)
-def test_granted_tool_names_excludes_memory_tools_without_rollover(name: str) -> None:
-    spec = _make_spec()
-    assert name not in _granted_tool_names(spec, "claude-native")
-
-
-@pytest.mark.parametrize("name", _MEMORY_TOOL_NAMES)
-def test_granted_tool_names_includes_memory_tools_for_rollover(name: str) -> None:
-    spec = _make_spec()
-    granted = _granted_tool_names(
-        spec, "claude-native", labels={"omnigent.context.mode": "rollover"}
-    )
-    assert name in granted
-
-
-@pytest.mark.parametrize("name", _MEMORY_TOOL_NAMES)
-def test_ungranted_tool_reason_blocks_memory_tools_without_rollover_label(name: str) -> None:
-    spec = _make_spec()
-    assert _ungranted_tool_reason(name, spec, "claude-native") is not None
-
-
-@pytest.mark.parametrize("name", _MEMORY_TOOL_NAMES)
-def test_ungranted_tool_reason_allows_memory_tools_with_rollover_label(name: str) -> None:
-    spec = _make_spec()
-    reason = _ungranted_tool_reason(
-        name, spec, "claude-native", labels={"omnigent.context.mode": "rollover"}
-    )
-    assert reason is None
-
-
 # ── Native relay advertisement ────────────────────────────────────────────────
-
-
-def test_relay_schemas_omit_memory_tools_without_rollover() -> None:
-    spec = _make_spec()
-    names = {s["name"] for s in build_native_relay_tool_schemas(spec)}
-    for name in _MEMORY_TOOL_NAMES:
-        assert name not in names
-
-
-def test_relay_schemas_include_memory_tools_for_rollover() -> None:
-    spec = _make_spec()
-    names = {
-        s["name"]
-        for s in build_native_relay_tool_schemas(
-            spec, labels={"omnigent.context.mode": "rollover"}
-        )
-    }
-    for name in _MEMORY_TOOL_NAMES:
-        assert name in names
-
-
-def test_relay_schemas_no_spec_fallback_respects_rollover_gate() -> None:
-    """The spec-less fallback surface still gates memory_* on the label."""
-    names_off = {s["name"] for s in build_native_relay_tool_schemas(None)}
-    names_on = {
-        s["name"]
-        for s in build_native_relay_tool_schemas(
-            None, labels={"omnigent.context.mode": "rollover"}
-        )
-    }
-    for name in _MEMORY_TOOL_NAMES:
-        assert name not in names_off
-        assert name in names_on
-
-
-@pytest.mark.parametrize("name", _MEMORY_TOOL_NAMES)
-def test_relay_lists_memory_tools_as_always_loaded(name: str) -> None:
-    """Claude Code keeps MCP tools behind tool search unless the server marks
-    one always-loaded; memory must be checked before answering, every turn."""
-    from omnigent.harnesses.claude_native.bridge import _mcp_tool_schema_from_spec
-
-    schema = _mcp_tool_schema_from_spec({"name": name, "parameters": {}})
-    assert schema["_meta"] == {"anthropic/alwaysLoad": True}
 
 
 @pytest.mark.asyncio

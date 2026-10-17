@@ -750,7 +750,6 @@ def _make_parent_runner_dispatch(
             file_store=deps.file_store,
             artifact_store=deps.artifact_store,
             created_by=owner,
-            runner_router=deps.runner_router,
         )
 
     return _dispatch

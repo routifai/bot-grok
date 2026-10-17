@@ -35,12 +35,11 @@ from fastapi import FastAPI
 
 from omnigent.runtime import get_caps, session_stream
 from omnigent.runtime.caps import RuntimeCaps
-from omnigent.server.routes import sessions as sessions_routes
 from omnigent.spec.types import FunctionPolicySpec, FunctionRef
 from omnigent.stores.conversation_store.sqlalchemy_store import (
     SqlAlchemyConversationStore,
 )
-from tests.server.helpers import CapturingRunnerClient, create_test_agent
+from tests.server.helpers import create_test_agent
 
 pytestmark = pytest.mark.asyncio
 
@@ -852,64 +851,6 @@ async def test_tool_call_ask_returns_deny_on_decline(
     assert resp.json()["result"] == "POLICY_ACTION_DENY"
 
 
-async def test_tool_call_ask_forwards_popup_event_to_runner(
-    client: httpx.AsyncClient,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    A parked TOOL_CALL ASK forwards a ``cost_approval_popup`` to the runner.
-
-    This closes the gap where native tool-policy ASKs moved server-side
-    and stopped showing in the TUI. The gate must now also forward a popup
-    event so the native terminal can answer it — carrying the SAME
-    ``elicitation_id`` it parks on, so resolving via the popup's endpoint
-    releases the gate. Without the forward, native-terminal users would see
-    nothing and the gate would hold until the web card or timeout.
-    """
-    _patch_default_policies(monkeypatch, f"{__name__}._ask_for_bash")
-    agent = await create_test_agent(client)
-    session_id = await _create_session(client, agent["id"])
-
-    # Capture the runner forward. Installed after session creation (which
-    # itself touches the runner snapshot path); the forward falls back to
-    # the global runner client when no runner is bound for the session.
-    capturing = CapturingRunnerClient()
-    monkeypatch.setattr("omnigent.runtime._globals._runner_client", capturing)
-
-    drain = asyncio.create_task(_drain_elicitation_id(session_id))
-    await asyncio.sleep(0.05)
-    evaluate = asyncio.create_task(
-        client.post(
-            f"/v1/sessions/{session_id}/policies/evaluate",
-            json=_tool_call_request("Bash"),
-        )
-    )
-    elicitation_id = await drain
-
-    # The popup forward fires as a task when the gate parks; wait on the
-    # capturing client's event rather than polling a sleep.
-    await asyncio.wait_for(capturing.popup_seen.wait(), timeout=5.0)
-    popups = [e for e in capturing.posted if e["json"].get("type") == "cost_approval_popup"]
-    assert popups, "parked tool-policy ASK forwarded no popup — native terminal sees nothing"
-    popup = popups[0]
-    assert popup["url"] == f"/v1/sessions/{session_id}/events"
-    # Same id the gate parked on, so the popup's resolve releases this gate.
-    assert popup["json"]["elicitation_id"] == elicitation_id
-    # Carries the policy's reason (the engine prefixes the deciding policy
-    # name) so the popup is meaningful.
-    assert "Approve running Bash?" in popup["json"]["message"]
-
-    # Resolve via the same endpoint the popup uses → the gate collapses to ALLOW.
-    verdict = await client.post(
-        f"/v1/sessions/{session_id}/elicitations/{elicitation_id}/resolve",
-        json={"action": "accept"},
-    )
-    assert verdict.status_code == 202, verdict.text
-    resp = await evaluate
-    assert resp.status_code == 200, resp.text
-    assert resp.json()["result"] == "POLICY_ACTION_ALLOW"
-
-
 # ── Concurrent ASK-gate serialization (parallel tool calls) ──
 
 
@@ -940,159 +881,6 @@ def test_native_ask_gate_lock_keys_by_session_and_policy() -> None:
         _native_ask_gate_lock("19b2d8e5c4e1733f25034907cb7d05ed", "session_cost_guard")
         is not lock_a
     )
-
-
-async def test_concurrent_cost_asks_serialize_and_collapse_sibling(
-    client: httpx.AsyncClient,
-    db_uri: str,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    Parallel native tool calls that trip one cost checkpoint prompt once.
-
-    Reproduces the reported bug: a claude/codex-native agent fires several
-    tool calls at once; each spawns a ``PreToolUse`` hook that lands here
-    concurrently, and every one independently crosses the same cost
-    warning threshold. Without the per-(session, policy) lock, each would
-    publish its own approval gate and the human would be asked N times for
-    one decision.
-
-    The gate is stubbed to stand in for the human-approval wait (the real
-    gate's elicitation parking is covered by the accept/decline tests
-    above). The stub holds the *first* entrant — and therefore the real
-    lock the route handler acquires around it — until the test releases
-    it, then records the ASKing policy's checkpoint exactly as the real
-    gate does on accept. The assertions prove (1) a second concurrent ask
-    can NOT enter the gate while the first is pending (the lock serializes
-    them) and (2) once the first records approval, the sibling
-    re-evaluates to ALLOW and never prompts. Delete the
-    ``async with _native_ask_gate_lock(...)`` wrapper (or the re-evaluate
-    inside it) and this test fails: ``entries`` reaches 2 and the second
-    request would prompt again.
-    """
-    agent = await create_test_agent(
-        client,
-        guardrails={
-            "policies": {
-                "session_cost_guard": {
-                    "type": "function",
-                    "function": {
-                        "path": "omnigent.policies.builtins.cost.cost_budget",
-                        "arguments": {
-                            # Hard cap far above the seeded cost so only the
-                            # soft warning (ASK) fires, never a DENY.
-                            "max_cost_usd": 1000.0,
-                            "ask_thresholds_usd": [0.10],
-                        },
-                    },
-                }
-            }
-        },
-    )
-    session_id = await _create_session(client, agent["id"])
-
-    # Seed cumulative cost just past the $0.10 warning checkpoint (the
-    # engine reads total_cost_usd from the conversation's session_usage).
-    store = SqlAlchemyConversationStore(db_uri)
-    store.set_session_usage(session_id, {"total_cost_usd": 0.13})
-
-    entries = 0
-    first_in_gate = asyncio.Event()
-    second_in_gate = asyncio.Event()
-    release_first = asyncio.Event()
-
-    async def _controllable_gate(
-        request: Any,
-        *,
-        session_id: str,
-        phase: Any,
-        data: dict[str, Any],
-        engine: Any,
-        result: Any,
-        conversation_store: Any,
-        elicitation_id: str | None = None,
-    ) -> bool:
-        """
-        Stand-in for ``_hold_native_ask_gate`` that simulates accept.
-
-        The first entrant blocks (holding the route handler's lock) until
-        the test releases it; a second entrant trips ``second_in_gate`` so
-        the test can detect a serialization failure. Every entrant then
-        records the ASKing policy's ``state_updates`` exactly as the real
-        gate does on accept (POLICIES.md §7.2) and returns ``True``.
-
-        :param request: FastAPI request (unused by the stub).
-        :param session_id: Session id (unused by the stub).
-        :param phase: Enforcement phase (unused by the stub).
-        :param data: Proto event data (unused by the stub).
-        :param engine: The policy engine — used to persist the approved
-            checkpoint so a sibling's rebuild observes it.
-        :param result: The composed ASK result carrying ``state_updates``.
-        :param conversation_store: Conversation store (unused by the stub).
-        :returns: ``True`` (accept) for every entrant.
-        """
-        nonlocal entries
-        entries += 1
-        if entries == 1:
-            first_in_gate.set()
-            await release_first.wait()
-        elif entries == 2:
-            second_in_gate.set()
-        if result.state_updates:
-            engine.apply_state_updates(result.state_updates)
-        return True
-
-    monkeypatch.setattr(sessions_routes, "_hold_native_ask_gate", _controllable_gate)
-
-    first = asyncio.create_task(
-        client.post(
-            f"/v1/sessions/{session_id}/policies/evaluate",
-            json=_tool_call_request("Bash"),
-        )
-    )
-    # First request reaches the gate and is now holding the lock.
-    await asyncio.wait_for(first_in_gate.wait(), timeout=5.0)
-
-    second = asyncio.create_task(
-        client.post(
-            f"/v1/sessions/{session_id}/policies/evaluate",
-            json=_tool_call_request("Bash"),
-        )
-    )
-    # The second request crosses the same checkpoint, so without the lock
-    # it would enter the gate immediately. With the lock it blocks on lock
-    # acquisition and cannot reach the gate while the first holds it. A
-    # generous bounded wait: in the broken (no-lock) world the second entry
-    # fires in milliseconds; in the correct world it can never fire here.
-    second_entered = False
-    try:
-        await asyncio.wait_for(second_in_gate.wait(), timeout=1.0)
-        second_entered = True
-    except asyncio.TimeoutError:
-        second_entered = False
-    assert not second_entered, (
-        "A second concurrent cost ask entered the gate while the first was "
-        "still pending. The per-(session, policy) lock failed to serialize "
-        "them, so the human would be prompted twice for one $0.10 checkpoint."
-    )
-
-    # Release the first ask: it records the checkpoint and returns ALLOW.
-    release_first.set()
-    first_resp = await asyncio.wait_for(first, timeout=5.0)
-    second_resp = await asyncio.wait_for(second, timeout=5.0)
-
-    # 1 = the single prompt the human should ever see. If 2, the sibling
-    # re-evaluated to ASK instead of ALLOW (the recorded checkpoint was not
-    # observed) or the lock did not serialize the two requests.
-    assert entries == 1, (
-        f"Expected exactly one ASK gate entry for two concurrent tool calls "
-        f"crossing the same checkpoint, got {entries}."
-    )
-    # First ask was accepted → ALLOW.
-    assert first_resp.json()["result"] == "POLICY_ACTION_ALLOW", first_resp.text
-    # Sibling re-evaluated under the lock against the recorded checkpoint →
-    # ALLOW with no second prompt.
-    assert second_resp.json()["result"] == "POLICY_ACTION_ALLOW", second_resp.text
 
 
 # ── LLM_REQUEST / LLM_RESPONSE phase tests ───────────────────
@@ -1355,53 +1143,6 @@ async def test_policy_evaluate_rejects_malformed_event_shapes(
         if code != "invalid_input":
             accepted.append(f"{why}: 400 but code={code!r}")
     assert not accepted, "malformed payloads accepted:\n" + "\n".join(accepted)
-
-
-@pytest.mark.asyncio
-async def test_policy_evaluate_gates_every_first_party_tool_result_shape(
-    client: httpx.AsyncClient,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    The first-party tool-result shape is accepted AND gated.
-
-    Asserting a 200 would not be enough: the guard could accept the shape
-    while the engine still saw no tool name, leaving tool-scoped policies
-    skipped. A tool-scoped DENY is asserted instead, so the resolved name has
-    to reach the container the engine reads.
-    """
-    deny_policy = FunctionPolicySpec(
-        name="admin__deny_bash_result",
-        on=None,
-        function=FunctionRef(path=f"{__name__}._deny_bash_tool_result"),
-    )
-    original_caps = get_caps()
-    monkeypatch.setattr(
-        "omnigent.server.routes.sessions.get_caps",
-        lambda: RuntimeCaps(
-            execution_timeout=original_caps.execution_timeout,
-            default_policies=[deny_policy],
-        ),
-    )
-
-    agent = await create_test_agent(client)
-    session_id = await _create_session(client, agent["id"])
-    shapes = {
-        "request_data.name (claude-native, tool dispatch)": {
-            "type": "PHASE_TOOL_RESULT",
-            "data": {"result": "ok"},
-            "request_data": {"name": "Bash"},
-        },
-    }
-    for why, event in shapes.items():
-        resp = await client.post(
-            f"/v1/sessions/{session_id}/policies/evaluate",
-            json={"event": event},
-        )
-        assert resp.status_code == 200, f"{why}: {resp.status_code} {resp.text[:160]}"
-        assert resp.json()["result"] == "POLICY_ACTION_DENY", (
-            f"{why}: the tool-scoped policy did not see a tool name — {resp.text[:160]}"
-        )
 
 
 _EVALUATE_USER = "alice@example.com"

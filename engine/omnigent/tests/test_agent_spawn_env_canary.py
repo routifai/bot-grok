@@ -34,7 +34,6 @@ CANARY_SECRETS = {
 # The per-harness families, matching the decision table on #3445.
 HARNESS_PREFIXES = {
     "pi": ("PI_", "NODE_"),
-    "codex": ("OPENAI_", "REQUESTS_", "CODEX_HOME"),
 }
 
 
@@ -65,14 +64,7 @@ def _pi_spawn_env():
     return _clean_pi_env()
 
 
-def _codex_spawn_env():
-    from omnigent.inner.codex_executor import _clean_codex_env
-
-    return _clean_codex_env()
-
-
 SPAWN_ENV_BUILDERS = {
-    "codex": _codex_spawn_env,
     "pi": _pi_spawn_env,
 }
 
@@ -175,7 +167,7 @@ def test_a_harness_still_sees_its_own_family(hostile_env):
     src = {**hostile_env, "PI_CODING_AGENT_DIR": "p", "OPENAI_BASE_URL": "o"}
     pi = clean_agent_env(allow_prefixes=HARNESS_PREFIXES["pi"], source=src)
     assert pi["PI_CODING_AGENT_DIR"] == "p"
-    assert "OPENAI_BASE_URL" not in pi, "pi must not see codex's family either"
+    assert "OPENAI_BASE_URL" not in pi, "pi must not see another harness's family"
 
 
 def test_env_passthrough_is_the_documented_escape_hatch(hostile_env):
@@ -187,31 +179,11 @@ def test_env_passthrough_is_the_documented_escape_hatch(hostile_env):
 
 
 def test_deny_exact_beats_a_matching_prefix(hostile_env):
-    """codex strips OPENAI_API_KEY despite allowing the OPENAI_ prefix."""
+    """An exact deny strips OPENAI_API_KEY despite an allowed OPENAI_ prefix."""
     src = {**hostile_env, "OPENAI_API_KEY": "sk-dev", "OPENAI_BASE_URL": "https://x"}
     env = clean_agent_env(allow_prefixes=("OPENAI_",), deny_exact=("OPENAI_API_KEY",), source=src)
     assert "OPENAI_API_KEY" not in env
     assert env["OPENAI_BASE_URL"] == "https://x"
-
-
-def test_codex_passes_service_principal_m2m_credentials(hostile_env):
-    """codex's own builder must let the SP M2M pair through, so a
-    Databricks-gateway ``auth.command`` can mint an OAuth token on refresh.
-    The canaried DATABRICKS_CONFIG_PROFILE / DATABRICKS_TOKEN must still not."""
-    from omnigent.inner.codex_executor import _clean_codex_env
-
-    src = {
-        **hostile_env,
-        "DATABRICKS_CLIENT_ID": "sp-app-id",
-        "DATABRICKS_CLIENT_SECRET": "sp-secret",
-    }
-    with pytest.MonkeyPatch.context() as mp:
-        mp.setattr("os.environ", src)
-        env = _clean_codex_env()
-    assert env["DATABRICKS_CLIENT_ID"] == "sp-app-id"
-    assert env["DATABRICKS_CLIENT_SECRET"] == "sp-secret"
-    assert "DATABRICKS_CONFIG_PROFILE" not in env
-    assert "DATABRICKS_TOKEN" not in env
 
 
 def test_source_is_never_mutated(hostile_env):
@@ -221,8 +193,8 @@ def test_source_is_never_mutated(hostile_env):
 
 
 def test_base_does_not_include_identity_vars():
-    """USER/LOGNAME/SHELL/TZ stay per-harness: pi passes them, codex does not,
-    and the shared base must not silently widen codex's set."""
+    """USER/LOGNAME/SHELL/TZ stay per-harness: pi passes them, and the shared
+    base must not silently widen every harness's set."""
     for name in ("USER", "LOGNAME", "SHELL", "TZ"):
         assert name not in BASE_ALLOW_EXACT
     assert not any(p in BASE_ALLOW_PREFIXES for p in ("AWS_", "DATABRICKS_", "OPENAI_"))

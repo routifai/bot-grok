@@ -8,7 +8,6 @@ import httpx
 import pytest
 
 from omnigent.runner.tool_dispatch import (
-    build_native_relay_tool_schemas,
     dispatch_tool_locally,
     execute_tool,
 )
@@ -30,16 +29,6 @@ def _top_level_session_handler(request: httpx.Request) -> httpx.Response | None:
     if request.method == "GET" and request.url.path == "/v1/sessions/conv_current":
         return httpx.Response(200, json={"id": "conv_current", "parent_session_id": None})
     return None
-
-
-@pytest.mark.parametrize("spec", [AgentSpec(spec_version=1), None])
-def test_native_relay_exposes_session_rename(spec: AgentSpec | None) -> None:
-    schemas = build_native_relay_tool_schemas(spec)
-
-    rename = next(schema for schema in schemas if schema["name"] == "sys_session_rename")
-
-    assert rename["parameters"]["required"] == ["title"]
-    assert rename["parameters"]["additionalProperties"] is False
 
 
 @pytest.mark.asyncio

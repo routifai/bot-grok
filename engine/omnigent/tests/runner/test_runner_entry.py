@@ -21,8 +21,6 @@ from omnigent.runner._entry import (
     _DEFAULT_RUNNER_IDLE_TIMEOUT_S,
     _DEFAULT_RUNNER_THREADPOOL_MAX_WORKERS,
     _agent_cache_dest,
-    _apply_host_interactive_shells,
-    _host_interactive_shells_from_env,
     _InitialAuthTokenFactory,
     _install_crash_logging,
     _install_signal_handlers,
@@ -46,7 +44,6 @@ from omnigent.runner._entry import (
 )
 from omnigent.runner.identity import (
     RUNNER_INITIAL_AUTH_TOKEN_ENV_VAR,
-    RUNNER_INTERACTIVE_SHELLS_ENV_VAR,
     RUNNER_TUNNEL_TOKEN_HEADER,
 )
 from omnigent.runner.transports.ws_tunnel.serve import RUNNER_TUNNEL_REJECTION_PREFIX
@@ -57,39 +54,6 @@ from omnigent.runner.transports.ws_tunnel.serve import RUNNER_TUNNEL_REJECTION_P
 # here (via import_module, so there is no bound-but-unused import) resolves and
 # caches it with the real type.
 importlib.import_module("mcp.client.streamable_http")
-
-
-def test_host_interactive_shells_from_env_normalizes_inventory(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Runner wiring accepts only supported, ordered shell basenames."""
-    monkeypatch.setenv(
-        RUNNER_INTERACTIVE_SHELLS_ENV_VAR,
-        '["zsh", "bash", "zsh", "not-a-shell"]',
-    )
-    assert _host_interactive_shells_from_env() == ["zsh", "bash"]
-
-
-def test_apply_host_interactive_shells_only_replaces_native_wrappers(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Custom agent terminals remain authored while native fallbacks change."""
-    from types import SimpleNamespace
-
-    from omnigent.native.native_coding_agents import CLAUDE_NATIVE_AGENT_NAME
-
-    monkeypatch.setenv(RUNNER_INTERACTIVE_SHELLS_ENV_VAR, '["zsh", "bash"]')
-    native = SimpleNamespace(name=CLAUDE_NATIVE_AGENT_NAME, terminals={"bash": object()})
-    custom_terminal = object()
-    custom = SimpleNamespace(name="custom", terminals={"project": custom_terminal})
-
-    _apply_host_interactive_shells(native)
-    _apply_host_interactive_shells(custom)
-
-    assert list(native.terminals) == ["zsh", "bash"]
-    assert native.terminals["zsh"].command is not None
-    assert native.terminals["zsh"].command.endswith("zsh")
-    assert custom.terminals == {"project": custom_terminal}
 
 
 class _TrackingTerminalRegistry:
@@ -2252,126 +2216,6 @@ def test_install_crash_logging_is_idempotent() -> None:
     finally:
         sys.excepthook = original_hook
 
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("host_owns_global_cleanup", "expected_sweep_orphans"),
-    [(True, False), (False, True)],
-)
-async def test_runner_shutdown_closes_terminal_registry(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    host_owns_global_cleanup: bool,
-    expected_sweep_orphans: bool,
-) -> None:
-    """The --server local runner shuts down terminal-owned resources.
-
-    ``examples/databricks_coding_agent.yaml`` exposes terminal tools,
-    and in ``omnigent run --server`` mode those terminals are owned
-    by the local tunnel runner. This test drives the runner app
-    startup/shutdown hooks directly and verifies shutdown includes the
-    TerminalRegistry, not just harness subprocesses and MCPs.
-    """
-    import omnigent.runner._entry as entry_mod
-
-    process_managers: list[_FakeProcessManager] = []
-    terminal_registries: list[_TrackingTerminalRegistry] = []
-    mcp_managers: list[_TrackingMcpManager] = []
-    async_clients: list[_TrackingAsyncClient] = []
-    sync_clients: list[_TrackingSyncClient] = []
-    terminal_sweeps: list[int] = []
-    bridge_sweeps: list[int] = []
-
-    class _FakeProcessManager:
-        def __init__(self) -> None:
-            self.started = False
-            self.shutdown_called = False
-            self.instance_dir = Path("/tmp/omnigent-test/ap-test")
-            process_managers.append(self)
-
-        async def start(self, *, sweep_orphans: bool = True) -> None:
-            assert sweep_orphans is expected_sweep_orphans
-            self.started = True
-
-        async def shutdown(self) -> None:
-            self.shutdown_called = True
-
-    def _terminal_registry_factory(
-        *,
-        conversation_link_base_url: str | None = None,
-    ) -> _TrackingTerminalRegistry:
-        registry = _TrackingTerminalRegistry(
-            conversation_link_base_url=conversation_link_base_url,
-        )
-        terminal_registries.append(registry)
-        return registry
-
-    def _mcp_manager_factory(stdio_cwd: Path | None = None) -> _TrackingMcpManager:
-        manager = _TrackingMcpManager(stdio_cwd=stdio_cwd)
-        mcp_managers.append(manager)
-        return manager
-
-    def _async_client_factory(*args: Any, **kwargs: Any) -> _TrackingAsyncClient:
-        del args, kwargs
-        client = _TrackingAsyncClient()
-        async_clients.append(client)
-        return client
-
-    def _sync_client_factory(*args: Any, **kwargs: Any) -> _TrackingSyncClient:
-        del args, kwargs
-        client = _TrackingSyncClient()
-        sync_clients.append(client)
-        return client
-
-    monkeypatch.setenv("RUNNER_SERVER_URL", "http://runner.test")
-    if host_owns_global_cleanup:
-        monkeypatch.setenv("OMNIGENT_RUNNER_HOST_OWNS_GLOBAL_CLEANUP", "1")
-    else:
-        monkeypatch.delenv("OMNIGENT_RUNNER_HOST_OWNS_GLOBAL_CLEANUP", raising=False)
-    monkeypatch.setattr(
-        "omnigent.inner.terminal.reap_orphaned_terminals",
-        lambda: terminal_sweeps.append(1) or 0,
-    )
-    monkeypatch.setattr(
-        "omnigent.native.native_bridge_common.reap_orphaned_native_bridge_dirs",
-        lambda: bridge_sweeps.append(1) or 0,
-    )
-    monkeypatch.setattr(
-        "omnigent.runtime.harnesses.process_manager.HarnessProcessManager",
-        _FakeProcessManager,
-    )
-    monkeypatch.setattr(
-        "omnigent.terminals.TerminalRegistry",
-        _terminal_registry_factory,
-    )
-    monkeypatch.setattr(entry_mod.httpx, "AsyncClient", _async_client_factory)
-    monkeypatch.setattr(entry_mod.httpx, "Client", _sync_client_factory)
-    monkeypatch.setattr(entry_mod, "_make_auth_token_factory", lambda: None)
-    monkeypatch.setattr(
-        "omnigent.runner.identity.get_stable_runner_id",
-        lambda: "runner-test-id",
-    )
-
-    app = entry_mod.create_app()
-    # starlette 1.x removed Router.startup/shutdown; drive the lifespan instead.
-    async with app.router.lifespan_context(app):
-        pass
-
-    assert process_managers and process_managers[0].started
-    assert process_managers[0].shutdown_called
-    assert terminal_sweeps == ([] if host_owns_global_cleanup else [1])
-    assert bridge_sweeps == ([] if host_owns_global_cleanup else [1])
-    assert terminal_registries and terminal_registries[0].shutdown_called
-    assert terminal_registries[0].conversation_link_base_url == "http://runner.test"
-    # In Omnigent mode (P1) the entry point passes mcp_manager=None; MCP calls are
-    # routed per-session through ProxyMcpManager (runner/proxy_mcp_manager.py)
-    # instead of a shared RunnerMcpManager. No RunnerMcpManager is created on
-    # startup, so mcp_managers is empty — that is the correct post-P1 behavior.
-    assert not mcp_managers, (
-        "RunnerMcpManager should not be created by create_app() in Omnigent mode; "
-        "MCP calls are proxied per-session through ProxyMcpManager"
-    )
-    assert async_clients and async_clients[0].closed
     # No sync httpx.Client is wired into the runner after the DBOS
     # removal — the legacy idle-sync client used by background
     # polling was deleted with that path. If a future change
@@ -2854,34 +2698,6 @@ async def test_install_signal_handlers_degrades_when_wakeup_fd_unusable(
 
     # First failure marks the loop degraded; SIGTERM is skipped, not retried.
     assert attempts == [signal.SIGINT]
-
-
-def test_maybe_prewarm_ambient_detection_gates_on_launch_harness(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Only claude-native launches prewarm ambient detection at boot.
-
-    Terminal auto-create resolves provider config with an ambient sweep (a
-    ~0.6-0.9s ``claude auth status`` subprocess on macOS); the boot prewarm
-    overlaps that with runner boot. Other harnesses never resolve it, so
-    they must not pay a speculative subprocess on every launch.
-    """
-    from omnigent.onboarding import ambient
-    from omnigent.runner._entry import _maybe_prewarm_ambient_detection
-    from omnigent.runner.identity import RUNNER_LAUNCH_HARNESS_ENV_VAR
-
-    prewarms: list[str] = []
-    monkeypatch.setattr(ambient, "prewarm_detect_providers", lambda: prewarms.append("prewarm"))
-
-    monkeypatch.delenv(RUNNER_LAUNCH_HARNESS_ENV_VAR, raising=False)
-    _maybe_prewarm_ambient_detection()
-    monkeypatch.setenv(RUNNER_LAUNCH_HARNESS_ENV_VAR, "codex-native")
-    _maybe_prewarm_ambient_detection()
-    assert prewarms == []
-
-    monkeypatch.setenv(RUNNER_LAUNCH_HARNESS_ENV_VAR, "claude-native")
-    _maybe_prewarm_ambient_detection()
-    assert prewarms == ["prewarm"]
 
 
 def test_auth_token_factory_refreshes_expired_oidc_token(

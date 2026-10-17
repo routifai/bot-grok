@@ -1,4 +1,4 @@
-"""Hook routes: permission requests, policy evaluation, elicitation hooks."""
+"""Hook routes: policy evaluation and the subagent-routing hook."""
 
 from __future__ import annotations
 
@@ -10,18 +10,12 @@ from fastapi import (
     APIRouter,
     Depends,
     Request,
-    status,
 )
 from fastapi.responses import Response
 
 from omnigent.debug_logging import add_audit_attrs
 from omnigent.entities import Conversation
 from omnigent.errors import ElicitationDeclinedError, ErrorCode, OmnigentError
-from omnigent.harnesses.codex_native.elicitation import codex_elicitation_id
-from omnigent.native.native_coding_agents import (
-    native_coding_agent_for_harness,
-    native_coding_agent_for_wrapper_label,
-)
 from omnigent.runner.routing import RunnerRouter
 from omnigent.runtime import (
     get_agent_cache,
@@ -58,7 +52,6 @@ from omnigent.server.routes._auth_helpers import (
 from omnigent.server.routes._auth_helpers import (
     require_access_and_level as _require_access_and_level,
 )
-from omnigent.server.routes._codex_elicitation import parse_codex_elicitation_request
 from omnigent.server.routes._content_type import (
     require_json_content_type,
 )
@@ -72,28 +65,18 @@ from omnigent.server.routes._sessions.common import (
     set_server_runner_router,
 )
 from omnigent.server.routes._sessions.helpers import (
-    _allow_all_edits_eligible,
-    _allow_auto_mode_eligible,
-    _allow_remember_eligible,
     _build_actor,
     _build_evaluation_context,
-    _claude_native_remember_host,
-    _client_supplied_hook_elicitation_id,
     _emit_server_routing_decision,
     _forward_session_change_to_runner,
     _get_runner_client,
     _native_ask_gate_lock,
     _publish_policy_denied,
     _resolve_harness,
-    _structured_ask_user_question,
 )
 from omnigent.server.routes._sessions.orchestration import (
     _hold_native_ask_gate,
-    _publish_and_wait_for_harness_elicitation,
     _spawn_gateway_backed,
-)
-from omnigent.server.schemas import (
-    ElicitationRequestParams,
 )
 from omnigent.spec.types import (
     Phase,
@@ -101,38 +84,6 @@ from omnigent.spec.types import (
 )
 from omnigent.stores import AgentStore, ConversationStore
 from omnigent.stores.permission_store import PermissionStore
-
-
-def _create_route_decision_id(
-    session_id: str,
-    conversation_store: ConversationStore,
-) -> str | None:
-    """Return the decision id of a session's create-time routing card.
-
-    The create emits the card but leaves the route-once label unclaimed,
-    because the prompt the user finally submits may not be the one it routed.
-    When it IS the same prompt, the first-prompt hook claims this decision
-    rather than making a second one.
-
-    :param session_id: Session/conversation identifier.
-    :param conversation_store: Store exposing ``list_items``.
-    :returns: The applied ``"session"``-scope decision id, or ``None`` when
-        the session has none.
-    """
-    try:
-        page = conversation_store.list_items(session_id, type="routing_decision", order="asc")
-    except (OSError, ValueError):
-        _logger.warning(
-            "route-turn: could not read session=%s routing decisions", session_id, exc_info=True
-        )
-        return None
-    for item in page.data:
-        data = item.data
-        if getattr(data, "scope", None) == "session" and getattr(data, "applied", False):
-            decision_id = getattr(data, "decision_id", None)
-            if isinstance(decision_id, str) and decision_id:
-                return decision_id
-    return None
 
 
 def register_hooks_routes(
@@ -146,363 +97,6 @@ def register_hooks_routes(
     agent_cache: AgentCache | None = None,
 ) -> None:
     """Register the hooks routes on router."""
-
-    @router.post(
-        "/sessions/{session_id}/hooks/permission-request",
-        # Internal harness callback webhook — hidden from the public API reference.
-        include_in_schema=False,
-        response_model=None,
-        # CSRF hardening: body is parsed via request.json(); require a JSON
-        # Content-Type so a cross-site text/plain request can't reach it.
-        dependencies=[Depends(require_json_content_type)],
-    )
-    async def claude_permission_request_hook(
-        request: Request,
-        session_id: str,
-    ) -> Response:
-        """
-        Claude Code ``PermissionRequest`` HTTP hook endpoint.
-
-        Reject a callback targeting a different known native harness before
-        publishing a card; legacy sessions without native metadata retain
-        compatibility.
-
-        Receives Claude Code's PermissionRequest hook payload (tool
-        name + input the user would otherwise see a TUI prompt for),
-        publishes a ``response.elicitation_request`` SSE event on the
-        session stream so the web UI's :file:`ApprovalCard` renders
-        inline, and long-polls until the verdict arrives via the
-        session ``approval`` event path.
-
-        Response shape follows Claude Code's PermissionRequest hook
-        contract: ``hookSpecificOutput.decision.behavior`` is
-        ``"allow"`` or ``"deny"``. On timeout the endpoint returns
-        ``200`` with an empty body — Claude Code treats that as
-        "defer to the TUI prompt", which matches the wrapper's
-        fail-ask contract (UI unreachable / unattended → fall back
-        to terminal-side approval).
-
-        Auth: standard session ACL — the wrapper's outbound headers
-        (``ap_auth_headers`` in :func:`build_hook_settings`) carry
-        the same Bearer token used for every other Omnigent request. For
-        local-server mode (no auth provider), unauth'd calls are
-        allowed.
-
-        :param request: FastAPI request — body is Claude Code's
-            PermissionRequest payload as JSON.
-        :param session_id: Omnigent conversation id from the URL path.
-        :returns: Claude PermissionRequest hookSpecificOutput JSON,
-            or ``200`` with empty body on timeout (fail-ask).
-        :raises OmnigentError: 404 if the session doesn't exist,
-            400 if the body fails JSON parse or is missing ``tool_name``,
-            409 if the callback targets a different native harness.
-        """
-        from omnigent.server.routes import sessions as _sf
-
-        user_id = _get_user_id(request, auth_provider)
-        await _require_access(
-            user_id, session_id, LEVEL_READ, permission_store, conversation_store
-        )
-        try:
-            payload = await request.json()
-        except json.JSONDecodeError as exc:
-            raise OmnigentError(
-                f"Invalid JSON in PermissionRequest hook body: {exc}",
-                code=ErrorCode.INVALID_INPUT,
-            ) from exc
-        if not isinstance(payload, dict):
-            raise OmnigentError(
-                "PermissionRequest hook body must be a JSON object.",
-                code=ErrorCode.INVALID_INPUT,
-            )
-        tool_name = payload.get("tool_name")
-        if not isinstance(tool_name, str) or not tool_name:
-            raise OmnigentError(
-                "PermissionRequest hook body must include a non-empty 'tool_name' string.",
-                code=ErrorCode.INVALID_INPUT,
-            )
-        tool_input = payload.get("tool_input")
-        if tool_input is not None and not isinstance(tool_input, dict):
-            raise OmnigentError(
-                "PermissionRequest hook body 'tool_input' must be an object when present.",
-                code=ErrorCode.INVALID_INPUT,
-            )
-        # Claude Code's PermissionRequest payload carries no
-        # ``tool_use_id`` (verified against a real payload — the field
-        # is absent, not merely unstable; the id is only minted when the
-        # tool call is emitted, AFTER this permission check). And newer
-        # builds can write the transcript ``function_call`` (tool_use)
-        # before this hook returns — so neither can correlate/resolve the
-        # parked request. The parked wait ends on one of three signals: an
-        # explicit web verdict, hook disconnect, or the mirrored
-        # ``function_call_output`` (tool_result) for this gated tool,
-        # which — unlike the tool_use — is written only AFTER the
-        # prompt was answered in the TUI. We pass ``tool_name`` /
-        # ``tool_input`` below so that result can be correlated back to
-        # THIS prompt (see _signal_terminal_resolved_harness_elicitation).
-        cwd = payload.get("cwd")
-        if cwd is not None and not isinstance(cwd, str):
-            cwd = None
-        permission_mode = payload.get("permission_mode")
-        if permission_mode is not None and not isinstance(permission_mode, str):
-            permission_mode = None
-        conv = await asyncio.to_thread(conversation_store.get_conversation, session_id)
-        if conv is None:
-            raise OmnigentError("Session not found", code=ErrorCode.NOT_FOUND)
-        harness = await asyncio.to_thread(
-            _resolve_harness, conv, agent_store=agent_store, agent_cache=agent_cache
-        )
-        native_agent = native_coding_agent_for_harness(harness) or (
-            native_coding_agent_for_wrapper_label(conv.labels.get("omnigent.wrapper"))
-        )
-        # Check ownership after the metadata awaits, without yielding before registration.
-        elicitation_id = _client_supplied_hook_elicitation_id(payload, session_id)
-        # Legacy sessions may lack native metadata; a known native session must match.
-        if native_agent is not None and native_agent.harness != "claude-native":
-            raise OmnigentError(
-                "Claude permission hook does not match the session's "
-                f"{native_agent.display_name} harness.",
-                code=ErrorCode.CONFLICT,
-            )
-
-        try:
-            preview_str = json.dumps(tool_input or {}, ensure_ascii=False)
-        except (TypeError, ValueError):
-            preview_str = repr(tool_input)
-        preview_str = preview_str[:1024]
-
-        # ``extra="allow"`` on ElicitationRequestParams permits
-        # extra keyword arguments to ride alongside the MCP
-        # standard fields. Use it for Claude-native display and
-        # correlation hints rather than minting AP-specific fields
-        # on the model; strict MCP clients can ignore unknown fields
-        # while AP's UI consumes them.
-        # ``tool_name`` rides along so the UI can render the
-        # permission card with the gated tool name and distinguish
-        # simultaneous prompts from different tools.
-        extras: dict[str, Any] = {"tool_name": tool_name}
-        if cwd is not None:
-            extras["cwd"] = cwd
-        if permission_mode is not None:
-            extras["permission_mode"] = permission_mode
-        if _allow_auto_mode_eligible(tool_name, permission_mode):
-            extras["allow_auto_mode"] = True
-        # Edit tools → "Accept & allow all edits" (switches the session to
-        # acceptEdits via setMode). Stamped only for edit-tool prompts
-        # under a still-prompting mode — see _allow_all_edits_eligible.
-        # The verdict site re-checks the same predicate before honoring it.
-        if _allow_all_edits_eligible(tool_name, permission_mode):
-            extras["allow_all_edits"] = True
-        # Non-edit eligible tools → "don't ask again" (installs a
-        # session-scoped allow rule via addRules). Stamped only when the
-        # affordance applies — see _allow_remember_eligible.
-        # ``remember_scope`` carries the gated tool and, for WebFetch, the
-        # request host so the UI can label the button ("… for github.com"
-        # vs "… for WebFetch"); the verdict site re-derives the same scope
-        # before honoring the flag, never trusting a client-supplied rule.
-        if _allow_remember_eligible(tool_name, permission_mode):
-            remember_scope: dict[str, Any] = {"tool": tool_name}
-            remember_host = _claude_native_remember_host(tool_name, tool_input)
-            if remember_host is not None:
-                remember_scope["host"] = remember_host
-            extras["remember_scope"] = remember_scope
-        # When Claude's built-in AskUserQuestion tool is the one
-        # needing permission, the PermissionRequest payload
-        # already carries the full questions + options structure
-        # in ``tool_input``. Surface it as a structured extra so
-        # the UI can render an interactive form WITHOUT having to
-        # parse the (truncated) ``content_preview`` JSON blob.
-        # ``content_preview`` keeps its 1024-char cap for the
-        # binary-card fallback; the structured field is the
-        # authoritative source the UI consumes when present.
-        if tool_name == "AskUserQuestion":
-            ask_payload = _structured_ask_user_question(tool_input)
-            if ask_payload is not None:
-                extras["ask_user_question"] = ask_payload
-        # When the gated tool is ExitPlanMode, ride the full
-        # ``tool_input`` through verbatim so the UI can render a
-        # dedicated plan-review card. ``content_preview`` is
-        # hard-capped at 1024 chars — real plans blow well past it —
-        # and the input's shape varies across Claude Code builds
-        # (``plan`` markdown, ``allowedPrompts``, ...), so no field
-        # filtering: every field the hook carried natively reaches
-        # the UI. An empty/absent input stamps nothing, leaving the
-        # binary-card fallback.
-        if tool_name == "ExitPlanMode" and isinstance(tool_input, dict) and tool_input:
-            extras["exit_plan_mode"] = tool_input
-        asking_name = native_agent.display_name if native_agent is not None else "Claude"
-        params = ElicitationRequestParams(
-            mode="form",
-            message=f"{asking_name} wants to call **{tool_name}**",
-            requestedSchema=None,
-            url=None,
-            phase="pre_tool_use",
-            policy_name="claude_native_permission",
-            content_preview=f"{tool_name}({preview_str})",
-            **extras,
-        )
-        result = await _publish_and_wait_for_harness_elicitation(
-            request,
-            session_id=session_id,
-            params=params,
-            timeout_s=_sf._CLAUDE_NATIVE_PERMISSION_HOOK_TIMEOUT_S,
-            conversation_store=conversation_store,
-            # Client-minted stable id so a retry re-parks the same elicitation.
-            elicitation_id=elicitation_id,
-            # Tool identity lets a mirrored tool result for this gated
-            # tool resolve the prompt promptly when the user answers in
-            # Claude's TUI instead of the web UI (terminal-resolved
-            # fast path). ``tool_input`` is the dict from the payload
-            # (or None when absent).
-            tool_name=tool_name,
-            tool_input=tool_input if isinstance(tool_input, dict) else None,
-        )
-        if result is None:
-            # Disconnect or timeout. Either way Claude is no
-            # longer waiting on this response; empty 2xx → Claude
-            # defers to its built-in TUI prompt (fail-ask).
-            return Response(status_code=status.HTTP_200_OK)
-
-        behavior = "allow" if result.action == "accept" else "deny"
-        decision: dict[str, Any] = {"behavior": behavior}
-        # A decline can carry feedback typed into the web card (the
-        # ExitPlanMode "Reject with feedback" flow). Claude's
-        # PermissionRequest decision contract surfaces it via
-        # ``decision.message`` — the model sees it as the denial
-        # reason, so for a rejected plan Claude stays in plan mode
-        # and revises toward the feedback instead of guessing why
-        # the plan was refused.
-        if behavior == "deny" and isinstance(result.content, dict):
-            feedback = result.content.get("feedback")
-            if isinstance(feedback, str) and feedback.strip():
-                decision["message"] = feedback
-        # When the gated tool is AskUserQuestion AND the user accepted
-        # with selections, propagate those selections back to Claude
-        # via ``decision.updatedInput``. Claude reads
-        # ``tool_input.answers`` and skips its TUI picker, returning
-        # the supplied selections as the tool result the LLM sees.
-        #
-        # ``result.content`` is MCP-shaped (a flat ``{[field]: value}``
-        # map) — exactly the shape ``tool_input.answers`` expects on
-        # AskUserQuestion. Single-select values are strings,
-        # multi-select are ``list[str]``; both ride through verbatim.
-        if (
-            behavior == "allow"
-            and tool_name == "AskUserQuestion"
-            and isinstance(tool_input, dict)
-            and isinstance(result.content, dict)
-            and result.content
-        ):
-            decision["updatedInput"] = {**tool_input, "answers": result.content}
-        # ExitPlanMode is a requiresUserInteraction tool: Claude Code coerces a
-        # bare PermissionRequest allow back to an interactive prompt unless the
-        # decision also carries ``updatedInput``. The plan needs no change, so
-        # echo the model's own input verbatim — its presence, not its content,
-        # is what lets a web-UI approval proceed without a TUI keystroke.
-        if (
-            behavior == "allow"
-            and tool_name == "ExitPlanMode"
-            and isinstance(tool_input, dict)
-            and tool_input
-        ):
-            decision["updatedInput"] = tool_input
-        if (
-            behavior == "allow"
-            and isinstance(result.content, dict)
-            and result.content.get("allow_auto_mode") is True
-            and _allow_auto_mode_eligible(tool_name, permission_mode)
-        ):
-            decision["updatedPermissions"] = [
-                {"type": "setMode", "mode": "auto", "destination": "session"}
-            ]
-        # "Accept & allow all edits" — the user approved this edit AND
-        # asked to auto-accept future edits. Echo a ``setMode`` permission
-        # update so Claude Code switches this session into ``acceptEdits``
-        # mode, exactly as the native shift+tab toggle does. The
-        # ``updatedPermissions`` shape matches the Agent SDK's
-        # ``PermissionUpdate`` union (``{type, mode, destination}`` for
-        # ``setMode``); ``destination: "session"`` scopes it to this
-        # session, so it resets on the next one.
-        #
-        # Re-check eligibility server-side rather than trusting the
-        # client's ``content.allow_all_edits`` flag alone: the flag is
-        # only meaningful for the edit-tool / prompting-mode prompts the
-        # affordance was offered for. Without this, a client could send
-        # the flag on e.g. a Bash prompt and flip the session into
-        # ``acceptEdits`` — a mode switch it was never offered.
-        elif (
-            behavior == "allow"
-            and isinstance(result.content, dict)
-            and result.content.get("allow_all_edits") is True
-            and _allow_all_edits_eligible(tool_name, permission_mode)
-        ):
-            decision["updatedPermissions"] = [
-                {
-                    "type": "setMode",
-                    # The plan card's "Yes, and use auto mode" switches the
-                    # session into Claude's ``auto`` mode; the edit-tool
-                    # "Accept & allow all edits" keeps the narrower
-                    # ``acceptEdits`` (auto-approve edits only).
-                    "mode": "auto" if tool_name == "ExitPlanMode" else "acceptEdits",
-                    "destination": "session",
-                }
-            ]
-        elif behavior == "allow" and tool_name == "ExitPlanMode":
-            # Plan approved WITHOUT auto mode — the card's "Yes,
-            # manually approve edits". Pin the session to the prompting
-            # ``default`` mode instead of trusting whatever mode
-            # Claude's plan-exit restores, so every subsequent edit
-            # prompts exactly as the button promised. De-escalation
-            # only (most restrictive prompting mode), so no eligibility
-            # gate is needed.
-            decision["updatedPermissions"] = [
-                {"type": "setMode", "mode": "default", "destination": "session"}
-            ]
-        # "Approve & don't ask again" — the user approved this non-edit
-        # tool AND asked to stop prompting for the same scope. Echo an
-        # ``addRules`` permission update so Claude Code installs a
-        # session-scoped allow rule, exactly as the native TUI's "don't
-        # ask again" option does. The shape matches the Agent SDK's
-        # ``PermissionUpdate`` union (``addRules``): ``rules`` is a list
-        # of ``{toolName, ruleContent?}`` — ``ruleContent`` omitted means
-        # the whole tool; ``destination: "session"`` scopes it to this
-        # session so it resets on the next one. The claude-native hook
-        # forwards this decision verbatim to Claude Code.
-        #
-        # The host is re-derived server-side from the gated tool's input
-        # rather than trusting any client-supplied rule, and gated by the
-        # same ``_allow_remember_eligible`` predicate the button was
-        # offered under — so a forged ``remember`` flag on an ineligible
-        # tool (e.g. an edit tool, which takes the setMode path) can't
-        # smuggle in an allow rule.
-        elif (
-            behavior == "allow"
-            and isinstance(result.content, dict)
-            and result.content.get("remember") is True
-            and _allow_remember_eligible(tool_name, permission_mode)
-        ):
-            rule: dict[str, Any] = {"toolName": tool_name}
-            remember_host = _claude_native_remember_host(tool_name, tool_input)
-            if remember_host is not None:
-                rule["ruleContent"] = f"domain:{remember_host}"
-            decision["updatedPermissions"] = [
-                {
-                    "type": "addRules",
-                    "rules": [rule],
-                    "behavior": "allow",
-                    "destination": "session",
-                }
-            ]
-        body = {
-            "hookSpecificOutput": {
-                "hookEventName": "PermissionRequest",
-                "decision": decision,
-            },
-        }
-        return Response(
-            content=json.dumps(body),
-            media_type="application/json",
-        )
 
     # ── Proto event-type → validation schema, as ONE total mapping ────
     #
@@ -527,8 +121,8 @@ def register_hooks_routes(
     # string there is a malformed call. REQUEST carries prompt text and is
     # the only phase where a bare string is a legitimate wire form.
     #
-    # claude-native and the in-process tool dispatch send the result's tool
-    # name in ``request_data.name``.
+    # The in-process tool dispatch sends the result's tool name in
+    # ``request_data.name``.
     class _PhaseSchema(NamedTuple):
         phase: Phase
         data_must_be_object: bool
@@ -597,10 +191,9 @@ def register_hooks_routes(
         verdict (``result``), an optional ``reason``, and optional
         ``data`` for content-rewriting policies.
 
-        Used by Claude Code's ``PreToolUse`` and ``PostToolUse``
-        command hooks (via ``omnigent.harnesses.claude_native.hook``) to
-        evaluate admin policies on native tool calls. Also usable
-        by any client that speaks the proto-compatible JSON schema.
+        Used by the runner to evaluate admin policies on tool calls and
+        requests. Also usable by any client that speaks the
+        proto-compatible JSON schema.
 
         :param request: FastAPI request — body is the
             ``EvaluationRequest`` JSON envelope.
@@ -1034,91 +627,6 @@ def register_hooks_routes(
             media_type="application/json",
         )
 
-    # ── POST /sessions/{session_id}/hooks/codex-elicitation-request ─
-
-    @router.post(
-        "/sessions/{session_id}/hooks/codex-elicitation-request",
-        # Internal harness callback webhook — hidden from the public API reference.
-        include_in_schema=False,
-        response_model=None,
-        # CSRF hardening: body is parsed via request.json(); require a JSON
-        # Content-Type so a cross-site text/plain request can't reach it.
-        dependencies=[Depends(require_json_content_type)],
-    )
-    async def codex_elicitation_request_hook(
-        request: Request,
-        session_id: str,
-    ) -> Response:
-        """
-        Codex app-server elicitation request endpoint.
-
-        Receives server-to-client JSON-RPC request envelopes forwarded
-        by ``omnigent codex`` (for example
-        ``mcpServer/elicitation/request`` and
-        ``item/tool/requestUserInput``), publishes the standard
-        ``response.elicitation_request`` session event for the web UI,
-        then waits for the session-scoped ``approval`` reply. This uses
-        the same registry / publish / cleanup path as the Claude-native
-        ``PermissionRequest`` hook so pending badges and disconnect
-        handling stay consistent across native harnesses.
-
-        :param request: FastAPI request carrying the Codex JSON-RPC
-            request envelope.
-        :param session_id: Omnigent conversation id from the URL path.
-        :returns: Codex JSON-RPC ``result`` payload for the forwarded
-            request, or ``200`` with empty body on timeout/disconnect.
-        :raises OmnigentError: 404 if the session does not exist,
-            400 if the request envelope is malformed or unsupported.
-        """
-        user_id = _get_user_id(request, auth_provider)
-        await _require_access(
-            user_id, session_id, LEVEL_READ, permission_store, conversation_store
-        )
-        try:
-            payload = await request.json()
-        except json.JSONDecodeError as exc:
-            raise OmnigentError(
-                f"Invalid JSON in Codex elicitation hook body: {exc}",
-                code=ErrorCode.INVALID_INPUT,
-            ) from exc
-        if not isinstance(payload, dict):
-            raise OmnigentError(
-                "Codex elicitation hook body must be a JSON object.",
-                code=ErrorCode.INVALID_INPUT,
-            )
-        codex_request = parse_codex_elicitation_request(payload)
-        from omnigent.server.routes import sessions as _sf
-
-        result = await _publish_and_wait_for_harness_elicitation(
-            request,
-            session_id=session_id,
-            params=codex_request.params,
-            timeout_s=_sf._CODEX_NATIVE_ELICITATION_HOOK_TIMEOUT_S,
-            conversation_store=conversation_store,
-            elicitation_id=codex_elicitation_id(
-                session_id,
-                codex_request.method,
-                codex_request.request_id,
-            ),
-        )
-        if result is None:
-            return Response(status_code=status.HTTP_200_OK)
-        if result.action == "decline":
-            # Explicit user decline: interrupt Codex before returning the
-            # deny response, same as the Claude-native path. The await
-            # ensures the abort signal reaches Codex before it processes
-            # the decline result and lets the LLM continue.
-            await _forward_session_change_to_runner(
-                session_id,
-                get_server_runner_router(),
-                {"type": "interrupt"},
-            )
-        body = codex_request.build_response(result)
-        return Response(
-            content=json.dumps(body),
-            media_type="application/json",
-        )
-
     async def _route_subagent_catalog(session_id: str) -> dict[str, list[str]] | None:
         """
         Fetch the session's live model catalog for subagent routing.
@@ -1273,214 +781,6 @@ def register_hooks_routes(
             allow_static_fallback=gateway_backed,
             persist=store_persister(session_id, conversation_store),
         )
-        return Response(
-            content=json.dumps(decision.to_payload()),
-            media_type="application/json",
-        )
-
-    @router.post(
-        "/sessions/{session_id}/hooks/route-turn",
-        # Internal runner relay — hidden from the public API reference.
-        include_in_schema=False,
-        response_model=None,
-        dependencies=[Depends(require_json_content_type)],
-    )
-    async def route_turn_hook(
-        request: Request,
-        session_id: str,
-    ) -> Response:
-        """
-        Decide the model a session's first real prompt should run on.
-
-        The in-harness sibling of ``route-subagent``: a harness
-        ``UserPromptSubmit`` hook relays here (through the runner's
-        loopback endpoint, advertised as ``turn_router.json``) because
-        ``RuntimeCaps.routing_client`` only lives in the server process.
-        It closes the bare-launch gap — a session started with no prompt,
-        whose first message is typed straight into the TUI and so is
-        invisible to the composer turn gate. Everything else about routing
-        is unchanged: same decision seam, same chip, same
-        ``model_override`` pin, and that pin is what stops a session from
-        ever routing twice.
-
-        :param request: FastAPI request — body is the route-turn request
-            JSON.
-        :param session_id: Session/conversation id from the path.
-        :returns: The route-turn decision as JSON.
-        :raises OmnigentError: 400 when the body is not a JSON object or
-            omits ``harness`` / ``prompt``.
-        """
-        from omnigent.runner.turn_routing import (
-            TurnRouteRequest,
-            decision_scope,
-            resolve_turn_route,
-        )
-        from omnigent.server.routes._sessions.helpers import _resolve_harness
-        from omnigent.server.routes._sessions.orchestration import (
-            _native_turn_catalog,
-            _publish_routed_model,
-            _stamp_routing_decision_label,
-            _unavailable_routing_card,
-        )
-        from omnigent.server.smart_routing import route_turn as _route_turn_seam
-
-        user_id = _get_user_id(request, auth_provider)
-        # LEVEL_EDIT, like POST /events: this route writes ``model_override``
-        # for the rest of the session and persists a decision item. LEVEL_READ
-        # let a read-only viewer repin somebody else's model.
-        await _require_access(
-            user_id, session_id, LEVEL_EDIT, permission_store, conversation_store
-        )
-        try:
-            payload = await request.json()
-        except json.JSONDecodeError as exc:
-            raise OmnigentError(
-                f"Invalid JSON in route-turn body: {exc}",
-                code=ErrorCode.INVALID_INPUT,
-            ) from exc
-        if not isinstance(payload, dict):
-            raise OmnigentError(
-                "route-turn body must be a JSON object.",
-                code=ErrorCode.INVALID_INPUT,
-            )
-        try:
-            route_request = TurnRouteRequest.from_payload(payload)
-        except ValueError as exc:
-            raise OmnigentError(str(exc), code=ErrorCode.INVALID_INPUT) from exc
-
-        conv = await asyncio.to_thread(conversation_store.get_conversation, session_id)
-        parent = None
-        if conv is not None and conv.parent_conversation_id is not None:
-            parent = await asyncio.to_thread(
-                conversation_store.get_conversation, conv.parent_conversation_id
-            )
-        runner_client = None
-        catalog = None
-        if conv is not None:
-            try:
-                runner_client = await _get_runner_client(
-                    session_id, runner_router or get_server_runner_router()
-                )
-                catalog = await _native_turn_catalog(session_id, conv, runner_client)
-            except Exception:
-                _logger.debug(
-                    "route-turn: live catalog unavailable for session=%s",
-                    session_id,
-                    exc_info=True,
-                )
-
-        # This pane's own family decides which router can serve its first turn.
-        # A create off the AI Gateway now succeeds (the built-in judge answers),
-        # so this hook must make the same choice the composer path does.
-        turn_gateway_backed = (
-            await _spawn_gateway_backed(request, conv, (route_request.harness,))
-            if conv is not None
-            else True
-        )
-
-        async def _route(
-            harness: str | None, prompt: str
-        ) -> tuple[str | None, dict[str, Any] | None]:
-            return await _route_turn_seam(
-                harness,
-                prompt,
-                session_id=session_id,
-                runner_client=runner_client,
-                catalog=catalog,
-                gateway_backed=turn_gateway_backed,
-                allow_static_fallback=turn_gateway_backed,
-            )
-
-        async def _pin(model: str) -> bool:
-            try:
-                await asyncio.to_thread(
-                    conversation_store.update_conversation,
-                    session_id,
-                    model_override=model,
-                )
-            except (OSError, ValueError):
-                _logger.warning(
-                    "route-turn: could not pin model_override for session=%s",
-                    session_id,
-                    exc_info=True,
-                )
-                return False
-            _publish_routed_model(session_id, model)
-            return True
-
-        async def _persist(model: str, verdict: dict[str, Any]) -> None:
-            decision_id = await _emit_server_routing_decision(
-                session_id,
-                conversation_store,
-                model,
-                verdict,
-                scope=decision_scope(),
-                harness=route_request.harness,
-            )
-            await _stamp_routing_decision_label(session_id, conversation_store, decision_id)
-
-        async def _record_decline(cause: str) -> None:
-            """Persist the declined chip for a failed routing call.
-
-            The card, not the label: a failure must stay visible without
-            claiming the route-once gate, or one outage would make this the
-            session's routing decision forever.
-            """
-            model, verdict = _unavailable_routing_card(cause)
-            await _emit_server_routing_decision(
-                session_id,
-                conversation_store,
-                model,
-                verdict,
-                scope=decision_scope(),
-                harness=route_request.harness,
-            )
-
-        async def _reuse_create_route() -> bool:
-            """Claim the create-time decision as this session's routing decision.
-
-            No second chip: the create's own row already says what was picked,
-            and the pane launched on it. Claiming the route-once label is what
-            makes this the session's decision, so a later prompt does not ask
-            again.
-
-            :returns: ``True`` when the create's decision was claimed.
-            """
-            decision_id = await asyncio.to_thread(
-                _create_route_decision_id, session_id, conversation_store
-            )
-            if decision_id is None:
-                return False
-            await _stamp_routing_decision_label(session_id, conversation_store, decision_id)
-            return True
-
-        decision = await resolve_turn_route(
-            session_id,
-            route_request,
-            conv=conv,
-            parent=parent,
-            # A pinned routed parent confines its spawns to its own family, so
-            # the pane's own family is not the only one that matters.
-            parent_harness=_resolve_harness(parent) if parent is not None else None,
-            route_turn=_route,
-            reuse_create_route=_reuse_create_route,
-            pin=_pin,
-            persist=_persist,
-            record_decline=_record_decline,
-        )
-        _logger.info(
-            "route-turn: session=%s harness=%s live_model=%s pinned=%s action=%s model=%s",
-            session_id,
-            route_request.harness,
-            route_request.model,
-            conv.model_override if conv is not None else None,
-            decision.action,
-            decision.model,
-        )
-        # The rationale paraphrases the user's prompt, so it stays off INFO —
-        # the same invariant ``omnigent.server.smart_routing`` keeps at each of
-        # its own three log sites.
-        _logger.debug("route-turn: session=%s rationale=%s", session_id, decision.rationale)
         return Response(
             content=json.dumps(decision.to_payload()),
             media_type="application/json",

@@ -17,7 +17,6 @@ import pytest_asyncio
 from fastapi import FastAPI
 
 from omnigent.db.utils import builtin_agent_id
-from omnigent.native.native_coding_agents import CLAUDE_NATIVE_AGENT_NAME
 from omnigent.runtime.agent_cache import AgentCache
 from omnigent.server.app import create_app
 from omnigent.server.routes import scheduled_tasks as scheduled_tasks_routes
@@ -34,7 +33,10 @@ from tests.server.helpers import build_agent_bundle
 
 pytestmark = pytest.mark.asyncio
 
-# A second, non-Claude built-in the agent-switch tests rebind tasks to.
+# The built-in tasks are created on, and a second one the agent-switch tests
+# rebind tasks to.
+_CLAUDE_AGENT_NAME = "claude-ui"
+_CLAUDE_AGENT_ID = builtin_agent_id(_CLAUDE_AGENT_NAME)
 _PI_AGENT_NAME = "pi-ui"
 _PI_AGENT_ID = builtin_agent_id(_PI_AGENT_NAME)
 
@@ -81,24 +83,23 @@ def auth_app(runtime_init: None, db_uri: str, tmp_path: Path) -> FastAPI:
     )
     _make_user(db_uri)
     _register_host(app, "4b653f6031f35d168cc0b37caa1306d1", "alice@example.com")
-    _register_pi_builtin(app, artifact_store)
+    _register_builtin(app, artifact_store, _CLAUDE_AGENT_ID, _CLAUDE_AGENT_NAME, "claude-sdk")
+    _register_builtin(app, artifact_store, _PI_AGENT_ID, _PI_AGENT_NAME, "pi")
     return app
 
 
-def _register_pi_builtin(app: FastAPI, artifact_store: LocalArtifactStore) -> None:
-    """Register a built-in (``session_id IS NULL``) agent on the ``pi`` harness.
-
-    Startup seeds only the Claude Code native built-in, so the agent-switch
-    tests need a second, non-Claude built-in to switch to.
-    """
+def _register_builtin(
+    app: FastAPI, artifact_store: LocalArtifactStore, agent_id: str, name: str, harness: str
+) -> None:
+    """Register a built-in (``session_id IS NULL``) agent on *harness*."""
     bundle = build_agent_bundle(
-        name=_PI_AGENT_NAME,
-        executor={"type": "omnigent", "config": {"harness": "pi"}},
+        name=name,
+        executor={"type": "omnigent", "config": {"harness": harness}},
         include_llm=False,
     )
-    bundle_key = f"{_PI_AGENT_ID}/bundle.tar.gz"
+    bundle_key = f"{agent_id}/bundle.tar.gz"
     artifact_store.put(bundle_key, bundle)
-    app.state.agent_store.create(_PI_AGENT_ID, _PI_AGENT_NAME, bundle_key)
+    app.state.agent_store.create(agent_id, name, bundle_key)
 
 
 def _register_host(app: FastAPI, host_id: str, owner: str) -> None:
@@ -152,7 +153,7 @@ def _create_body(**overrides: object) -> dict[str, object]:
         "name": "nightly triage",
         "prompt": "triage the queue",
         "rrule": _VALID_RRULE,
-        "agent_id": builtin_agent_id(CLAUDE_NATIVE_AGENT_NAME),
+        "agent_id": _CLAUDE_AGENT_ID,
         "timezone": "America/Los_Angeles",
         "workspace": "/repo",
         "host_id": "4b653f6031f35d168cc0b37caa1306d1",
@@ -334,26 +335,6 @@ async def test_create_rejects_invalid_reasoning_effort(
         headers=_headers(),
     )
     assert resp.status_code == 400, resp.text
-
-
-async def test_create_persists_permission_mode(
-    auth_client: httpx.AsyncClient, db_uri: str
-) -> None:
-    """A valid permission mode round-trips on create and read."""
-    _make_user(db_uri)
-    resp = await auth_client.post(
-        "/v1/scheduled-tasks",
-        json=_create_body(permission_mode="acceptEdits"),
-        headers=_headers(),
-    )
-    assert resp.status_code == 200, resp.text
-    created = resp.json()
-    assert created["permission_mode"] == "acceptEdits"
-    task_id = created["id"]
-
-    got = await auth_client.get(f"/v1/scheduled-tasks/{task_id}", headers=_headers())
-    assert got.status_code == 200
-    assert got.json()["permission_mode"] == "acceptEdits"
 
 
 @pytest.mark.parametrize("permission_mode", ["yolo", "--danger", "Auto"])
@@ -609,72 +590,6 @@ async def test_update_changes_fields_and_validates_rrule(
     assert deleted_state.status_code == 422, deleted_state.text
 
 
-async def test_update_switches_the_bound_agent(
-    auth_client: httpx.AsyncClient, db_uri: str
-) -> None:
-    """PATCH ``agent_id`` rebinds a task to a different harness.
-
-    An existing automation must be switchable in place — the alternative is
-    recreating it, which loses the task id and its run history.
-    """
-    _make_user(db_uri)
-    created = (
-        await auth_client.post("/v1/scheduled-tasks", json=_create_body(), headers=_headers())
-    ).json()
-    task_id = created["id"]
-    assert created["agent_id"] == builtin_agent_id(CLAUDE_NATIVE_AGENT_NAME)
-
-    target = _PI_AGENT_ID
-    patched = await auth_client.patch(
-        f"/v1/scheduled-tasks/{task_id}",
-        json={"agent_id": target},
-        headers=_headers(),
-    )
-    assert patched.status_code == 200, patched.text
-    assert patched.json()["agent_id"] == target
-    # Same task row, not a recreate.
-    assert patched.json()["id"] == task_id
-
-    got = await auth_client.get(f"/v1/scheduled-tasks/{task_id}", headers=_headers())
-    assert got.json()["agent_id"] == target
-
-
-async def test_update_agent_switch_clears_the_old_harnesss_settings(
-    auth_client: httpx.AsyncClient, db_uri: str
-) -> None:
-    """A switch drops per-agent settings the new harness can't use.
-
-    ``permission_mode`` is a Claude-only flag and a model id is provider-bound,
-    so carrying them onto a pi task would break the fire with an unknown
-    ``--permission-mode`` / a model its CLI has never heard of.
-    """
-    _make_user(db_uri)
-    created = (
-        await auth_client.post(
-            "/v1/scheduled-tasks",
-            json=_create_body(
-                permission_mode="bypassPermissions",
-                model_override="databricks-claude-sonnet-4-6",
-                reasoning_effort="high",
-            ),
-            headers=_headers(),
-        )
-    ).json()
-    task_id = created["id"]
-    assert created["permission_mode"] == "bypassPermissions"
-
-    patched = await auth_client.patch(
-        f"/v1/scheduled-tasks/{task_id}",
-        json={"agent_id": _PI_AGENT_ID},
-        headers=_headers(),
-    )
-    assert patched.status_code == 200, patched.text
-    got = (await auth_client.get(f"/v1/scheduled-tasks/{task_id}", headers=_headers())).json()
-    assert got["permission_mode"] is None
-    assert got["model_override"] is None
-    assert got["reasoning_effort"] is None
-
-
 async def test_update_agent_switch_revalidates_workspace_against_the_new_agent(
     auth_client: httpx.AsyncClient,
     db_uri: str,
@@ -715,55 +630,6 @@ async def test_update_agent_switch_revalidates_workspace_against_the_new_agent(
     assert patched.status_code == 200, patched.text
     # Ran once, against the agent being switched TO — not the one being left.
     assert seen == [target], seen
-
-
-async def test_update_agent_switch_keeps_settings_resent_in_the_same_patch(
-    auth_client: httpx.AsyncClient, db_uri: str
-) -> None:
-    """Settings sent alongside a switch are kept and gated on the NEW agent."""
-    _make_user(db_uri)
-    created = (
-        await auth_client.post(
-            "/v1/scheduled-tasks",
-            json=_create_body(agent_id=_PI_AGENT_ID),
-            headers=_headers(),
-        )
-    ).json()
-
-    patched = await auth_client.patch(
-        f"/v1/scheduled-tasks/{created['id']}",
-        json={
-            "agent_id": builtin_agent_id(CLAUDE_NATIVE_AGENT_NAME),
-            "permission_mode": "acceptEdits",
-        },
-        headers=_headers(),
-    )
-    assert patched.status_code == 200, patched.text
-    assert patched.json()["permission_mode"] == "acceptEdits"
-
-
-async def test_update_agent_switch_gates_permission_mode_on_the_new_agent(
-    auth_client: httpx.AsyncClient, db_uri: str
-) -> None:
-    """A Claude-only mode sent with a switch to pi is rejected, not persisted."""
-    _make_user(db_uri)
-    created = (
-        await auth_client.post("/v1/scheduled-tasks", json=_create_body(), headers=_headers())
-    ).json()
-
-    resp = await auth_client.patch(
-        f"/v1/scheduled-tasks/{created['id']}",
-        json={
-            "agent_id": _PI_AGENT_ID,
-            "permission_mode": "acceptEdits",
-        },
-        headers=_headers(),
-    )
-    assert resp.status_code == 400, resp.text
-    assert "permission_mode" in resp.text
-    # Rejected before any write: the task keeps its original agent.
-    got = await auth_client.get(f"/v1/scheduled-tasks/{created['id']}", headers=_headers())
-    assert got.json()["agent_id"] == builtin_agent_id(CLAUDE_NATIVE_AGENT_NAME)
 
 
 async def test_update_rejects_unknown_agent(auth_client: httpx.AsyncClient, db_uri: str) -> None:
@@ -818,62 +684,6 @@ async def test_create_rejects_permission_mode_for_non_claude_agent(
     )
     assert resp.status_code == 400, resp.text
     assert "permission_mode" in resp.text
-
-
-async def test_update_clears_permission_mode_with_explicit_null(
-    auth_client: httpx.AsyncClient, db_uri: str
-) -> None:
-    """PATCH ``permission_mode: null`` clears a previously-set mode end-to-end.
-
-    The edit dialog resets the control to Default by sending an explicit null,
-    so a task launched with ``bypassPermissions`` must actually revert to the
-    agent default (not silently keep the dangerous mode). Asserts the PERSISTED
-    value via a read-back, not just the response.
-    """
-    _make_user(db_uri)
-    created = (
-        await auth_client.post(
-            "/v1/scheduled-tasks",
-            json=_create_body(permission_mode="bypassPermissions"),
-            headers=_headers(),
-        )
-    ).json()
-    task_id = created["id"]
-    assert created["permission_mode"] == "bypassPermissions"
-
-    patched = await auth_client.patch(
-        f"/v1/scheduled-tasks/{task_id}",
-        json={"permission_mode": None},
-        headers=_headers(),
-    )
-    assert patched.status_code == 200, patched.text
-    assert patched.json()["permission_mode"] is None
-
-    got = await auth_client.get(f"/v1/scheduled-tasks/{task_id}", headers=_headers())
-    assert got.json()["permission_mode"] is None
-
-
-async def test_update_omitting_permission_mode_leaves_it_unchanged(
-    auth_client: httpx.AsyncClient, db_uri: str
-) -> None:
-    """A PATCH that omits ``permission_mode`` must not clear a set mode."""
-    _make_user(db_uri)
-    created = (
-        await auth_client.post(
-            "/v1/scheduled-tasks",
-            json=_create_body(permission_mode="acceptEdits"),
-            headers=_headers(),
-        )
-    ).json()
-    task_id = created["id"]
-
-    patched = await auth_client.patch(
-        f"/v1/scheduled-tasks/{task_id}",
-        json={"name": "renamed"},
-        headers=_headers(),
-    )
-    assert patched.status_code == 200, patched.text
-    assert patched.json()["permission_mode"] == "acceptEdits"
 
 
 async def test_update_rejects_invalid_model_override(

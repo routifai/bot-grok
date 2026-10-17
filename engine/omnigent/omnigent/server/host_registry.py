@@ -39,7 +39,6 @@ from omnigent.db.account_authority import (
 )
 from omnigent.db.db_models import InvalidUuidError, current_workspace_id, uuid_to_bytes
 from omnigent.host.frames import (
-    CAP_CODEX_SIDE_CHAT,
     HostHelloFrame,
     HostMcpServersResultFrame,
     HostSkillsResultFrame,
@@ -85,26 +84,6 @@ def _canonical_host_id(host_id: str) -> str:
         return uuid_to_bytes(host_id).hex()
     except InvalidUuidError:
         return host_id
-
-
-def _fail_pending_imports(conn: HostConnection) -> None:
-    """Fail the connection's in-flight import streams immediately.
-
-    A dead tunnel can never deliver another session frame; without this
-    signal the import request only learns of the drop by waiting out its
-    per-frame timeout (60s of "Importing…" in the UI).
-    """
-    while conn.pending_import_local:
-        _request_id, queue = conn.pending_import_local.popitem()
-        queue.put_nowait(
-            (
-                "done",
-                {
-                    "status": "failed",
-                    "error": f"host '{conn.host_id}' disconnected mid-import",
-                },
-            )
-        )
 
 
 # How long a runner exit report stays answerable, and how many are kept.
@@ -376,12 +355,6 @@ class HostConnection:
     pending_mcp_servers: dict[str, asyncio.Future[HostMcpServersResultFrame]] = field(
         default_factory=dict,
     )
-    # Import streams one session per frame, so the tunnel pushes each onto a
-    # per-request queue the /imports/local handler drains (vs a single future).
-    # Each item is a ("session", dict) or ("done", dict) tuple.
-    pending_import_local: dict[str, asyncio.Queue[tuple[str, dict[str, Any]]]] = field(
-        default_factory=dict,
-    )
 
 
 class HostRegistry:
@@ -472,7 +445,6 @@ class HostRegistry:
                     host_id,
                 )
                 old.outbound_queue.put_nowait(None)
-                _fail_pending_imports(old)
             self._hosts[key] = conn
             if hello.interactive_shells is not None:
                 self._interactive_shells[host_id] = normalize_interactive_shells(
@@ -514,7 +486,6 @@ class HostRegistry:
         # Without this the route handler's loops keep running and its ping loop
         # keeps the host row online, even though the host is now unreachable.
         removed.outbound_queue.put_nowait(None)
-        _fail_pending_imports(removed)
         return True
 
     def mark_frame_seen(self, conn: HostConnection) -> bool:
@@ -585,26 +556,6 @@ class HostRegistry:
         if conn is None:
             return None
         return conn.hello.installation_id
-
-    def host_supports_codex_side_chat(self, host_id: str, workspace_id: int | None = None) -> bool:
-        """Whether the connected host's build can fork a codex `/side` chat.
-
-        Reads the capability the host advertised in its hello frame. An older
-        host that predates the feature sends no such token, so it reads as
-        unsupported with no version check. Fails OPEN (``True``) only when the
-        host is offline/unknown — we then can't prove it's too old, and the
-        forward will surface any real connection failure on its own.
-
-        :param host_id: Host identifier, e.g. ``"host_a1b2c3d4..."``.
-        :param workspace_id: Tenant partition; defaults to
-            :func:`current_workspace_id`.
-        :returns: ``False`` only for a connected host that did not advertise the
-            codex side-chat capability.
-        """
-        conn = self.get(host_id, workspace_id)
-        if conn is None:
-            return True
-        return CAP_CODEX_SIDE_CHAT in conn.hello.capabilities
 
     def record_gateway_inference(
         self,

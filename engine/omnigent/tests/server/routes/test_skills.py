@@ -172,29 +172,6 @@ async def test_unauthorized_session_does_not_send_discovery(
     assert not conn.pending_skills
 
 
-@pytest.mark.parametrize(
-    "overrides",
-    [
-        {"host_id": "other-host"},
-        {"path": "/other"},
-        {"harness": "codex-native"},
-        {"agent_id": "other-agent"},
-    ],
-)
-async def test_session_target_cannot_be_overridden(skills_app, overrides: dict[str, str]) -> None:
-    app, _, conn, conv, _, _ = skills_app
-    async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://test"
-    ) as client:
-        response = await client.get(
-            "/v1/skills",
-            params={"session_id": conv.id, **overrides},
-            headers={"x-test-user": "editor"},
-        )
-    assert response.status_code == 422
-    assert conn.outbound_queue.empty()
-
-
 @pytest.mark.parametrize("skill_filter", ["all", "none", ["allowed"]])
 async def test_presession_catalog_matches_filtered_invocations(
     presession_app, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, skill_filter: str | list[str]
@@ -323,26 +300,6 @@ async def test_presession_discovery_requires_host_to_apply_agent_filter(presessi
         response = await task
     assert response.status_code == 502
     assert "update the host" in response.json()["detail"]
-
-
-@pytest.mark.parametrize(
-    "params",
-    [
-        {},
-        {"session_id": ""},
-        {"host_id": "host"},
-        {"host_id": "host", "path": "/repo"},
-        {"harness": "claude-native", "path": "/repo"},
-    ],
-)
-async def test_discovery_requires_one_complete_target(skills_app, params: dict[str, str]) -> None:
-    app, _, conn, _, _, _ = skills_app
-    async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://test"
-    ) as client:
-        response = await client.get("/v1/skills", params=params, headers={"x-test-user": "owner"})
-    assert response.status_code == 422
-    assert conn.outbound_queue.empty()
 
 
 @pytest.mark.parametrize(

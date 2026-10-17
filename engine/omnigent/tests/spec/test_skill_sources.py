@@ -31,7 +31,6 @@ def _ctx(
     home: Path,
     skills_filter: str | list[str] = "all",
     claude_config_dir: Path | None = None,
-    codex_home: Path | None = None,
 ) -> SkillSourceContext:
     """Build a context with a single discovery root and a pinned home."""
     return SkillSourceContext(
@@ -40,7 +39,6 @@ def _ctx(
         skills_filter=skills_filter,
         bundle_dir=None,
         claude_config_dir=claude_config_dir,
-        codex_home=codex_home,
     )
 
 
@@ -49,15 +47,9 @@ def _ctx(
     [
         ("claude-sdk", "claude"),
         ("claude_sdk", "claude"),  # in-process SDK executor-type spelling (B1)
-        ("claude-native", "claude"),
-        ("native-claude", "claude"),
         ("agents_sdk", None),  # underscore non-claude executor type stays unmapped
-        ("codex", "codex"),
-        ("codex-native", "codex"),
-        ("native-codex", "codex"),
+        ("codex", None),
         ("pi", "pi"),
-        ("pi-native", "pi"),
-        ("native-pi", "pi"),
         (None, None),
         ("", None),
     ],
@@ -90,103 +82,6 @@ def test_none_harness_falls_back_to_generic_host_walk(
 
     out = resolve_harness_skills(_ctx(workspace, home), None)
     assert [s.name for s in out] == ["ws-skill"]
-
-
-def test_claude_provider_excludes_agents_skills_dirs(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Claude Code does not read ``.agents/skills``, so its menu must not.
-
-    A claude-family session's ``/name`` is expanded by the Claude CLI
-    itself; listing a skill it never discovers surfaces a command that
-    fails when invoked (the terminal/web parity gap).
-    """
-    home = tmp_path / "home"
-    monkeypatch.setattr("pathlib.Path.home", lambda: home)
-    workspace = tmp_path / "ws"
-    _write_skill(workspace / ".claude" / "skills", "claude-tier-skill")
-    _write_skill(workspace / ".agents" / "skills", "workspace-agents-skill")
-    _write_skill(home / ".agents" / "skills", "home-agents-skill")
-
-    out = resolve_harness_skills(_ctx(workspace, home), "claude-native")
-    assert [s.name for s in out] == ["claude-tier-skill"]
-
-
-def test_claude_provider_sources_user_skills_from_config_dir(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A configured Claude config dir replaces ``~/.claude`` as the user tier.
-
-    Claude Code loads user skills from ``$CLAUDE_CONFIG_DIR/skills`` when
-    set — and then no longer reads ``~/.claude/skills`` — so the menu must
-    follow the same tier or the surfaces diverge in both directions.
-    """
-    home = tmp_path / "home"
-    monkeypatch.setattr("pathlib.Path.home", lambda: home)
-    _write_skill(home / ".claude" / "skills", "default-home-skill")
-    cfg = tmp_path / "claude-config"
-    _write_skill(cfg / "skills", "config-dir-skill")
-    workspace = tmp_path / "ws"
-    workspace.mkdir()
-
-    out = resolve_harness_skills(_ctx(workspace, home, claude_config_dir=cfg), "claude-native")
-    assert [s.name for s in out] == ["config-dir-skill"]
-
-
-def test_claude_sdk_keeps_generic_walk_native_matches_terminal(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The terminal-matching resolution is native-only; SDK keeps the generic walk.
-
-    A ``claude-native`` session types ``/name`` into the CLI as plaintext, so
-    its menu must mirror the tiers the CLI loads: ``.claude/skills`` plus the
-    ``$CLAUDE_CONFIG_DIR`` user tier, never ``.agents``. The in-process
-    ``claude-sdk`` harness has no such terminal, so it stays on the generic host
-    walk it used before this scoping — which lists ``.agents/skills`` and ignores
-    ``$CLAUDE_CONFIG_DIR``. The same seeded tree must diverge by harness.
-    """
-    home = tmp_path / "home"
-    monkeypatch.setattr("pathlib.Path.home", lambda: home)
-    (home / ".claude" / "skills").mkdir(parents=True)  # empty default user tier
-    workspace = tmp_path / "ws"
-    _write_skill(workspace / ".claude" / "skills", "claude-dir-skill")
-    _write_skill(workspace / ".agents" / "skills", "agents-only-skill")
-    cfg = tmp_path / "claude-config"
-    _write_skill(cfg / "skills", "user-cfg-skill")
-    ctx = _ctx(workspace, home, claude_config_dir=cfg)
-
-    sdk = {s.name for s in resolve_harness_skills(ctx, "claude-sdk")}
-    native = {s.name for s in resolve_harness_skills(ctx, "claude-native")}
-
-    # SDK (unchanged): generic walk lists the .agents entry, ignores config-dir.
-    assert "agents-only-skill" in sdk
-    assert "claude-dir-skill" in sdk
-    assert "user-cfg-skill" not in sdk
-    # Native: mirrors the CLI — .agents excluded, config-dir user tier sourced.
-    assert native == {"claude-dir-skill", "user-cfg-skill"}
-
-
-def test_codex_native_and_sdk_agree_without_a_configured_codex_home(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Without a configured ``$CODEX_HOME`` both codex harnesses read ``~/.codex``.
-
-    The Codex provider never scans ``.agents`` and, absent a resolved
-    ``$CODEX_HOME`` (``ctx.codex_home is None``), the native provider falls back
-    to the same ``~/.codex/skills`` the SDK path uses — so the two agree until a
-    custom codex home is in play (see the divergence test below).
-    """
-    home = tmp_path / "home"
-    monkeypatch.setattr("pathlib.Path.home", lambda: home)
-    _write_skill(home / ".codex" / "skills", "codex-host-skill")
-    _write_skill(home / ".agents" / "skills", "agents-only-skill")
-    workspace = tmp_path / "ws"
-    workspace.mkdir()
-    ctx = _ctx(workspace, home)
-
-    native = {s.name for s in resolve_harness_skills(ctx, "codex-native")}
-    sdk = {s.name for s in resolve_harness_skills(ctx, "codex")}
-    assert native == sdk == {"codex-host-skill"}
 
 
 def test_claude_provider_defaults_user_tier_to_home_claude(
@@ -223,37 +118,6 @@ def test_claude_provider_workspace_skill_wins_user_tier_collision(
 
     out = resolve_harness_skills(_ctx(workspace, home), "claude-native")
     assert [(s.name, s.description) for s in out] == [("shared-name", "workspace copy")]
-
-
-def test_claude_plugins_read_from_config_dir(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Plugin settings/manifests follow the configured Claude config dir.
-
-    With ``$CLAUDE_CONFIG_DIR`` set, Claude Code keeps ``settings.json``
-    and ``plugins/`` under that dir, so plugin slash-commands must be
-    resolved from there rather than ``~/.claude``.
-    """
-    home = tmp_path / "home"
-    monkeypatch.setattr("pathlib.Path.home", lambda: home)
-    cfg = tmp_path / "claude-config"
-    install = cfg / "plugins" / "cache" / "mkt" / "toolkit" / "1.0.0"
-    _write_skill(install / "skills", "review")
-    cfg.mkdir(parents=True, exist_ok=True)
-    (cfg / "settings.json").write_text(json.dumps({"enabledPlugins": {"toolkit@mkt": True}}))
-    (cfg / "plugins" / "installed_plugins.json").write_text(
-        json.dumps(
-            {
-                "version": 2,
-                "plugins": {"toolkit@mkt": [{"scope": "user", "installPath": str(install)}]},
-            }
-        )
-    )
-    workspace = tmp_path / "ws"
-    workspace.mkdir()
-
-    out = resolve_harness_skills(_ctx(workspace, home, claude_config_dir=cfg), "claude-native")
-    assert [s.name for s in out] == ["toolkit:review"]
 
 
 def _claude_home_with_plugin(
@@ -452,13 +316,6 @@ def test_claude_provider_list_filter_selects_by_bare_name(
     assert names == ["superpowers:writing-plans"]
 
 
-def test_codex_provider_surfaces_home_codex_skills(tmp_path: Path) -> None:
-    home = tmp_path / "home"
-    _write_skill(home / ".codex" / "skills", "using-superpowers")
-    out = resolve_harness_skills(_ctx(tmp_path / "ws", home), "codex-native")
-    assert "using-superpowers" in [s.name for s in out]
-
-
 def test_codex_provider_respects_none_filter(tmp_path: Path) -> None:
     home = tmp_path / "home"
     _write_skill(home / ".codex" / "skills", "using-superpowers")
@@ -496,16 +353,6 @@ def test_pi_session_does_not_inherit_generic_claude_host_walk(
     assert "claude-only-skill" not in [s.name for s in out]
 
 
-def test_codex_provider_filters_user_invocable_false(tmp_path: Path) -> None:
-    """Codex (and all harnesses) must not surface user-invocable:false skills."""
-    home = tmp_path / "home"
-    _write_skill(home / ".codex" / "skills", "triage", user_invocable=False)
-    _write_skill(home / ".codex" / "skills", "account-review-deck")  # absent -> shown
-    names = [s.name for s in resolve_harness_skills(_ctx(tmp_path / "ws", home), "codex-native")]
-    assert "triage" not in names
-    assert "account-review-deck" in names
-
-
 def test_claude_plugin_provider_filters_user_invocable_false(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -525,47 +372,6 @@ def test_claude_plugin_provider_filters_user_invocable_false(
     names = [s.name for s in resolve_harness_skills(_ctx(tmp_path / "ws", home), "claude-native")]
     assert "sra:triage" not in names
     assert "sra:aisec-review" in names
-
-
-def test_codex_provider_surfaces_skills_by_dir_name(tmp_path: Path) -> None:
-    """
-    When a Codex skill's directory name differs from its frontmatter name,
-    the menu surfaces the DIRECTORY name — the command Codex registers and
-    the name the executor symlinks under (so menu label == runnable name).
-    """
-    home = tmp_path / "home"
-    skill_dir = home / ".codex" / "skills" / "sra--triage"
-    skill_dir.mkdir(parents=True)
-    # Frontmatter name is bare; directory carries the namespace.
-    (skill_dir / "SKILL.md").write_text("---\nname: triage\ndescription: d\n---\nbody\n")
-    names = [s.name for s in resolve_harness_skills(_ctx(tmp_path / "ws", home), "codex-native")]
-    assert "sra--triage" in names
-    assert "triage" not in names
-
-
-def test_codex_menu_set_matches_executor_linked_set(tmp_path: Path) -> None:
-    """
-    Invariant: the menu provider and the executor's symlink path select the
-    SAME skill set from the SAME sources (both via codex_skill_sources +
-    select_codex_skill_dirs) — so a / menu entry is always actually linked.
-    """
-    from omnigent.inner.codex_executor import (
-        codex_skill_sources,
-        select_codex_skill_dirs,
-    )
-
-    home = tmp_path / "home"
-    host = home / ".codex" / "skills"
-    for n in ("alpha", "beta--gamma"):
-        d = host / n
-        d.mkdir(parents=True)
-        (d / "SKILL.md").write_text(f"---\nname: {n.split('--')[-1]}\ndescription: d\n---\nx\n")
-
-    # What the executor would symlink (keys = dir names linked into CODEX_HOME).
-    linked = set(select_codex_skill_dirs("all", codex_skill_sources(None, home)))
-    # What the menu surfaces.
-    menu = {s.name for s in resolve_harness_skills(_ctx(tmp_path / "ws", home), "codex-native")}
-    assert menu == linked == {"alpha", "beta--gamma"}
 
 
 def test_claude_provider_project_disable_overrides_global_enable(

@@ -143,19 +143,9 @@ ProviderKind = Literal[
 # active provider configures (see :func:`_family_for_harness`).
 _HARNESS_FAMILY: dict[str, str] = {
     "claude-sdk": ANTHROPIC_FAMILY,
-    # Native CLI harnesses. Specs (and the omnigent-compat translator)
-    # spell these "claude-native" / "codex-native"; the reversed
-    # "native-claude" / "native-codex" spellings are also accepted so a
-    # caller passing either form resolves. Without the canonical spelling
-    # here, a claude-native / codex-native agent's credential failed to
-    # resolve for the `/model` readout and the startup-header creds line.
-    "claude-native": ANTHROPIC_FAMILY,
-    "native-claude": ANTHROPIC_FAMILY,
-    # ``codex`` is the provider-resolution spelling native Codex launches
-    # resolve through (see ``codex_native.app_server``).
+    # ``codex`` is the provider-resolution spelling of the Codex CLI's own
+    # provider tables (``~/.codex/config.toml``).
     "codex": OPENAI_FAMILY,
-    "codex-native": OPENAI_FAMILY,
-    "native-codex": OPENAI_FAMILY,
 }
 
 # Executor-type spellings that ``AgentSpec.harness_kind`` returns for SDK
@@ -179,7 +169,7 @@ def provider_family_for_harness(harness: str | None) -> str | None:
     a fork into a native target can carry history (same-family only): a model
     id is provider-bound, so it only transfers within the same family.
 
-    :param harness: A harness id, e.g. ``"claude-native"`` or
+    :param harness: A harness id, e.g. ``"claude-sdk"`` or
         ``"claude_sdk"``; ``None`` returns ``None``.
     :returns: ``"anthropic"`` / ``"openai"``, else ``None`` when the harness
         is unknown.

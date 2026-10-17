@@ -17,7 +17,6 @@ from omnigent.runner.tool_dispatch import (
     _execute_session_history_tool,
     _granted_tool_names,
     _ungranted_tool_reason,
-    build_native_relay_tool_schemas,
 )
 from omnigent.spec.types import AgentSpec
 
@@ -383,32 +382,6 @@ async def test_read_rejects_non_string_chat_id() -> None:
 # ── Grant gate: advertised only where actually callable ──────
 
 
-def test_granted_tool_names_excludes_session_history_without_rollover() -> None:
-    spec = _make_spec()
-    assert "session_history" not in _granted_tool_names(spec, "claude-native")
-
-
-def test_granted_tool_names_includes_session_history_for_rollover() -> None:
-    spec = _make_spec()
-    granted = _granted_tool_names(
-        spec, "claude-native", labels={"omnigent.context.mode": "rollover"}
-    )
-    assert "session_history" in granted
-
-
-def test_ungranted_tool_reason_blocks_without_rollover_label() -> None:
-    spec = _make_spec()
-    assert _ungranted_tool_reason("session_history", spec, "claude-native") is not None
-
-
-def test_ungranted_tool_reason_allows_with_rollover_label() -> None:
-    spec = _make_spec()
-    reason = _ungranted_tool_reason(
-        "session_history", spec, "claude-native", labels={"omnigent.context.mode": "rollover"}
-    )
-    assert reason is None
-
-
 def test_granted_tool_names_includes_session_history_for_superside_chat() -> None:
     """The grant check is consistent with ToolManager's gate: superside-chat
     gets session_history too, not just rollover."""
@@ -444,46 +417,3 @@ def test_granted_tool_names_cache_does_not_leak_across_context_modes() -> None:
 
 
 # ── Native relay advertisement ────────────────────────────────
-
-
-def test_relay_schemas_omit_session_history_without_rollover() -> None:
-    spec = _make_spec()
-    names = {s["name"] for s in build_native_relay_tool_schemas(spec)}
-    assert "session_history" not in names
-
-
-def test_relay_schemas_include_session_history_for_rollover() -> None:
-    spec = _make_spec()
-    names = {
-        s["name"]
-        for s in build_native_relay_tool_schemas(
-            spec, labels={"omnigent.context.mode": "rollover"}
-        )
-    }
-    assert "session_history" in names
-
-
-def test_relay_schemas_no_spec_fallback_respects_rollover_gate() -> None:
-    """The spec-less fallback surface (no resolved AgentSpec yet) still
-    gates session_history on the label, not just the (nonexistent) spec."""
-    names_off = {s["name"] for s in build_native_relay_tool_schemas(None)}
-    names_on = {
-        s["name"]
-        for s in build_native_relay_tool_schemas(
-            None, labels={"omnigent.context.mode": "rollover"}
-        )
-    }
-    assert "session_history" not in names_off
-    assert "session_history" in names_on
-
-
-def test_relay_lists_session_history_as_always_loaded() -> None:
-    """Claude Code keeps MCP tools behind tool search unless the server marks
-    one always-loaded; recall must be in context right after a rollover."""
-    from omnigent.harnesses.claude_native.bridge import _mcp_tool_schema_from_spec
-
-    recall = _mcp_tool_schema_from_spec({"name": "session_history", "parameters": {}})
-    other = _mcp_tool_schema_from_spec({"name": "sys_session_get_info", "parameters": {}})
-
-    assert recall["_meta"] == {"anthropic/alwaysLoad": True}
-    assert "_meta" not in other

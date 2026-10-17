@@ -1,14 +1,14 @@
 """Client-side helpers for launching runners through the connect daemon.
 
 These are the CLI-side counterpart to the host-runner protocol: the CLI
-(``run`` / ``claude`` / ``codex``) asks the Omnigent server to launch
+(``run``) asks the Omnigent server to launch
 a runner on this machine's daemon via
 ``POST /v1/hosts/{host_id}/runners``; the server forwards a launch frame to
 the daemon, which spawns the runner subprocess and binds it to the session.
 The daemon owns the runner lifecycle — the CLI only connects.
 
-Harness-agnostic on purpose: the same launch path serves headless
-``run`` agents and the ``claude``/``codex`` terminal wrappers.
+Harness-agnostic on purpose: the same launch path serves every headless
+``run`` agent.
 """
 
 from __future__ import annotations
@@ -16,11 +16,11 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import Iterator
+from urllib.parse import quote
 
 import click
 import httpx
 
-from omnigent.harnesses.claude_native.bridge import url_component
 from omnigent.process_logging import display_log_path, process_log_dir
 
 # Steady-state poll cadence while waiting for a daemon-spawned runner to
@@ -147,7 +147,7 @@ async def wait_for_host_online(
     last_error: httpx.TransportError | None = None
     while asyncio.get_event_loop().time() < deadline:
         try:
-            resp = await client.get(f"/v1/hosts/{url_component(host_id)}")
+            resp = await client.get(f"/v1/hosts/{quote(host_id, safe='')}")
         except httpx.TransportError as exc:
             last_error = exc
         else:
@@ -171,7 +171,7 @@ async def runner_is_online(client: httpx.AsyncClient, runner_id: str) -> bool:
     :param runner_id: Runner id, e.g. ``"runner_abc123"``.
     :returns: ``True`` when the status endpoint reports ``online``.
     """
-    resp = await client.get(f"/v1/runners/{url_component(runner_id)}/status")
+    resp = await client.get(f"/v1/runners/{quote(runner_id, safe='')}/status")
     return resp.status_code == 200 and bool(_json_body(resp).get("online"))
 
 
@@ -208,7 +208,7 @@ async def wait_for_runner_online(
     last_error: httpx.TransportError | None = None
     while asyncio.get_event_loop().time() < deadline:
         try:
-            resp = await client.get(f"/v1/runners/{url_component(runner_id)}/status")
+            resp = await client.get(f"/v1/runners/{quote(runner_id, safe='')}/status")
         except httpx.TransportError as exc:
             last_error = exc
         else:
@@ -264,7 +264,7 @@ async def launch_or_reuse_daemon_runner(
     if fresh:
         existing = None
     else:
-        snap = await client.get(f"/v1/sessions/{url_component(session_id)}")
+        snap = await client.get(f"/v1/sessions/{quote(session_id, safe='')}")
         existing = _json_body(snap).get("runner_id") if snap.status_code == 200 else None
     if isinstance(existing, str) and existing:
         if await runner_is_online(client, existing):
@@ -273,7 +273,7 @@ async def launch_or_reuse_daemon_runner(
         # endpoint's atomic ``UPDATE ... WHERE runner_id IS NULL`` can
         # bind the freshly-spawned runner. "" is the clear sentinel.
         await client.patch(
-            f"/v1/sessions/{url_component(session_id)}",
+            f"/v1/sessions/{quote(session_id, safe='')}",
             json={"runner_id": ""},
         )
     # The host tunnel can be briefly absent from the server's in-memory
@@ -289,7 +289,7 @@ async def launch_or_reuse_daemon_runner(
         if attempt:
             await asyncio.sleep(_RETRY_DELAYS_S[attempt - 1])
         resp = await client.post(
-            f"/v1/hosts/{url_component(host_id)}/runners",
+            f"/v1/hosts/{quote(host_id, safe='')}/runners",
             json={"session_id": session_id, "workspace": workspace},
             timeout=60.0,
         )
@@ -327,3 +327,57 @@ def error_text(resp: httpx.Response) -> str:
     if isinstance(detail, str):
         return detail
     return json.dumps(body)[:400]
+
+
+async def bind_session_runner(
+    client: httpx.AsyncClient,
+    session_id: str,
+    runner_id: str,
+) -> None:
+    """
+    Bind a session to the daemon-launched runner that will host it.
+
+    :param client: HTTP client pointed at the Omnigent server.
+    :param session_id: Session/conversation id, e.g.
+        ``"conv_abc123"``.
+    :param runner_id: Registered runner id, e.g.
+        ``"runner_abc123"``.
+    :returns: None.
+    :raises click.ClickException: If binding fails.
+    """
+    try:
+        resp = await client.patch(
+            f"/v1/sessions/{quote(session_id, safe='')}",
+            json={"runner_id": runner_id},
+        )
+    except httpx.ConnectError as exc:
+        # Connection refused/reset or DNS failure: the server was never reached.
+        raise click.ClickException(
+            f"Couldn't reach the Omnigent server to bind session {session_id!r} ({exc!r}). "
+            "Check the server URL and your connection."
+        ) from exc
+    except httpx.ConnectTimeout as exc:
+        # Connect phase timed out: also never reached the server (down or wrong
+        # host), so point at the URL/connection rather than server load.
+        raise click.ClickException(
+            f"Couldn't reach the Omnigent server to bind session {session_id!r}: connection "
+            f"timed out ({exc!r}). Check the server URL and your connection."
+        ) from exc
+    except httpx.TimeoutException as exc:
+        # Connected, but the server didn't respond in time: it's reachable and
+        # likely slow rather than down.
+        raise click.ClickException(
+            f"Timed out binding session {session_id!r}: the Omnigent server is responding too "
+            f"slowly ({exc!r}); retry shortly."
+        ) from exc
+    except httpx.TransportError as exc:
+        # Any other transport failure (protocol error, etc.): no response, so
+        # there is no status to report.
+        raise click.ClickException(
+            f"Couldn't reach the Omnigent server to bind session {session_id!r} ({exc!r}). "
+            "Check the server URL and your connection."
+        ) from exc
+    if resp.status_code >= 400:
+        raise click.ClickException(
+            f"Session runner bind failed ({resp.status_code}): {error_text(resp)}"
+        )

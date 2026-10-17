@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import subprocess
-import sys
 from dataclasses import dataclass
 
 import pytest
@@ -17,19 +15,6 @@ from omnigent.terminals.ws_common import (
     _forward_terminal_to_ws,
     _tmux_session_alive,
 )
-
-
-def test_importing_claude_native_does_not_import_fastapi() -> None:
-    """Shared close codes stay importable without the server dependency graph."""
-    subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            "import sys; import omnigent.harnesses.claude_native.main; "
-            "assert 'fastapi' not in sys.modules",
-        ],
-        check=True,
-    )
 
 
 class _RecordingWebSocket:

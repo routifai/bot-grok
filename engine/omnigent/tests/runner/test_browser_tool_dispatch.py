@@ -24,9 +24,7 @@ import pytest
 import omnigent.tools.builtins as builtins_mod
 from omnigent.runner.tool_dispatch import (
     _BROWSER_TOOLS,
-    _NATIVE_RELAY_BUILTIN_TOOLS,
     _execute_browser_tool,
-    build_native_relay_tool_schemas,
     strip_browser_tool_schemas,
 )
 from omnigent.spec.types import AgentSpec
@@ -236,31 +234,6 @@ def test_toolmanager_always_registers_browser_tools() -> None:
 # ── Native-relay exposure ────────────────────────────────────────
 
 
-def test_browser_tools_in_native_relay_union() -> None:
-    """The relay builtin union must include every browser tool name."""
-    assert _BROWSER_TOOLS <= _NATIVE_RELAY_BUILTIN_TOOLS
-
-
-def test_native_relay_includes_browser_for_bare_spec() -> None:
-    """
-    A spec with NO ``tools.builtins`` still surfaces all five
-    ``browser_*`` schemas on the native relay — because ToolManager
-    always registers them, the relay (which filters ToolManager's
-    schemas by the union) always emits them. The desktop app runs native
-    sessions that see only the relay, so this is the load-bearing path. The
-    no-renderer mitigation does not dynamically rewrite this session-scoped
-    surface; native calls instead fail promptly when nobody claims them.
-    """
-    schemas = build_native_relay_tool_schemas(AgentSpec(spec_version=1))
-    names = {s["name"] for s in schemas if s["name"].startswith("browser_")}
-    assert names == _EXPECTED_BROWSER_NAMES
-    # Each relay entry is the flat {name, description, parameters} shape.
-    for schema in schemas:
-        if schema["name"].startswith("browser_"):
-            assert schema["description"]
-            assert schema["parameters"]["type"] == "object"
-
-
 # ── Headless schema stripping ────────────────────────────────────────
 
 
@@ -291,39 +264,6 @@ def test_strip_browser_tool_schemas_covers_every_browser_name() -> None:
     schemas.append({"type": "function", "function": {"name": "keepme"}})
     kept = strip_browser_tool_schemas(schemas)
     assert kept == [{"type": "function", "function": {"name": "keepme"}}]
-
-
-@pytest.mark.asyncio
-async def test_screenshot_preserves_image_bytes_and_all_metadata() -> None:
-    """Browser metadata and the decoded screenshot survive delivery and replay."""
-    from omnigent.inner.codex_executor import _dynamic_tool_result_payload
-    from omnigent.runtime.tool_result_replay import tool_result_content_blocks
-    from tests._image_fixtures import _TINY_PNG_BASE64
-
-    metadata = {
-        "ok": True,
-        "url": "https://example.com/chart",
-        "note": "Correction: South -30",
-        "dimensions": {"width": 1, "height": 1},
-    }
-    body = {**metadata, "data_url": f"data:image/png;base64,{_TINY_PNG_BASE64}"}
-    client = _RecordingClient(_RecordingResponse(body=body))
-    output = await _execute_browser_tool(
-        "browser_screenshot", {}, server_client=client, conversation_id="image-session"
-    )
-    native = _dynamic_tool_result_payload(json.loads(output))
-    assert native["success"] is True
-    assert [item["type"] for item in native["contentItems"]] == ["inputText", "inputImage"]
-    assert json.loads(native["contentItems"][0]["text"]) == metadata
-    assert native["contentItems"][1]["imageUrl"] == body["data_url"]
-    replay = tool_result_content_blocks(output)
-    assert replay.blocks is not None
-    assert json.loads(replay.blocks[0]["text"]) == metadata
-    assert replay.blocks[1]["source"] == {
-        "type": "base64",
-        "media_type": "image/png",
-        "data": _TINY_PNG_BASE64,
-    }
 
 
 @pytest.mark.asyncio
@@ -423,25 +363,3 @@ async def test_screenshot_never_overrides_existing_failure_status(
     )
     assert output == response.text
     assert classify_tool_result(json.loads(output)) == classify_tool_result(body)
-
-
-@pytest.mark.asyncio
-async def test_screenshot_normalizes_base64_without_changing_image_bytes() -> None:
-    from omnigent.inner.codex_executor import _dynamic_tool_result_payload
-    from tests._image_fixtures import _TINY_PNG_BASE64
-
-    wrapped = "\n".join(
-        _TINY_PNG_BASE64[i : i + 12] for i in range(0, len(_TINY_PNG_BASE64), 12)
-    ).rstrip("=")
-    body = {"ok": True, "data_url": "data:image/png;base64," + wrapped}
-    output = await _execute_browser_tool(
-        "browser_screenshot",
-        {},
-        server_client=_RecordingClient(_RecordingResponse(body=body)),
-        conversation_id="image-session",
-    )
-    assert (
-        _dynamic_tool_result_payload(json.loads(output))["contentItems"][1]["imageUrl"]
-        == "data:image/png;base64," + _TINY_PNG_BASE64
-    )
-    assert body["data_url"] == "data:image/png;base64," + wrapped

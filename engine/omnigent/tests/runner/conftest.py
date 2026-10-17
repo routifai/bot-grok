@@ -14,22 +14,11 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
-from omnigent.harnesses.claude_native import main as claude_native
-from omnigent.harnesses.codex_native import app_server as codex_native_app_server
 from omnigent.process_logging import PROCESS_LOG_FILE_ENV_VAR
 from omnigent.runner import create_runner_app
 from omnigent.runner.mcp_manager import McpSchemasResult
 from omnigent.spec.types import AgentSpec, ExecutorSpec, MCPServerConfig
 from tests.runner.helpers import NullServerClient
-
-# The real store-backed catalog resolver, captured before the autouse fixture
-# below stubs it: a test that exercises the catalog path re-patches the module
-# attribute back to this. (An assignment, not an alias import, so lint
-# autofixes can't strip it as unused.)
-REAL_CLAUDE_LAUNCH_CATALOG = claude_native.claude_launch_catalog
-REAL_CLAUDE_REPROBED_LAUNCH_CATALOG = claude_native.claude_reprobed_launch_catalog
-REAL_CODEX_LAUNCH_CATALOG = codex_native_app_server.codex_launch_catalog
-REAL_CODEX_REPROBED_LAUNCH_CATALOG = codex_native_app_server.codex_reprobed_launch_catalog
 
 # Project root: two parents up from this conftest (tests/runner/ → repo root).
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -39,32 +28,13 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 def _isolated_model_catalog_store(
     monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory
 ) -> None:
-    """Keep launch-path catalog consults off the developer's machine.
+    """Keep model-catalog store writes off the developer's machine.
 
-    The native launch paths consult the shared model-catalog store and, on
-    a miss, probe the REAL harness CLIs — which a unit test must never do
-    (a real ``claude`` boot takes ~6 s and writes the developer's real
-    ``~/.omnigent`` store). Redirect the store's directory seam per test
-    and stub the launch-catalog resolvers to "no catalog" (the
-    pre-catalog behavior); a test exercising catalogs re-patches them
-    explicitly.
+    Redirect the store's directory seam per test so nothing writes the
+    developer's real ``~/.omnigent`` store.
     """
     store_dir = tmp_path_factory.mktemp("model_catalog_store")
     monkeypatch.setattr("omnigent.models.model_catalog_store._data_dir", lambda: store_dir)
-
-    async def _no_catalog(*_args: Any, **_kwargs: Any) -> None:
-        return None
-
-    monkeypatch.setattr("omnigent.harnesses.claude_native.main.claude_launch_catalog", _no_catalog)
-    monkeypatch.setattr(
-        "omnigent.harnesses.claude_native.main.claude_reprobed_launch_catalog", _no_catalog
-    )
-    monkeypatch.setattr(
-        "omnigent.harnesses.codex_native.app_server.codex_launch_catalog", _no_catalog
-    )
-    monkeypatch.setattr(
-        "omnigent.harnesses.codex_native.app_server.codex_reprobed_launch_catalog", _no_catalog
-    )
 
 
 @pytest.fixture(autouse=True)
@@ -105,10 +75,10 @@ def _drain_session_event_queue(queue: asyncio.Queue[Any] | None) -> list[dict[st
     """
     Drain and return every dict item currently on a runner session queue.
 
-    Used by the native control-event tests to clear creation-time events
-    (e.g. the ``session.terminal_pending`` pair the claude-native
-    auto-create path enqueues) so a later drain isolates only the events
-    a specific control signal produced.
+    Used by the control-event tests to clear creation-time events (e.g.
+    the ``session.terminal_pending`` pair the REPL-terminal auto-create
+    path enqueues) so a later drain isolates only the events a specific
+    control signal produced.
 
     :param queue: The per-session event queue from
         ``_session_event_queues_ref``, or ``None`` when the session has
@@ -604,90 +574,6 @@ def _ordered_user_texts(body: dict[str, Any]) -> list[str]:
         elif item.get("type") == "input_text":
             texts.append(item.get("text", ""))
     return texts
-
-
-class _NativeBlockingHarnessClient(_ScriptedHarnessClient):
-    """Native-style harness fake: first turn blocks; later turns complete.
-
-    Models a claude-native harness for the runner's native delivery path
-    (RUNNER_MESSAGE_INGEST.md Part C): turn 0 blocks on a gate (so the
-    test can buffer messages behind it), and every continuation turn
-    completes immediately (mirroring claude-native's instant ``run_turn``
-    that just types the latest user message and returns).
-    """
-
-    def __init__(self, gate: asyncio.Event) -> None:
-        """Initialize with the gate that holds the first turn open."""
-        super().__init__([])
-        self._gate = gate
-        self._stream_count = 0
-        # Snapshot of each turn's latest user text, captured at stream time.
-        # ``posted_bodies[i]["content"]`` aliases the live history list (the
-        # runner assigns it by reference), which later drains mutate — so we
-        # must extract the latest text NOW, not at assertion time.
-        self.turn_latest_texts: list[str] = []
-
-    def stream(self, method: str, url: str, *, json: dict[str, Any], timeout: Any) -> Any:
-        """Record the turn body; block only the first turn on the gate."""
-        del method, url, timeout
-        self.posted_bodies.append(json)
-        _texts = _ordered_user_texts(json)
-        self.turn_latest_texts.append(_texts[-1] if _texts else "")
-        n = self._stream_count
-        self._stream_count += 1
-        gate = self._gate
-
-        class _Ctx:
-            status_code = 200
-
-            async def __aenter__(self) -> Any:
-                return _Handle()
-
-            async def __aexit__(self, *_: Any) -> None:
-                return None
-
-        class _Handle:
-            status_code = 200
-
-            async def aiter_text(self) -> AsyncIterator[str]:
-                yield _sse({"type": "response.created", "response": {"id": f"resp_{n}"}})
-                if n == 0:
-                    await gate.wait()
-                yield _sse({"type": "response.completed", "response": {"id": f"resp_{n}"}})
-
-        return _Ctx()
-
-
-def _build_native_app(
-    gate: asyncio.Event,
-) -> tuple[FastAPI, _FakeProcessManager, _NativeBlockingHarnessClient]:
-    """Build a runner app whose session resolves to a claude-native harness.
-
-    The spec_resolver returns a spec whose executor harness is
-    ``claude-native``; the first turn's ``_run_turn_bg`` caches it (before
-    streaming), so subsequent buffer decisions take the native path.
-
-    :param gate: Event that unblocks the first turn.
-    :returns: ``(app, process_manager, harness_client)``.
-    """
-    spec = AgentSpec(
-        spec_version=1,
-        name="t",
-        executor=ExecutorSpec(type="omnigent", config={"harness": "claude-native"}),
-    )
-    harness_client = _NativeBlockingHarnessClient(gate)
-    pm = _FakeProcessManager(harness_client)
-
-    async def _resolver(agent_id: str, session_id: str | None = None) -> AgentSpec:
-        del agent_id, session_id
-        return spec
-
-    app = create_runner_app(
-        process_manager=pm,  # type: ignore[arg-type]
-        spec_resolver=_resolver,
-        server_client=NullServerClient(),  # type: ignore[arg-type]
-    )
-    return app, pm, harness_client
 
 
 class _BlockingHarnessClient(_ScriptedHarnessClient):

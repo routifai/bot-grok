@@ -138,12 +138,6 @@ _SMART_ROUTING_FALLBACKS: dict[str, StaticModelFallback] = {
         provenance="probed: pi's own gateway 400s on each of these",
         discovery_gap="a gateway listing advertises these without pi's request-shape limits",
     ),
-    "codex_catalog_clone_source": StaticModelFallback(
-        model_ids=("gpt-5.6-luna",),
-        owner="Codex extended catalog (omnigent.inner.codex_executor)",
-        provenance="codex's own bundled catalog slug for the cheapest current arm",
-        discovery_gap="codex's bundled catalog carries no entry for a gateway-only arm to clone",
-    ),
 }
 
 #: Claude serving endpoints the router ranks, cheapest → most powerful.
@@ -170,11 +164,6 @@ SMART_ROUTING_FAMILY_FALLBACKS = _SMART_ROUTING_FALLBACKS["family_fallbacks"].mo
 
 #: Models pi's own gateway rejects, so the router may not pick them under pi.
 SMART_ROUTING_PI_EXCLUDED = _SMART_ROUTING_FALLBACKS["pi_excluded"].model_ids
-
-#: The codex catalog entry a gateway-only arm is cloned from.
-CODEX_CATALOG_CLONE_SOURCE_SLUG = _SMART_ROUTING_FALLBACKS["codex_catalog_clone_source"].model_ids[
-    0
-]
 
 #: Cheapest current arm per CLI family for background session titles. Title
 #: calls are tiny (<=64 output tokens, no tools, low effort), so they always

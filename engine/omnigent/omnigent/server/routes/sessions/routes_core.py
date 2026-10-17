@@ -28,9 +28,6 @@ from fastapi.responses import Response
 from pydantic import ValidationError
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
-from omnigent.codex_approval_modes import (
-    CODEX_NATIVE_PERMISSION_VALUES,
-)
 from omnigent.context.labels import uses_omnigent_context
 from omnigent.db.utils import generate_agent_id, generate_file_id
 from omnigent.debug_logging import add_audit_attrs, debug_event, set_current_runner_id
@@ -105,16 +102,9 @@ from omnigent.server.routes._errors import (
 from omnigent.server.routes._errors import session_not_found as _session_not_found
 from omnigent.server.routes._origin import require_trusted_origin
 from omnigent.server.routes._sessions.common import (
-    _CLAUDE_NATIVE_PERMISSION_MODE_LABEL_KEY,
-    _CLAUDE_NATIVE_PERMISSION_MODES,
     _CLAUDE_NATIVE_UI_LABEL_KEY,
     _CLAUDE_NATIVE_UI_LABEL_VALUE,
     _CLAUDE_NATIVE_WRAPPER_LABEL_KEY,
-    _CLAUDE_NATIVE_WRAPPER_LABEL_VALUE,
-    _CODEX_NATIVE_APPROVAL_MODE_LABEL_KEY,
-    _CODEX_NATIVE_COLLABORATION_MODE_LABEL_KEY,
-    _CODEX_NATIVE_COLLABORATION_MODES,
-    _CODEX_NATIVE_WRAPPER_LABEL_VALUE,
     _logger,
     _managed_launch_tasks,
     get_server_runner_router,
@@ -123,11 +113,9 @@ from omnigent.server.routes._sessions.common import (
 from omnigent.server.routes._sessions.helpers import (
     _TUI_INJECT_FORWARD_TIMEOUT_S,
     SessionLiveness,
-    _agent_carries_native_fork_history,
     _announce_session_added,
     _apply_liveness_to_items,
     _authorize_bundled_parent_and_inherit_runner,
-    _codex_plan_mode_enabled,
     _discovery_key,
     _enforce_filesystem_attachment_policy,
     _filesystem_attachment_in_history,
@@ -136,31 +124,21 @@ from omnigent.server.routes._sessions.helpers import (
     _grant_default_public,
     _invalidate_runner_backed_snapshot_state,
     _multipart_missing_detail,
-    _native_coding_agent_for_agent,
     _notify_runner_of_bundled_child,
     _parse_session_create_metadata,
     _permission_level_from_grants,
-    _pin_claude_permission_launch_args,
-    _presentation_labels_for_agent,
     _prune_session_read_state,
-    _publish_codex_approval_mode,
-    _publish_collaboration_mode,
-    _publish_permission_mode,
     _publish_sandbox_status,
     _publish_terminal_pending,
     _reject_reserved_cost_control_label_seed,
     _reject_server_reserved_label_seed,
-    _require_codex_approval_mode_forward,
-    _require_collaboration_mode_forward,
     _require_cost_control_label_authority,
-    _require_permission_mode_forward,
     _reset_runner_resources_after_switch,
     _resolve_llm_model,
     _same_provider_family,
     _session_status_cache,
     _session_status_from_cache,
     _set_read_state,
-    _surface_model_change_forward_failure,
     _title_content_from_item,
     _validate_terminal_launch_args,
     _validated_cost_control_mode_override,
@@ -174,11 +152,9 @@ from omnigent.server.routes._sessions.orchestration import (
     _cancel_pending_archive_stop,
     _create_session_from_bundle,
     _create_session_from_existing_agent,
-    _ensure_native_terminal_ready,
     _ensure_runner_relay_ready,
     _ensure_runner_session_initialized,
     _get_session_snapshot,
-    _is_native_terminal_session,
     _labels_for_viewer,
     _persist_model_change_note,
     _publish_runner_recovered_status,
@@ -206,15 +182,11 @@ from omnigent.server.schemas import (
     SessionProjectSummary,
     SessionResponse,
     SessionSwitchAgentRequest,
-    SessionTodosEvent,
     UpdateSessionRequest,
 )
 from omnigent.stores import AgentStore, ConversationStore
 from omnigent.stores.artifact_store import ArtifactStore
 from omnigent.stores.comment_store import CommentStore
-from omnigent.stores.conversation_store import (
-    CODEX_NATIVE_BYPASS_SANDBOX_LABEL_KEY as _CODEX_NATIVE_BYPASS_SANDBOX_LABEL_KEY,
-)
 from omnigent.stores.conversation_store import (
     PINNED_LABEL_KEY,
     PROJECT_LABEL_KEY,
@@ -244,99 +216,31 @@ from omnigent.version import VERSION
 
 def _require_attachment_compatible_history(
     session_id: str,
-    target_agent: Agent,
     conversation_store: ConversationStore,
     file_store: FileStore | None,
     *,
     up_to_response_id: str | None = None,
-) -> str | None:
-    """Reject a target that cannot replay files in the retained transcript.
+) -> None:
+    """Reject retaining history that references a filesystem attachment.
+
+    No available harness can open those files, so a fork or switch that keeps
+    one is refused.
 
     :param session_id: Source session whose history will be retained.
-    :param target_agent: Agent selected for the fork or in-place switch.
     :param conversation_store: Store containing the ordered source history.
     :param file_store: Store containing authoritative attachment filenames.
     :param up_to_response_id: Inclusive fork cutoff, or all history when absent.
-    :returns: A retained filesystem attachment's name, or ``None``.
-    :raises OmnigentError: If the target cannot open a referenced attachment.
+    :raises OmnigentError: If retained history references such an attachment.
     """
-    from omnigent.inner.native_attachments import FILESYSTEM_ATTACHMENT_HARNESSES
-
     filename = _filesystem_attachment_in_history(
         session_id, conversation_store, file_store, up_to_response_id=up_to_response_id
     )
     if filename is not None:
-        native = _native_coding_agent_for_agent(target_agent)
-        if native is None or native.harness not in FILESYSTEM_ATTACHMENT_HARNESSES:
-            raise OmnigentError(
-                f"This history includes '{filename}', which requires "
-                "Claude Code or Codex. Choose one of those harnesses, "
-                "or fork from before the attachment was sent.",
-                code=ErrorCode.INVALID_INPUT,
-            )
-    return filename
-
-
-async def _wake_runner_for_model_change(
-    request: Request,
-    conv: Conversation,
-    conversation_store: ConversationStore,
-    runner_router: RunnerRouter | None,
-) -> Conversation:
-    """Restore a sleeping native session before applying an explicit model pick."""
-    if await _get_runner_client(conv.id, runner_router) is not None:
-        return conv
-    runner_client, conv = await ensure_runner_connected(
-        session_id=conv.id,
-        conv=conv,
-        app_state=request.app.state,
-        conversation_store=conversation_store,
-        runner_router=runner_router,
-        raise_host_refusal=True,
-    )
-    if runner_client is None:
         raise OmnigentError(
-            "Cannot switch models while the session host is offline. Reconnect the host and retry.",
-            code=ErrorCode.RUNNER_UNAVAILABLE,
+            f"This history includes '{filename}', which no available harness can "
+            "open. Fork from before the attachment was sent.",
+            code=ErrorCode.INVALID_INPUT,
         )
-    terminal_ready = await _ensure_runner_session_initialized(
-        conv.id,
-        conv,
-        runner_client,
-        conversation_store,
-        initializer=getattr(request.app.state, "runner_session_initializer", None),
-        suppress_recovery_turn=True,
-        require_success=True,
-    )
-    if not terminal_ready:
-        outcome = await _ensure_native_terminal_ready(
-            runner_client,
-            conv.id,
-            conv,
-            persist_resource_event=False,
-            runner_router=runner_router,
-        )
-        if outcome.error is not None:
-            raise OmnigentError(outcome.error.message, code=ErrorCode.RUNNER_UNAVAILABLE)
-    await _ensure_runner_relay_ready(conv.id, conv.runner_id, runner_client, conversation_store)
-    return conv
-
-
-async def _reset_runner_and_clear_todos_after_switch(
-    session_id: str, conversation_store: ConversationStore
-) -> None:
-    """Finish retiring the old runner, then clear and broadcast its Plan."""
-    try:
-        await _reset_runner_resources_after_switch(session_id)
-    finally:
-        # Connected clients keep the old agent's Plan until teardown finishes, so
-        # clear after: a late old-runner Plan POST cannot survive this clear.
-        cleared = await asyncio.to_thread(conversation_store.set_session_todos, session_id, [])
-        if cleared:
-            from omnigent.server.routes import sessions as facade
-
-            event = SessionTodosEvent(type="session.todos", conversation_id=session_id, todos=[])
-            facade.session_stream.publish(session_id, event.model_dump())
 
 
 @dataclass(frozen=True)
@@ -2078,19 +1982,6 @@ def register_core_routes(
             with contextlib.suppress(RuntimeError):
                 await websocket.close()
 
-    # ── Codex-native goal controls ───────────────────────────────
-
-    from omnigent.server.routes.codex.sessions import register_codex_session_routes
-
-    register_codex_session_routes(
-        router,
-        conversation_store=conversation_store,
-        runner_router=runner_router,
-        auth_provider=auth_provider,
-        permission_store=permission_store,
-        runner_exit_reports=runner_exit_reports,
-    )
-
     # ── PATCH /sessions/{session_id} ────────────────────────────
 
     @router.post(
@@ -2337,93 +2228,6 @@ def register_core_routes(
                     allowed_tunnel_tokens=runner_tunnel_tokens,
                     multi_user=permission_store is not None,
                 )
-        collaboration_mode_requested = "collaboration_mode" in body.model_fields_set
-        requested_codex_collaboration_mode: str | None = None
-        conv_for_collaboration_mode: Conversation | None = None
-        if collaboration_mode_requested:
-            if body.collaboration_mode is None:
-                raise OmnigentError(
-                    "collaboration_mode must be a non-empty string",
-                    code=ErrorCode.INVALID_INPUT,
-                )
-            if body.collaboration_mode not in _CODEX_NATIVE_COLLABORATION_MODES:
-                raise OmnigentError(
-                    "collaboration_mode must be one of "
-                    f"{sorted(_CODEX_NATIVE_COLLABORATION_MODES)}",
-                    code=ErrorCode.INVALID_INPUT,
-                )
-            conv_for_collaboration_mode = await asyncio.to_thread(
-                conversation_store.get_conversation,
-                session_id,
-            )
-            if conv_for_collaboration_mode is None:
-                raise _session_not_found()
-            if (
-                conv_for_collaboration_mode.labels.get(_CLAUDE_NATIVE_WRAPPER_LABEL_KEY)
-                != _CODEX_NATIVE_WRAPPER_LABEL_VALUE
-            ):
-                raise OmnigentError(
-                    "collaboration_mode is only supported for codex-native sessions",
-                    code=ErrorCode.INVALID_INPUT,
-                )
-            requested_codex_collaboration_mode = body.collaboration_mode
-        permission_mode_requested = "permission_mode" in body.model_fields_set
-        requested_permission_mode: str | None = None
-        if permission_mode_requested:
-            if body.permission_mode is None:
-                raise OmnigentError(
-                    "permission_mode must be a non-empty string",
-                    code=ErrorCode.INVALID_INPUT,
-                )
-            conv_for_permission_mode = await asyncio.to_thread(
-                conversation_store.get_conversation,
-                session_id,
-            )
-            if conv_for_permission_mode is None:
-                raise _session_not_found()
-            # The mode lives in the harness's own TUI.
-            if (
-                conv_for_permission_mode.labels.get(_CLAUDE_NATIVE_WRAPPER_LABEL_KEY)
-                != _CLAUDE_NATIVE_WRAPPER_LABEL_VALUE
-            ):
-                raise OmnigentError(
-                    "permission_mode is only supported for claude-native sessions",
-                    code=ErrorCode.INVALID_INPUT,
-                )
-            if body.permission_mode not in _CLAUDE_NATIVE_PERMISSION_MODES:
-                raise OmnigentError(
-                    f"permission_mode must be one of {sorted(_CLAUDE_NATIVE_PERMISSION_MODES)}",
-                    code=ErrorCode.INVALID_INPUT,
-                )
-            requested_permission_mode = body.permission_mode
-        approval_mode_requested = "approval_mode" in body.model_fields_set
-        requested_codex_approval_mode: str | None = None
-        if approval_mode_requested:
-            if body.approval_mode is None:
-                raise OmnigentError(
-                    "approval_mode must be a non-empty string",
-                    code=ErrorCode.INVALID_INPUT,
-                )
-            if body.approval_mode not in CODEX_NATIVE_PERMISSION_VALUES:
-                raise OmnigentError(
-                    f"approval_mode must be one of {sorted(CODEX_NATIVE_PERMISSION_VALUES)}",
-                    code=ErrorCode.INVALID_INPUT,
-                )
-            conv_for_approval_mode = await asyncio.to_thread(
-                conversation_store.get_conversation,
-                session_id,
-            )
-            if conv_for_approval_mode is None:
-                raise _session_not_found()
-            if (
-                conv_for_approval_mode.labels.get(_CLAUDE_NATIVE_WRAPPER_LABEL_KEY)
-                != _CODEX_NATIVE_WRAPPER_LABEL_VALUE
-            ):
-                raise OmnigentError(
-                    "approval_mode is only supported for codex-native sessions",
-                    code=ErrorCode.INVALID_INPUT,
-                )
-            requested_codex_approval_mode = body.approval_mode
         labels_to_set = dict(body.labels or {})
         # Pins are per-user. The client writes the canonical ``omnigent.pinned``
         # key; rewrite it to the caller's per-user key so one user's pin doesn't
@@ -2431,10 +2235,6 @@ def register_core_routes(
         # through to the delete-clear loop below under the per-user key.
         if PINNED_LABEL_KEY in labels_to_set:
             labels_to_set[pinned_label_key(user_id)] = labels_to_set.pop(PINNED_LABEL_KEY)
-        if requested_codex_collaboration_mode is not None:
-            labels_to_set[_CODEX_NATIVE_COLLABORATION_MODE_LABEL_KEY] = (
-                requested_codex_collaboration_mode
-            )
         effort = body.reasoning_effort
         clear_effort = effort in EFFORT_CLEAR_VALUES
         if effort is not None and not clear_effort:
@@ -2656,9 +2456,7 @@ def register_core_routes(
                         request.app.state.runner_session_initializer,
                     )
         else:
-            conv = conv_for_collaboration_mode
-            if conv is None:
-                conv = await asyncio.to_thread(conversation_store.get_conversation, session_id)
+            conv = await asyncio.to_thread(conversation_store.get_conversation, session_id)
             if conv is None:
                 raise _session_not_found()
             if conv.agent_id is None:
@@ -2680,18 +2478,6 @@ def register_core_routes(
             )
 
         live_model_change = not body.silent and (model_override is not None or clear_model)
-        wake_for_model_change = (
-            live_model_change
-            and conv is not None
-            and conv.host_id is not None
-            and _is_native_terminal_session(conv)
-        )
-        if wake_for_model_change:
-            assert conv is not None
-            conv = await _wake_runner_for_model_change(
-                request, conv, conversation_store, runner_router
-            )
-
         updated = await asyncio.to_thread(
             conversation_store.update_conversation,
             session_id,
@@ -2744,135 +2530,31 @@ def register_core_routes(
             # decided to keep. Same-replica fast path; the deferred stop's
             # archived-flag re-check covers a cross-replica Undo.
             _cancel_pending_archive_stop(session_id)
-        # The runner applies native settings live. Silent startup metadata
-        # writes skip both recovery and forwarding to avoid recursive launches.
+        # The runner applies settings live. Silent startup metadata writes
+        # skip both recovery and forwarding to avoid recursive launches.
         live_forward = not body.silent
         if live_forward and (effort is not None or clear_effort):
             await _forward_session_change_to_runner(
                 session_id,
                 runner_router,
                 {"type": "effort_change", "effort": updated.reasoning_effort},
-                # Same TUI injection budget as the model change below: the
-                # ``/effort`` confirm dialog can render seconds after the
-                # command.
                 timeout_s=_TUI_INJECT_FORWARD_TIMEOUT_S,
             )
         if live_model_change:
-            _model_forward = await _forward_session_change_to_runner(
+            await _forward_session_change_to_runner(
                 session_id,
                 runner_router,
                 {"type": "model_change", "model": updated.model_override},
-                # The runner answers this by typing ``/model`` into the pane and
-                # confirming the dialog, which outlasts the default budget.
                 timeout_s=_TUI_INJECT_FORWARD_TIMEOUT_S,
             )
-            # Append a durable [System: model changed to X] note for sessions
-            # whose history Omnigent writes. Gate on the wrapper label (NOT
-            # omnigent.ui, which chat-first SDK terminal-view sessions like
-            # polly/debby also carry) — see _persist_model_change_note for the
-            # full rationale. live_forward (== not silent) already excludes
-            # bind-time auto-applies, so only an explicit /model lands a note.
-            if _is_native_terminal_session(updated):
-                # A recovered runner can disconnect again before the forward;
-                # neither a lost request nor a refusal confirms a model switch.
-                forward_failed = _surface_model_change_forward_failure(
-                    session_id,
-                    updated.model_override,
-                    _model_forward,
-                )
-                if conv is not None and (
-                    (wake_for_model_change and (_model_forward is None or forward_failed))
-                    or (forward_failed and configured_snapshot(conv.inference_snapshot))
-                ):
-                    await asyncio.to_thread(
-                        conversation_store.update_conversation,
-                        session_id,
-                        model_override=conv.model_override,
-                        _unset_model_override=conv.model_override is None,
-                    )
-                    raise OmnigentError(
-                        "The terminal did not apply the model change. "
-                        "The previous selection has been restored.",
-                        code=ErrorCode.RUNNER_UNAVAILABLE,
-                    )
-            else:
-                await _persist_model_change_note(
-                    session_id,
-                    updated.model_override,
-                    conversation_store,
-                )
-        if requested_codex_collaboration_mode is not None and live_forward:
-            _codex_plan_enabled = _codex_plan_mode_enabled(requested_codex_collaboration_mode)
-            _runner_result = await _forward_session_change_to_runner(
+            # Append a durable [System: model changed to X] note. live_forward
+            # (== not silent) already excludes bind-time auto-applies, so only
+            # an explicit /model lands a note.
+            await _persist_model_change_note(
                 session_id,
-                runner_router,
-                {
-                    "type": "plan_mode_change",
-                    "enabled": _codex_plan_enabled,
-                },
+                updated.model_override,
+                conversation_store,
             )
-            _require_collaboration_mode_forward(
-                session_id,
-                _codex_plan_enabled,
-                _runner_result,
-            )
-        if requested_permission_mode is not None and live_forward:
-            _mode_result = await _forward_session_change_to_runner(
-                session_id,
-                runner_router,
-                {
-                    "type": "permission_mode_change",
-                    "permission_mode": requested_permission_mode,
-                },
-            )
-            # Raises unless the runner confirms the switch, so the label can
-            # never claim a mode Claude isn't in. Stores the mode it reached.
-            _confirmed_permission_mode = _require_permission_mode_forward(
-                session_id,
-                requested_permission_mode,
-                _mode_result,
-            )
-            labels_to_set[_CLAUDE_NATIVE_PERMISSION_MODE_LABEL_KEY] = _confirmed_permission_mode
-            # The launcher restores the mode from terminal_launch_args, not the
-            # label above, so pin the confirmed mode there too — otherwise a
-            # relaunch reopens in the launch mode, which is Claude's default
-            # (manual) for a session created without --permission-mode. Merge
-            # against ``updated`` (the post-write row), not the pre-update
-            # snapshot, so a combined PATCH that also set terminal_launch_args
-            # keeps those.
-            _merged_permission_args = _pin_claude_permission_launch_args(
-                updated.terminal_launch_args,
-                _confirmed_permission_mode,
-            )
-            if updated.terminal_launch_args != _merged_permission_args:
-                await asyncio.to_thread(
-                    conversation_store.update_conversation,
-                    session_id,
-                    terminal_launch_args=_merged_permission_args,
-                )
-        if requested_codex_approval_mode is not None and live_forward:
-            _approval_result = await _forward_session_change_to_runner(
-                session_id,
-                runner_router,
-                {
-                    "type": "codex_approval_mode_change",
-                    "approval_mode": requested_codex_approval_mode,
-                },
-                # The runner drives Codex's /permissions popup — reading the rows,
-                # pressing the preset's digit, then confirming the echo — which
-                # outlasts the default forward budget.
-                timeout_s=_TUI_INJECT_FORWARD_TIMEOUT_S,
-            )
-            # Raises unless the runner drove the /permissions popup, so the label
-            # can never claim a preset the Codex TUI wasn't switched to. Codex owns
-            # the durable approval state (its own session config); the label is the
-            # web read-back only, so there is no terminal_launch_args coupling here.
-            _require_codex_approval_mode_forward(
-                session_id,
-                requested_codex_approval_mode,
-                _approval_result,
-            )
-            labels_to_set[_CODEX_NATIVE_APPROVAL_MODE_LABEL_KEY] = requested_codex_approval_mode
         # Some labels are cleared by DELETE, not by upserting an empty value:
         # the project membership (empty = "remove from project") and the pinned
         # flag (empty = "unpin"). Split any empty-valued clear keys out before
@@ -2886,18 +2568,6 @@ def register_core_routes(
                 await asyncio.to_thread(conversation_store.delete_label, session_id, _clear_key)
         if labels_to_set:
             await asyncio.to_thread(conversation_store.set_labels, session_id, labels_to_set)
-        # Only when the switch was forwarded: a silent PATCH writes no label,
-        # and an unconfirmed mode must not reach the picker.
-        if _CLAUDE_NATIVE_PERMISSION_MODE_LABEL_KEY in labels_to_set:
-            _publish_permission_mode(
-                session_id,
-                labels_to_set[_CLAUDE_NATIVE_PERMISSION_MODE_LABEL_KEY],
-            )
-        if _CODEX_NATIVE_APPROVAL_MODE_LABEL_KEY in labels_to_set:
-            _publish_codex_approval_mode(
-                session_id,
-                labels_to_set[_CODEX_NATIVE_APPROVAL_MODE_LABEL_KEY],
-            )
         # Archiving means "get this out of my way", which contradicts a pin
         # ("keep it at the top"), so drop the archiver's own pin — otherwise the
         # session lingers as a pinned row if later unarchived. Runs after the
@@ -2908,11 +2578,6 @@ def register_core_routes(
         if body.archived is True:
             await asyncio.to_thread(
                 conversation_store.delete_label, session_id, pinned_label_key(user_id)
-            )
-        if requested_codex_collaboration_mode is not None:
-            _publish_collaboration_mode(
-                session_id,
-                requested_codex_collaboration_mode,
             )
         if body.external_session_id is not None:
             try:
@@ -3287,7 +2952,6 @@ def register_core_routes(
         await asyncio.to_thread(
             _require_attachment_compatible_history,
             source_id,
-            base_agent,
             conversation_store,
             file_store,
             up_to_response_id=body.up_to_response_id,
@@ -3379,96 +3043,24 @@ def register_core_routes(
                     code=ErrorCode.INVALID_INPUT,
                 ) from exc
 
-        # Permission mode lives BOTH in launch args (``--permission-mode``) and
-        # as a copied label — and the label wins when both are present. So when
-        # the dialog picks explicit launch args, drop the source's mode-derived
-        # labels from the fork; otherwise the copied label would shadow the
-        # freshly chosen mode. Only on an explicit pick: an untouched picker
-        # sends no launch args and the label carries over as before.
-        dropped_label_keys_set: set[str] = set()
-        if launch_args_set:
-            dropped_label_keys_set |= {
-                _CLAUDE_NATIVE_PERMISSION_MODE_LABEL_KEY,
-                _CODEX_NATIVE_BYPASS_SANDBOX_LABEL_KEY,
-            }
-        # The claude-native permission-mode label is Claude-specific; on an
-        # agent switch (which already drops the source's launch args) it would
-        # otherwise ride along as stale metadata that could hydrate a wrong mode
-        # in generic native-wrapper UI state. Drop it whenever the agent changes.
-        if switching_agent:
-            dropped_label_keys_set.add(_CLAUDE_NATIVE_PERMISSION_MODE_LABEL_KEY)
-        dropped_label_keys: frozenset[str] = frozenset(dropped_label_keys_set)
         # A side chat forked from a rollover super chat stays a rollover
         # session (labels carry over untouched) — seeded from the parent's
         # checkpoint below, not its full transcript.
         source_is_rollover = uses_omnigent_context(source.labels)
 
-        # DANGEROUS codex full-bypass. The source's bypass label is always
-        # dropped above (instance-scoped), so a bypass-armed source never
-        # silently re-arms its clone. The ONLY way a fork enables bypass is an
-        # explicit, banner-gated opt-in from the dialog — and only when the
-        # bound target is actually codex-native (the label is inert elsewhere,
-        # so refuse to stamp it on a non-Codex fork). Stamped via extra_labels,
-        # which the store applies AFTER the drop so the opt-in wins.
         extra_labels: dict[str, str] = {}
-        if body.codex_bypass_sandbox:
-            target_native = await asyncio.to_thread(_native_coding_agent_for_agent, base_agent)
-            if target_native is None or target_native.harness != "codex-native":
-                raise OmnigentError(
-                    "codex_bypass_sandbox is only valid for a codex-native fork target",
-                    code=ErrorCode.INVALID_INPUT,
-                )
-            extra_labels[_CODEX_NATIVE_BYPASS_SANDBOX_LABEL_KEY] = "1"
 
         # A side-chat fork is hidden from the left sidebar (it surfaces only as a
         # Workspace-rail tab). Stamp the label the sessions-list filter reads.
         if body.side_chat:
             extra_labels[SIDE_CHAT_LABEL_KEY] = "1"
 
-        # When the fork binds a NATIVE target, the native CLI won't replay
-        # the copied Omnigent transcript on its own — mark the fork so the
-        # runner carries history into the native harness. Same-family: clone
-        # the source's native transcript when present, else rebuild from the
-        # copied Omnigent items. Cross-family: the source's native transcript
-        # is the wrong format, so ALWAYS rebuild from the copied Omnigent
-        # items (the converters consume Omnigent's normalized item shape, so
-        # the source harness doesn't matter). SDK targets replay the
-        # transcript as context regardless, so the marker is inert for them.
-        # Native harnesses rebuild their resumable session file from the copied
-        # items (see _FORK_HISTORY_NATIVE_HARNESSES).
-        carry_history_into_native = await asyncio.to_thread(
-            _agent_carries_native_fork_history, base_agent
-        )
-        # The source's native session id is only resumable by a target in the
-        # SAME provider family — a Claude target can't clone a Codex rollout.
-        # Cross-family, the store must skip the fork-source directive so the
-        # runner takes the rebuild path instead of a doomed clone attempt
-        # (a failed clone launches fresh, losing history). A managed fork gets its
-        # OWN fresh sandbox, whose filesystem has no copy of the source's local
-        # native rollout, so the clone is likewise doomed — skip the directive
-        # so the runner rebuilds from the copied Omnigent items instead.
-        # A rollover side chat is the same case for a different reason:
-        # cloning the source's rollout verbatim would hand the CLI the
-        # parent's full transcript, defeating the seed appended below.
-        resume_source_native_session = (
-            (not switching_agent or copy_model_settings)
-            and body.host_type != "managed"
-            and not (body.side_chat and source_is_rollover)
-        )
-
-        # On an agent switch, recompute the Web UI presentation labels for
-        # the TARGET harness so the clone isn't left in the source's UI mode
-        # (e.g. a claude-native source's terminal-first labels would put an
-        # SDK clone in terminal mode with a stale interactive terminal).
-        # A sub-agent source needs the same recompute even without a switch:
-        # its wrapper label marks it as a child with no terminal of its own
-        # (the parent owns the tmux pane), which would strand the top-level
-        # fork in a child's UI mode. A same-agent fork of a top-level source
-        # leaves the copied labels untouched (None).
-        presentation_labels = (
-            await asyncio.to_thread(_presentation_labels_for_agent, base_agent)
-            if switching_agent or source.kind == "sub_agent"
-            else None
+        # On an agent switch, or for a sub-agent source, drop the source's
+        # Web UI presentation labels so the clone isn't left in the source's
+        # UI mode. A same-agent fork of a top-level source leaves the copied
+        # labels untouched (None).
+        presentation_labels: dict[str, str] | None = (
+            {} if switching_agent or source.kind == "sub_agent" else None
         )
 
         # Keep the fork filed in the source's first-class project, but route
@@ -3579,7 +3171,6 @@ def register_core_routes(
                 override_reasoning_effort_set=effort_set,
                 override_terminal_launch_args=override_launch_args,
                 override_terminal_launch_args_set=launch_args_set,
-                dropped_label_keys=dropped_label_keys,
                 extra_labels=extra_labels,
                 # Launch flags are CLI-specific. On an agent switch the fork may
                 # bind a different CLI (e.g. claude-code → pi), whose flag set
@@ -3588,8 +3179,6 @@ def register_core_routes(
                 # carry the source's launch args on a same-agent fork. An
                 # explicit override above supersedes this.
                 copy_terminal_launch_args=not switching_agent,
-                carry_history_into_native=carry_history_into_native,
-                resume_source_native_session=resume_source_native_session,
                 presentation_labels=presentation_labels,
                 up_to_response_id=body.up_to_response_id,
                 # A Fork's copy ends at its anchor item, not at the end of the anchor's turn.
@@ -3881,43 +3470,19 @@ def register_core_routes(
             request, session.inference_snapshot, loaded_target.spec, user_id
         )
 
-        retained_attachment = await asyncio.to_thread(
+        await asyncio.to_thread(
             _require_attachment_compatible_history,
             session_id,
-            target_agent,
             conversation_store,
             file_store,
         )
-        if retained_attachment is not None and (session.host_id or session.runner_id):
-            from omnigent.server.routes._sessions.helpers import (
-                require_filesystem_attachment_runtime,
-            )
-
-            await asyncio.to_thread(
-                require_filesystem_attachment_runtime,
-                host_id=session.host_id,
-                runner_id=session.runner_id,
-                host_registry=host_registry,
-                tunnel_registry=getattr(request.app.state, "tunnel_registry", None),
-                runner_router=runner_router,
-            )
 
         # A model id is provider-bound, so model_override / reasoning_effort
-        # carry over only within the same provider family. A native target
-        # carries history regardless of family: the switch clears
-        # external_session_id and drops the fork-source directive, so the
-        # runner rebuilds the native transcript from this session's own
-        # Omnigent items (a format-agnostic conversion). SDK targets replay
-        # the AP transcript as context regardless.
+        # carry over only within the same provider family. The target replays
+        # the AP transcript as context.
         copy_model_settings = await asyncio.to_thread(
             _same_provider_family, current_agent, target_agent
         )
-        # claude/codex/pi native can replay fork history (each rebuilds its
-        # resumable session file from the copied items).
-        carry_history_into_native = await asyncio.to_thread(
-            _agent_carries_native_fork_history, target_agent
-        )
-        presentation_labels = await asyncio.to_thread(_presentation_labels_for_agent, target_agent)
 
         # Resolve the built-in the session is leaving so the UI can offer a
         # one-click "Switch back". The current agent is a session-scoped clone
@@ -3949,8 +3514,7 @@ def register_core_routes(
                 new_agent_bundle_location=target_agent.bundle_location,
                 new_agent_description=target_agent.description,
                 copy_model_settings=copy_model_settings,
-                carry_history_into_native=carry_history_into_native,
-                presentation_labels=presentation_labels,
+                presentation_labels={},
                 previous_builtin_id=previous_builtin_id,
             )
         except LookupError as exc:
@@ -3970,20 +3534,13 @@ def register_core_routes(
             )
             updated = refreshed or updated
 
-        # The catalog cache is keyed by session, not harness family, and
-        # outlives runner death — after a switch its rows may belong to the
-        # old wrapper. Drop them (and any in-flight fetch against the old
-        # endpoint) so the next live snapshot re-fetches the new family's.
-        _invalidate_runner_backed_snapshot_state(
-            session_id, cancel_inflight=True, drop_model_options=True
-        )
+        # Routing's runner-derived catalog belongs to the old agent's harness.
+        _invalidate_runner_backed_snapshot_state(session_id)
 
         # Tell every connected client the binding changed so they re-derive
         # session state (presentation labels, bound agent) from a fresh
         # snapshot. Without this, a client that bound before the switch keeps
-        # treating the session as the OLD harness — e.g. its status handler
-        # clears the optimistic first-message bubble that a native target
-        # only reconciles later via session.input.consumed.
+        # treating the session as the OLD harness.
         switch_event = SessionAgentChangedEvent(
             type="session.agent_changed",
             conversation_id=session_id,
@@ -4002,15 +3559,11 @@ def register_core_routes(
 
         # Reset the OLD harness's runner-side resources (async, after the
         # response): close the cached primary OSEnv so the new agent's
-        # os_env/sandbox governs the web filesystem/shell endpoints, and tear
-        # down the native terminal so it can't shadow the switch-back transcript
-        # rebuild. Safe because the switch only runs while the session is idle
+        # os_env/sandbox governs the web filesystem/shell endpoints. Safe because the switch only runs while the session is idle
         # (doing it mid-turn would wedge the turn); the next access
         # re-materializes from the new agent's spec, preserving the workspace /
         # worktree (cwd comes from the runner workspace).
-        background_tasks.add_task(
-            _reset_runner_and_clear_todos_after_switch, session_id, conversation_store
-        )
+        background_tasks.add_task(_reset_runner_resources_after_switch, session_id)
 
         items = await asyncio.to_thread(conversation_store.list_items, session_id, limit=10000)
         level = await _get_permission_level(user_id, session_id, permission_store)

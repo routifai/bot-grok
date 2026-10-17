@@ -19,7 +19,6 @@ from omnigent.server.routes._sessions.common import set_server_host_registry
 from omnigent.server.routing_backend import (
     RoutingBackends,
     backends_from_caps,
-    gateway_backs_all,
     route_with_fallback,
     routing_available,
     routing_sources,
@@ -99,48 +98,6 @@ def host_registry() -> Iterator[HostRegistry]:
         yield registry
     finally:
         set_server_host_registry(None)
-
-
-@pytest.mark.parametrize(
-    ("gateway", "harnesses", "expected"),
-    [
-        # Both explicitly backed.
-        ({"claude-native": True, "codex-native": True}, ("claude-native", "codex-native"), True),
-        # One family off the gateway takes the whole two-family call away.
-        ({"claude-native": True, "codex-native": False}, ("claude-native", "codex-native"), False),
-        ({"claude-native": False, "codex-native": True}, ("claude-native", "codex-native"), False),
-        # …but the backed family on its own still routes externally.
-        ({"claude-native": True, "codex-native": False}, ("claude-native",), True),
-        ({"claude-native": True, "codex-native": False}, ("codex-native",), False),
-        # Unknown is backed, not unavailable: an older host reports nothing.
-        ({}, ("claude-native", "codex-native"), True),
-        ({"claude-native": True}, ("claude-native", "codex-native"), True),
-    ],
-)
-def test_gateway_backs_all(
-    gateway: dict[str, bool],
-    harnesses: tuple[str, ...],
-    expected: bool,
-    host_registry: HostRegistry,
-) -> None:
-    host_registry.record_gateway_inference(_HOST_ID, gateway)
-    host = SimpleNamespace(host_id=_HOST_ID)
-    assert gateway_backs_all(host, harnesses) is expected
-
-
-def test_gateway_backs_all_without_a_report(host_registry: HostRegistry) -> None:
-    # No host at all, a host id nothing has been reported for, and a row with no
-    # id to key on: all unknown, and unknown is backed.
-    assert gateway_backs_all(None, ("claude-native", "codex-native")) is True
-    assert gateway_backs_all(SimpleNamespace(host_id=_HOST_ID), ("claude-native",)) is True
-    assert gateway_backs_all(SimpleNamespace(), ("claude-native",)) is True
-
-
-def test_gateway_backs_all_without_a_registry() -> None:
-    # No server registry installed (a runner-side or embedding process): the
-    # read degrades to unknown rather than raising.
-    set_server_host_registry(None)
-    assert gateway_backs_all(SimpleNamespace(host_id=_HOST_ID), ("claude-native",)) is True
 
 
 # ── backends_from_caps: explicit pair wins, else derive by type ──────────────

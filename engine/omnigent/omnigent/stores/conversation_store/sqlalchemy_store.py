@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Iterable, Mapping
-from contextlib import suppress
 from pathlib import PureWindowsPath
 from typing import Any, Protocol, cast
 
@@ -88,16 +87,11 @@ from omnigent.entities import (
     parse_item_data,
 )
 from omnigent.errors import ErrorCode, OmnigentError, StaleCursorError
-from omnigent.native.native_coding_agents import native_coding_agent_for_wrapper_label
-from omnigent.native.session_todos import validate_session_todos
-from omnigent.session_import.models import IMPORT_SOURCE_LABEL_KEY
 from omnigent.stores.conversation_store import (
     _FORK_ONLY_DROPPED_LABEL_KEYS,
     _INSTANCE_SCOPED_LABEL_KEYS,
     _SANDBOX_REPO_LABEL_KEY,
     ARCHIVED_AT_LABEL_KEY,
-    FORK_CARRY_HISTORY_LABEL_KEY,
-    FORK_SOURCE_EXTERNAL_SESSION_LABEL_KEY,
     FORK_SOURCE_LABEL_KEY,
     PINNED_LABEL_KEY,
     PROJECT_LABEL_KEY,
@@ -129,34 +123,18 @@ def _fts5_literal_query(query: str) -> str:
     return " ".join('"' + term.replace('"', '""') + '"' for term in query.split())
 
 
-_SESSION_TODOS_STATE_KEY = "_omnigent_native_plan_snapshot_v1"
+# Rows written before the native harnesses were removed may carry a Plan
+# snapshot under this reserved key; it is never part of policy state.
+_LEGACY_TODOS_STATE_KEY = "_omnigent_native_plan_snapshot_v1"
 
 
-def _decode_session_state(
-    value: str | None,
-) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    """Split policy state from the reserved native Plan snapshot."""
+def _decode_session_state(value: str | None) -> dict[str, Any]:
+    """Decode policy session state, dropping the legacy Plan snapshot key."""
     state = json.loads(value) if value else {}
     if not isinstance(state, dict):
         raise TypeError("session_state must decode to an object")
-    raw_todos = state.pop(_SESSION_TODOS_STATE_KEY, None)
-    todos: list[dict[str, Any]] = []
-    if raw_todos is not None:
-        with suppress(TypeError, ValueError):
-            todos = validate_session_todos(raw_todos)
-    return state, todos
-
-
-def _encode_session_state(
-    state: dict[str, Any],
-    todos: list[dict[str, Any]] | None,
-) -> str:
-    """Serialize policy state while preserving an optional Plan snapshot."""
-    payload = dict(state)
-    payload.pop(_SESSION_TODOS_STATE_KEY, None)
-    if todos:
-        payload[_SESSION_TODOS_STATE_KEY] = todos
-    return json.dumps(payload, separators=(",", ":"))
+    state.pop(_LEGACY_TODOS_STATE_KEY, None)
+    return state
 
 
 # Server-side deadline (ms) for the content-search query in
@@ -217,7 +195,7 @@ def _to_conversation(
         callers pass the JOINed ``{key: value}`` map.
     :returns: A :class:`Conversation` dataclass instance.
     """
-    session_state, session_todos = _decode_session_state(meta.session_state if meta else None)
+    session_state = _decode_session_state(meta.session_state if meta else None)
     session_usage: dict[str, Any] = {}
     if meta and meta.session_usage:
         session_usage = json.loads(meta.session_usage)
@@ -240,7 +218,6 @@ def _to_conversation(
         labels=labels if labels is not None else {},
         session_state=session_state,
         session_usage=session_usage,
-        session_todos=session_todos,
         reasoning_effort=overrides["reasoning_effort"],
         model_override=overrides["model_override"],
         inference_snapshot=(
@@ -1318,9 +1295,8 @@ class SqlAlchemyConversationStore(ConversationStore):
                     SqlConversationMetadata.id.in_(unique_ids),
                 )
             ).all()
-        # Connectivity markers are in the AP DB. Both signal on presence:
-        # the fork-source label forces an unbound clone to pick a workspace;
-        # the import-source label marks a transcript with no live executor.
+        # The fork-source label (AP DB) forces an unbound clone to pick a
+        # workspace; it signals on presence.
         with self._conv_session("get_session_connectivity") as ap_sess:
             label_rows = ap_sess.execute(
                 select(
@@ -1330,21 +1306,15 @@ class SqlAlchemyConversationStore(ConversationStore):
                 ).where(
                     SqlConversationLabel.workspace_id == current_workspace_id(),
                     SqlConversationLabel.conversation_id.in_(unique_ids),
-                    SqlConversationLabel.key.in_([FORK_SOURCE_LABEL_KEY, IMPORT_SOURCE_LABEL_KEY]),
+                    SqlConversationLabel.key == FORK_SOURCE_LABEL_KEY,
                 )
             ).all()
-        needs_workspace_ids = {
-            row.conversation_id for row in label_rows if row.key == FORK_SOURCE_LABEL_KEY
-        }
-        imported_ids = {
-            row.conversation_id for row in label_rows if row.key == IMPORT_SOURCE_LABEL_KEY
-        }
+        needs_workspace_ids = {row.conversation_id for row in label_rows}
         return {
             row.id: SessionConnectivity(
                 runner_id=row.runner_id,
                 host_id=row.host_id,
                 needs_workspace=row.id in needs_workspace_ids,
-                imported=row.id in imported_ids,
                 runner_last_seen=row.runner_last_seen,
             )
             for row in meta_rows
@@ -1567,8 +1537,7 @@ class SqlAlchemyConversationStore(ConversationStore):
                 q = q.with_for_update()
             meta = session.scalars(q).first()
             if meta is not None:
-                _, todos = _decode_session_state(meta.session_state)
-                meta.session_state = _encode_session_state(state, todos)
+                meta.session_state = json.dumps(state, separators=(",", ":"))
 
         run_write_transaction(self._session_immediate, "set_session_state", write)
 
@@ -1605,33 +1574,6 @@ class SqlAlchemyConversationStore(ConversationStore):
             )
 
         run_write_transaction(self._session_immediate, "set_session_usage", write)
-
-    def set_session_todos(
-        self,
-        conversation_id: str,
-        todos: list[dict[str, Any]],
-    ) -> bool:
-        """Store a validated Plan snapshot in metadata; empty clears it.
-
-        :returns: ``False`` when the metadata row no longer exists, else ``True``.
-        """
-        validated = validate_session_todos(todos)
-
-        def write(session: Session) -> bool:
-            q = select(SqlConversationMetadata).where(
-                SqlConversationMetadata.workspace_id == current_workspace_id(),
-                SqlConversationMetadata.id == conversation_id,
-            )
-            if self._meta_supports_for_update:
-                q = q.with_for_update()
-            meta = session.scalars(q).first()
-            if meta is None:
-                return False
-            state, _ = _decode_session_state(meta.session_state)
-            meta.session_state = _encode_session_state(state, validated)
-            return True
-
-        return run_write_transaction(self._session_immediate, "set_session_todos", write)
 
     def set_conversation_project(
         self,
@@ -4473,10 +4415,7 @@ class SqlAlchemyConversationStore(ConversationStore):
         override_reasoning_effort_set: bool = False,
         override_terminal_launch_args: list[str] | None = None,
         override_terminal_launch_args_set: bool = False,
-        dropped_label_keys: frozenset[str] = frozenset(),
         extra_labels: dict[str, str] | None = None,
-        carry_history_into_native: bool = False,
-        resume_source_native_session: bool = True,
         presentation_labels: dict[str, str] | None = None,
         up_to_response_id: str | None = None,
         up_to_item_id: str | None = None,
@@ -4556,35 +4495,13 @@ class SqlAlchemyConversationStore(ConversationStore):
         :param override_terminal_launch_args_set: Whether the caller chose
             explicit launch args. ``False`` (default) inherits per
             ``copy_terminal_launch_args``.
-        :param dropped_label_keys: Source labels to NOT copy onto the fork,
-            beyond the always-dropped instance-scoped set. The fork route
-            passes the permission-mode / codex-bypass label keys here when
-            the dialog picks explicit launch args, so the stale copied label
-            can't shadow the freshly chosen mode.
         :param extra_labels: Labels to stamp on the fork AFTER the copy /
             drop / presentation-label logic, so a deliberate opt-in wins over
-            the always-drop rule. The fork route passes the DANGEROUS
-            ``codex_native.bypass_sandbox`` label here when the dialog's
-            approval selector explicitly re-arms bypass — the only path that
-            sets it, since the source's own bypass label is always dropped.
-        :param carry_history_into_native: When ``True``, stamp
-            :data:`FORK_CARRY_HISTORY_LABEL_KEY` on the fork so a native
-            target harness rebuilds its transcript instead of starting
-            fresh. Set by the route only for native targets whose harness can
-            replay fork history.
-        :param resume_source_native_session: When ``True`` (default), a
-            full fork of a source with a native session stamps
-            :data:`FORK_SOURCE_EXTERNAL_SESSION_LABEL_KEY` so the runner
-            clones the source's local native transcript. ``False`` on a
-            cross-family agent switch: the source's native transcript is
-            the wrong format for the target harness, so the directive is
-            skipped and the runner builds the native transcript from the
-            copied Omnigent items instead.
+            the always-drop rule (e.g. the side-chat label).
         :param presentation_labels: When not ``None``, drop the source's
             ``omnigent.ui`` / ``omnigent.wrapper`` labels from the clone
             and apply these instead, so the clone's Web UI mode matches the
-            switched-to TARGET harness (native → ``{ui: terminal, wrapper:
-            ...}``; SDK → ``{}``). ``None`` keeps the copied labels (same-
+            switched-to TARGET harness. ``None`` keeps the copied labels (same-
             agent fork).
         :param up_to_item_id: When set, copy only the items up to and including this item (by
             position, so later items of the same turn, errors and notices are never copied) and
@@ -4593,13 +4510,7 @@ class SqlAlchemyConversationStore(ConversationStore):
         :param up_to_response_id: When set, copy only the items up to and
             including the last item of this response (by position), e.g.
             ``"resp_abc123"`` — a "fork from this response" truncation.
-            A truncated fork skips the
-            :data:`FORK_SOURCE_EXTERNAL_SESSION_LABEL_KEY` directive so a
-            native target rebuilds its transcript from the truncated
-            items (the carry-history fork-rebuild path) instead of
-            resuming the source's full native transcript; when the
-            response is the source's last one the copy is equivalent to a
-            full fork, so the directive is kept. ``None`` (default)
+            ``None`` (default)
             copies the full history.
         :param project_id: First-class project to file the fork into
             (``metadata.project_id``), or ``None`` (default) to leave it
@@ -4636,10 +4547,7 @@ class SqlAlchemyConversationStore(ConversationStore):
             override_reasoning_effort_set=override_reasoning_effort_set,
             override_terminal_launch_args=override_terminal_launch_args,
             override_terminal_launch_args_set=override_terminal_launch_args_set,
-            dropped_label_keys=dropped_label_keys,
             extra_labels=extra_labels,
-            carry_history_into_native=carry_history_into_native,
-            resume_source_native_session=resume_source_native_session,
             presentation_labels=presentation_labels,
             up_to_response_id=up_to_response_id,
             up_to_item_id=up_to_item_id,
@@ -4666,10 +4574,7 @@ class SqlAlchemyConversationStore(ConversationStore):
         override_reasoning_effort_set: bool = False,
         override_terminal_launch_args: list[str] | None = None,
         override_terminal_launch_args_set: bool = False,
-        dropped_label_keys: frozenset[str] = frozenset(),
         extra_labels: dict[str, str] | None = None,
-        carry_history_into_native: bool = False,
-        resume_source_native_session: bool = True,
         presentation_labels: dict[str, str] | None = None,
         up_to_response_id: str | None = None,
         up_to_item_id: str | None = None,
@@ -4756,12 +4661,6 @@ class SqlAlchemyConversationStore(ConversationStore):
 
             # Resolve the truncation cutoff: the position of the LAST item
             # of the selected response, so the fork never ends mid-turn.
-            # When the selected response is also the conversation's last
-            # one, the "truncation" copies everything — treat it as a full
-            # fork (``truncated`` stays False) so the native fork-resume
-            # directive below is preserved and the runner can still clone
-            # the source's native transcript verbatim.
-            truncated = False
             cutoff_position: int | None = None
             if up_to_item_id is not None:
                 cutoff_position = session.execute(
@@ -4789,15 +4688,6 @@ class SqlAlchemyConversationStore(ConversationStore):
                         f"response not found in conversation "
                         f"{source_conversation_id!r}: {up_to_response_id!r}"
                     )
-            if cutoff_position is not None:
-                last_position = session.execute(
-                    select(func.max(SqlConversationItem.position)).where(
-                        SqlConversationItem.workspace_id == current_workspace_id(),
-                        SqlConversationItem.conversation_id == source_conversation_id,
-                    )
-                ).scalar_one()
-                truncated = cutoff_position < last_position
-
             # Copy items ordered by position so the fork preserves
             # the original chronological order.
             items_query = (
@@ -4957,17 +4847,11 @@ class SqlAlchemyConversationStore(ConversationStore):
             fork_labels = {
                 key: value
                 for key, value in source_labels.items()
-                if key
-                not in (
-                    _INSTANCE_SCOPED_LABEL_KEYS
-                    | _FORK_ONLY_DROPPED_LABEL_KEYS
-                    | dropped_label_keys
-                )
+                if key not in (_INSTANCE_SCOPED_LABEL_KEYS | _FORK_ONLY_DROPPED_LABEL_KEYS)
                 and not key.startswith(f"{PINNED_LABEL_KEY}.")
                 and not key.startswith(f"{_SANDBOX_REPO_LABEL_KEY}.")
             }
             source_workspace = source_meta_ref.workspace if source_meta_ref else None
-            source_ext_session = source_meta_ref.external_session_id if source_meta_ref else None
             # ``terminal_launch_args`` are CLI-specific launch flags. A fork
             # that switches CLI family (e.g. claude-code → pi) must NOT inherit
             # them: the source's flags are meaningless or rejected by the new
@@ -4993,49 +4877,19 @@ class SqlAlchemyConversationStore(ConversationStore):
                     else None
                 )
             )
-            source_has_bound_native_runner = bool(
-                source_meta_ref
-                and source_meta_ref.runner_id
-                and native_coding_agent_for_wrapper_label(source_labels.get(WRAPPER_LABEL_KEY))
-                is not None
-            )
-            if source_workspace is not None or source_has_bound_native_runner:
+            if source_workspace is not None:
                 fork_labels[FORK_SOURCE_LABEL_KEY] = source_conversation_id
-            # Carry the source's native session id as a one-shot fork
-            # directive so a native harness can resume + branch the source's
-            # local transcript into the clone (see
-            # FORK_SOURCE_EXTERNAL_SESSION_LABEL_KEY). external_session_id
-            # itself stays NULL — the clone isn't that session yet. A
-            # TRUNCATED fork must not resume the source's full transcript,
-            # and a CROSS-FAMILY fork can't (wrong transcript format —
-            # ``resume_source_native_session=False``); in both cases the
-            # directive is skipped so the runner's carry-history
-            # fork-rebuild path synthesizes the native transcript from the
-            # copied items instead.
-            if source_ext_session and not truncated and resume_source_native_session:
-                fork_labels[FORK_SOURCE_EXTERNAL_SESSION_LABEL_KEY] = source_ext_session
-            # When the fork binds a native target, mark it so the runner
-            # rebuilds the native transcript (clone the source's native
-            # transcript when same-family, else build from the copied
-            # Omnigent items) rather than launching fresh (see
-            # FORK_CARRY_HISTORY_LABEL_KEY).
-            if carry_history_into_native:
-                fork_labels[FORK_CARRY_HISTORY_LABEL_KEY] = "1"
             # On an agent switch, the harness-presentation labels
             # (omnigent.ui / omnigent.wrapper) must reflect the TARGET
             # harness, not the source's: copying the source's would leave an
-            # SDK clone of a claude-native session wrongly in terminal-first
-            # mode (a stale interactive terminal + the source's transcript).
+            # clone wrongly in the source's UI mode.
             # Drop the source's and apply the route-computed target labels.
             if presentation_labels is not None:
                 for _pkey in (UI_MODE_LABEL_KEY, WRAPPER_LABEL_KEY):
                     fork_labels.pop(_pkey, None)
                 fork_labels.update(presentation_labels)
             # Caller-supplied labels stamped LAST so a deliberate opt-in beats
-            # both the copy and the always-drop rules — e.g. the fork dialog
-            # re-arming the DANGEROUS codex bypass. The source's own bypass
-            # label was already dropped (it's instance-scoped), so this is the
-            # only path that sets it, and only from an explicit request field.
+            # both the copy and the always-drop rules.
             if extra_labels:
                 fork_labels.update(extra_labels)
             if up_to_item_id is not None and source_items:
@@ -5115,7 +4969,6 @@ class SqlAlchemyConversationStore(ConversationStore):
         new_agent_bundle_location: str,
         new_agent_description: str | None,
         copy_model_settings: bool,
-        carry_history_into_native: bool,
         presentation_labels: dict[str, str],
         previous_builtin_id: str | None,
     ) -> Conversation:
@@ -5134,8 +4987,6 @@ class SqlAlchemyConversationStore(ConversationStore):
         :param new_agent_description: Optional spec description.
         :param copy_model_settings: Keep model settings when ``True``,
             else reset to ``None`` (cross-family switch).
-        :param carry_history_into_native: Stamp / clear
-            :data:`FORK_CARRY_HISTORY_LABEL_KEY`.
         :param presentation_labels: Target-harness ui/wrapper labels.
         :param previous_builtin_id: Built-in switched away from, or
             ``None``.
@@ -5145,7 +4996,7 @@ class SqlAlchemyConversationStore(ConversationStore):
         now = now_epoch()
         drop_keys = (
             set(_INSTANCE_SCOPED_LABEL_KEYS)
-            | {FORK_SOURCE_LABEL_KEY, FORK_SOURCE_EXTERNAL_SESSION_LABEL_KEY}
+            | {FORK_SOURCE_LABEL_KEY}
             | {UI_MODE_LABEL_KEY, WRAPPER_LABEL_KEY}
             # Always drop the previous-builtin pointer, then re-stamp below
             # only when this switch supplies one — otherwise a stale pointer
@@ -5153,11 +5004,7 @@ class SqlAlchemyConversationStore(ConversationStore):
             # back" target (the label is overwritten on each switch).
             | {SWITCH_PREVIOUS_BUILTIN_LABEL_KEY}
         )
-        if not carry_history_into_native:
-            drop_keys.add(FORK_CARRY_HISTORY_LABEL_KEY)
         upserts: dict[str, str] = dict(presentation_labels)
-        if carry_history_into_native:
-            upserts[FORK_CARRY_HISTORY_LABEL_KEY] = "1"
         if previous_builtin_id is not None:
             upserts[SWITCH_PREVIOUS_BUILTIN_LABEL_KEY] = previous_builtin_id
         encoded_agent_kind = encode_agent_kind("session")
@@ -5241,8 +5088,9 @@ class SqlAlchemyConversationStore(ConversationStore):
             meta = session.scalars(meta_query).first()
             if meta is not None:
                 meta.external_session_id = None
-                state, _ = _decode_session_state(meta.session_state)
-                meta.session_state = _encode_session_state(state, None)
+                meta.session_state = json.dumps(
+                    _decode_session_state(meta.session_state), separators=(",", ":")
+                )
                 # Launch flags are CLI-specific: a switch to a different CLI
                 # (e.g. claude-code → pi) leaves the prior CLI's flags stale —
                 # Claude Code's ``--permission-mode`` makes pi exit 1 at launch.

@@ -21,12 +21,6 @@ from omnigent.host.frames import (
     HostFsWriteFrame,
     HostHarnessReadinessFrame,
     HostHelloFrame,
-    HostImportedLocalSession,
-    HostImportLocalByIdFrame,
-    HostImportLocalDoneFrame,
-    HostImportLocalFrame,
-    HostImportLocalSessionChunkFrame,
-    HostImportLocalSessionFrame,
     HostInstallHarnessFrame,
     HostInstallHarnessResultFrame,
     HostLaunchRunnerFrame,
@@ -38,166 +32,21 @@ from omnigent.host.frames import (
     HostListWorktreesResultFrame,
     HostMcpServersFrame,
     HostMcpServersResultFrame,
-    HostModelOptionsFrame,
-    HostModelOptionsResultFrame,
     HostRemoveWorktreeFrame,
     HostRemoveWorktreeResultFrame,
     HostRunnerExitedFrame,
     HostRunnerStatusFrame,
     HostRunnerStatusResultFrame,
-    HostSkillsFrame,
-    HostSkillsResultFrame,
     HostStatFrame,
     HostStatResultFrame,
     HostStopRunnerFrame,
     HostStopRunnerResultFrame,
     HostStoreSecretFrame,
-    HostStoreSecretResultFrame,
-    ImportLocalSessionChunkAssembler,
-    ImportSessionChunkingUnsupportedError,
     classify_launch_refusal,
     decode_host_frame,
     encode_host_frame,
-    encode_import_local_session_frames,
     workspace_missing_message,
 )
-
-
-def test_import_local_frames_round_trip() -> None:
-    """Request, per-session, and done frames survive the tunnel (title + source)."""
-    request = decode_host_frame(
-        encode_host_frame(
-            HostImportLocalFrame(
-                request_id="req_imp",
-                source="claude",
-                limit=3,
-                allow_session_chunks=True,
-            )
-        )
-    )
-    assert request == HostImportLocalFrame(
-        request_id="req_imp", source="claude", limit=3, allow_session_chunks=True
-    )
-
-    exact_request = decode_host_frame(
-        encode_host_frame(
-            HostImportLocalByIdFrame(
-                request_id="req_exact",
-                source="codex",
-                session_id="0198d07d-session",
-                allow_session_chunks=True,
-            )
-        )
-    )
-    assert exact_request == HostImportLocalByIdFrame(
-        request_id="req_exact",
-        source="codex",
-        session_id="0198d07d-session",
-        allow_session_chunks=True,
-    )
-
-    legacy_request = decode_host_frame(
-        json.dumps(
-            {
-                "kind": "host.import_local",
-                "request_id": "req_legacy",
-                "source": "claude",
-                "limit": 1,
-            }
-        )
-    )
-    assert isinstance(legacy_request, HostImportLocalFrame)
-    assert legacy_request.allow_session_chunks is False
-
-    session = decode_host_frame(
-        encode_host_frame(
-            HostImportLocalSessionFrame(
-                request_id="req_imp",
-                total=2,
-                session=HostImportedLocalSession(
-                    external_session_id="s1",
-                    workspace="/repo",
-                    items=[{"type": "message", "response_id": "r", "data": {}}],
-                    title="My renamed thread",
-                    source="claude",
-                ),
-            )
-        )
-    )
-    assert isinstance(session, HostImportLocalSessionFrame)
-    assert session.total == 2
-    assert session.session.external_session_id == "s1"
-    assert session.session.title == "My renamed thread"
-    assert session.session.source == "claude"
-
-    # A session with no title round-trips as null (not an error).
-    null_title = decode_host_frame(
-        encode_host_frame(
-            HostImportLocalSessionFrame(
-                request_id="req_imp",
-                total=2,
-                session=HostImportedLocalSession(
-                    external_session_id="s2", workspace=None, items=[], title=None, source="codex"
-                ),
-            )
-        )
-    )
-    assert isinstance(null_title, HostImportLocalSessionFrame)
-    assert null_title.session.title is None
-
-    done = decode_host_frame(
-        encode_host_frame(HostImportLocalDoneFrame(request_id="req_imp", status="ok"))
-    )
-    assert isinstance(done, HostImportLocalDoneFrame)
-    assert done.status == "ok" and done.error is None
-    assert done.failed == 0
-
-    # The done frame carries the host-side unreadable count so the server's
-    # tally covers sessions that never produced a frame.
-    done_failed = decode_host_frame(
-        encode_host_frame(HostImportLocalDoneFrame(request_id="req_imp", status="ok", failed=2))
-    )
-    assert isinstance(done_failed, HostImportLocalDoneFrame)
-    assert done_failed.failed == 2
-
-
-@pytest.mark.parametrize(
-    "frame",
-    [
-        HostSkillsFrame(request_id="req_skills", harness="claude-native", path="~/my project"),
-        HostSkillsFrame(
-            request_id="filtered", harness="claude-sdk", path="/repo", skills_filter=["review"]
-        ),
-        HostSkillsFrame(
-            request_id="hermetic", harness="claude-sdk", path="/repo", skills_filter="none"
-        ),
-        HostSkillsResultFrame(
-            request_id="req_skills",
-            status="ok",
-            skills=[{"name": "toolkit:review", "description": "Review changes"}],
-        ),
-        HostSkillsFrame(
-            request_id="session",
-            harness="session",
-            path="/workspace",
-            session_id="conv",
-            agent_id="agent",
-            agent_version="2",
-            sub_agent_name="child",
-        ),
-        HostSkillsResultFrame(request_id="session", status="ok", session_id="conv"),
-        HostSkillsResultFrame(request_id="filtered", status="ok", agent_id="agent"),
-        HostSkillsResultFrame(request_id="req_skills", status="ok"),
-        HostSkillsResultFrame(
-            request_id="req_skills",
-            status="failed",
-            error_code="invalid_path",
-            error="path must be absolute",
-        ),
-    ],
-)
-def test_skills_frames_round_trip(frame: HostSkillsFrame | HostSkillsResultFrame) -> None:
-    assert decode_host_frame(encode_host_frame(frame)) == frame
 
 
 @pytest.mark.parametrize(
@@ -284,326 +133,6 @@ def test_mcp_servers_result_rejects_malformed_inventory(servers: object) -> None
         )
 
 
-def test_import_local_session_chunk_frame_round_trip() -> None:
-    """A session slice survives the tunnel with its ordering metadata."""
-    chunk = decode_host_frame(
-        encode_host_frame(
-            HostImportLocalSessionChunkFrame(
-                request_id="req_imp", total=3, seq=2, last=True, data='{"partial": tru'
-            )
-        )
-    )
-    assert chunk == HostImportLocalSessionChunkFrame(
-        request_id="req_imp", total=3, seq=2, last=True, data='{"partial": tru'
-    )
-
-
-def _session_with_payload(payload: str) -> HostImportedLocalSession:
-    """A one-item session whose size is driven by *payload*."""
-    return HostImportedLocalSession(
-        external_session_id="s_big",
-        workspace="/repo",
-        items=[{"type": "message", "response_id": "r1", "data": {"text": payload}}],
-        title="big session",
-        source="claude",
-    )
-
-
-def test_encode_import_local_session_frames_small_session_is_one_frame() -> None:
-    """A session under the chunk threshold rides in one whole-session frame."""
-    frames = list(
-        encode_import_local_session_frames(
-            "req_one", 1, _session_with_payload("hi"), allow_chunks=True
-        )
-    )
-
-    assert len(frames) == 1
-    decoded = decode_host_frame(frames[0])
-    assert isinstance(decoded, HostImportLocalSessionFrame)
-    assert decoded.session.external_session_id == "s_big"
-
-
-def test_encode_import_local_session_frames_preserves_legacy_framing() -> None:
-    """An older server still receives a 10 MiB session as one legacy frame."""
-
-    frames = list(
-        encode_import_local_session_frames(
-            "req_legacy",
-            1,
-            _session_with_payload("x" * (10 * 1024 * 1024)),
-            allow_chunks=False,
-        )
-    )
-
-    assert len(frames) == 1
-    assert isinstance(decode_host_frame(frames[0]), HostImportLocalSessionFrame)
-
-
-def test_encode_import_local_session_frames_rejects_unsafe_legacy_frame(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A session beyond an older server's cap fails before dropping the tunnel."""
-    monkeypatch.setattr("omnigent.host.frames.IMPORT_SESSION_CHUNK_CHARS", 64)
-    monkeypatch.setattr("omnigent.host.frames.RUNNER_TUNNEL_MAX_MESSAGE_BYTES", 128)
-
-    with pytest.raises(ImportSessionChunkingUnsupportedError):
-        list(
-            encode_import_local_session_frames(
-                "req_legacy", 1, _session_with_payload("x" * 500), allow_chunks=False
-            )
-        )
-
-
-def test_encode_import_local_session_frames_slices_oversized_session(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """An oversized session is sliced into ordered chunk frames that reassemble."""
-    monkeypatch.setattr("omnigent.host.frames.IMPORT_SESSION_CHUNK_CHARS", 64)
-    session = _session_with_payload("x" * 500)
-
-    frames = [
-        decode_host_frame(text)
-        for text in encode_import_local_session_frames("req_big", 2, session, allow_chunks=True)
-    ]
-
-    assert len(frames) > 1
-    assert all(isinstance(f, HostImportLocalSessionChunkFrame) for f in frames)
-    assert [f.seq for f in frames] == list(range(len(frames)))
-    assert [f.last for f in frames] == [False] * (len(frames) - 1) + [True]
-    assert all(f.request_id == "req_big" and f.total == 2 for f in frames)
-    # Every slice respects the configured size, so no frame can grow past
-    # the tunnel's message cap however large the session is.
-    assert all(len(f.data) <= 64 for f in frames)
-
-    assembler = ImportLocalSessionChunkAssembler()
-    reassembled = [assembler.add(f) for f in frames]
-    assert reassembled[:-1] == [None] * (len(frames) - 1)
-    assert reassembled[-1] == session
-
-
-def _session_json(session: HostImportedLocalSession) -> str:
-    """The wire ``session`` object a chunked stream reassembles into."""
-    return json.dumps(
-        {
-            "external_session_id": session.external_session_id,
-            "workspace": session.workspace,
-            "items": session.items,
-            "title": session.title,
-            "source": session.source,
-        }
-    )
-
-
-def test_chunk_assembler_fails_corrupt_sequence_once_then_recovers() -> None:
-    """A slice gap fails that session as soon as it is seen; the next session assembles."""
-    assembler = ImportLocalSessionChunkAssembler()
-    with pytest.raises(ValueError, match="out of order"):
-        assembler.add(
-            HostImportLocalSessionChunkFrame(request_id="r", total=1, seq=1, last=False, data="{}")
-        )
-    # Already reported once: the failed session's remaining slices are skipped.
-    assert assembler.in_progress is False
-    assert (
-        assembler.add(
-            HostImportLocalSessionChunkFrame(request_id="r", total=1, seq=2, last=True, data="")
-        )
-        is None
-    )
-
-    session = _session_with_payload("ok")
-    session_json = _session_json(session)
-    half = len(session_json) // 2
-    assert (
-        assembler.add(
-            HostImportLocalSessionChunkFrame(
-                request_id="r", total=1, seq=0, last=False, data=session_json[:half]
-            )
-        )
-        is None
-    )
-    assert (
-        assembler.add(
-            HostImportLocalSessionChunkFrame(
-                request_id="r", total=1, seq=1, last=True, data=session_json[half:]
-            )
-        )
-        == session
-    )
-
-
-def test_chunk_assembler_starts_new_session_after_truncated_one() -> None:
-    """A first slice arriving mid-session flags the unfinished predecessor and starts fresh."""
-    assembler = ImportLocalSessionChunkAssembler()
-    session = _session_with_payload("ok")
-    session_json = _session_json(session)
-    half = len(session_json) // 2
-    opening = HostImportLocalSessionChunkFrame(
-        request_id="r", total=2, seq=0, last=False, data=session_json[:half]
-    )
-    assert assembler.add(opening) is None
-    assert assembler.in_progress is True
-
-    # The predecessor never sent its final slice; the caller counts it as failed.
-    assert assembler.opens_new_session(opening) is True
-    assert assembler.add(opening) is None
-    assert assembler.buffered_chars == half
-    assert (
-        assembler.add(
-            HostImportLocalSessionChunkFrame(
-                request_id="r", total=2, seq=1, last=True, data=session_json[half:]
-            )
-        )
-        == session
-    )
-
-    # A session that already failed is not flagged again at the next boundary.
-    with pytest.raises(ValueError, match="out of order"):
-        assembler.add(
-            HostImportLocalSessionChunkFrame(request_id="r", total=2, seq=3, last=False, data="{")
-        )
-    assert assembler.opens_new_session(opening) is False
-
-
-def test_chunk_assembler_rejects_non_ascii_slice() -> None:
-    """Slices are json.dumps output, so a non-ASCII slice fails the session unbuffered."""
-    assembler = ImportLocalSessionChunkAssembler()
-    with pytest.raises(ValueError, match="non-ASCII"):
-        assembler.add(
-            HostImportLocalSessionChunkFrame(
-                request_id="r", total=1, seq=0, last=False, data='{"title": "café"'
-            )
-        )
-    assert assembler.buffered_chars == 0
-    assert assembler.in_progress is False
-
-
-def test_chunk_assembler_enforces_connection_budget() -> None:
-    """A slice that would push the connection past its shared cap fails the session."""
-    assembler = ImportLocalSessionChunkAssembler(max_chars=100)
-    assert (
-        assembler.add(
-            HostImportLocalSessionChunkFrame(
-                request_id="r", total=1, seq=0, last=False, data="x" * 8
-            ),
-            budget=10,
-        )
-        is None
-    )
-    with pytest.raises(ValueError, match="exceeds"):
-        assembler.add(
-            HostImportLocalSessionChunkFrame(
-                request_id="r", total=1, seq=1, last=False, data="x" * 8
-            ),
-            budget=10,
-        )
-    assert assembler.buffered_chars == 0
-
-
-def test_chunk_assembler_enforces_size_cap() -> None:
-    """A chunked session past the reassembly cap fails without buffering it."""
-    assembler = ImportLocalSessionChunkAssembler(max_chars=10)
-    assert (
-        assembler.add(
-            HostImportLocalSessionChunkFrame(
-                request_id="r", total=1, seq=0, last=False, data="x" * 8
-            )
-        )
-        is None
-    )
-    with pytest.raises(ValueError, match="exceeds"):
-        assembler.add(
-            HostImportLocalSessionChunkFrame(
-                request_id="r", total=1, seq=1, last=True, data="x" * 8
-            )
-        )
-
-
-def test_chunk_assembler_contains_recursive_json_failure() -> None:
-    """Deeply nested JSON fails one session and leaves the assembler reusable."""
-    assembler = ImportLocalSessionChunkAssembler()
-    nested = "[" * 10_000 + "0" + "]" * 10_000
-
-    with pytest.raises(ValueError, match="not valid JSON"):
-        assembler.add(
-            HostImportLocalSessionChunkFrame(
-                request_id="r", total=2, seq=0, last=True, data=nested
-            )
-        )
-
-    session = _session_with_payload("ok")
-    encoded = json.dumps(
-        {
-            "external_session_id": session.external_session_id,
-            "workspace": session.workspace,
-            "items": session.items,
-            "title": session.title,
-            "source": session.source,
-        }
-    )
-    assert (
-        assembler.add(
-            HostImportLocalSessionChunkFrame(
-                request_id="r", total=2, seq=0, last=True, data=encoded
-            )
-        )
-        == session
-    )
-
-
-def test_model_options_frames_round_trip() -> None:
-    """Pre-launch model catalogs survive both directions of the host tunnel."""
-    request = decode_host_frame(
-        encode_host_frame(
-            HostModelOptionsFrame(request_id="req_models", harness="claude-native"),
-        )
-    )
-    assert request == HostModelOptionsFrame(
-        request_id="req_models",
-        harness="claude-native",
-    )
-
-    result = decode_host_frame(
-        encode_host_frame(
-            HostModelOptionsResultFrame(
-                request_id="req_models",
-                status="ok",
-                models=[
-                    {
-                        "id": "sonnet",
-                        "model": "system.ai.claude-sonnet-4-6[1m]",
-                        "displayName": "Sonnet 4.6",
-                    }
-                ],
-            )
-        )
-    )
-    assert isinstance(result, HostModelOptionsResultFrame)
-    assert result.models == [
-        {
-            "id": "sonnet",
-            "model": "system.ai.claude-sonnet-4-6[1m]",
-            "displayName": "Sonnet 4.6",
-        }
-    ]
-    # Absent from an older host's payload, and present when it reports the
-    # endpoint's wider catalog.
-    assert result.routable_models == []
-    with_routable = decode_host_frame(
-        encode_host_frame(
-            HostModelOptionsResultFrame(
-                request_id="req_models",
-                status="ok",
-                routable_models=["system.ai.claude-opus-5", "system.ai.claude-opus-4-8"],
-            )
-        )
-    )
-    assert isinstance(with_routable, HostModelOptionsResultFrame)
-    assert with_routable.routable_models == [
-        "system.ai.claude-opus-5",
-        "system.ai.claude-opus-4-8",
-    ]
-
-
 def test_encode_injects_traceparent_under_active_span() -> None:
     """
     Encoding a host frame inside an active span stamps a W3C
@@ -686,17 +215,17 @@ def test_hello_frame_without_interactive_shells_is_backward_compatible() -> None
 
 def test_hello_frame_capabilities_round_trip() -> None:
     """Advertised capability tokens survive encode → decode."""
-    from omnigent.host.frames import CAP_CODEX_SIDE_CHAT
+    from omnigent.host.frames import CAP_MCP_INVENTORY
 
     original = HostHelloFrame(
         version="0.1.0",
         frame_protocol_version=1,
         name="new-host",
-        capabilities=[CAP_CODEX_SIDE_CHAT],
+        capabilities=[CAP_MCP_INVENTORY],
     )
     decoded = decode_host_frame(encode_host_frame(original))
     assert isinstance(decoded, HostHelloFrame)
-    assert decoded.capabilities == [CAP_CODEX_SIDE_CHAT]
+    assert decoded.capabilities == [CAP_MCP_INVENTORY]
 
 
 def test_hello_frame_empty_runners() -> None:
@@ -876,19 +405,6 @@ def test_harness_readiness_frame_round_trip() -> None:
     assert decoded.configured_harnesses == {"pi": True, "codex": "needs-auth"}
 
 
-def test_hello_frame_gateway_inference_round_trip() -> None:
-    original = HostHelloFrame(
-        version="0.1.0",
-        frame_protocol_version=1,
-        name="corey-laptop",
-        configured_harnesses={"claude-native": True},
-        gateway_inference={"claude-native": True, "codex": False},
-    )
-    decoded = decode_host_frame(encode_host_frame(original))
-    assert isinstance(decoded, HostHelloFrame)
-    assert decoded.gateway_inference == {"claude-native": True, "codex": False}
-
-
 def test_hello_frame_absent_gateway_inference_decodes_to_none() -> None:
     encoded = json.dumps(
         {
@@ -901,31 +417,6 @@ def test_hello_frame_absent_gateway_inference_decodes_to_none() -> None:
     decoded = decode_host_frame(encoded)
     assert isinstance(decoded, HostHelloFrame)
     assert decoded.gateway_inference is None
-
-
-def test_hello_frame_drops_non_bool_gateway_inference_values() -> None:
-    encoded = json.dumps(
-        {
-            "kind": "host.hello",
-            "version": "0.1.0",
-            "frame_protocol_version": 1,
-            "name": "corey-laptop",
-            "gateway_inference": {"codex": "maybe", "claude-native": True},
-        }
-    )
-    decoded = decode_host_frame(encoded)
-    assert isinstance(decoded, HostHelloFrame)
-    assert decoded.gateway_inference == {"claude-native": True}
-
-
-def test_harness_readiness_frame_gateway_inference_round_trip() -> None:
-    original = HostHarnessReadinessFrame(
-        configured_harnesses={"codex": True},
-        gateway_inference={"codex": True, "native-codex": True},
-    )
-    decoded = decode_host_frame(encode_host_frame(original))
-    assert isinstance(decoded, HostHarnessReadinessFrame)
-    assert decoded.gateway_inference == {"codex": True, "native-codex": True}
 
 
 def test_harness_readiness_frame_without_gateway_inference_is_none() -> None:
@@ -1889,32 +1380,6 @@ def test_install_harness_frame_round_trip() -> None:
     assert decoded.harness == "claude"
 
 
-def test_install_harness_result_success_round_trip() -> None:
-    """
-    Verify a successful install result round-trips with the refreshed
-    readiness map intact.
-
-    The server flips the UI badge off this map, so a dropped or garbled
-    ``configured_harnesses`` would leave a stale "binary missing" badge
-    after a successful install. The map mixes bool and string values
-    (``"needs-auth"`` for an installed-but-unauthed harness), so both
-    must survive the wire.
-    """
-    original = HostInstallHarnessResultFrame(
-        request_id="req_install_2",
-        status="ok",
-        configured_harnesses={"claude-native": True, "codex-native": "needs-auth"},
-    )
-    decoded = decode_host_frame(encode_host_frame(original))
-    assert isinstance(decoded, HostInstallHarnessResultFrame)
-    assert decoded.status == "ok"
-    assert decoded.configured_harnesses == {
-        "claude-native": True,
-        "codex-native": "needs-auth",
-    }
-    assert decoded.error is None
-
-
 def test_install_harness_result_failure_round_trip() -> None:
     """
     Verify a failed install round-trips the reason and leaves the
@@ -1935,28 +1400,6 @@ def test_install_harness_result_failure_round_trip() -> None:
     assert decoded.configured_harnesses is None
     assert decoded.gateway_inference is None
     assert decoded.error == "npm not found"
-
-
-def test_result_frames_round_trip_gateway_inference() -> None:
-    install = HostInstallHarnessResultFrame(
-        request_id="req_install_4",
-        status="ok",
-        configured_harnesses={"claude-native": True},
-        gateway_inference={"claude-native": False},
-    )
-    decoded_install = decode_host_frame(encode_host_frame(install))
-    assert isinstance(decoded_install, HostInstallHarnessResultFrame)
-    assert decoded_install.gateway_inference == {"claude-native": False}
-
-    secret = HostStoreSecretResultFrame(
-        request_id="req_cred_2",
-        status="ok",
-        configured_harnesses={"codex": True},
-        gateway_inference={"codex": True},
-    )
-    decoded_secret = decode_host_frame(encode_host_frame(secret))
-    assert isinstance(decoded_secret, HostStoreSecretResultFrame)
-    assert decoded_secret.gateway_inference == {"codex": True}
 
 
 def test_store_secret_key_frame_round_trip() -> None:
@@ -2026,30 +1469,6 @@ def test_store_secret_value_is_redacted_from_telemetry() -> None:
     )
     assert redacted["secret_value"] == "[redacted]"
     assert redacted["harness"] == "claude"
-
-
-def test_store_secret_result_round_trip() -> None:
-    """The result frame round-trips status + refreshed readiness (never a secret)."""
-    ok = HostStoreSecretResultFrame(
-        request_id="req_cred_1",
-        status="ok",
-        configured_harnesses={"claude-native": True},
-    )
-    decoded = decode_host_frame(encode_host_frame(ok))
-    assert isinstance(decoded, HostStoreSecretResultFrame)
-    assert decoded.status == "ok"
-    assert decoded.configured_harnesses == {"claude-native": True}
-
-    failed = HostStoreSecretResultFrame(
-        request_id="req_cred_1",
-        status="failed",
-        error="a gateway requires a base_url",
-    )
-    decoded_f = decode_host_frame(encode_host_frame(failed))
-    assert isinstance(decoded_f, HostStoreSecretResultFrame)
-    assert decoded_f.status == "failed"
-    assert decoded_f.error == "a gateway requires a base_url"
-    assert decoded_f.configured_harnesses is None
 
 
 def test_detect_credentials_round_trip() -> None:

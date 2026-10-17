@@ -5,7 +5,6 @@ from __future__ import annotations
 import io
 import logging
 import os
-import re
 import subprocess
 import sys
 import tarfile
@@ -29,7 +28,6 @@ from omnigent.cli import (
     _bundle,
     _bundled_brain_fallback_applies,
     _bundled_example_path,
-    _dispatch_native_terminal_harness,
     _dispatch_run,
     _display_db_uri,
     _ensure_sqlite_parent_dir,
@@ -3580,7 +3578,6 @@ def test_run_server_resume_by_id_forwards_to_run_attach(
     # The live-session probe (precise not-found error) is exercised by the
     # attach tests; here we assert the forward, so stub it out.
     monkeypatch.setattr("omnigent.cli._require_live_conversation", lambda **_kw: None)
-    monkeypatch.setattr("omnigent.chat._redirect_native_resume_if_needed", lambda **_kw: False)
     run_attach = Mock()
     run_chat = Mock()
     monkeypatch.setattr("omnigent.chat.run_attach", run_attach)
@@ -3608,50 +3605,6 @@ def test_run_server_resume_by_id_forwards_to_run_attach(
         auto_open_conversation=True,
         resume_parts=["cli", "run", "--server", "http://localhost:8000"],
     )
-
-
-def test_run_server_resume_native_redirects_before_attach_preflight(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Terminal-native ``run --server --resume`` redirects before attach checks.
-
-    The pre-attach liveness check is for Omnigent REPL co-drive. Native-wrapper
-    sessions need to hand off to ``omnigent claude`` / ``omnigent codex``
-    even when their old runner is gone, otherwise a cold native resume fails
-    before the wrapper can relaunch its terminal.
-    """
-    monkeypatch.setattr("omnigent.cli._load_effective_config", dict)
-    redirected: list[dict[str, object]] = []
-
-    def _redirect(**kwargs: object) -> bool:
-        """Record the native redirect probe and claim the resume."""
-        redirected.append(kwargs)
-        return True
-
-    def _must_not_preflight(**_kwargs: object) -> None:
-        """Fail if direct-server resume reaches attach-only preflight."""
-        raise AssertionError("native resume should redirect before live-session preflight")
-
-    def _must_not_attach(**_kwargs: object) -> None:
-        """Fail if direct-server resume reaches Omnigent attach after native redirect."""
-        raise AssertionError("native resume should not call run_attach after redirect")
-
-    monkeypatch.setattr("omnigent.chat._redirect_native_resume_if_needed", _redirect)
-    monkeypatch.setattr("omnigent.cli._require_live_conversation", _must_not_preflight)
-    monkeypatch.setattr("omnigent.chat.run_attach", _must_not_attach)
-
-    result = CliRunner().invoke(
-        cli, ["run", "--server", "http://localhost:8000", "--resume", "conv_native"]
-    )
-
-    assert result.exit_code == 0, result.output
-    assert redirected == [
-        {
-            "base_url": "http://localhost:8000",
-            "conversation_id": "conv_native",
-            "auto_open_conversation": True,
-        }
-    ]
 
 
 def test_run_server_resume_with_prompt_does_not_silently_attach(
@@ -5489,248 +5442,6 @@ def test_display_db_uri_returns_unparseable_input_unchanged() -> None:
     engine reports the real problem on connect.
     """
     assert _display_db_uri("not a uri") == "not a uri"
-
-
-def _native_dispatch_kwargs(**overrides: object) -> dict[str, object]:
-    """Build ``_dispatch_native_terminal_harness`` kwargs with safe defaults.
-
-    Keeps the call sites focused on the one or two fields each test exercises,
-    and means a new parameter only updates this helper rather than every test.
-    """
-    base: dict[str, object] = {
-        "harness": "claude-native",
-        "server": None,
-        "model": None,
-        "prompt": None,
-        "system_prompt": None,
-        "tools": None,
-        "log": False,
-        "debug_events": False,
-        "resume_conversation_id": None,
-        "resume_picker": False,
-        "resume_latest": False,
-        "fork_session_id": None,
-        "ephemeral": False,
-        "auto_open_conversation": False,
-    }
-    base.update(overrides)
-    return base
-
-
-@pytest.mark.parametrize(
-    ("harness", "target", "expected_extra"),
-    [
-        (
-            "claude-native",
-            "omnigent.harnesses.claude_native.main.run_claude_native",
-            {"extra_args": ("--model", "native-model"), "prompt": None},
-        ),
-    ],
-)
-def test_dispatch_native_terminal_harness_launches_registered_wrapper(
-    monkeypatch: pytest.MonkeyPatch,
-    harness: str,
-    target: str,
-    expected_extra: dict[str, object],
-) -> None:
-    """Every registered native harness launches through the generic run dispatcher."""
-    monkeypatch.setattr("omnigent.cli._ensure_backend", lambda _s: "http://localhost:0")
-    captured: dict[str, object] = {}
-    monkeypatch.setattr(target, lambda **kwargs: captured.update(kwargs))
-
-    handled = _dispatch_native_terminal_harness(
-        **_native_dispatch_kwargs(
-            harness=harness,
-            model="native-model",
-            resume_conversation_id="conv_abc123",
-            auto_open_conversation=True,
-        )
-    )
-
-    assert handled is True
-    assert captured == {
-        "server": "http://localhost:0",
-        "session_id": "conv_abc123",
-        "resume_picker": False,
-        "auto_open_conversation": True,
-        **expected_extra,
-    }
-
-
-@pytest.mark.parametrize(
-    ("harness", "target"),
-    [
-        ("claude-native", "omnigent.harnesses.claude_native.main.run_claude_native"),
-    ],
-)
-def test_dispatch_native_terminal_harness_forwards_prompt_to_claude(
-    monkeypatch: pytest.MonkeyPatch, harness: str, target: str
-) -> None:
-    """``run --harness claude-native -p`` is supported, not rejected.
-
-    The wrapper delivers the text as the TUI's initial input, so a prompt is
-    not a REPL-only option for it. A multi-line prompt must arrive as one
-    value — the wrapper puts it on argv rather than pasting it.
-    """
-    monkeypatch.setattr("omnigent.cli._ensure_backend", lambda _s: "http://localhost:0")
-    captured: dict[str, object] = {}
-    monkeypatch.setattr(target, lambda **kwargs: captured.update(kwargs))
-
-    handled = _dispatch_native_terminal_harness(
-        **_native_dispatch_kwargs(harness=harness, prompt="first line\nsecond line")
-    )
-
-    assert handled is True
-    assert captured["prompt"] == "first line\nsecond line"
-
-
-def test_dispatch_native_terminal_harness_ignores_non_native(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A non-native harness returns False and never touches the backend.
-
-    The SDK harnesses (``claude-sdk``, ``pi``) must keep falling through to the
-    materialized-launcher REPL.
-    """
-
-    def _must_not_run(_server: str | None) -> str:
-        raise AssertionError("_ensure_backend called for a non-native harness")
-
-    monkeypatch.setattr("omnigent.cli._ensure_backend", _must_not_run)
-
-    handled = _dispatch_native_terminal_harness(**_native_dispatch_kwargs(harness="claude-sdk"))
-
-    assert handled is False
-
-
-@pytest.mark.parametrize(
-    ("override", "expected_flag"),
-    [
-        ({"system_prompt": "be terse"}, "--system-prompt"),
-        ({"tools": "fs"}, "--tools"),
-        ({"log": True}, "--log"),
-        ({"debug_events": True}, "--debug-events"),
-        ({"fork_session_id": "conv_src"}, "--fork"),
-        ({"ephemeral": True}, "--no-session"),
-    ],
-)
-def test_dispatch_native_terminal_harness_rejects_unsupported_flags(
-    monkeypatch: pytest.MonkeyPatch, override: dict[str, object], expected_flag: str
-) -> None:
-    """REPL-only flags have no analog in the TUI wrapper — fail loud, don't drop.
-
-    ``--tools`` / ``--log`` / ``--debug-events`` were once silently ignored on
-    the native-harness path.
-    """
-
-    def _must_not_run(_server: str | None) -> str:
-        raise AssertionError("_ensure_backend called despite unsupported flags")
-
-    monkeypatch.setattr("omnigent.cli._ensure_backend", _must_not_run)
-
-    # The rejected flag is named in the error, and it's framed as "remove them"
-    # (not "use the subcommand" — the subcommand doesn't accept these either).
-    with pytest.raises(ClickException, match=re.escape(expected_flag)) as excinfo:
-        _dispatch_native_terminal_harness(**_native_dispatch_kwargs(**override))
-    assert "remove them" in str(excinfo.value)
-
-
-def test_dispatch_native_terminal_harness_continue_resumes_latest(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """``--continue`` resolves the harness's latest conversation, not an error.
-
-    Regression guard for the resume path: before this, ``--continue`` was listed
-    as unsupported and raised. It must instead resolve the most-recent
-    ``claude-native-ui`` conversation and hand that to the wrapper as the
-    session id.
-    """
-    monkeypatch.setattr("omnigent.cli._ensure_backend", lambda _s: "http://localhost:0")
-    seen: dict[str, object] = {}
-
-    def _fake_latest(*, base_url: str, agent_name: str, headers: object) -> str:
-        seen["base_url"] = base_url
-        seen["agent_name"] = agent_name
-        return "conv_latest"
-
-    monkeypatch.setattr("omnigent.chat._resolve_latest_conversation_id", _fake_latest)
-    monkeypatch.setattr("omnigent.chat._remote_headers", lambda **_kw: {})
-    captured: dict[str, object] = {}
-    monkeypatch.setattr(
-        "omnigent.harnesses.claude_native.main.run_claude_native",
-        lambda **kwargs: captured.update(kwargs),
-    )
-
-    handled = _dispatch_native_terminal_harness(**_native_dispatch_kwargs(resume_latest=True))
-
-    assert handled is True
-    # Resolved against the claude-native agent identity, then passed as session_id.
-    assert seen == {"base_url": "http://localhost:0", "agent_name": "claude-native-ui"}
-    assert captured["session_id"] == "conv_latest"
-
-
-def test_dispatch_native_terminal_harness_continue_with_no_prior_fails_loud(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """``--continue`` with nothing to continue errors, not a silent fresh start.
-
-    The user explicitly asked to resume; passing the unresolved ``None`` through
-    as ``session_id`` would silently open a new session. Matches the REPL's
-    ``_resolve_resume_target`` "No prior conversation" behavior.
-    """
-    monkeypatch.setattr("omnigent.cli._ensure_backend", lambda _s: "http://localhost:0")
-    monkeypatch.setattr("omnigent.chat._resolve_latest_conversation_id", lambda **_kw: None)
-    monkeypatch.setattr("omnigent.chat._remote_headers", lambda **_kw: {})
-
-    def _must_not_launch(**_kw: object) -> None:
-        raise AssertionError("wrapper launched despite no conversation to continue")
-
-    monkeypatch.setattr(
-        "omnigent.harnesses.claude_native.main.run_claude_native", _must_not_launch
-    )
-
-    with pytest.raises(ClickException, match="No prior conversation"):
-        _dispatch_native_terminal_harness(**_native_dispatch_kwargs(resume_latest=True))
-
-
-def test_dispatch_native_terminal_harness_explicit_id_skips_latest_lookup(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """An explicit ``--resume <id>`` wins over ``--continue`` (no latest lookup)."""
-    monkeypatch.setattr("omnigent.cli._ensure_backend", lambda _s: "http://localhost:0")
-
-    def _must_not_lookup(**_kw: object) -> str:
-        raise AssertionError("latest-conversation lookup ran despite an explicit id")
-
-    monkeypatch.setattr("omnigent.chat._resolve_latest_conversation_id", _must_not_lookup)
-    captured: dict[str, object] = {}
-    monkeypatch.setattr(
-        "omnigent.harnesses.claude_native.main.run_claude_native",
-        lambda **kwargs: captured.update(kwargs),
-    )
-
-    _dispatch_native_terminal_harness(
-        **_native_dispatch_kwargs(resume_conversation_id="conv_explicit", resume_latest=True)
-    )
-
-    assert captured["session_id"] == "conv_explicit"
-
-
-def test_run_agent_with_native_terminal_harness_is_rejected() -> None:
-    """``run AGENT --harness claude-native`` is rejected (the TUI is the agent).
-
-    The native TUI ignores the AGENT spec, and routing it through the REPL would
-    double-record every message — so the combination has no coherent meaning.
-    """
-    with pytest.raises(ClickException, match="ignores an AGENT spec"):
-        _dispatch_run(
-            target="examples/hello_world.yaml",
-            tools=None,
-            harness="claude-native",
-            model=None,
-            prompt=None,
-            system_prompt=None,
-        )
 
 
 def test_runner_online_map_keys_status_by_runner_host(

@@ -69,7 +69,7 @@ class HostSkillDiscovery:
                 return list(cached[1])
             if frame.session_id is None:
                 ctx = skill_source_context_from_env(
-                    roots=(root,), harness=frame.harness, skills_filter=frame.skills_filter
+                    roots=(root,), skills_filter=frame.skills_filter
                 )
                 skills = resolve_harness_skills(ctx, frame.harness)
             else:

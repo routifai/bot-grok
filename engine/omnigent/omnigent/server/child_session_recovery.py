@@ -10,7 +10,6 @@ import httpx
 
 from omnigent.db.workspace_cache import WorkspaceScopedCache
 from omnigent.entities import Conversation
-from omnigent.harness_plugins import native_agents
 from omnigent.server.runner_session_init import RunnerSessionInitializer
 from omnigent.stores.conversation_store import ConversationNotFoundError, ConversationStore
 from omnigent.util.session_lifecycle import is_session_closed
@@ -49,18 +48,6 @@ def schedule_child_restoration(
             _logger.error("Failed to restore children of %s", parent.id, exc_info=error)
 
     task.add_done_callback(finished)
-
-
-def is_parent_owned_subagent(conv: Conversation) -> bool:
-    """Native mirrors belong to their parent's runtime, not a separate terminal."""
-    from omnigent.server.routes._sessions.common import _CLAUDE_NATIVE_WRAPPER_LABEL_KEY
-
-    wrapper = conv.labels.get(_CLAUDE_NATIVE_WRAPPER_LABEL_KEY)
-    return (
-        conv.kind == "sub_agent"
-        and wrapper is not None
-        and any(wrapper == agent.subagent_wrapper_label for agent in native_agents())
-    )
 
 
 def _restorable(conv: Conversation) -> bool:
@@ -186,16 +173,14 @@ async def restore_active_children(
                     if child.runner_id != parent.runner_id:
                         continue
                     initializer.invalidate_session(child.id)
-                mirrored = is_parent_owned_subagent(child)
-                if not mirrored:
-                    response = await initializer.initialize(
-                        child,
-                        client,
-                        timeout=10.0,
-                        suppress_recovery_turn=not _interrupted(child),
-                        resume_interrupted_turn=_interrupted(child),
-                    )
-                    response.raise_for_status()
+                response = await initializer.initialize(
+                    child,
+                    client,
+                    timeout=10.0,
+                    suppress_recovery_turn=not _interrupted(child),
+                    resume_interrupted_turn=_interrupted(child),
+                )
+                response.raise_for_status()
                 _ensure_runner_relay(child.id, parent.runner_id, client, store)
                 # Only execution status can clear the interruption. Initialization
                 # may return before a native continuation emits its first running edge.

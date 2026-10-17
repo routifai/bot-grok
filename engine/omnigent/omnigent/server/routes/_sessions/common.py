@@ -18,19 +18,10 @@ import cachetools
 import httpx
 from pydantic import TypeAdapter
 
-from omnigent._platform import normalize_interactive_shells
 from omnigent.db.db_models import LABEL_VALUE_MAX_LEN
 from omnigent.db.workspace_cache import WorkspaceScopedCache, WorkspaceScopedSet
 from omnigent.entities.conversation import (
     ITEM_TYPE_TO_DATA_CLS,
-)
-from omnigent.errors import ErrorCode, OmnigentError
-from omnigent.harness_capabilities import ForkHistory
-from omnigent.harness_plugins import (
-    CLAUDE_NATIVE_CODING_AGENT,
-    CODEX_NATIVE_CODING_AGENT,
-    PI_NATIVE_CODING_AGENT,
-    harness_capabilities,
 )
 from omnigent.runner.routing import RunnerRouter
 from omnigent.server.host_registry import HostRegistry
@@ -138,97 +129,10 @@ _EXTERNAL_SESSION_USAGE_TYPE: str = "external_session_usage"
 _EXTERNAL_MODEL_CHANGE_TYPE: str = "external_model_change"
 
 
-_EXTERNAL_PERMISSION_MODE_CHANGE_TYPE: str = "external_permission_mode_change"
-
-
 _EXTERNAL_SESSION_TITLE_TYPE: str = "external_session_title"
 
 
-_EXTERNAL_MODEL_OPTIONS_TYPE: str = "external_model_options"
-
-
 _EXTERNAL_REASONING_EFFORT_CHANGE_TYPE: str = "external_reasoning_effort_change"
-
-
-_EXTERNAL_SUBAGENT_START_TYPE: str = "external_subagent_start"
-
-
-_CLAUDE_NATIVE_SUBAGENT_WRAPPER_LABEL_VALUE = "claude-code-native-ui-subagent"
-
-
-_CLAUDE_NATIVE_SUBAGENT_ID_LABEL_KEY = "omnigent.claude_native.subagent_id"
-
-
-_CLAUDE_NATIVE_TOOL_USE_ID_LABEL_KEY = "omnigent.claude_native.tool_use_id"
-
-
-_CLAUDE_NATIVE_DESCRIPTION_LABEL_KEY = "omnigent.claude_native.description"
-
-
-_EXTERNAL_CODEX_SUBAGENT_START_TYPE: str = "external_codex_subagent_start"
-
-
-_CODEX_NATIVE_SUBAGENT_WRAPPER_LABEL_VALUE = "codex-native-ui-subagent"
-
-
-_CODEX_NATIVE_SUBAGENT_THREAD_ID_LABEL_KEY = "omnigent.codex_native.subagent_thread_id"
-
-
-_CODEX_NATIVE_SUBAGENT_PARENT_THREAD_ID_LABEL_KEY = "omnigent.codex_native.parent_thread_id"
-
-
-_CODEX_NATIVE_SUBAGENT_TOOL_CALL_ID_LABEL_KEY = "omnigent.codex_native.collab_tool_call_id"
-
-
-_CODEX_NATIVE_SUBAGENT_PROMPT_LABEL_KEY = "omnigent.codex_native.prompt"
-
-
-_CODEX_NATIVE_SUBAGENT_NICKNAME_LABEL_KEY = "omnigent.codex_native.agent_nickname"
-
-
-_CODEX_NATIVE_SUBAGENT_ROLE_LABEL_KEY = "omnigent.codex_native.agent_role"
-
-
-_CODEX_NATIVE_COLLABORATION_MODE_LABEL_KEY = "omnigent.codex_native.collaboration_mode"
-
-
-# Current approval/sandbox mode of a live codex-native session. ``terminal_launch_args``
-# carries the persisted CLI form; this label is the read-back the web picker prefers,
-# mirroring ``_CLAUDE_NATIVE_PERMISSION_MODE_LABEL_KEY``.
-_CODEX_NATIVE_APPROVAL_MODE_LABEL_KEY = "omnigent.codex_native.approval_mode"
-
-
-_EXTERNAL_CODEX_COLLABORATION_MODE_CHANGE_TYPE: str = "external_codex_collaboration_mode_change"
-
-
-_EXTERNAL_CODEX_APPROVAL_MODE_CHANGE_TYPE: str = "external_codex_approval_mode_change"
-
-
-_CODEX_NATIVE_COLLABORATION_MODES: frozenset[str] = frozenset({"default", "plan"})
-
-
-# Current permission mode of a live claude-native session.
-# ``terminal_launch_args`` records only the launch mode, so this label is what
-# the web UI reads back after a reload.
-_CLAUDE_NATIVE_PERMISSION_MODE_LABEL_KEY = "omnigent.claude_native.permission_mode"
-
-
-# Permission modes switchable on a running session — the ones Claude
-# Code's shift+tab cycle can reach. Mirrors
-# ``claude_native_bridge.CYCLEABLE_PERMISSION_MODES``; ``dontAsk`` and
-# ``bypassPermissions`` are launch-only and rejected on PATCH.
-_CLAUDE_NATIVE_PERMISSION_MODES: frozenset[str] = frozenset(
-    {"default", "acceptEdits", "plan", "auto"}
-)
-# Modes the forwarder can read off the pane footer. A session launched into
-# ``bypassPermissions`` reports it so the label and picker show the real mode;
-# it is still not a PATCH target.
-_CLAUDE_NATIVE_READABLE_PERMISSION_MODES: frozenset[str] = _CLAUDE_NATIVE_PERMISSION_MODES | {
-    "bypassPermissions"
-}
-
-
-_CODEX_NATIVE_SUBAGENT_DISPLAY_FALLBACK = "Codex"
 
 
 _LAST_CONTEXT_TOKENS_LABEL_KEY: str = "omnigent.last_context_tokens"
@@ -261,49 +165,13 @@ _LAST_TASK_ERROR_REMEDIATION_LABEL_KEY: str = "omnigent.last_task_error_remediat
 _LABEL_VALUE_MAX_LEN: int = LABEL_VALUE_MAX_LEN
 
 
-_EXTERNAL_SESSION_TODOS_TYPE: str = "external_session_todos"
-
-
 _CLAUDE_NATIVE_WRAPPER_LABEL_KEY = "omnigent.wrapper"
-
-
-_CLAUDE_NATIVE_WRAPPER_LABEL_VALUE = CLAUDE_NATIVE_CODING_AGENT.wrapper_label
 
 
 _CLAUDE_NATIVE_UI_LABEL_KEY = "omnigent.ui"
 
 
 _CLAUDE_NATIVE_UI_LABEL_VALUE = "terminal"
-
-
-_CLAUDE_NATIVE_HARNESS = CLAUDE_NATIVE_CODING_AGENT.harness
-
-
-_CLAUDE_NATIVE_MODEL = CLAUDE_NATIVE_CODING_AGENT.agent_name
-
-
-_CODEX_NATIVE_WRAPPER_LABEL_VALUE = CODEX_NATIVE_CODING_AGENT.wrapper_label
-
-
-_CODEX_NATIVE_HARNESS = CODEX_NATIVE_CODING_AGENT.harness
-
-
-_CODEX_NATIVE_MODEL = CODEX_NATIVE_CODING_AGENT.agent_name
-
-
-_PI_NATIVE_WRAPPER_LABEL_VALUE = PI_NATIVE_CODING_AGENT.wrapper_label
-
-
-_CLAUDE_NATIVE_MESSAGE_TIMEOUT_S = 30.0
-
-
-_NATIVE_TERMINAL_START_FAILED_CODE = "native_terminal_start_failed"
-
-
-_NATIVE_TERMINAL_ENSURE_FAILED_CODE = "native_terminal_ensure_failed"
-
-
-_NATIVE_POLICY_NOT_ENFORCED_CODE = "native_policy_not_enforced"
 
 
 _HOST_BOUND_RUNNER_CONNECT_GRACE_S = 10.0
@@ -322,9 +190,6 @@ _RUNNER_CONVICTION_POLL_S = 0.25
 
 
 _HOST_LAUNCH_RESULT_TIMEOUT_S = 10.0
-
-
-_CLAUDE_NATIVE_PERMISSION_HOOK_TIMEOUT_S = 86400.0
 
 
 # custom-lint: disable-next=workspace-scoped-cache -- server-minted action_id
@@ -358,19 +223,6 @@ _BROWSER_ACTION_NO_RENDERER_RESULT: dict[str, Any] = {"error": "no browser rende
 _BROWSER_ACTION_TIMEOUT_RESULT: dict[str, Any] = {
     "error": "browser action timed out — is the session open in the Omnigent desktop app?"
 }
-
-
-_CLAUDE_NATIVE_EDIT_TOOLS: frozenset[str] = frozenset(
-    {"Edit", "Write", "MultiEdit", "NotebookEdit"}
-)
-
-
-_CLAUDE_NATIVE_REMEMBER_INELIGIBLE_TOOLS: frozenset[str] = frozenset(
-    {"ExitPlanMode", "AskUserQuestion"}
-)
-
-
-_CODEX_NATIVE_ELICITATION_HOOK_TIMEOUT_S = 86400.0
 
 
 _HARNESS_PRE_RESOLVED_ELICITATION_TTL_S = 300.0
@@ -445,15 +297,8 @@ _ALLOWED_EVENT_TYPES: frozenset[str] = frozenset(ITEM_TYPE_TO_DATA_CLS.keys()) |
     _EXTERNAL_COMPACTION_STATUS_TYPE,
     _EXTERNAL_MCP_STARTUP_TYPE,
     _EXTERNAL_MODEL_CHANGE_TYPE,
-    _EXTERNAL_MODEL_OPTIONS_TYPE,
-    _EXTERNAL_PERMISSION_MODE_CHANGE_TYPE,
     _EXTERNAL_REASONING_EFFORT_CHANGE_TYPE,
     _EXTERNAL_SESSION_TITLE_TYPE,
-    _EXTERNAL_SESSION_TODOS_TYPE,
-    _EXTERNAL_SUBAGENT_START_TYPE,
-    _EXTERNAL_CODEX_SUBAGENT_START_TYPE,
-    _EXTERNAL_CODEX_COLLABORATION_MODE_CHANGE_TYPE,
-    _EXTERNAL_CODEX_APPROVAL_MODE_CHANGE_TYPE,
 }
 
 
@@ -561,30 +406,10 @@ _session_mcp_startup_cache: WorkspaceScopedCache[str, dict[str, McpServerStartup
 )
 
 
-_model_options_cache: WorkspaceScopedCache[str, list[dict[str, Any]]] = WorkspaceScopedCache()
-
-
-_model_options_inflight: WorkspaceScopedCache[str, asyncio.Task[None]] = WorkspaceScopedCache()
-
-
-# Sessions whose cached catalog should be re-fetched at the next snapshot
-# that has a live runner. A stale entry still SERVES in the meantime (and
-# whenever no runner is bound) so the model picker survives runner death.
-_model_options_stale: WorkspaceScopedSet[str] = WorkspaceScopedSet()
-
-
-_MODEL_OPTIONS_RETRY_DELAYS_S = (0.25, 0.5, 1.0, 2.0, 2.0)
-
-
 # Strong references to fire-and-forget catalog prefetches, so a task cannot be
 # garbage-collected mid-flight. Entries remove themselves when they finish.
 # custom-lint: disable-next=workspace-scoped-cache -- set of Task objects
 _catalog_prefetch_tasks: set[asyncio.Task[None]] = set()
-
-
-_pushed_model_options_cache: WorkspaceScopedCache[str, list[dict[str, Any]]] = (
-    WorkspaceScopedCache()
-)
 
 
 @dataclass
@@ -744,31 +569,6 @@ _RUNNER_SESSION_INIT_TIMEOUT_S = 10.0
 _STOP_RUNNER_RESULT_TIMEOUT_S = 10.0
 
 
-# Derived from the fork_history capability axis (see harness_capabilities). A
-# harness declaring fork_history=REBUILD rebuilds its resumable session file
-# from the copied items.
-#
-# The read sites match on canonicalize_harness(harness_kind), but several
-# reversed "native-<x>" spellings (native-claude / native-codex)
-# are valid harness ids that canonicalize_harness passes through UNCHANGED — so
-# each canonical id must be listed alongside its reversed spelling, exactly as
-# the pre-derivation literals did (see test_fork_reversed_native_spelling_carry_gating).
-def _fork_history_harness_ids(behavior: ForkHistory) -> frozenset[str]:
-    ids: set[str] = set()
-    for harness, caps in harness_capabilities().items():
-        if caps.fork_history is not behavior:
-            continue
-        ids.add(harness)
-        # Add the reversed "native-<key>" spelling for a canonical "<key>-native"
-        # id; it canonicalizes to itself for some harnesses, so membership needs it.
-        if harness.endswith("-native"):
-            ids.add(f"native-{harness[: -len('-native')]}")
-    return frozenset(ids)
-
-
-_FORK_HISTORY_NATIVE_HARNESSES: frozenset[str] = _fork_history_harness_ids(ForkHistory.REBUILD)
-
-
 _DENY_SENTINEL_PREFIX = "[Denied by policy: "
 
 
@@ -794,17 +594,6 @@ _UI_ADDED_AGENT_TITLE_PREFIX = "ui"
 
 
 _UPLOAD_READ_CHUNK_BYTES: int = 1024 * 1024
-
-
-# Live runner-owned model catalogs, keyed by wrapper label to route segment.
-_MODEL_OPTIONS_ENDPOINT_BY_WRAPPER: dict[str, str] = {
-    _CLAUDE_NATIVE_WRAPPER_LABEL_VALUE: "claude-model-options",
-    _CODEX_NATIVE_WRAPPER_LABEL_VALUE: "codex-model-options",
-    # pi-native is deliberately NOT here: its catalog is PUSHED by the resident
-    # extension (``external_model_options`` → ``_pushed_model_options_cache``),
-    # not fetched from a runner route, so the picker works in every auth path
-    # (Omnigent provider OR pi's own ``/login``) — see ``_fetch_model_options``.
-}
 
 
 # Runner router for the native-terminal approval popup, set once at app startup
@@ -836,38 +625,16 @@ def get_server_runner_router() -> RunnerRouter | None:
 
 
 # Live host-tunnel registry, set once at app startup (see
-# :func:`set_server_host_registry`). Asleep claude-native sessions refill
-# their model catalog from the session's host (the new-session picker's
-# pre-launch source) via a background task that carries no FastAPI request,
-# so it reads the registry from this module-level global.
+# :func:`set_server_host_registry`), for code paths that carry no FastAPI
+# request (e.g. the routing backend).
 _server_host_registry: HostRegistry | None = None
 
 
-def host_interactive_shells_for_request(
-    host_id: str,
-    *,
-    host_registry: HostRegistry,
-    runner_router: RunnerRouter | None,
-) -> list[str]:
-    """Return this replica's host shells or signal a misrouted request."""
-    if (
-        host_registry.get(host_id) is None
-        and runner_router is not None
-        and runner_router.host_is_on_another_replica(host_id)
-    ):
-        raise OmnigentError(
-            "host shell inventory is on another replica",
-            code=ErrorCode.WRONG_REPLICA,
-        )
-    return normalize_interactive_shells(host_registry.interactive_shells(host_id))
-
-
 def set_server_host_registry(host_registry: HostRegistry | None) -> None:
-    """Stash the live host registry for asleep-session catalog refills.
+    """Stash the live host registry for request-less code paths.
 
-    Called once from ``create_app`` so ``_load_model_options_from_host``
-    can reach a session's host connection from background contexts that do
-    not carry the request / route closure.
+    Called once from ``create_app`` so background contexts that do not carry
+    the request / route closure can reach a session's host connection.
 
     :param host_registry: The live host-tunnel registry, or ``None`` in
         setups without host tunnels.
@@ -892,47 +659,15 @@ __all__ = [
     "_BROWSER_ACTION_NO_RENDERER_RESULT",
     "_BROWSER_ACTION_TIMEOUT_RESULT",
     "_CHILD_PREVIEW_LIMIT",
-    "_CLAUDE_NATIVE_DESCRIPTION_LABEL_KEY",
-    "_CLAUDE_NATIVE_EDIT_TOOLS",
-    "_CLAUDE_NATIVE_HARNESS",
-    "_CLAUDE_NATIVE_MESSAGE_TIMEOUT_S",
-    "_CLAUDE_NATIVE_MODEL",
-    "_CLAUDE_NATIVE_PERMISSION_HOOK_TIMEOUT_S",
-    "_CLAUDE_NATIVE_PERMISSION_MODES",
-    "_CLAUDE_NATIVE_PERMISSION_MODE_LABEL_KEY",
-    "_CLAUDE_NATIVE_READABLE_PERMISSION_MODES",
-    "_CLAUDE_NATIVE_REMEMBER_INELIGIBLE_TOOLS",
-    "_CLAUDE_NATIVE_SUBAGENT_ID_LABEL_KEY",
-    "_CLAUDE_NATIVE_SUBAGENT_WRAPPER_LABEL_VALUE",
-    "_CLAUDE_NATIVE_TOOL_USE_ID_LABEL_KEY",
     "_CLAUDE_NATIVE_UI_LABEL_KEY",
     "_CLAUDE_NATIVE_UI_LABEL_VALUE",
     "_CLAUDE_NATIVE_WRAPPER_LABEL_KEY",
-    "_CLAUDE_NATIVE_WRAPPER_LABEL_VALUE",
-    "_CODEX_NATIVE_APPROVAL_MODE_LABEL_KEY",
-    "_CODEX_NATIVE_COLLABORATION_MODES",
-    "_CODEX_NATIVE_COLLABORATION_MODE_LABEL_KEY",
-    "_CODEX_NATIVE_ELICITATION_HOOK_TIMEOUT_S",
-    "_CODEX_NATIVE_HARNESS",
-    "_CODEX_NATIVE_MODEL",
-    "_CODEX_NATIVE_SUBAGENT_DISPLAY_FALLBACK",
-    "_CODEX_NATIVE_SUBAGENT_NICKNAME_LABEL_KEY",
-    "_CODEX_NATIVE_SUBAGENT_PARENT_THREAD_ID_LABEL_KEY",
-    "_CODEX_NATIVE_SUBAGENT_PROMPT_LABEL_KEY",
-    "_CODEX_NATIVE_SUBAGENT_ROLE_LABEL_KEY",
-    "_CODEX_NATIVE_SUBAGENT_THREAD_ID_LABEL_KEY",
-    "_CODEX_NATIVE_SUBAGENT_TOOL_CALL_ID_LABEL_KEY",
-    "_CODEX_NATIVE_SUBAGENT_WRAPPER_LABEL_VALUE",
-    "_CODEX_NATIVE_WRAPPER_LABEL_VALUE",
     "_COMPACT_TYPE",
     "_DENY_SENTINEL_PREFIX",
     "_EVALUATE_HOOK_ELICITATION_ID_RE",
     "_EXTERNAL_ASSISTANT_MESSAGE_TYPE",
     "_EXTERNAL_BTW_DISMISS_TYPE",
     "_EXTERNAL_BTW_SIDECHAT_TYPE",
-    "_EXTERNAL_CODEX_APPROVAL_MODE_CHANGE_TYPE",
-    "_EXTERNAL_CODEX_COLLABORATION_MODE_CHANGE_TYPE",
-    "_EXTERNAL_CODEX_SUBAGENT_START_TYPE",
     "_EXTERNAL_COMPACTION_STATUS_TYPE",
     "_EXTERNAL_COMPACTION_STATUS_VALUES",
     "_EXTERNAL_CONVERSATION_ITEM_TYPE",
@@ -940,23 +675,18 @@ __all__ = [
     "_EXTERNAL_MCP_STARTUP_STATUS_VALUES",
     "_EXTERNAL_MCP_STARTUP_TYPE",
     "_EXTERNAL_MODEL_CHANGE_TYPE",
-    "_EXTERNAL_MODEL_OPTIONS_TYPE",
     "_EXTERNAL_OUTPUT_REASONING_DELTA_TYPE",
     "_EXTERNAL_OUTPUT_TEXT_DELTA_TYPE",
-    "_EXTERNAL_PERMISSION_MODE_CHANGE_TYPE",
     "_EXTERNAL_REASONING_EFFORT_CHANGE_TYPE",
     "_EXTERNAL_SESSION_INTERRUPTED_TYPE",
     "_EXTERNAL_SESSION_STATUS_TYPE",
     "_EXTERNAL_SESSION_STATUS_VALUES",
     "_EXTERNAL_SESSION_SUPERSEDED_TYPE",
     "_EXTERNAL_SESSION_TITLE_TYPE",
-    "_EXTERNAL_SESSION_TODOS_TYPE",
     "_EXTERNAL_SESSION_USAGE_TYPE",
     "_EXTERNAL_STATUS_ASSISTANT_SCAN_LIMIT",
-    "_EXTERNAL_SUBAGENT_START_TYPE",
     "_EXTERNAL_TOOL_OUTPUT_DELTA_TYPE",
     "_FENCE_EXEMPT_EVENT_TYPES",
-    "_FORK_HISTORY_NATIVE_HARNESSES",
     "_HARNESS_ELICITATION_REPARK_GRACE_S",
     "_HARNESS_PRE_RESOLVED_ELICITATION_MAX_ENTRIES",
     "_HARNESS_PRE_RESOLVED_ELICITATION_TTL_S",
@@ -978,13 +708,7 @@ __all__ = [
     "_MAX_TERMINAL_LAUNCH_ARGS",
     "_MAX_TERMINAL_LAUNCH_ARG_LEN",
     "_MCP_ELICITATION_TYPE",
-    "_MODEL_OPTIONS_ENDPOINT_BY_WRAPPER",
-    "_MODEL_OPTIONS_RETRY_DELAYS_S",
     "_MODEL_TOKEN_KEYS",
-    "_NATIVE_POLICY_NOT_ENFORCED_CODE",
-    "_NATIVE_TERMINAL_ENSURE_FAILED_CODE",
-    "_NATIVE_TERMINAL_START_FAILED_CODE",
-    "_PI_NATIVE_WRAPPER_LABEL_VALUE",
     "_RACE_TASK_REAP_TIMEOUT_S",
     "_RETRY_SESSION_TYPE",
     "_RUNNER_CONVICTION_POLL_S",
@@ -1023,13 +747,9 @@ __all__ = [
     "_llm_response_denied_turns",
     "_logger",
     "_managed_launch_tasks",
-    "_model_options_cache",
-    "_model_options_inflight",
-    "_model_options_stale",
     "_native_ask_gate_locks",
     "_native_popup_forward_tasks",
     "_pending_policy_ask_writes",
-    "_pushed_model_options_cache",
     "_read_explicit_unread",
     "_read_last_seen",
     "_recent_mirrored_tool_calls",
@@ -1047,7 +767,6 @@ __all__ = [
     "_session_terminal_pending_cache",
     "get_server_host_registry",
     "get_server_runner_router",
-    "host_interactive_shells_for_request",
     "set_server_host_registry",
     "set_server_runner_router",
 ]

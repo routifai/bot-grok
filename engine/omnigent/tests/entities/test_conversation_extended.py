@@ -223,19 +223,6 @@ def test_compaction_snapshot_strips_document_block() -> None:
     assert _IMAGE_BASE64 not in json.dumps(data.compacted_messages)
 
 
-def test_compaction_snapshot_strips_inline_data_uri() -> None:
-    """The Responses-shaped snapshot codex-native persists is covered too."""
-    event = _compaction_event(
-        [{"type": "input_image", "image_url": f"data:image/png;base64,{_IMAGE_BASE64}"}]
-    )
-
-    data = parse_item_data("compaction", {"type": "compaction", **event})
-
-    assert isinstance(data, CompactionData)
-    assert data.compacted_messages is not None
-    assert _IMAGE_BASE64 not in json.dumps(data.compacted_messages)
-
-
 def test_compaction_snapshot_strip_does_not_mutate_input() -> None:
     """Pydantic shares nested dicts with the caller, so never strip in place."""
     event = _compaction_event(

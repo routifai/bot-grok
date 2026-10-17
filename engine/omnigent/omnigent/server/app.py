@@ -60,10 +60,6 @@ from omnigent.extensions.assets import (
     parse_dev_bundle_overrides,
 )
 from omnigent.extensions.registry import plugin_state as load_extension_plugin_state
-from omnigent.harness_plugins import (
-    NativeHarnessProvider,
-    native_provider_for_key,
-)
 from omnigent.memory.service import MemoryService
 from omnigent.resources import examples as _examples_resources
 from omnigent.runtime import (
@@ -102,7 +98,6 @@ from omnigent.server.routes.dictation import create_dictation_router
 from omnigent.server.routes.extension_assets import create_extension_assets_router
 from omnigent.server.routes.extensions import create_extensions_router
 from omnigent.server.routes.harnesses import create_harnesses_router
-from omnigent.server.routes.imports import create_imports_router
 from omnigent.server.routes.policy_registry import create_policy_registry_router
 from omnigent.server.routes.projects import create_projects_router
 from omnigent.server.routes.runner_tunnel import create_runner_tunnel_router
@@ -914,14 +909,13 @@ def _ensure_default_agents(
     :param artifact_store: Store for agent bundles.
     :param agent_cache: Cache for loaded agent specs.
     """
-    _ensure_default_native_agents(agent_store, artifact_store, agent_cache)
     _ensure_default_debby_agent(agent_store, artifact_store, agent_cache)
     _ensure_default_polly_agent(agent_store, artifact_store, agent_cache)
     _ensure_extra_builtin_agents(agent_store, artifact_store, agent_cache)
 
 
 # Env var listing extra built-in agent specs to seed at startup, in addition
-# to the packaged claude-native-ui / codex-native-ui / polly set. Each
+# to the packaged debby / polly set. Each
 # ``os.pathsep``-separated entry is a path to an agent spec (single-file
 # YAML or a bundle dir); it is registered as a built-in (``session_id NULL``)
 # under the spec path's stem (file) or directory name. Lets a deployment —
@@ -987,75 +981,6 @@ def _ensure_extra_builtin_agents(
             )
             continue
         _logger.info("Registered extra built-in agent %r from %s", name, source)
-
-
-def _build_native_bundle(provider: NativeHarnessProvider) -> bytes:
-    """
-    Materialize a built-in native agent's spec and tar it (registry-driven).
-
-    Resolves the provider's ``materialize_agent_spec`` hook
-    (``_materialize_<key>_agent_spec``) and runs the materialize -> bundle -> tar
-    sequence. The per-harness ``model`` variance (codex takes a keyword-only
-    ``model``; the rest take just ``tmpdir``) is bridged by signature inspection.
-
-    :param provider: The native harness provider row.
-    :returns: Gzipped tarball bytes suitable for the artifact store.
-    """
-    import inspect
-    import tempfile
-
-    from omnigent.native.native_dispatch import resolve_hook
-    from omnigent.spec import materialize_bundle
-
-    materialize = resolve_hook(provider, "materialize_agent_spec")
-    if materialize is None:
-        raise OmnigentError(f"native provider {provider.key!r} has no materialize_agent_spec hook")
-    with tempfile.TemporaryDirectory() as tmpdir:
-        # The bridge understands only the ``model`` axis: pass ``model=None`` iff
-        # the materializer declares that parameter, else call it bare. A future
-        # harness whose materializer needs a *different* required kwarg will fail
-        # loud here (missing-argument TypeError at seed time) rather than route —
-        # add that axis explicitly if/when it appears.
-        kwargs = {"model": None} if "model" in inspect.signature(materialize).parameters else {}
-        spec_path = materialize(Path(tmpdir), **kwargs)
-        bundle_dir = materialize_bundle(spec_path, Path(tmpdir) / "bundle")
-        return _tar_gz_dir(bundle_dir)
-
-
-def _ensure_default_native_agents(
-    agent_store: AgentStore,
-    artifact_store: ArtifactStore,
-    agent_cache: Any,
-) -> None:
-    """
-    Register or refresh every built-in native-CLI agent (claude/codex/pi/...).
-
-    Iterates :data:`NATIVE_CODING_AGENTS` (each carries both ``key`` and
-    ``agent_name``), resolves the matching provider, and seeds it content-aware
-    via :func:`_ensure_builtin_agent`. The agent name is unchanged
-    (``NativeCodingAgent.agent_name``), so :func:`builtin_agent_id` — a pure hash
-    of the name — stays byte-identical and a redeploy does not orphan persisted
-    ``conversation.agent_id`` rows.
-
-    :param agent_store: Store for agent metadata.
-    :param artifact_store: Store for agent bundles.
-    :param agent_cache: Cache for loaded agent specs.
-    """
-    from omnigent.native.native_coding_agents import NATIVE_CODING_AGENTS
-
-    for agent in NATIVE_CODING_AGENTS:
-        provider = native_provider_for_key(agent.key)
-        if provider is None:
-            raise OmnigentError(
-                f"native coding agent {agent.key!r} has no provider row to seed from"
-            )
-        _ensure_builtin_agent(
-            agent_store,
-            artifact_store,
-            agent_cache,
-            name=agent.agent_name,
-            bundle_bytes=_build_native_bundle(provider),
-        )
 
 
 def _build_debby_bundle() -> bytes:
@@ -2569,13 +2494,12 @@ def create_app(
                 host_version = host_versions.get(conn.host_id)
             if conn.runner_id is None:
                 # No runner binding: an in-process executor (or a session
-                # not yet dispatched) is reachable — EXCEPT sessions that have
-                # no executor to reach and must launch a runner on a host
-                # first: an unbound fork (needs a workspace) or an imported
-                # transcript (no live executor anywhere). Reporting those
-                # offline routes the first message into the resume picker
-                # instead of dropping it against a runner that can't start.
-                runner_online = not (conn.needs_workspace or conn.imported)
+                # not yet dispatched) is reachable — EXCEPT an unbound fork,
+                # which must launch a runner on a host first (it needs a
+                # workspace). Reporting it offline routes the first message
+                # into the resume picker instead of dropping it against a
+                # runner that can't start.
+                runner_online = not conn.needs_workspace
             else:
                 # Strict: reachable only if the runner tunnel is up. No
                 # host-relaunch optimism — host state lives in host_online.
@@ -3013,19 +2937,6 @@ def create_app(
         ),
         prefix="/v1",
         tags=["sessions"],
-    )
-    app.include_router(
-        create_imports_router(
-            conversation_store,
-            agent_store,
-            auth_provider=auth_provider,
-            permission_store=permission_store,
-            project_store=project_store,
-            host_registry=host_registry,
-            host_store=host_store,
-        ),
-        prefix="/v1",
-        tags=["imports"],
     )
     # Per-user LLM cost report (omni usage). User-scoped, not session-scoped,
     # so it gets its own router rather than living under /sessions.
@@ -3471,10 +3382,7 @@ def create_app(
             "Runner connected",
             extra=debug_event("runner_connected", runner_id=runner_id),
         )
-        from omnigent.server.child_session_recovery import (
-            is_parent_owned_subagent,
-            restore_active_children,
-        )
+        from omnigent.server.child_session_recovery import restore_active_children
         from omnigent.server.routes._sessions.common import (
             _session_sandbox_status_cache,
         )
@@ -3536,9 +3444,7 @@ def create_app(
                         "_on_runner_connect: skipping session-init POST for %s (no agent_id)",
                         conv.id,
                     )
-                elif not is_parent_owned_subagent(conv) and not (
-                    conv.parent_conversation_id in bound_ids and conv.host_id is None
-                ):
+                elif not (conv.parent_conversation_id in bound_ids and conv.host_id is None):
                     try:
                         init_response = await runner_session_initializer.initialize(
                             conv,
@@ -3584,9 +3490,7 @@ def create_app(
                 # is reachable again. The helper self-guards: it only clears a
                 # session whose persisted failure is ``runner_disconnected``, so
                 # a genuine task failure survives the reconnect untouched.
-                if not is_parent_owned_subagent(conv) and not (
-                    conv.parent_conversation_id in bound_ids and conv.host_id is None
-                ):
+                if not (conv.parent_conversation_id in bound_ids and conv.host_id is None):
                     await _publish_runner_recovered_status(
                         conv.id, conversation_store, require_disconnect_code=True
                     )

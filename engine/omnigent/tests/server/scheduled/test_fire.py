@@ -525,71 +525,6 @@ def _claude_agent_deps(
     )
 
 
-@pytest.mark.asyncio
-async def test_permission_mode_becomes_terminal_launch_args() -> None:
-    """A Claude task's permission_mode fires as the runner's --permission-mode args."""
-    conv_store = FakeConversationStore()
-    store = FakeScheduledTaskStore(rows={"task_1": _task(permission_mode="acceptEdits")})
-
-    async def _launch(conv: Any, task: Any) -> None:
-        return None
-
-    on_fire = build_on_fire(
-        _claude_agent_deps(store, conv_store, harness="claude-native"),
-        launch_dispatch=_launch,
-    )
-    await on_fire(0, "task_1")
-    await _drain()
-
-    assert len(conv_store.created) == 1
-    assert conv_store.created[0]["terminal_launch_args"] == ["--permission-mode", "acceptEdits"]
-
-
-@pytest.mark.asyncio
-async def test_unset_permission_mode_sends_no_launch_args() -> None:
-    """No permission_mode → no terminal_launch_args (agent default applies)."""
-    conv_store = FakeConversationStore()
-    store = FakeScheduledTaskStore(rows={"task_1": _task()})
-
-    async def _launch(conv: Any, task: Any) -> None:
-        return None
-
-    on_fire = build_on_fire(
-        _claude_agent_deps(store, conv_store, harness="claude-native"),
-        launch_dispatch=_launch,
-    )
-    await on_fire(0, "task_1")
-    await _drain()
-
-    assert len(conv_store.created) == 1
-    assert conv_store.created[0]["terminal_launch_args"] is None
-
-
-@pytest.mark.asyncio
-async def test_permission_mode_omitted_for_non_claude_agent() -> None:
-    """A mis-stamped non-Claude row degrades to no --permission-mode flag.
-
-    The injection is harness-gated fail-safe: even if a permission_mode somehow
-    persisted on a non-Claude task, the fire must NOT inject the unknown flag
-    (which would break the launch) — it launches with the agent's own default.
-    """
-    conv_store = FakeConversationStore()
-    store = FakeScheduledTaskStore(rows={"task_1": _task(permission_mode="bypassPermissions")})
-
-    async def _launch(conv: Any, task: Any) -> None:
-        return None
-
-    on_fire = build_on_fire(
-        _claude_agent_deps(store, conv_store, harness="pi"),
-        launch_dispatch=_launch,
-    )
-    await on_fire(0, "task_1")
-    await _drain()
-
-    assert len(conv_store.created) == 1
-    assert conv_store.created[0]["terminal_launch_args"] is None
-
-
 def _effort_agent_deps(
     store: FakeScheduledTaskStore,
     conv_store: FakeConversationStore,
@@ -665,45 +600,6 @@ async def test_no_reasoning_effort_when_spec_has_none() -> None:
 
 
 @pytest.mark.asyncio
-async def test_native_wrapper_task_stamps_terminal_first_labels() -> None:
-    """A native-CLI (Claude Code) automation session gets the terminal-first labels.
-
-    Interactive New Chat stamps ``omnigent.ui = terminal`` + the wrapper label
-    so the web UI shows the Chat/Terminal switcher; the fire path must stamp the
-    same labels or the session renders Chat-only with no way to its terminal.
-    """
-    from omnigent.native.native_coding_agents import CLAUDE_NATIVE_AGENT_NAME
-
-    conv_store = FakeConversationStore()
-    store = FakeScheduledTaskStore(rows={"task_1": _task()})
-    deps = _deps(
-        store,
-        conversation_store=conv_store,
-        agent_store=FakeAgentStore(
-            {
-                "ag_1": _FakeAgent(
-                    "ag_1", bundle_location="ag_1/hash", name=CLAUDE_NATIVE_AGENT_NAME
-                )
-            }
-        ),
-        agent_cache=FakeAgentCache(harness="claude-native"),
-    )
-
-    async def _launch(conv: Any, task: Any) -> None:
-        return None
-
-    on_fire = build_on_fire(deps, launch_dispatch=_launch)
-    await on_fire(0, "task_1")
-    await _drain()
-
-    assert conv_store.label_writes["conv_1"] == {
-        "omnigent.ui": "terminal",
-        "omnigent.wrapper": "claude-code-native-ui",
-        "omnigent.scheduled_task_id": "task_1",
-    }
-
-
-@pytest.mark.asyncio
 async def test_non_native_host_bound_task_stamps_repl_terminal_label() -> None:
     """A non-native SDK automation on a host gets ``omnigent.ui = terminal``.
 
@@ -756,39 +652,6 @@ async def test_non_native_task_without_agent_cache_stamps_no_labels() -> None:
     assert len(conv_store.created) == 1
     # Only the scheduled-fire marker: no presentation labels without an agent cache.
     assert conv_store.label_writes == {"conv_1": {"omnigent.scheduled_task_id": "task_1"}}
-
-
-@pytest.mark.asyncio
-async def test_native_wrapper_labels_resolve_without_agent_cache() -> None:
-    """Native-wrapper labels come from the agent name, so they need no cache.
-
-    Parity with the interactive create path, which resolves these labels with no
-    cache dependency — a deployment with no fire-deps cache must not silently
-    drop the switcher for a native-CLI automation.
-    """
-    from omnigent.native.native_coding_agents import CLAUDE_NATIVE_AGENT_NAME
-
-    conv_store = FakeConversationStore()
-    store = FakeScheduledTaskStore(rows={"task_1": _task()})
-    deps = _deps(
-        store,
-        conversation_store=conv_store,
-        agent_store=FakeAgentStore({"ag_1": _FakeAgent("ag_1", name=CLAUDE_NATIVE_AGENT_NAME)}),
-        # agent_cache left None.
-    )
-
-    async def _launch(conv: Any, task: Any) -> None:
-        return None
-
-    on_fire = build_on_fire(deps, launch_dispatch=_launch)
-    await on_fire(0, "task_1")
-    await _drain()
-
-    assert conv_store.label_writes["conv_1"] == {
-        "omnigent.ui": "terminal",
-        "omnigent.wrapper": "claude-code-native-ui",
-        "omnigent.scheduled_task_id": "task_1",
-    }
 
 
 @pytest.mark.asyncio

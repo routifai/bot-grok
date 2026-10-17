@@ -30,19 +30,14 @@ from omnigent._env_compat import mirror_legacy_env as _mirror_legacy_env  # noqa
 _mirror_legacy_env()
 
 # The public names below re-export lazily (PEP 562). This package init is on
-# the hot path of every ``python -m omnigent.<hook>`` subprocess Claude Code
-# spawns — once per streamed text chunk (the TUI blocks on the MessageDisplay
-# hook), per statusline refresh, and per tool call — and eagerly importing the
-# datamodel/executor graph here cost those spawns ~250 ms each. Names resolve
-# on first attribute access and are cached in module globals; the import-graph
-# guards live in tests/test_claude_native_message_display_hook.py and the
-# wall-clock trend in the ``native_hook_spawn`` benchmark journey.
+# the hot path of every ``python -m omnigent.<hook>`` subprocess, and eagerly
+# importing the datamodel/executor graph here cost those spawns ~250 ms each.
+# Names resolve on first attribute access and are cached in module globals.
 import importlib  # noqa: E402
 from typing import TYPE_CHECKING, Any  # noqa: E402
 
 if TYPE_CHECKING:
     from omnigent.inner.claude_sdk_executor import ClaudeSDKExecutor as ClaudeSDKExecutor
-    from omnigent.inner.codex_executor import CodexExecutor as CodexExecutor
     from omnigent.inner.datamodel import (
         AgentDef as AgentDef,
     )
@@ -190,7 +185,6 @@ _LAZY_EXPORTS = {
 # absent, matching the former eager try/except imports.
 _OPTIONAL_EXPORTS = {
     "ClaudeSDKExecutor": ("omnigent.inner.claude_sdk_executor", (ImportError,)),
-    "CodexExecutor": ("omnigent.inner.codex_executor", (ImportError,)),
 }
 
 
@@ -231,7 +225,6 @@ __all__ = [
     "AgentTool",
     "CancellableFunctionTool",
     "ClaudeSDKExecutor",
-    "CodexExecutor",
     "Connection",
     "Credentials",
     "Executor",

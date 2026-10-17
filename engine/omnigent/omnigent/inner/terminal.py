@@ -30,7 +30,7 @@ from typing import Any, TypeAlias, cast
 from omnigent._platform import IS_WINDOWS
 from omnigent.cli_invocation import cli_invocation
 from omnigent.debug_logging import debug_event
-from omnigent.native import owner_claim
+from omnigent.inner import terminal_owner_claim as owner_claim
 from omnigent.process_logging import redact_log_text
 from omnigent.runner.identity import strip_runner_auth_secrets
 from omnigent.util.tmux_compat import MIN_TMUX_VERSION, MIN_TMUX_VERSION_HINT, tmux_version

@@ -51,7 +51,6 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnigent.errors import ErrorCode, HarnessTransportClosedError, OmnigentError
-from omnigent.native import _native_forwarder_health as native_forwarder_health
 from omnigent.policies.types import FAIL_CLOSED_PHASES
 from omnigent.runtime.public_error_codes import INTERNAL
 from omnigent.runtime.tool_output import cap_tool_output
@@ -1756,26 +1755,7 @@ class HarnessApp:
             ctx.response_id,
             idle_timeout,
         )
-        # A native forwarder that can't reach the server (e.g.
-        # ``No route to host``) starves the turn of progress events, so
-        # the idle watchdog — not the connectivity error — is what fails
-        # the turn. If such a POST failure was recorded recently, attach
-        # it so the user sees the real cause rather than a generic
-        # "wedged LLM" reason. The window is one idle window per wedged
-        # attempt plus one of slack: the failure that began the stall is
-        # already ~idle_timeout × attempts old when the final watchdog
-        # fires (each recovery retry consumed another window), so a
-        # window equal to the stall would race past it; the extra window
-        # captures it while still ignoring a long-resolved earlier blip.
-        forwarder_failure = native_forwarder_health.recent_post_failure(
-            idle_timeout * (attempt + 2)
-        )
-        cause = (
-            f"likely a wedged LLM or tool call; "
-            f"recent forwarder POST failure ({forwarder_failure})"
-            if forwarder_failure is not None
-            else "likely a wedged LLM or tool call"
-        )
+        cause = "likely a wedged LLM or tool call"
         retried = (
             f"; {attempt} recovery retr{'y was' if attempt == 1 else 'ies were'} "
             f"attempted and also wedged"

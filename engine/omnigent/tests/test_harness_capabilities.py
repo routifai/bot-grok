@@ -27,12 +27,9 @@ from omnigent.harness_plugins import (
     harness_capabilities,
     harness_catalog,
     harness_setup_steps_by_spelling,
-    native_agents,
     valid_harnesses,
 )
 from omnigent.models.model_override import _CLAUDE_FAMILY_HARNESSES
-
-_NATIVE_MODES = frozenset({IntegrationMode.NATIVE_TUI, IntegrationMode.NATIVE_SERVER})
 
 
 def test_every_builtin_harness_declares_capabilities() -> None:
@@ -45,13 +42,6 @@ def test_capability_keys_are_valid_harnesses() -> None:
     # No stray capability entry for a non-existent harness id.
     stray = sorted(set(harness_capabilities()) - valid_harnesses())
     assert not stray, f"capability entries for unknown harnesses: {stray}"
-
-
-def test_native_agents_have_native_integration_mode() -> None:
-    caps = harness_capabilities()
-    native_harness_ids = {agent.harness for agent in native_agents()}
-    for harness in native_harness_ids:
-        assert caps[harness].integration_mode in _NATIVE_MODES, harness
 
 
 def test_model_family_matches_model_override_sets() -> None:
@@ -68,26 +58,14 @@ def test_model_family_matches_model_override_sets() -> None:
 
 
 def test_subagents_matches_its_implementing_mechanism() -> None:
-    """``subagents`` is derivable — from the mechanism that implements it.
+    """``subagents`` is published only by a harness that implements it.
 
-    A **native** agent with a ``subagent_wrapper_label``: Omnigent intercepts
-    the vendor's own spawn and mints the child session.
-
-    Keeping the derivation here means a harness cannot publish a ``subagents``
-    capability on ``/v1/harnesses`` that nothing implements, or implement one it
-    does not publish.
+    No built-in harness intercepts its vendor's own spawn to mint child
+    sessions, so none may publish a ``subagents`` capability on
+    ``/v1/harnesses`` that nothing implements.
     """
-    subagent_capable = {agent.harness for agent in native_agents() if agent.subagent_wrapper_label}
     for harness, capability in harness_capabilities().items():
-        expected = harness in subagent_capable
-        assert capability.subagents == expected, harness
-
-
-def test_native_harnesses_resume_warm() -> None:
-    caps = harness_capabilities()
-    native_harness_ids = {agent.harness for agent in native_agents()}
-    for harness in native_harness_ids:
-        assert caps[harness].resume is Resume.WARM_REATTACH, harness
+        assert capability.subagents is False, harness
 
 
 def test_p0_bench_harnesses_declare_interrupt_and_streaming() -> None:
@@ -210,63 +188,6 @@ def test_catalog_rows_carry_setup_steps() -> None:
     codex = harness_setup_steps_by_spelling()["codex"]
     assert [s["action"] for s in codex] == ["install", "auth"]
     assert codex[1]["command"] == "codex login"
-
-
-def test_setup_steps_by_spelling_covers_native_and_installable_ids() -> None:
-    """The by-spelling map resolves the ids a session declares, not just picker
-    rows — native wrappers and installable non-picker ids included."""
-    by_spelling = harness_setup_steps_by_spelling()
-    # Native wrappers (what a session actually declares) resolve to steps...
-    for native in ("codex-native", "claude-native"):
-        assert native in by_spelling, native
-        assert len(by_spelling[native]) >= 1
-    # ...and match their bare-id counterpart's steps (same ui_setup_steps source).
-    assert by_spelling["codex-native"] == by_spelling["codex"]
-    # Installable ids that are NOT picker rows still resolve.
-    assert "codex" in by_spelling
-
-
-def test_fork_history_axis_matches_canonical_declarations() -> None:
-    """fork_history is the source of truth for the server's fork-history gating.
-
-    The two frozensets in ``_sessions/common`` are DERIVED from this axis; the
-    canonical harness id is in the rebuild set iff it declares REBUILD. (The set
-    also carries reversed ``native-<x>`` spellings — asserted separately below.)
-    """
-    from omnigent.server.routes._sessions.common import _FORK_HISTORY_NATIVE_HARNESSES
-
-    for harness, capability in harness_capabilities().items():
-        fh = capability.fork_history
-        assert (harness in _FORK_HISTORY_NATIVE_HARNESSES) == (fh is ForkHistory.REBUILD), harness
-
-
-def test_fork_history_derivation_preserves_prior_membership() -> None:
-    """The derived sets are a superset of the pre-1.8 hand-maintained literals.
-
-    Behavior-preservation pin: the exact pre-derivation membership (canonical ids
-    PLUS the reversed ``native-<x>`` spellings the literals carried) must still be
-    present, or a fork silently loses history. The derived set may add extra
-    reversed spellings that canonicalize into it (harmless at the read site).
-    """
-    from omnigent.server.routes._sessions.common import _FORK_HISTORY_NATIVE_HARNESSES
-
-    prior_rebuild = frozenset({"claude-native", "native-claude"})
-    assert prior_rebuild <= _FORK_HISTORY_NATIVE_HARNESSES
-
-
-def test_reversed_native_spellings_classify_fork_history() -> None:
-    """Reversed ``native-<x>`` spellings that don't canonicalize are still gated.
-
-    A reversed spelling such as ``native-claude`` must classify the same as its
-    canonical ``claude-native`` id. The read sites match on the canonicalized id, so the
-    derived sets must contain these literal spellings — this guards the
-    regression where an identically-behaving reversed-spelling agent silently
-    loses fork history. Mirrors test_fork_reversed_native_spelling_carry_gating.
-    """
-    from omnigent.harness_aliases import canonicalize_harness
-    from omnigent.server.routes._sessions.common import _FORK_HISTORY_NATIVE_HARNESSES
-
-    assert canonicalize_harness("native-claude") in _FORK_HISTORY_NATIVE_HARNESSES
 
 
 def test_native_tui_harnesses_declare_shell_tool_provocation() -> None:

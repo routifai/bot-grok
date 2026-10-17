@@ -184,17 +184,13 @@ def _import_runner_graph() -> None:
     this is the whole point of the zygote. Kept in sync with what
     ``omnigent.runner._entry.main`` pulls in on a cold start.
 
-    The harness entrypoint + native harness graphs are imported too, so a
-    harness child forked via ``fork_harness`` shares that floor as well (the
-    heaviest part is the fastapi/pydantic/omnigent-core graph the runner
-    already holds, so this adds little resident cost).
+    The harness entrypoint graph is imported too, so a harness child forked
+    via ``fork_harness`` shares that floor as well (the heaviest part is the
+    fastapi/pydantic/omnigent-core graph the runner already holds, so this
+    adds little resident cost).
     """
-    from omnigent.runner import _entry, app, native  # noqa: F401
-    from omnigent.runner.background_titles import (  # noqa: F401
-        claude_native,
-        codex_native,
-        sdk,
-    )
+    from omnigent.runner import _entry, app  # noqa: F401
+    from omnigent.runner.background_titles import sdk  # noqa: F401
     from omnigent.runtime.harnesses import _runner as _harness_runner  # noqa: F401
 
 

@@ -293,7 +293,6 @@ include = ["omnigent*"]
 [tool.setuptools.package-data]
 "omnigent.db" = ["alembic.ini"]
 "omnigent.db.migrations" = ["script.py.mako"]
-"omnigent.resources.pi_native" = ["*.js"]
 # The deck kit: skeleton, layout vocabulary, templates (themes, licenses) and their embedded fonts.
 "omnigent.superchat.decks" = ["kit/**/*"]
 # The landing page served at "/" when no web build is mounted (OMNIGENT_WEB_UI_DIST).
@@ -498,13 +497,6 @@ known-first-party = ["omnigent"]
 "omnigent/superchat/*/tools.py" = [
     "ARG001", "ARG002", "BLE001", "B008", "RUF012",
 ]
-# The native Antigravity (agy) transcript forwarder / supervisor is a
-# long-lived boundary loop that must restart on ANY non-cancellation
-# Exception (a crash there silently stops the web transcript mirror), so its
-# top-level catch is a deliberate, documented boundary catch — BLE001 is
-# waived for these top-level antigravity_native modules (see the inline
-# comments at each catch site).
-"omnigent/harnesses/antigravity_native/*.py" = ["BLE001"]
 # Telemetry modules intentionally catch all exceptions at every boundary —
 # telemetry must never disrupt the application under any circumstances.
 "omnigent/telemetry/*.py" = ["BLE001", "SIM105"]

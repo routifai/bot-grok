@@ -22,7 +22,6 @@ from omnigent.entities import (
     Agent,
     Conversation,
     ConversationItem,
-    MessageData,
     PagedList,
     StoredFile,
 )
@@ -97,7 +96,6 @@ class _ConversationStore:
         new_agent_bundle_location: str,
         new_agent_description: str | None,
         copy_model_settings: bool,
-        carry_history_into_native: bool,
         presentation_labels: dict[str, str],
         previous_builtin_id: str | None,
     ) -> Conversation:
@@ -109,7 +107,6 @@ class _ConversationStore:
         :param new_agent_bundle_location: Target bundle to clone.
         :param new_agent_description: Target description.
         :param copy_model_settings: Same-family flag from the route.
-        :param carry_history_into_native: Native-rebuild flag.
         :param presentation_labels: Target-harness ui/wrapper labels.
         :param previous_builtin_id: Built-in switched away from.
         :returns: The conversation rebound to ``new_agent_id``.
@@ -123,7 +120,6 @@ class _ConversationStore:
                 "new_agent_bundle_location": new_agent_bundle_location,
                 "new_agent_description": new_agent_description,
                 "copy_model_settings": copy_model_settings,
-                "carry_history_into_native": carry_history_into_native,
                 "presentation_labels": presentation_labels,
                 "previous_builtin_id": previous_builtin_id,
             }
@@ -327,19 +323,15 @@ def _patch_family_helpers(
 
     :param monkeypatch: Pytest monkeypatch fixture.
     :param same_family: Value ``_same_provider_family`` returns.
-    :param native: Value ``_agent_is_native`` /
-        ``_agent_carries_native_fork_history`` return (these switch tests
-        target claude native, which classifies and carries history).
-    :param labels: Value ``_presentation_labels_for_agent`` returns.
+    :param native: Unused; kept so the call sites keep their shape.
+    :param labels: Unused; the switch always clears presentation labels.
     :param raise_on_load: Whether the bundle precheck should fail.
     """
     monkeypatch.setattr(
         sessions_mod, "get_agent_cache", lambda: _AgentCacheStub(raise_on_load=raise_on_load)
     )
     monkeypatch.setattr(sessions_mod, "_same_provider_family", lambda a, b: same_family)
-    monkeypatch.setattr(sessions_mod, "_agent_is_native", lambda a: native)
-    monkeypatch.setattr(sessions_mod, "_agent_carries_native_fork_history", lambda a: native)
-    monkeypatch.setattr(sessions_mod, "_presentation_labels_for_agent", lambda a: labels)
+    del native, labels
 
 
 # The session's currently-bound agent is a session-scoped clone of the
@@ -361,166 +353,6 @@ _BUILTIN_PI = _agent("4145a5c0a210faef9129717c0317ed79", "pi", "bundle/pi", None
 
 
 # ── Tests ────────────────────────────────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_switch_same_family_native_carries_history(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A same-family native target keeps model settings, marks the native
-    rebuild, applies target labels, and resolves the previous built-in.
-    """
-    conv_store = _ConversationStore(
-        conversations={"e9f8f58523cec9a57d3bdf93be543e8c": _conv()},
-        items_by_conv={
-            "e9f8f58523cec9a57d3bdf93be543e8c": [
-                ConversationItem(
-                    id="9980c8a9248139f14f4165e5d53088aa",
-                    type="message",
-                    status="completed",
-                    response_id="r1",
-                    created_at=1,
-                    data=MessageData(role="user", content=[{"type": "input_text", "text": "hi"}]),
-                )
-            ]
-        },
-    )
-    agent_store = _AgentStore(
-        {
-            "a98bb825ebd41391c19637c58fe3c0b7": _CURRENT,
-            "52adb39f0c5ea92b5563da5327dac08f": _BUILTIN_CLAUDE,
-            "c1030c25bd9d756e4aef6c4e96a7e126": _BUILTIN_ORIGIN,
-        }
-    )
-    labels = {"omnigent.ui": "terminal", "omnigent.wrapper": "claude-code-native-ui"}
-    _patch_family_helpers(monkeypatch, same_family=True, native=True, labels=labels)
-    client = TestClient(_build_app(conv_store, agent_store))
-
-    resp = client.post(
-        "/v1/sessions/e9f8f58523cec9a57d3bdf93be543e8c/switch-agent",
-        json={"agent_id": "52adb39f0c5ea92b5563da5327dac08f"},
-    )
-
-    assert resp.status_code == 200, resp.text
-    body = resp.json()
-    assert body["status"] == "idle"
-    # Bound to a freshly cloned session-scoped agent, not the built-in itself.
-    assert len(body["agent_id"]) == 32 and body["agent_id"] != "52adb39f0c5ea92b5563da5327dac08f"
-    # 1 item returned — the in-place transcript is preserved (not copied/empty).
-    assert len(body["items"]) == 1
-
-    assert len(conv_store.switch_calls) == 1, "route must call switch exactly once"
-    call = conv_store.switch_calls[0]
-    assert call["conversation_id"] == "e9f8f58523cec9a57d3bdf93be543e8c"
-    assert call["new_agent_bundle_location"] == "bundle/claude-native"
-    # Same family → keep model settings AND carry native history (target native).
-    assert call["copy_model_settings"] is True
-    assert call["carry_history_into_native"] is True
-    assert call["presentation_labels"] == labels
-    # The origin built-in shares the current agent's bundle → that's the
-    # built-in to offer for "Switch back" (NOT the switched-to target).
-    assert call["previous_builtin_id"] == "c1030c25bd9d756e4aef6c4e96a7e126"
-
-
-@pytest.mark.asyncio
-async def test_switch_cross_family_resets_model_but_carries_history(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A cross-family switch resets model settings but still carries history
-    into a native target.
-
-    The model id is provider-bound so it must reset; history is NOT — the
-    switch clears ``external_session_id`` and the runner rebuilds the
-    native transcript from this session's own Omnigent items, a conversion
-    that doesn't depend on the source harness.
-    """
-    conv_store = _ConversationStore(conversations={"e9f8f58523cec9a57d3bdf93be543e8c": _conv()})
-    agent_store = _AgentStore(
-        {
-            "a98bb825ebd41391c19637c58fe3c0b7": _CURRENT,
-            "52adb39f0c5ea92b5563da5327dac08f": _BUILTIN_CLAUDE,
-        }
-    )
-    # native=True with same_family=False → model resets, history still carries.
-    _patch_family_helpers(monkeypatch, same_family=False, native=True, labels={})
-    client = TestClient(_build_app(conv_store, agent_store))
-
-    resp = client.post(
-        "/v1/sessions/e9f8f58523cec9a57d3bdf93be543e8c/switch-agent",
-        json={"agent_id": "52adb39f0c5ea92b5563da5327dac08f"},
-    )
-
-    assert resp.status_code == 200, resp.text
-    call = conv_store.switch_calls[0]
-    # Cross-family → reset model settings (a model id is provider-bound).
-    assert call["copy_model_settings"] is False
-    # Native target carries history regardless of family: the runner
-    # rebuilds the transcript from Omnigent items. False here would mean
-    # the cross-family gate regressed and the session resumes blank.
-    assert call["carry_history_into_native"] is True
-
-
-@pytest.mark.parametrize(
-    "target_agent,target_harness,expected_labels,expected_carry,expected_copy",
-    [
-        # claude-native rebuilds its resumable session file from the copied
-        # items → carry history, terminal-first UI; same (Claude) family as the
-        # claude SDK source, so model settings carry over.
-        (
-            _BUILTIN_CLAUDE,
-            "claude-native",
-            {"omnigent.ui": "terminal", "omnigent.wrapper": "claude-code-native-ui"},
-            True,
-            True,
-        ),
-        # An SDK target has no native transcript to rebuild → no carry, chat UI.
-        (_BUILTIN_PI, "pi", {}, False, False),
-    ],
-)
-@pytest.mark.asyncio
-async def test_switch_targets_carry_history_gating(
-    monkeypatch: pytest.MonkeyPatch,
-    target_agent: Agent,
-    target_harness: str,
-    expected_labels: dict[str, str],
-    expected_carry: bool,
-    expected_copy: bool,
-) -> None:
-    """Switching into a native target keeps terminal UI; carry gates per harness.
-
-    From a claude SDK source, ``copy_model_settings`` follows the provider family.
-    ``carry_history_into_native`` is True only for a native harness with a
-    rebuildable session file (claude-native), False for an SDK target.
-    """
-    conv_store = _ConversationStore(conversations={"e9f8f58523cec9a57d3bdf93be543e8c": _conv()})
-    agent_store = _AgentStore(
-        {
-            "a98bb825ebd41391c19637c58fe3c0b7": _CURRENT,
-            target_agent.id: target_agent,
-            "c1030c25bd9d756e4aef6c4e96a7e126": _BUILTIN_ORIGIN,
-        }
-    )
-    monkeypatch.setattr(
-        sessions_mod,
-        "get_agent_cache",
-        lambda: _HarnessAgentCacheStub(
-            {"a98bb825ebd41391c19637c58fe3c0b7": "claude_sdk", target_agent.id: target_harness}
-        ),
-    )
-    client = TestClient(_build_app(conv_store, agent_store))
-
-    resp = client.post(
-        "/v1/sessions/e9f8f58523cec9a57d3bdf93be543e8c/switch-agent",
-        json={"agent_id": target_agent.id},
-    )
-
-    assert resp.status_code == 200, resp.text
-    call = conv_store.switch_calls[0]
-    assert call["copy_model_settings"] is expected_copy
-    assert call["carry_history_into_native"] is expected_carry, (
-        f"{target_harness} carry_history_into_native should be {expected_carry}."
-    )
-    assert call["presentation_labels"] == expected_labels
 
 
 @pytest.mark.asyncio
@@ -546,67 +378,6 @@ async def test_switch_400_noop_same_bundle() -> None:
     assert resp.status_code == 400, resp.text
     # No-op rejected before any mutation.
     assert conv_store.switch_calls == []
-
-
-@pytest.mark.asyncio
-async def test_switch_publishes_agent_changed_event(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A successful switch publishes ``session.agent_changed`` on the session
-    stream, carrying the cloned agent's id and the clean target-agent
-    display name, so connected clients
-    re-derive their binding-dependent state (the chat store's
-    ``isNativeTerminalSession`` gate) without a navigation. No event → a
-    bound web client keeps treating the session as the old harness and
-    drops the first post-switch optimistic bubble on idle churn.
-    """
-    conv_store = _ConversationStore(conversations={"e9f8f58523cec9a57d3bdf93be543e8c": _conv()})
-    agent_store = _AgentStore(
-        {
-            "a98bb825ebd41391c19637c58fe3c0b7": _CURRENT,
-            "52adb39f0c5ea92b5563da5327dac08f": _BUILTIN_CLAUDE,
-        }
-    )
-    _patch_family_helpers(monkeypatch, same_family=True, native=True, labels={})
-
-    # Capture session-stream publishes by rebinding the module's
-    # ``session_stream`` reference to a recorder (not patching ``publish``
-    # through the shared module singleton) — omnigent-testing rule 14.
-    published: list[dict[str, object]] = []
-
-    class _RecordingStream:
-        @staticmethod
-        def publish(conversation_id: str, event: dict[str, object]) -> None:
-            published.append({"_conversation_id": conversation_id, **event})
-
-    monkeypatch.setattr(sessions_mod, "session_stream", _RecordingStream)
-    client = TestClient(_build_app(conv_store, agent_store))
-
-    resp = client.post(
-        "/v1/sessions/e9f8f58523cec9a57d3bdf93be543e8c/switch-agent",
-        json={"agent_id": "52adb39f0c5ea92b5563da5327dac08f"},
-    )
-
-    assert resp.status_code == 200, resp.text
-    changed = [e for e in published if e.get("type") == "session.agent_changed"]
-    # Exactly one broadcast per switch. Zero means clients never learn about
-    # the in-place rebind; more than one would double the snapshot refetch.
-    assert len(changed) == 1, f"expected exactly one agent_changed event, got {published}"
-    event = changed[0]
-    # Published on the switched session's channel — a wrong id would deliver
-    # the refresh signal to some other session's subscribers.
-    assert event["_conversation_id"] == "e9f8f58523cec9a57d3bdf93be543e8c"
-    assert event["conversation_id"] == "e9f8f58523cec9a57d3bdf93be543e8c"
-    # agent_id must be the agent the store actually bound (the fresh
-    # clone) — that's the durable reference clients re-bind to.
-    call = conv_store.switch_calls[0]
-    assert event["agent_id"] == call["new_agent_id"]
-    # agent_name must be the clean target name, NOT the clone row's
-    # "<name> (switch ag_…)" disambiguation name — clients display it
-    # verbatim. The clone name leaking here is the web's
-    # flash-of-ugly-name bug.
-    assert event["agent_name"] == "claude-native-ui"
-    assert event["agent_name"] != call["new_agent_name"]
 
 
 @pytest.mark.asyncio
@@ -642,52 +413,6 @@ async def test_switch_rejected_publishes_no_event(
     assert resp.status_code == 400, resp.text
     # No mutation happened, so no broadcast may go out.
     assert published == []
-
-
-@pytest.mark.asyncio
-async def test_switch_schedules_runner_resource_reset(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A successful switch schedules a runner-side resource reset so the new
-    agent's os_env/sandbox governs the web filesystem/shell endpoints (the
-    cached primary OSEnv is dropped) and no lingering native terminal shadows
-    the next harness's transcript rebuild.
-    """
-    conv_store = _ConversationStore(conversations={"e9f8f58523cec9a57d3bdf93be543e8c": _conv()})
-    agent_store = _AgentStore(
-        {
-            "a98bb825ebd41391c19637c58fe3c0b7": _CURRENT,
-            "52adb39f0c5ea92b5563da5327dac08f": _BUILTIN_CLAUDE,
-        }
-    )
-    _patch_family_helpers(monkeypatch, same_family=True, native=True, labels={})
-    reset_calls: list[str] = []
-    published: list[dict[str, object]] = []
-    monkeypatch.setattr(
-        sessions_mod.session_stream, "publish", lambda _, event: published.append(event)
-    )
-
-    async def _record_reset(session_id: str) -> None:
-        reset_calls.append(session_id)
-        conv_store.set_session_todos(session_id, [{"content": "stale"}])
-
-    monkeypatch.setattr(sessions_mod, "_reset_runner_resources_after_switch", _record_reset)
-    client = TestClient(_build_app(conv_store, agent_store))
-
-    resp = client.post(
-        "/v1/sessions/e9f8f58523cec9a57d3bdf93be543e8c/switch-agent",
-        json={"agent_id": "52adb39f0c5ea92b5563da5327dac08f"},
-    )
-
-    assert resp.status_code == 200, resp.text
-    # The reset must be scheduled (and run, since TestClient drains background
-    # tasks after the response) for exactly this session. An empty list means
-    # the route stopped wiring the reset — the new agent's sandbox would never
-    # take effect on the cached primary env and a stale terminal could shadow
-    # the rebuild.
-    assert reset_calls == ["e9f8f58523cec9a57d3bdf93be543e8c"]
-    assert conv_store.todo_updates == [[{"content": "stale"}], []]
-    assert published[-1]["type"] == "session.todos" and published[-1]["todos"] == []
 
 
 class _RunnerClientStub:
@@ -968,76 +693,3 @@ async def test_switch_400_unloadable_target_bundle(monkeypatch: pytest.MonkeyPat
     assert resp.status_code == 400, resp.text
     # Pre-commit failure → no switch attempted (old agent intact).
     assert conv_store.switch_calls == []
-
-
-@pytest.mark.parametrize(
-    "filename,target_harness,old_runtime,expected_status",
-    [
-        ("sample.zip", "pi", False, 400),
-        ("sample.docx", "claude-sdk", False, 400),
-        ("sample.zip", "claude-native", False, 200),
-        ("sample.sqlite", "claude-native", False, 200),
-        ("sample.png", "pi", False, 200),
-        ("sample.txt", "claude-sdk", False, 200),
-        ("sample.zip", "claude-native", True, 409),
-    ],
-)
-def test_switch_checks_attachment_history_before_mutation(
-    monkeypatch: pytest.MonkeyPatch,
-    filename: str,
-    target_harness: str,
-    old_runtime: bool,
-    expected_status: int,
-) -> None:
-    """A rejected harness switch leaves the session binding and history untouched."""
-    source = _conv()
-    file_id = "aa11bb22cc33dd44ee55ff6677889900"
-    item = ConversationItem(
-        id="9980c8a9248139f14f4165e5d53088aa",
-        type="message",
-        status="completed",
-        response_id="resp_attachment",
-        created_at=1,
-        data=MessageData(role="user", content=[{"type": "input_file", "file_id": file_id}]),
-    )
-    conv_store = _ConversationStore({source.id: source}, {source.id: [item]})
-    target = _BUILTIN_CLAUDE
-    agent_store = _AgentStore({_CURRENT.id: _CURRENT, target.id: target})
-    file_store = _AttachmentFileStore(
-        StoredFile(id=file_id, created_at=1, filename=filename, bytes=4, session_id=source.id)
-    )
-    monkeypatch.setattr(
-        sessions_mod,
-        "get_agent_cache",
-        lambda: _HarnessAgentCacheStub({_CURRENT.id: "claude-native", target.id: target_harness}),
-    )
-    runtime_calls: list[dict[str, Any]] = []
-    if old_runtime:
-        from fastapi import HTTPException
-
-        from omnigent.server.routes._sessions import helpers
-
-        source.host_id, source.runner_id = "host-old", "runner-old"
-
-        def reject_old_runtime(**kwargs: Any) -> None:
-            runtime_calls.append(kwargs)
-            raise HTTPException(status_code=409, detail="Update the host before using these files")
-
-        monkeypatch.setattr(helpers, "require_filesystem_attachment_runtime", reject_old_runtime)
-
-    client = TestClient(_build_app(conv_store, agent_store, file_store))
-    response = client.post(f"/v1/sessions/{source.id}/switch-agent", json={"agent_id": target.id})
-    assert response.status_code == expected_status, response.text
-    if expected_status == 400:
-        assert filename in response.json()["error"]["message"]
-        assert "Claude Code or Codex" in response.json()["error"]["message"]
-    elif old_runtime:
-        assert runtime_calls[0]["host_id"] == "host-old"
-        assert runtime_calls[0]["runner_id"] == "runner-old"
-    if expected_status != 200:
-        assert not conv_store.switch_calls
-        assert not conv_store.todo_updates
-        assert conv_store.get_conversation(source.id) is source
-        assert source.agent_id == _CURRENT.id
-    else:
-        assert len(conv_store.switch_calls) == 1

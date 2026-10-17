@@ -40,12 +40,6 @@ from omnigent_client import (
 from omnigent_client._http import is_loopback_url
 from rich.console import Console
 
-from omnigent._wrapper_labels import (
-    CLAUDE_NATIVE_WRAPPER_VALUE as _CLAUDE_NATIVE_WRAPPER_LABEL_VALUE,
-)
-from omnigent._wrapper_labels import (
-    WRAPPER_LABEL_KEY as _CLAUDE_NATIVE_WRAPPER_LABEL_KEY,
-)
 from omnigent.cli_invocation import cli_invocation
 from omnigent.conversation_browser import (
     announce_conversation_url,
@@ -60,8 +54,6 @@ from omnigent.inner.databricks_executor import (
 )
 from omnigent.models.model_catalog import resolve_catalog_model
 from omnigent.models.model_resolver import ModelResolutionError
-from omnigent.native.native_coding_agents import native_coding_agent_for_wrapper_label
-from omnigent.native.native_dispatch import resolve_hook_for_key
 from omnigent.process_logging import (
     PROCESS_LOG_FILE_ENV_VAR,
     child_logging_popen_kwargs,
@@ -1054,21 +1046,6 @@ def _chat_with_server(
     # setup, so the user never sees a cleared spinner over an empty gap here.
     # The label lags the exact step on purpose — better than a vaguer one.
 
-    # Wrapper-aware resume redirect: if the conversation we're about to
-    # resume was originally created by a terminal-native wrapper, the AP
-    # REPL is the WRONG surface to attach to. Detect via the
-    # ``omnigent.wrapper`` label on the conversation and re-dispatch
-    # into the native wrapper carrying ``--server`` through. Without
-    # this, the REPL renders an empty chat on top of a
-    # session whose state lives in a tmux terminal it can't see.
-    if resume_conversation_id is not None and _redirect_native_resume_if_needed(
-        base_url=base_url,
-        conversation_id=resume_conversation_id,
-        auto_open_conversation=auto_open_conversation,
-        progress=progress,
-    ):
-        return
-
     selected_agent = agent_name or _pick_agent(base_url)
 
     # Bring-up is done — clear the spinner the instant before we produce
@@ -1116,100 +1093,6 @@ def _chat_with_server(
     )
 
 
-def _is_claude_native_conversation(
-    *,
-    base_url: str,
-    conversation_id: str,
-) -> bool:
-    """
-    Return whether *conversation_id* is a claude-native wrapper session.
-
-    :param base_url: Omnigent server base URL.
-    :param conversation_id: Omnigent conversation id.
-    :returns: ``True`` only when the wrapper label matches Claude native.
-    """
-    return (
-        _wrapper_label_for_conversation(
-            base_url=base_url,
-            conversation_id=conversation_id,
-        )
-        == _CLAUDE_NATIVE_WRAPPER_LABEL_VALUE
-    )
-
-
-def _redirect_native_resume_if_needed(
-    *,
-    base_url: str,
-    conversation_id: str,
-    auto_open_conversation: bool,
-    progress: RunnerStartupProgress | None = None,
-) -> bool:
-    """
-    Redirect a terminal-native resume before Omnigent attach liveness runs.
-
-    :param base_url: Omnigent server base URL, e.g. ``"https://example.com"``.
-    :param conversation_id: Omnigent conversation id, e.g. ``"conv_abc123"``.
-    :param auto_open_conversation: Browser-open preference for the wrapper.
-    :param progress: Optional startup spinner to finish before redirect.
-    :returns: ``True`` when a native wrapper handled the resume.
-    """
-    wrapper_label = _wrapper_label_for_conversation(
-        base_url=base_url, conversation_id=conversation_id
-    )
-    native_agent = native_coding_agent_for_wrapper_label(wrapper_label)
-    if native_agent is None:
-        return False
-    run_native = resolve_hook_for_key(native_agent.key, "run_native")
-    if run_native is None:
-        return False
-    # The native TUI owns the turns; resuming through the Omnigent REPL would run
-    # an Omnigent turn per message *and* let the transcript forwarder mirror the
-    # same message from the native store, double-posting each user turn. Redirect
-    # to `omnigent <key> --resume`'s direct tmux attach instead — the wrapper
-    # label is `<key>-native` and the CLI command is `<key>`.
-    _finish_native_redirect_progress(
-        progress=progress,
-        conversation_id=conversation_id,
-        wrapper_name=native_agent.harness,
-        native_command=native_agent.key,
-    )
-    run_native(
-        server=base_url,
-        session_id=conversation_id,
-        extra_args=(),
-        auto_open_conversation=auto_open_conversation,
-    )
-    return True
-
-
-def _finish_native_redirect_progress(
-    *,
-    progress: RunnerStartupProgress | None,
-    conversation_id: str,
-    wrapper_name: str,
-    native_command: str,
-) -> None:
-    """
-    Finish any Omnigent startup progress and print the native redirect notice.
-
-    :param progress: Optional startup spinner to finish before writing.
-    :param conversation_id: Omnigent conversation id, e.g.
-        ``"conv_abc123"``.
-    :param wrapper_name: Wrapper label for display, e.g. ``"codex-native"``.
-    :param native_command: Native command to show, e.g. ``"codex"``.
-    :returns: None.
-    """
-    if progress is not None:
-        progress.finish()
-    click.echo(
-        (
-            f"\n  Conversation {conversation_id} is a {wrapper_name} "
-            f"session — redirecting to `omnigent {native_command} --resume`.\n"
-        ),
-        err=True,
-    )
-
-
 def _server_get(url: str, **kwargs: Any) -> httpx.Response:
     """
     ``httpx.get`` that never routes a loopback target through the env proxy.
@@ -1228,69 +1111,6 @@ def _server_get(url: str, **kwargs: Any) -> httpx.Response:
     if is_loopback_url(url):
         kwargs["trust_env"] = False
     return httpx.get(url, **kwargs)
-
-
-def _wrapper_label_for_conversation(
-    *,
-    base_url: str,
-    conversation_id: str,
-) -> str | None:
-    """
-    Return a conversation's wrapper label, if it can be read.
-
-    Single-shot ``GET /v1/sessions/{id}`` against *base_url*, inspecting
-    the response's ``labels.omnigent.wrapper`` field. ``None`` on any
-    transport / parse error so a flaky server doesn't silently misroute
-    the resume — the caller falls back to the normal Omnigent REPL path and
-    surfaces a clear failure there.
-
-    :param base_url: Omnigent server base URL, e.g. ``"http://127.0.0.1:6767"``.
-    :param conversation_id: Omnigent conversation id,
-        e.g. ``"conv_abc123"``.
-    :returns: Wrapper label value, or ``None``.
-    """
-    try:
-        resp = _server_get(
-            f"{base_url}/v1/sessions/{conversation_id}",
-            headers=_remote_headers(server_url=base_url, host_id=None),
-            timeout=10.0,
-        )
-    except (httpx.HTTPError, httpx.InvalidURL) as exc:
-        logger.warning(
-            "wrapper-label probe failed for %s on %s: %s",
-            conversation_id,
-            base_url,
-            exc,
-        )
-        return None
-    if resp.status_code != 200:
-        logger.warning(
-            "wrapper-label probe got %s for %s on %s; treating as no wrapper",
-            resp.status_code,
-            conversation_id,
-            base_url,
-        )
-        return None
-    try:
-        body = resp.json()
-    except ValueError as exc:
-        logger.warning(
-            "wrapper-label probe for %s returned non-JSON body: %s",
-            conversation_id,
-            exc,
-        )
-        return None
-    if not isinstance(body, dict):
-        logger.warning(
-            "wrapper-label probe for %s returned non-object body",
-            conversation_id,
-        )
-        return None
-    labels = body.get("labels")
-    if not isinstance(labels, dict):
-        return None
-    value = labels.get(_CLAUDE_NATIVE_WRAPPER_LABEL_KEY)
-    return value if isinstance(value, str) else None
 
 
 @dataclass(frozen=True)
@@ -1650,12 +1470,12 @@ async def _prepare_chat_session_via_daemon(
         STARTUP_PHASE_LAUNCHING_AGENT,
     )
     from omnigent.host.daemon_launch import (
+        bind_session_runner,
         launch_or_reuse_daemon_runner,
         open_daemon_client,
         wait_for_host_online,
         wait_for_runner_online,
     )
-    from omnigent.native.native_terminal import bind_session_runner
 
     async def resolve_session() -> tuple[str, bool]:
         """Fork, resume, or create the session to bind, and say if it is fresh.

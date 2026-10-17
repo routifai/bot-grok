@@ -12,11 +12,9 @@ See ``designs/SESSION_RESOURCES_API_DESIGN.md`` §Runner internal model.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 import os
 import re
-import tempfile
 import threading
 import time
 from collections.abc import Callable
@@ -41,11 +39,8 @@ from omnigent.entities.session_resources import (
     terminal_resource_view,
 )
 from omnigent.inner.sandbox import contained_realpath, containment_prefix
-from omnigent.native.native_coding_agents import native_coding_agent_for_harness
-from omnigent.native.native_dispatch import resolve_hook_for_key
 
 if TYPE_CHECKING:
-    from omnigent.harnesses.claude_native.status_file import SessionStatusPoller
     from omnigent.inner.datamodel import OSEnvSpec, TerminalEnvSpec
     from omnigent.inner.os_env import OSEnvironment
     from omnigent.inner.terminal import TerminalInstance
@@ -59,26 +54,9 @@ _DEFAULT_WORKSPACE_ROOT = os.path.join(
     "omnigent-sessions",
 )
 
-CODEX_NATIVE_TERMINAL_ROLE = "codex-native"
-CLAUDE_NATIVE_TERMINAL_ROLE = "claude-native"
-PI_NATIVE_TERMINAL_ROLE = "pi-native"
-
-#: Terminal roles whose PTY-activity watcher drives the session's working
-#: status (pane activity → ``running``, quiescence → ``idle``), not just the
-#: activity badge. These are the native agent terminals whose ``run_turn`` injects
-#: and returns immediately, leaving pane activity as their only running/idle
-#: source — without membership here the web "Working…" badge never clears and the
-#: turn times out. A generic shell's role is absent so its output can't move the
-#: session status; ``tests/runner/test_native_terminal_lock_coverage.py`` guards it.
-_STATUS_EMITTING_TERMINAL_ROLES: frozenset[str] = frozenset(
-    {
-        CLAUDE_NATIVE_TERMINAL_ROLE,
-        PI_NATIVE_TERMINAL_ROLE,
-    }
-)
 # Role marker for the embedded Omnigent REPL terminal auto-created for
-# runner-hosted SDK sessions (``omnigent attach`` in a tmux pane — the
-# SDK mirror of the native terminals above). The attach WebSocket uses
+# runner-hosted SDK sessions (``omnigent attach`` in a tmux pane). The
+# attach WebSocket uses
 # this marker to recreate the terminal when its tmux session has died
 # (the REPL exited or crashed) instead of rejecting the attach.
 OMNIGENT_REPL_TERMINAL_ROLE = "omnigent-repl"
@@ -86,37 +64,10 @@ OMNIGENT_REPL_TERMINAL_ROLE = "omnigent-repl"
 _IS_ALIVE_CACHE_TTL_S = 2.0
 _IS_ALIVE_CACHE_MAX = 256
 
-# Diff-track idle threshold (seconds) for the claude-native agent
-# terminal's status watcher. Claude Code redraws its busy line every
-# ~200ms while a turn is in progress, so a poll that sees no pane change
-# only happens once Claude has actually stopped — making a short
-# threshold safe against mid-turn false-idle. Kept distinct from the
-# generic terminal-activity watcher's longer default so the session's
-# "Working…" indicator flips to idle promptly (~1s) after Claude stops,
-# matching the responsiveness of the hook-based ``Stop`` edge it
-# replaces.
-_CLAUDE_NATIVE_STATUS_IDLE_THRESHOLD_SECONDS = 1.0
-
-# Poll interval (seconds) for the claude-native agent terminal's status
-# watcher. Tighter than the generic terminal-activity watcher's 1s so the
-# session's running/idle transitions feel responsive (~200ms) and so a
-# pane change can be attributed to a recent client interaction within a
-# tight window. Applied ONLY to this watcher (gated by the role) so we
-# don't 5x the capture-pane subprocess load on every terminal.
-_CLAUDE_NATIVE_STATUS_POLL_INTERVAL_SECONDS = 0.2
-
 # Minimum wall-clock interval (seconds) between consecutive
-# ``session.terminal.activity`` emissions for a single terminal. The
-# claude-native agent terminal polls its pane every 200ms
-# (:data:`_CLAUDE_NATIVE_STATUS_POLL_INTERVAL_SECONDS`) and Claude redraws
-# its busy line on nearly every poll, so emitting an event on every
-# pane-changed tick would push ~5 activity events/second for the whole
-# turn. The web only needs a pulse inside its 1.5s "active" window
-# (``ACTIVE_OUTPUT_WINDOW_MS`` in ``useTerminalStatuses``) to keep the
-# badge lit, so coalescing to at most one emit per second cuts the event
-# volume ~5x while keeping the badge solid. Generic terminals already poll
-# at 1s, so this throttle is a no-op for them (their own poll spacing
-# already exceeds the threshold).
+# ``session.terminal.activity`` emissions for a single terminal. The web only
+# needs a pulse inside its 1.5s "active" window (``ACTIVE_OUTPUT_WINDOW_MS`` in
+# ``useTerminalStatuses``) to keep the badge lit.
 _TERMINAL_ACTIVITY_EMIT_MIN_INTERVAL_SECONDS = 1.0
 _TERMINAL_EXIT_OUTPUT_MAX_LINES = 40
 _TERMINAL_EXIT_OUTPUT_MAX_CHARS = 4000
@@ -247,34 +198,6 @@ def _monotonic() -> float:
     return time.monotonic()
 
 
-def _native_input_ready_probe(
-    resource_role: str | None,
-) -> Callable[[str, TerminalInstance], bool] | None:
-    """Resolve the provider's ``input_ready_probe`` for a native terminal role.
-
-    Native terminal roles are the harness names (``"pi-native"``), so the role
-    maps straight onto the provider row that owns the probe.
-
-    :param resource_role: Runner-private terminal role, e.g.
-        :data:`PI_NATIVE_TERMINAL_ROLE`, or ``None`` for a generic terminal.
-    :returns: The probe, or ``None`` for generic terminals or a probe that fails
-        to import (logged loudly, but readiness logging must not block the
-        terminal watcher).
-    """
-    agent = native_coding_agent_for_harness(resource_role)
-    if agent is None:
-        return None
-    try:
-        return resolve_hook_for_key(agent.key, "input_ready_probe")
-    except Exception:
-        _logger.warning(
-            "Native input-ready probe unavailable for %s; native_input_ready will not be logged",
-            resource_role,
-            exc_info=True,
-        )
-        return None
-
-
 # Allowlist rather than a denylist: a denylist only stops the separators it
 # thought to enumerate, and the previous one let a backslash through — a real
 # separator on a Windows host.
@@ -378,7 +301,6 @@ class SessionResourceRegistry:
         self._per_session_workspace = per_session_workspace
         self._primary_envs: dict[str, OSEnvironment] = {}
         self._primary_env_specs: dict[str, OSEnvSpec | None] = {}
-        self._codex_skills_dirs: dict[str, tempfile.TemporaryDirectory[str]] = {}
         self._terminal_roles: dict[tuple[str, str], str] = {}
         self._terminal_lifecycles: dict[tuple[str, str], TerminalLifecycle] = {}
         self._is_alive_cache: TTLCache[str, bool] = TTLCache(
@@ -413,11 +335,6 @@ class SessionResourceRegistry:
         # which the turn-start hook also writes — deduping against that one
         # would swallow the turn's real ``running``.
         self._published_session_status: dict[str, tuple[str, str | None]] = {}
-        # Live claude-native status-file pollers, per session. Held so a
-        # reconnect can re-arm them (see :meth:`resync_session_statuses`) — the
-        # poller keeps its own edge/mtime baselines on the watcher thread, and
-        # clearing the registry's baseline alone would leave those intact.
-        self._status_pollers: dict[str, SessionStatusPoller] = {}
         # Optional callback invoked on the event loop when a watched terminal
         # disappears unexpectedly. The callback receives the terminal's
         # lifecycle relationship so the runner can decide whether the owning
@@ -518,7 +435,6 @@ class SessionResourceRegistry:
         with self._lock:
             self._active_session_turns.discard(session_id)
             self._published_session_status.pop(session_id, None)
-            self._status_pollers.pop(session_id, None)
             return self._last_session_status.pop(session_id, None)
 
     def _claim_status_edge(self, session_id: str, status: str, blocked_on: str | None) -> bool:
@@ -557,9 +473,7 @@ class SessionResourceRegistry:
         no spinner, no stop button, for the rest of the turn.
 
         Dropping the published-edge baselines here makes the next poll publish
-        the current status verbatim. The claude-native pollers are re-armed too:
-        they hold their own edge/mtime baselines on the watcher thread, so
-        clearing only this side would leave them silent.
+        the current status verbatim.
 
         Deliberately does NOT clear ``_last_session_status`` — that memo
         classifies terminal exits (clean vs mid-turn crash) and is unrelated to
@@ -568,15 +482,10 @@ class SessionResourceRegistry:
         with self._lock:
             sessions = sorted(self._published_session_status)
             self._published_session_status.clear()
-            pollers = list(self._status_pollers.values())
-        for poller in pollers:
-            poller.resync()
-        if sessions or pollers:
+        if sessions:
             _logger.info(
-                "Re-arming session status after tunnel reconnect: "
-                "cleared_edges=%d pollers=%d sessions=%s",
+                "Re-arming session status after tunnel reconnect: cleared_edges=%d sessions=%s",
                 len(sessions),
-                len(pollers),
                 sessions,
                 extra={"session_id": runner_primary_session_id()},
             )
@@ -647,8 +556,8 @@ class SessionResourceRegistry:
         :param session_id: Session/conversation identifier, e.g.
             ``"conv_abc123"``.
         :param terminal_id: Opaque terminal resource id, e.g.
-            ``"terminal_codex_main"``.
-        :returns: Role marker such as ``"codex-native"``, or ``None``.
+            ``"terminal_tui_main"``.
+        :returns: Role marker such as ``"omnigent-repl"``, or ``None``.
         """
         with self._lock:
             return self._terminal_roles.get((session_id, terminal_id))
@@ -756,23 +665,6 @@ class SessionResourceRegistry:
                 return None
             return terminal_resource_view(session_id, entry)
         return None
-
-    def codex_skills_dir(self, session_id: str) -> Path:
-        """Return the stable, private skills-only directory owned by this session."""
-        with self._lock:
-            return self._codex_skills_dir_locked(session_id)
-
-    def _codex_skills_dir_locked(self, session_id: str) -> Path:
-        """Allocate the session's skills directory while holding ``_lock``."""
-        from omnigent.inner.codex_staging import CODEX_SKILLS_PREFIX
-
-        directory = self._codex_skills_dirs.get(session_id)
-        if directory is None:
-            directory = tempfile.TemporaryDirectory(
-                prefix=CODEX_SKILLS_PREFIX, dir=Path(tempfile.gettempdir()).resolve()
-            )
-            self._codex_skills_dirs[session_id] = directory
-        return Path(directory.name)
 
     def resolve_environment(
         self,
@@ -948,10 +840,7 @@ class SessionResourceRegistry:
                     "Agent spec has no os_env; cannot create a primary filesystem environment."
                 )
             effective_spec = self._effective_primary_spec(session_id, spec_os_env)
-            env = create_os_environment(
-                effective_spec,
-                additional_read_roots=[self._codex_skills_dir_locked(session_id)],
-            )
+            env = create_os_environment(effective_spec)
             if env is not None:
                 return env
 
@@ -960,10 +849,7 @@ class SessionResourceRegistry:
             cwd=default_cwd,
             sandbox=OSEnvSandboxSpec(type="none"),
         )
-        env = create_os_environment(
-            default_spec,
-            additional_read_roots=[self._codex_skills_dir_locked(session_id)],
-        )
+        env = create_os_environment(default_spec)
         if env is None:
             raise RuntimeError(
                 f"Failed to create default OS environment for session {session_id!r}"
@@ -1136,7 +1022,6 @@ class SessionResourceRegistry:
                 session_key=session_key,
                 lifecycle=lifecycle,
                 instance=exc.instance,
-                resource_role=resource_role,
                 before_observation=True,
             )
             raise
@@ -1217,7 +1102,6 @@ class SessionResourceRegistry:
                 session_key=session_key,
                 lifecycle=lifecycle,
                 instance=instance,
-                resource_role=resource_role,
                 before_observation=True,
             )
             raise TerminalExitedDuringLaunch(instance)
@@ -1240,7 +1124,6 @@ class SessionResourceRegistry:
             terminal_name,
             session_key,
             instance,
-            resource_role,
             lifecycle,
             replace=True,
         )
@@ -1259,7 +1142,6 @@ class SessionResourceRegistry:
         terminal_name: str,
         session_key: str,
         instance: TerminalInstance,
-        resource_role: str | None,
         lifecycle: TerminalLifecycle,
         *,
         replace: bool = False,
@@ -1273,37 +1155,18 @@ class SessionResourceRegistry:
         aligned with the underlying tmux process. No-op when no publisher
         is installed (e.g. embedded/test runners).
 
-        For the claude-native *agent* terminal (``resource_role`` ==
-        :data:`CLAUDE_NATIVE_TERMINAL_ROLE` or
-        :data:`PI_NATIVE_TERMINAL_ROLE`) the same watcher also drives the
-        session's working status: pane activity → ``running`` and a short
-        quiescence → ``idle``, emitted via the session-status publisher.
-        This PTY-derived status catches cases lifecycle hooks can miss
-        because it observes the terminal directly. The status edges are
-        gated to these roles so a side shell's output never flips the
-        session's status.
-
         :param session_id: Session/conversation identifier.
         :param terminal_name: Terminal name from the agent spec.
         :param session_key: Per-launch session key.
         :param instance: The launched :class:`TerminalInstance`.
-        :param resource_role: Runner-private role marker for this
-            terminal, e.g. :data:`CLAUDE_NATIVE_TERMINAL_ROLE`, or
-            ``None`` for a generic terminal (activity badge only).
         :param lifecycle: Required/auxiliary relationship between this
             terminal and the owning session.
         :param replace: Whether to replace an existing watcher so callbacks
             can be rebound after terminal ownership transfer.
         """
         activity_publisher = self._terminal_activity_publisher
-        status_publisher = self._session_status_publisher
         exit_publisher = self._terminal_exit_publisher
-        # Status edges are derived only from native agent terminals — a
-        # generic shell's output must not move the session's working status.
-        emit_status = (
-            status_publisher is not None and resource_role in _STATUS_EMITTING_TERMINAL_ROLES
-        )
-        if activity_publisher is None and not emit_status and exit_publisher is None:
+        if activity_publisher is None and exit_publisher is None:
             return
         resource_id = terminal_resource_id(terminal_name, session_key)
         loop = asyncio.get_running_loop()
@@ -1315,141 +1178,18 @@ class SessionResourceRegistry:
         # means "never emitted", so the first changed tick always fires.
         last_activity_emit: dict[str, float | None] = {"value": None}
 
-        def _publish_status(
-            status: str, blocked_on: str | None = None, *, record_activity: bool = False
-        ) -> None:
-            # Publish one running/idle edge: dedup against the last value,
-            # memo for exit classification, and hop to the loop (publishers
-            # are loop-only). Shared by the PTY edges and the claude-native
-            # status-file poller so both go through the same dedup/memo. The
-            # dedup baseline lives on the registry, not this closure, so a
-            # forwarder's hook-derived edge resyncs it (see
-            # :meth:`note_external_session_status`).
-            if status_publisher is None:
-                return
-            explicit_activity = record_activity and status in {"running", "waiting"}
-            if explicit_activity:
-                self._set_session_status_memo(session_id, status)
-            if not self._claim_status_edge(session_id, status, blocked_on):
-                return
-            # Pane repaints can be startup output, not a new agent turn.
-            if not explicit_activity:
-                self._set_session_status_memo(session_id, status, record_activity=False)
-            loop.call_soon_threadsafe(status_publisher, session_id, status, blocked_on)
-
-        def _file_owns_status() -> bool:
-            # Once Claude's own status file is readable it is the session's
-            # status: it reports what Claude is doing, where the pane diff only
-            # infers it from redraws. The pane keeps its activity-badge and
-            # pane-death jobs, but must not publish status alongside the file —
-            # two publishers is what made a post-turn redraw fight the file's
-            # ``idle`` and needed a freshness window to arbitrate.
-            return status_poller is not None and status_poller.active
-
-        # claude-native additionally reads Claude's own ``sessions/<pid>.json``
-        # status (present since Claude Code v2.1.139): it flips on the real
-        # turn edge and knows when a dialog owns the input, neither of which
-        # the PTY frame-diff can see. It supplements the PTY watcher rather
-        # than replacing it — the file is written only on a value *change*, so
-        # it cannot be trusted to re-assert a status it already holds. Built
-        # only for the claude-native role; other native roles stay PTY-only.
-        status_poller = (
-            self._build_claude_native_status_poller(
-                session_id=session_id,
-                instance=instance,
-                on_status=lambda status, blocked_on=None: _publish_status(
-                    status, blocked_on, record_activity=True
-                ),
-            )
-            if emit_status and resource_role == CLAUDE_NATIVE_TERMINAL_ROLE
-            else None
-        )
-        if status_poller is not None:
-            with self._lock:
-                self._status_pollers[session_id] = status_poller
-
-        input_ready_probe = _native_input_ready_probe(resource_role)
-        native_input_ready = False
-
-        def _on_tick() -> None:
-            nonlocal native_input_ready
-            if status_poller is not None:
-                status_poller.tick()
-            if resource_role == CLAUDE_NATIVE_TERMINAL_ROLE:
-                try:
-                    from omnigent.harnesses.claude_native.bridge import (
-                        acknowledge_auto_mode_billing_notice,
-                        auto_mode_billing_notice_visible,
-                        bridge_dir_for_conversation_id,
-                        bridge_dir_from_launch_args,
-                    )
-
-                    # Recheck a cached match before sending any acknowledgement.
-                    if auto_mode_billing_notice_visible(instance.last_pane_text() or ""):
-                        bridge_dir = bridge_dir_from_launch_args(instance.args)
-                        if bridge_dir is None:
-                            bridge_dir = bridge_dir_for_conversation_id(session_id)
-                        acknowledge_auto_mode_billing_notice(
-                            bridge_dir,
-                            expected_socket_path=str(instance.socket_path),
-                            expected_tmux_target=instance.tmux_target,
-                        )
-                except Exception:
-                    _logger.debug(
-                        "Claude auto-mode billing notice acknowledgement failed",
-                        exc_info=True,
-                        extra={"session_id": session_id},
-                    )
-            if input_ready_probe is not None and not native_input_ready:
-                # Readiness logging must not stop the lifecycle watcher on failure.
-                with contextlib.suppress(Exception):
-                    if input_ready_probe(session_id, instance):
-                        native_input_ready = True
-                        _logger.info(
-                            "Native input ready",
-                            extra=debug_event(
-                                "native_input_ready",
-                                session_id=session_id,
-                                harness=resource_role,
-                                terminal_instance_id=instance.diagnostic_id,
-                                stage="native_input",
-                            ),
-                        )
-
         def _on_activity() -> None:
             # Runs on the watcher daemon thread; hop to the loop so the
             # loop-only publishers (queue.put_nowait) are touched safely.
-            #
-            # Throttle the activity pulse to one per second: the
-            # claude-native pane changes on nearly every 200ms poll while
-            # Claude works, but the web badge only needs a pulse inside its
-            # 1.5s window — emitting on every tick would push ~5 events/sec
-            # of redundant traffic.
-            if activity_publisher is not None:
-                now = _monotonic()
-                previous = last_activity_emit["value"]
-                if (
-                    previous is None
-                    or now - previous >= _TERMINAL_ACTIVITY_EMIT_MIN_INTERVAL_SECONDS
-                ):
-                    last_activity_emit["value"] = now
-                    loop.call_soon_threadsafe(activity_publisher, session_id, resource_id)
-            # Pane changed → the agent is working. Coalesce to the
-            # idle→running edge so a continuously-redrawing pane doesn't
-            # re-emit ``running`` every poll. Skipped once the status file owns
-            # the session (see :func:`_file_owns_status`) — a post-turn prompt
-            # redraw is not a new turn, and the file already said so.
-            if emit_status and not _file_owns_status():
-                _publish_status("running")
+            if activity_publisher is None:
+                return
+            now = _monotonic()
+            previous = last_activity_emit["value"]
+            if previous is None or now - previous >= _TERMINAL_ACTIVITY_EMIT_MIN_INTERVAL_SECONDS:
+                last_activity_emit["value"] = now
+                loop.call_soon_threadsafe(activity_publisher, session_id, resource_id)
 
         def _on_exit() -> None:
-            # The pane's process is gone, which the status file cannot report —
-            # a killed Claude never unlinks it, so the record survives holding
-            # its last value. Retire the poller before classifying the exit so
-            # that stale value can't keep owning the session's status.
-            if status_poller is not None:
-                status_poller.retire()
-
             def _schedule() -> None:
                 task = asyncio.create_task(
                     self._handle_terminal_exit(
@@ -1489,95 +1229,10 @@ class SessionResourceRegistry:
                     session_key,
                 )
 
-        if not emit_status:
-            needs_tick = (
-                resource_role == CLAUDE_NATIVE_TERMINAL_ROLE or input_ready_probe is not None
-            )
-            instance.start_idle_watcher_thread(
-                on_activity=_on_activity if activity_publisher is not None else None,
-                on_exit=_on_exit,
-                on_tick=_on_tick if needs_tick else None,
-                replace=replace,
-            )
-            return
-
-        def _on_idle() -> None:
-            # Pane quiet for the claude-native status threshold → the
-            # agent has stopped. Edge-triggered: re-arms only after new
-            # output mutates the pane (which flips back to ``running``).
-            # Skipped once the status file owns the session: a dialog owning
-            # the input quiets the pane without ending the turn, and only the
-            # file can tell that from a finished one.
-            # Edge ordering: the watcher thread runs idle/exit serially, so
-            # this idle commits before any later on_exit reads the memo.
-            if not _file_owns_status():
-                _publish_status("idle")
-            # Clear the activity throttle so the next working episode emits
-            # its first pulse immediately, keeping the activity badge
-            # aligned with the running-status edge (which also re-fires on
-            # the next pane change) rather than lagging up to a second
-            # behind it.
-            last_activity_emit["value"] = None
-
         instance.start_idle_watcher_thread(
-            on_activity=_on_activity,
-            on_idle=_on_idle,
+            on_activity=_on_activity if activity_publisher is not None else None,
             on_exit=_on_exit,
-            on_tick=_on_tick,
-            idle_threshold_s=_CLAUDE_NATIVE_STATUS_IDLE_THRESHOLD_SECONDS,
-            poll_interval_s=_CLAUDE_NATIVE_STATUS_POLL_INTERVAL_SECONDS,
             replace=replace,
-        )
-
-    def _build_claude_native_status_poller(
-        self,
-        *,
-        session_id: str,
-        instance: TerminalInstance,
-        on_status: Callable[[str, str | None], None],
-    ) -> SessionStatusPoller:
-        """Build the claude-native ``sessions/<pid>.json`` status poller.
-
-        Keyed primarily by the terminal's pane pid (which equals Claude's
-        pid on this launch path, so the file is ``<pane_pid>.json``), with
-        Claude's own session uuid — read lazily from the bridge state once
-        a hook reports it — as a cross-check and scan fallback.
-
-        Lazy-imported so the generic runner module keeps no claude-native
-        import at load time (mirrors the rest of the native wiring).
-
-        :param session_id: Owning session/conversation id, used to derive
-            the bridge directory holding the captured Claude session uuid.
-        :param instance: The launched terminal instance (exposes
-            ``pane_pid_sync``).
-        :param on_status: Callback fired as ``(status, blocked_on)`` on each
-            transition, where *status* is ``running`` / ``idle`` and
-            *blocked_on* names the dialog the agent is parked on, if any.
-        :returns: A ``SessionStatusPoller`` the watcher drives per tick.
-        """
-        from omnigent.harnesses.claude_native.bridge import (
-            bridge_dir_for_conversation_id,
-            read_claude_session_id,
-        )
-        from omnigent.harnesses.claude_native.status_file import SessionStatusPoller
-
-        bridge_dir = bridge_dir_for_conversation_id(session_id)
-
-        def _session_id_getter() -> str | None:
-            # Best-effort: the bridge records Claude's uuid only after the
-            # first hook fires. ``None`` before then simply means the poller
-            # relies on the pid match (already scoped to this process) until
-            # the cross-check becomes available.
-            try:
-                return read_claude_session_id(bridge_dir)
-            except Exception:  # noqa: BLE001 - best-effort cross-check; never break the watcher.
-                return None
-
-        return SessionStatusPoller(
-            on_status=on_status,
-            pane_pid_getter=instance.pane_pid_sync,
-            session_id_getter=_session_id_getter,
-            omnigent_session_id=session_id,
         )
 
     async def _handle_terminal_exit(
@@ -1593,7 +1248,7 @@ class SessionResourceRegistry:
         terminal_id = terminal_resource_id(terminal_name, session_key)
         with self._lock:
             observed = self._terminal_lifecycles.pop((session_id, terminal_id), None)
-            observed_role = self._terminal_roles.pop((session_id, terminal_id), None)
+            self._terminal_roles.pop((session_id, terminal_id), None)
         if observed is None:
             return
         if observed != lifecycle:
@@ -1614,7 +1269,6 @@ class SessionResourceRegistry:
             session_key=session_key,
             lifecycle=lifecycle,
             instance=instance,
-            resource_role=observed_role,
         )
 
     async def _finalize_terminal_exit(
@@ -1625,7 +1279,6 @@ class SessionResourceRegistry:
         session_key: str,
         lifecycle: TerminalLifecycle,
         instance: TerminalInstance | None,
-        resource_role: str | None,
         before_observation: bool = False,
     ) -> None:
         """Preserve exit evidence even when a pane dies before observation starts."""
@@ -1658,26 +1311,7 @@ class SessionResourceRegistry:
         )
         session_was_idle = session_status_before_exit == "idle"
 
-        # Codex keeps its existing final-screen event. New pre-observation
-        # diagnostics may include recent history only under explicit opt-in.
         redacted_last_output: str | None = None
-        if resource_role == CODEX_NATIVE_TERMINAL_ROLE:
-            from omnigent.harnesses.diagnostics import sanitize_diagnostic_text
-            from omnigent.process_logging import harness_stderr_capture_enabled
-
-            if not before_observation or harness_stderr_capture_enabled():
-                # Redact the complete frame before trimming, so a long credential
-                # cannot lose its identifying prefix at the truncation boundary.
-                raw_output = last_output
-                if instance is not None:
-                    raw_output = (
-                        instance.last_exit_text()
-                        if before_observation
-                        else instance.last_pane_text()
-                    )
-                redacted_last_output = trim_terminal_output(
-                    sanitize_diagnostic_text(raw_output or "")
-                )
 
         publisher = self._terminal_exit_publisher
         _logger.info(
@@ -1834,10 +1468,6 @@ class SessionResourceRegistry:
                             self._session_activity_epoch.get(target_session_id, 0) + 1
                         )
                 self._active_session_turns.discard(source_session_id)
-                # The watcher restart below rebuilds the poller under the
-                # target, so drop the source's entry rather than leaving a
-                # retired poller to be re-armed on every later reconnect.
-                self._status_pollers.pop(source_session_id, None)
             try:
                 await entry.instance.set_conversation_link(
                     self._terminal_registry.conversation_link_for_id(target_session_id)
@@ -1854,7 +1484,6 @@ class SessionResourceRegistry:
                     entry.terminal_name,
                     entry.session_key,
                     entry.instance,
-                    role,
                     lifecycle,
                     replace=True,
                 )
@@ -1882,7 +1511,6 @@ class SessionResourceRegistry:
             self._session_activity_epoch.pop(session_id, None)
             primary = self._primary_envs.pop(session_id, None)
             self._primary_env_specs.pop(session_id, None)
-            skills_directory = self._codex_skills_dirs.pop(session_id, None)
             stale_role_keys = [key for key in self._terminal_roles if key[0] == session_id]
             for key in stale_role_keys:
                 self._terminal_roles.pop(key, None)
@@ -1908,14 +1536,6 @@ class SessionResourceRegistry:
             except Exception:
                 _logger.exception(
                     "Error closing primary env for session=%s",
-                    session_id,
-                )
-        if skills_directory is not None:
-            try:
-                await asyncio.to_thread(skills_directory.cleanup)
-            except OSError:
-                _logger.exception(
-                    "Error cleaning up Codex skills for session=%s",
                     session_id,
                 )
 

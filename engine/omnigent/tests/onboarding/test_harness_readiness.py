@@ -11,7 +11,6 @@ import pytest
 import yaml
 
 import omnigent.onboarding.harness_install as hi
-from omnigent.harness_availability import HARNESS_VERSION_TOO_LOW
 from omnigent.onboarding.harness_readiness import (
     _READINESS_PROBE_MAX_WORKERS,
     configured_harness_map,
@@ -129,11 +128,7 @@ def test_sdk_and_unknown_harnesses_are_never_gated(
 @pytest.mark.parametrize(
     "harness",
     [
-        "claude-native",
-        "native-claude",
         "codex",
-        "codex-native",
-        "native-codex",
         "pi",
     ],
 )
@@ -154,117 +149,6 @@ def test_cli_harness_configured_only_when_binary_installed(
     assert harness_is_configured(harness) is False
 
 
-def test_auth_aware_native_harness_reports_binary_missing(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """claude-native reports ``binary-missing`` when absent.
-
-    These now carry a two-step signal in the picker map (install, then auth),
-    mirroring Codex — so a missing binary is ``"binary-missing"``, not a bare
-    ``False``.
-    """
-    _no_clis_installed(monkeypatch)
-    result = configured_harness_map()
-    assert result["claude-native"] == "binary-missing"
-
-
-def test_auth_aware_native_harness_needs_auth_when_installed_not_signed_in(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Installed but not signed in AND no provider → ``needs-auth``.
-
-    Claude is ready via a configured provider OR a CLI login; this pins the
-    both-absent case. The autouse fixture points config home at an empty tmp
-    dir, so no provider is configured — but stub it explicitly so the verdict
-    can't depend on ambient config.
-    """
-    _all_clis_installed(monkeypatch)
-    # claude: no provider configured AND `claude auth status` not-logged-in.
-    monkeypatch.setattr(
-        "omnigent.onboarding.harness_readiness._family_provider_configured", lambda _h: False
-    )
-    monkeypatch.setattr(hi, "harness_cli_logged_in", lambda key, **_kw: False)
-    result = configured_harness_map()
-    assert result["claude-native"] == "needs-auth"
-
-
-def test_claude_ready_via_configured_provider_without_cli_login(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Claude with an omnigent provider (API key) but NO CLI login reads ready.
-
-    A user who set an ANTHROPIC API key (a ``key``-kind provider) must go green
-    even though ``claude auth status`` — the subscription login — reports
-    not-logged-in. Checking the provider first also avoids the status subprocess
-    on this common path.
-    """
-    _all_clis_installed(monkeypatch)
-    monkeypatch.setattr(
-        "omnigent.onboarding.harness_readiness._family_provider_configured", lambda _h: True
-    )
-
-    def _must_not_probe(key: str, **_kw: object) -> bool:
-        if key == "anthropic":
-            raise AssertionError("Claude login probed despite a configured provider")
-        return False
-
-    monkeypatch.setattr(hi, "harness_cli_logged_in", _must_not_probe)
-    assert configured_harness_map()["claude-native"] is True
-
-
-def test_family_provider_configured_excludes_subscription(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A ``subscription``-kind default is NOT counted as a provider credential.
-
-    Subscription auth lives in the harness CLI's own login (judged by
-    ``harness_cli_logged_in``); counting it here would double-count that path
-    and mask a genuine "installed but no key" state. Only non-subscription kinds
-    (key/gateway/…) satisfy the provider check.
-    """
-    import omnigent.onboarding.harness_readiness as hrmod
-    from omnigent.onboarding.provider_config import KEY_KIND, SUBSCRIPTION_KIND
-
-    class _Provider:
-        def __init__(self, kind: str) -> None:
-            self.kind = kind
-            # No inline families: nothing to resolve locally, so the entry
-            # counts (or not) purely by kind here.
-            self.families: dict[str, object] = {}
-
-    monkeypatch.setattr(
-        "omnigent.onboarding.harness_readiness.default_provider_for_harness",
-        lambda _cfg, _h: _Provider(SUBSCRIPTION_KIND),
-    )
-    assert hrmod._family_provider_configured("claude-native") is False
-
-    monkeypatch.setattr(
-        "omnigent.onboarding.harness_readiness.default_provider_for_harness",
-        lambda _cfg, _h: _Provider(KEY_KIND),
-    )
-    assert hrmod._family_provider_configured("claude-native") is True
-
-    monkeypatch.setattr(
-        "omnigent.onboarding.harness_readiness.default_provider_for_harness",
-        lambda _cfg, _h: None,
-    )
-    assert hrmod._family_provider_configured("claude-native") is False
-
-
-def test_auth_aware_native_harness_launch_gate_stays_binary_only(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The LAUNCH gate must not gain the auth check — only the picker map does.
-
-    ``harness_is_configured`` drives whether a runner may spawn; gating it on
-    login state would wrongly block a launch whose auth resolves at run time.
-    So with the binary present it stays ``True`` even when not signed in.
-    """
-    _all_clis_installed(monkeypatch)
-    monkeypatch.setattr(hi, "harness_cli_logged_in", lambda key, **_kw: False)
-    assert harness_is_configured("claude-native") is True
-
-
 def test_configured_harness_map_covers_all_spellings(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -279,15 +163,9 @@ def test_configured_harness_map_covers_all_spellings(
     result = configured_harness_map()
     expected_keys = {
         "claude-sdk",
-        "claude-native",
-        "native-claude",
-        "codex",
-        "codex-native",
-        "native-codex",
         "claude_sdk",
         "claude",
         "pi",
-        "pi-native",
     }
     assert set(result) == expected_keys
 
@@ -317,15 +195,7 @@ def test_configured_harness_map_gates_only_cli_harnesses(
     # two-step signal in the picker map, so a missing binary is the structured
     # ``"binary-missing"`` (step 1 to-do), not a bare ``False``. Pi reports the
     # credential axis once installed (no CLI login; its credential is a provider).
-    for missing in (
-        "codex",
-        "codex-native",
-        "native-codex",
-        "claude-native",
-        "native-claude",
-        "pi",
-        "pi-native",
-    ):
+    for missing in ("pi",):
         assert result[missing] == "binary-missing", f"{missing} should name the missing CLI binary"
 
 
@@ -339,10 +209,6 @@ def test_configured_harness_map_all_true_with_clis(
     satisfied, so nothing is reported unconfigured.
     """
     _all_clis_installed(monkeypatch)
-    monkeypatch.setattr(
-        "omnigent.harnesses.codex_native.main._codex_auth_unavailable_reason",
-        lambda: None,
-    )
     # claude / pi are auth-aware on the credential axis now: satisfy the provider
     # check deterministically (don't depend on the dev machine's real config).
     monkeypatch.setattr(
@@ -351,30 +217,6 @@ def test_configured_harness_map_all_true_with_clis(
     result = configured_harness_map()
     not_ready = {k: v for k, v in result.items() if v is not True}
     assert not not_ready, f"expected every spelling ready, got {not_ready}"
-
-
-def test_configured_harness_map_probes_codex_readiness_once(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Codex aliases share one potentially expensive readiness probe."""
-    calls = 0
-
-    def _codex_reason() -> str:
-        nonlocal calls
-        calls += 1
-        return "needs-auth"
-
-    monkeypatch.setattr(
-        "omnigent.harnesses.codex_native.main._codex_auth_unavailable_reason",
-        _codex_reason,
-    )
-
-    result = configured_harness_map()
-
-    assert calls == 1
-    assert result["codex"] == "needs-auth"
-    assert result["codex-native"] == "needs-auth"
-    assert result["native-codex"] == "needs-auth"
 
 
 def test_configured_harness_map_runs_independent_probes_concurrently(
@@ -393,7 +235,8 @@ def test_configured_harness_map_runs_independent_probes_concurrently(
             calls[canonical] += 1
             active += 1
             max_active = max(max_active, active)
-            if active >= _READINESS_PROBE_MAX_WORKERS:
+            # Two distinct probes (claude-sdk, pi) once aliases fold together.
+            if active >= min(_READINESS_PROBE_MAX_WORKERS, 2):
                 release.set()
         if not release.wait(timeout=1.0):
             raise AssertionError("readiness probes did not overlap")
@@ -401,7 +244,7 @@ def test_configured_harness_map_runs_independent_probes_concurrently(
             active -= 1
         if "codex" in canonical:
             return "needs-auth"
-        return canonical != "claude-native"
+        return canonical != "pi"
 
     monkeypatch.setattr(
         "omnigent.onboarding.harness_readiness._harness_availability",
@@ -411,96 +254,9 @@ def test_configured_harness_map_runs_independent_probes_concurrently(
     result = configured_harness_map()
 
     assert result
-    assert max_active == _READINESS_PROBE_MAX_WORKERS
+    assert max_active == min(_READINESS_PROBE_MAX_WORKERS, 2)
     assert all(count == 1 for count in calls.values())
-    assert result["claude-native"] is False
-    # ``native-claude`` is an alias of ``claude-native``: same probe, same verdict.
-    assert result["native-claude"] is False
-    assert result["codex"] == "needs-auth"
-    assert result["codex-native"] == "needs-auth"
-    assert result["native-codex"] == "needs-auth"
-
-
-def test_configured_harness_map_reports_version_too_low_for_outdated_clis(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """An outdated CLI for the native harnesses is flagged ``version-too-low``.
-
-    This exercises the readiness-layer wiring, which is where the binary is
-    on ``PATH`` but does not satisfy the declared ``min_version`` of the spec.
-    The core promise of the feature is that users see an upgrade prompt instead
-    of being told the binary is missing.
-    """
-    monkeypatch.setattr(hi.shutil, "which", lambda name: f"/usr/bin/{name}")
-    monkeypatch.setattr(hi, "harness_cli_installed", lambda _key, **_kw: False)
-    monkeypatch.setattr(hi, "harness_cli_logged_in", lambda _key, **_kw: True)
-    result = configured_harness_map()
-    for harness in (
-        "claude-native",
-        "native-claude",
-    ):
-        assert result[harness] == HARNESS_VERSION_TOO_LOW, (
-            f"{harness} should report version-too-low, not binary-missing"
-        )
-
-
-def test_claude_ready_via_managed_gateway_without_provider_or_cli_login(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Claude reads ready from its own managed-settings gateway alone.
-
-    The enterprise state (`isaac configure claude`): nothing in omnigent's
-    config, no subscription login the probe can see, but Claude Code's managed
-    settings pin an AI Gateway + apiKeyHelper and the CLI applies them itself.
-    This is the exact "Claude Code isn't configured on <host>" dead end — the
-    structural check must go green WITHOUT the `claude auth status` subprocess.
-    """
-    import json
-
-    from omnigent.onboarding import ambient
-
-    _all_clis_installed(monkeypatch)
-    monkeypatch.setattr(
-        "omnigent.onboarding.harness_readiness._family_provider_configured", lambda _h: False
-    )
-    # The subprocess probe stays broken; readiness must not depend on it.
-    monkeypatch.setattr(hi, "harness_cli_logged_in", lambda key, **_kw: False)
-    settings = tmp_path / "managed-settings.json"
-    settings.write_text(
-        json.dumps(
-            {
-                "env": {
-                    "ANTHROPIC_BASE_URL": "https://dbc.cloud.databricks.com/ai-gateway/anthropic"
-                },
-                "apiKeyHelper": "print-token",
-            }
-        )
-    )
-    monkeypatch.setattr(ambient, "CLAUDE_CODE_MANAGED_SETTINGS_PATHS", (settings,))
-
-    result = configured_harness_map()
-    assert result["claude-native"] is True
-    assert result["native-claude"] is True
-
-
-def test_claude_needs_auth_without_gateway_provider_or_login(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """No managed gateway + no provider + no login → still `needs-auth`.
-
-    Guards the structural check from going green on nothing: an absent settings
-    file must not credit a credential that isn't there.
-    """
-    from omnigent.onboarding import ambient
-
-    _all_clis_installed(monkeypatch)
-    monkeypatch.setattr(
-        "omnigent.onboarding.harness_readiness._family_provider_configured", lambda _h: False
-    )
-    monkeypatch.setattr(hi, "harness_cli_logged_in", lambda key, **_kw: False)
-    monkeypatch.setattr(ambient, "CLAUDE_CODE_MANAGED_SETTINGS_PATHS", (tmp_path / "absent.json",))
-
-    assert configured_harness_map()["claude-native"] == "needs-auth"
+    assert result["pi"] is False
 
 
 def test_sdk_harness_needs_auth_with_no_visible_credential(
@@ -692,37 +448,3 @@ def test_sdk_provider_with_unresolved_credential_reference_is_not_a_credential(
     (tmp_path / "config.yaml").write_text(yaml.safe_dump({"providers": {"work": entry}}))
     result = configured_harness_map()
     assert result["claude-sdk"] == "needs-auth"
-
-
-def test_claude_native_unresolved_provider_reference_reports_needs_auth(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The native-harness path also rejects unresolvable provider references.
-
-    ``_family_provider_configured`` is shared with the auth-aware native
-    harnesses: claude-native with a default provider whose ``api_key_ref``
-    points at an unset env var (and no CLI login) must read ``needs-auth``,
-    not ready.
-    """
-    _all_clis_installed(monkeypatch)
-    monkeypatch.setattr(hi, "harness_cli_logged_in", lambda _key, **_kw: False)
-    monkeypatch.delenv("MISSING_READINESS_TEST_KEY", raising=False)
-    monkeypatch.delenv("OMNIGENT_MISSING_READINESS_TEST_KEY", raising=False)
-    (tmp_path / "config.yaml").write_text(
-        yaml.safe_dump(
-            {
-                "providers": {
-                    "work": {
-                        "kind": "key",
-                        "default": True,
-                        "anthropic": {
-                            "base_url": "https://api.example.com/v1",
-                            "api_key_ref": "env:MISSING_READINESS_TEST_KEY",
-                        },
-                    }
-                }
-            }
-        )
-    )
-    assert configured_harness_map()["claude-native"] == "needs-auth"

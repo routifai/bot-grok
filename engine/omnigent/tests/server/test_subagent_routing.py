@@ -17,33 +17,25 @@ from omnigent.entities.conversation import RoutingDecisionData
 from omnigent.inner.hook_scripts.subagent_router import read_router_endpoint
 from omnigent.runner.subagent_routing import (
     ADVERTISEMENT_FILE,
-    AUTO_HARNESS_LABEL_KEY,
     PLAIN_SESSION,
-    ROUTING_DECISION_LABEL_KEY,
     SessionRoutingClass,
     SubagentRouteDecision,
     SubagentRouteRequest,
-    auto_harness_session,
     candidate_models,
     decision_record,
     ensure_session_router,
     ensure_session_router_quietly,
     forget_session_routing_class,
-    harness_family,
     make_server_relay_resolver,
-    model_in_family,
     persist_subagent_decision,
     relayed_decisions,
     remember_session_routing_class,
     resolve_subagent_route,
     routed_models,
     router_dir_for_session,
-    routing_class_from_snapshot,
-    routing_enabled,
     session_router_env,
     session_routing_class,
     shutdown_session_router,
-    start_subagent_router,
     subagent_routing_enabled,
     write_advertisement,
 )
@@ -90,121 +82,9 @@ def _request(**overrides: Any) -> SubagentRouteRequest:
 # ── Candidate set ───────────────────────────────────────────────────
 
 
-def test_candidate_models_stays_in_family_by_default() -> None:
-    candidates = candidate_models("claude-native")
-    assert set(candidates) == {"claude-native"}
-    assert CLAUDE_MODEL in candidates["claude-native"]
-
-
-def test_candidate_models_prefers_the_live_catalog() -> None:
-    """A model the workspace serves today must not look unservable."""
-    catalog = {"self": ["databricks-claude-sonnet-5", "databricks-claude-opus-4-8"]}
-    candidates = candidate_models("claude-native", catalog=catalog)
-    assert candidates == {
-        "claude-native": ["databricks-claude-sonnet-5", "databricks-claude-opus-4-8"]
-    }
-
-
-def test_candidate_models_falls_back_to_the_static_table_per_harness() -> None:
-    catalog = {"self": ["databricks-claude-sonnet-5"]}
-    candidates = candidate_models("claude-native", cross_harness=True, catalog=catalog)
-    assert candidates["claude-native"] == ["databricks-claude-sonnet-5"]
-    # No codex row in the catalog — the static table fills that harness in.
-    assert GPT_MODEL in candidates["codex-native"]
-
-
-def test_candidate_models_ignores_an_empty_catalog() -> None:
-    candidates = candidate_models("claude-native", catalog={})
-    assert CLAUDE_MODEL in candidates["claude-native"]
-
-
-def test_candidate_models_applies_the_family_constraint_to_catalog_rows() -> None:
-    """A codex ``"self"`` row keeps GLM/Kimi and loses the Claude ids.
-
-    The gateway behind a codex session serves Claude ids too, so the row
-    carries models codex cannot speak; offering one earns a hard
-    ``model_family_mismatch`` at dispatch. GLM and Kimi serve on the
-    Responses wire codex does speak, so they must survive.
-    """
-    catalog = {"self": [GPT_MODEL, GLM_MODEL, KIMI_MODEL, CLAUDE_MODEL]}
-    candidates = candidate_models("codex-native", catalog=catalog)
-    assert candidates == {"codex-native": [GPT_MODEL, GLM_SERVABLE, KIMI_MODEL]}
-    assert model_in_family(harness_family("codex-native"), GLM_MODEL) is True
-    assert model_in_family(harness_family("claude-native"), GLM_MODEL) is False
-
-
-def test_candidate_models_offers_glm_under_its_servable_alias() -> None:
-    """Both catalog spellings collapse to the one the gateway serves.
-
-    The offered id is what a rewrite spawns with, so it has to match the id
-    routing resolves the ``glm-5-2`` arm to.
-    """
-    catalog = {"self": [GPT_MODEL, GLM_MODEL, GLM_SERVABLE]}
-    assert candidate_models("codex-native", catalog=catalog) == {
-        "codex-native": [GPT_MODEL, GLM_SERVABLE]
-    }
-
-
-def test_every_codex_spawn_is_offered_glm() -> None:
-    """Policy: a codex session spawns codex OR glm subagents, always both.
-
-    GLM is in no discovery listing, so a live catalog row never carries it;
-    without the top-up a row that answers for the harness would hide GLM and
-    the session could not reach it.
-    """
-    for catalog in (
-        None,
-        {},
-        {"self": ["databricks-gpt-5-6-luna", "databricks-gpt-5-6-sol"]},
-        # A nested spawn (a codex subagent spawning again) has the same
-        # leaf-shaped catalog, so it must be offered GLM too.
-        {"self": [GPT_MODEL]},
-    ):
-        candidates = candidate_models("codex-native", catalog=catalog)
-        assert GLM_SERVABLE in candidates["codex-native"], catalog
-        # Never the raw catalog spelling — the gateway serves only the alias.
-        assert GLM_MODEL not in candidates["codex-native"], catalog
-
-
 def test_the_glm_top_up_does_not_widen_a_multi_model_harness() -> None:
     """pi admits every family, but nothing proves its CLI can serve GLM."""
     assert GLM_SERVABLE not in candidate_models("pi")["pi"]
-
-
-@pytest.mark.parametrize(
-    ("harness", "cross_harness", "expected_harnesses"),
-    [
-        # Pinned sessions stay in their own family, in both directions.
-        ("codex-native", False, {"codex-native"}),
-        ("claude-native", False, {"claude-native"}),
-        # A Smart Routing (auto-harness) session, and any child of one, may
-        # cross — that is the only case a redirect verdict can fire.
-        ("codex-native", True, {"codex-native", "claude-native"}),
-        ("claude-native", True, {"claude-native", "codex-native"}),
-    ],
-)
-def test_spawn_candidates_respect_the_family_restriction(
-    harness: str,
-    cross_harness: bool,
-    expected_harnesses: set[str],
-) -> None:
-    candidates = candidate_models(harness, cross_harness=cross_harness)
-    assert set(candidates) == expected_harnesses
-    for name, models in candidates.items():
-        family = harness_family(name)
-        assert all(model_in_family(family, model) for model in models)
-
-
-def test_candidate_models_drops_a_harness_with_nothing_servable() -> None:
-    catalog = {"self": [CLAUDE_MODEL]}
-    assert candidate_models("codex-native", catalog=catalog) == {}
-
-
-def test_candidate_models_offers_both_families_for_auto_sessions() -> None:
-    candidates = candidate_models("claude-native", cross_harness=True)
-    assert set(candidates) == {"claude-native", "codex-native"}
-    assert CLAUDE_MODEL in candidates["claude-native"]
-    assert GPT_MODEL in candidates["codex-native"]
 
 
 class _Conv:
@@ -213,59 +93,6 @@ class _Conv:
     def __init__(self, labels: dict[str, str] | None = None, harness_override: str | None = None):
         self.labels = labels or {}
         self.harness_override = harness_override
-
-
-@pytest.mark.parametrize(
-    ("conv", "parent", "expected"),
-    [
-        # The durable label, which survives the sentinel being replaced once
-        # first-message routing resolves a harness.
-        (_Conv(labels={AUTO_HARNESS_LABEL_KEY: "1"}), None, True),
-        (_Conv(harness_override="auto"), None, True),
-        # A child of an auto-harness session inherits the permission.
-        (
-            _Conv(harness_override="codex-native"),
-            _Conv(labels={AUTO_HARNESS_LABEL_KEY: "1"}),
-            True,
-        ),
-        (_Conv(harness_override="codex-native"), _Conv(harness_override="auto"), True),
-        # Everything else is pinned: no label, a pinned override, an off label,
-        # a pinned parent, and a missing row.
-        (_Conv(harness_override="claude-native"), None, False),
-        (_Conv(labels={AUTO_HARNESS_LABEL_KEY: "0"}), None, False),
-        (_Conv(), _Conv(harness_override="claude-native"), False),
-        (None, None, False),
-    ],
-    ids=[
-        "label",
-        "sentinel",
-        "parent-label",
-        "parent-sentinel",
-        "pinned",
-        "label-off",
-        "pinned-parent",
-        "no-rows",
-    ],
-)
-def test_auto_harness_session_is_the_only_cross_harness_enabler(
-    conv: _Conv | None,
-    parent: _Conv | None,
-    expected: bool,
-) -> None:
-    """Pin the gate a cross-harness redirect depends on.
-
-    ``routes_hooks`` derives ``cross_harness`` from exactly this call, and
-    ``candidate_models(cross_harness=False)`` never offers the counterpart
-    family — so a pinned session can never receive a redirect verdict.
-    """
-    assert auto_harness_session(conv, parent) is expected
-
-
-@pytest.mark.parametrize("harness", ["claude-native", "codex-native"])
-def test_pinned_sessions_are_never_offered_the_counterpart_family(harness: str) -> None:
-    counterpart = "codex-native" if harness == "claude-native" else "claude-native"
-    assert counterpart not in candidate_models(harness, cross_harness=False)
-    assert counterpart in candidate_models(harness, cross_harness=True)
 
 
 # ── Policy ──────────────────────────────────────────────────────────
@@ -286,45 +113,6 @@ async def test_same_family_pick_rewrites() -> None:
     assert len(decision.decision_id) == 36
 
 
-@pytest.mark.parametrize(
-    ("picked", "note", "recorded_override"),
-    [
-        # The router happened to pick the arm the spawn named: honored by
-        # coincidence, and an honored ask is just the model.
-        (GLM_SERVABLE, "honored — the router picked the same arm", None),
-        # It picked another: the router's pick is applied and the ask is
-        # recorded as the override attempt.
-        (GPT_MODEL, "overridden — the router picked databricks-gpt-5-5", GLM_SERVABLE),
-    ],
-    ids=["match", "mismatch"],
-)
-async def test_an_explicit_in_family_ask_is_still_routed(
-    picked: str,
-    note: str,
-    recorded_override: str | None,
-) -> None:
-    """An explicit ask never short-circuits the router.
-
-    The spawn names a routable arm, so the old policy honored it without
-    asking. Strict adherence means the router still decides: the ask only
-    words the rationale, and it lands only when the pick agrees.
-    """
-    client = FakeRoutingClient(RoutingResult(model=picked, rationale="default arm"))
-    req = _request(harness="codex-native", prompt=None, requested_model=GLM_SERVABLE)
-    decision = await resolve_subagent_route(
-        "conv_1",
-        req,
-        caps=FakeCaps(routing_client=client),
-        catalog={"self": [GPT_MODEL, GLM_MODEL]},
-    )
-    assert len(client.calls) == 1
-    assert decision.action == "rewrite"
-    assert decision.model == picked
-    # The router's own rationale stays first and intact.
-    assert decision.rationale == f"default arm Spawn requested {GLM_SERVABLE}; {note}."
-    assert decision_record(req, decision).attempted_override == recorded_override
-
-
 async def test_the_router_is_called_even_when_the_spawn_names_a_model() -> None:
     """Regression: a ``requested_model`` used to skip ``client.route`` entirely,
     so every rationale read "it is a routable arm" and no rule trace existed."""
@@ -337,21 +125,6 @@ async def test_the_router_is_called_even_when_the_spawn_names_a_model() -> None:
     assert len(client.calls) == 1
     assert decision.rationale.startswith("deep reasoning")
     assert "it is a routable arm" not in decision.rationale
-
-
-async def test_an_ask_matches_the_pick_on_the_bare_arm() -> None:
-    """Any spelling of the ask compares against the arm the router picked."""
-    client = FakeRoutingClient(RoutingResult(model=GLM_SERVABLE, rationale="delegate down"))
-    req = _request(harness="codex-native", prompt=None, requested_model=GLM_MODEL)
-    decision = await resolve_subagent_route(
-        "conv_1",
-        req,
-        caps=FakeCaps(routing_client=client),
-        catalog={"self": [GPT_MODEL, GLM_MODEL]},
-    )
-    assert decision.model == GLM_SERVABLE
-    assert "honored" in decision.rationale
-    assert decision_record(req, decision).attempted_override is None
 
 
 async def test_a_long_context_suffix_is_the_same_arm() -> None:
@@ -440,39 +213,6 @@ async def test_fail_open_leaves_the_spawn_on_the_model_it_asked_for(
     assert record.attempted_override is None
 
 
-async def test_a_cross_family_ask_on_an_auto_session_is_not_honored_in_place() -> None:
-    """Auto-harness candidates span both families, but a rewrite runs
-    in-place — a codex spawn must never be handed a claude arm to run."""
-    client = FakeRoutingClient(RoutingResult(model=GPT_MODEL, rationale="default arm"))
-    decision = await resolve_subagent_route(
-        "conv_1",
-        _request(harness="codex-native", prompt=None, requested_model=CLAUDE_MODEL),
-        caps=FakeCaps(routing_client=client),
-        cross_harness=True,
-    )
-    assert decision.action == "rewrite"
-    assert decision.model == GPT_MODEL
-    assert len(client.calls) == 1
-    assert f"Spawn requested {CLAUDE_MODEL}; overridden" in decision.rationale
-
-
-async def test_an_out_of_family_ask_is_routed_over_and_recorded() -> None:
-    """A codex spawn asking for a claude arm gets routed; the ask is recorded."""
-    client = FakeRoutingClient(RoutingResult(model=GPT_MODEL, rationale="default arm"))
-    req = _request(harness="codex-native", prompt=None, requested_model=CLAUDE_MODEL)
-    decision = await resolve_subagent_route(
-        "conv_1",
-        req,
-        caps=FakeCaps(routing_client=client),
-        catalog={"self": [GPT_MODEL, GLM_MODEL]},
-    )
-    assert decision.action == "rewrite"
-    assert decision.model == GPT_MODEL
-    assert len(client.calls) == 1  # not honored — routed normally
-    assert f"overridden — the router picked {GPT_MODEL}" in decision.rationale
-    assert decision_record(req, decision).attempted_override == CLAUDE_MODEL
-
-
 async def test_raw_model_is_omitted_when_it_matches_the_resolved_model() -> None:
     client = FakeRoutingClient(
         RoutingResult(model=CLAUDE_MODEL, rationale="r", raw_model=CLAUDE_MODEL)
@@ -494,89 +234,6 @@ async def test_raw_model_is_preserved_when_the_router_named_another_arm() -> Non
     assert decision.model == CLAUDE_MODEL
     assert decision.raw_model == "claude-opus-4-8-thinking"
     assert decision_record(_request(), decision).raw_model == "claude-opus-4-8-thinking"
-
-
-async def test_live_catalog_pick_is_applied_exactly() -> None:
-    """A live-catalog model is offered and applied verbatim — no substitution."""
-    client = FakeRoutingClient(
-        RoutingResult(model="databricks-claude-sonnet-5", rationale="r", harness="claude-sdk")
-    )
-    decision = await resolve_subagent_route(
-        "conv_1",
-        _request(),
-        caps=FakeCaps(routing_client=client),
-        catalog={"self": ["databricks-claude-sonnet-5", "databricks-claude-opus-4-8"]},
-    )
-    assert client.calls[0][1] == {
-        "claude-native": ["databricks-claude-sonnet-5", "databricks-claude-opus-4-8"]
-    }
-    assert decision.action == "rewrite"
-    assert decision.model == "databricks-claude-sonnet-5"
-
-
-async def test_cross_family_pick_redirects_to_counterpart_harness() -> None:
-    client = FakeRoutingClient(
-        RoutingResult(model=GPT_MODEL, rationale="narrow change", harness="codex")
-    )
-    decision = await resolve_subagent_route(
-        "conv_1", _request(), caps=FakeCaps(routing_client=client), cross_harness=True
-    )
-    assert decision.action == "redirect"
-    assert decision.model == GPT_MODEL
-    assert decision.harness == "codex-native"
-
-
-async def test_in_family_session_only_offers_its_own_harness() -> None:
-    client = FakeRoutingClient(
-        RoutingResult(model=GPT_MODEL, rationale="narrow change", harness="codex")
-    )
-    decision = await resolve_subagent_route(
-        "conv_1", _request(), caps=FakeCaps(routing_client=client)
-    )
-    # Only Claude arms were offered, so a Codex pick is unrunnable — a
-    # constrained session can never redirect.
-    assert set(client.calls[0][1]) == {"claude-native"}
-    assert decision.action == "deny"
-
-
-async def test_a_pinned_codex_spawn_can_never_land_a_claude_arm() -> None:
-    """Pinned codex routes spawns now, but only within its own family.
-
-    The routing endpoint is installed for a pinned Smart Routing codex session
-    so its spawns can run at all; cross-family placement stays an auto-harness
-    privilege. Without the restriction a codex session would start handing its
-    subagents to Claude Code.
-    """
-    client = FakeRoutingClient(
-        RoutingResult(model=CLAUDE_MODEL, rationale="deep reasoning", harness="claude-native")
-    )
-    decision = await resolve_subagent_route(
-        "conv_1",
-        _request(harness="codex-native"),
-        caps=FakeCaps(routing_client=client),
-        cross_harness=False,
-    )
-    assert set(client.calls[0][1]) == {"codex-native"}
-    assert CLAUDE_MODEL not in client.calls[0][1]["codex-native"]
-    assert decision.action == "deny"
-    assert decision.harness != "claude-native"
-
-
-async def test_an_auto_harness_codex_spawn_may_land_a_claude_arm() -> None:
-    """The same pick, on the one class allowed to cross families."""
-    client = FakeRoutingClient(
-        RoutingResult(model=CLAUDE_MODEL, rationale="deep reasoning", harness="claude-native")
-    )
-    decision = await resolve_subagent_route(
-        "conv_1",
-        _request(harness="codex-native"),
-        caps=FakeCaps(routing_client=client),
-        cross_harness=True,
-    )
-    assert set(client.calls[0][1]) == {"codex-native", "claude-native"}
-    assert decision.action == "redirect"
-    assert decision.model == CLAUDE_MODEL
-    assert decision.harness == "claude-native"
 
 
 async def test_pick_outside_candidate_set_denies() -> None:
@@ -604,64 +261,6 @@ async def test_parent_model_pick_allows_unchanged() -> None:
     assert decision.model == PARENT_MODEL
 
 
-async def test_codex_spawn_routed_to_glm_rewrites_in_family() -> None:
-    """A codex spawn the router sends to GLM stays on codex and rewrites.
-
-    GLM is codex-compatible, so the verdict must be ``rewrite`` on the
-    requesting harness — never a ``redirect`` that would send the model to
-    ``sys_session_create`` for a spawn its own tool can launch.
-    """
-    client = FakeRoutingClient(RoutingResult(model=GLM_SERVABLE, rationale="delegate down"))
-    decision = await resolve_subagent_route(
-        "conv_1",
-        _request(harness="codex-native", prompt=None, task_name="lint-fixer"),
-        caps=FakeCaps(routing_client=client),
-    )
-    # The static table is the only source of a glm candidate, and it offers the
-    # servable spelling.
-    assert GLM_SERVABLE in client.calls[0][1]["codex-native"]
-    assert decision.action == "rewrite"
-    assert decision.model == GLM_SERVABLE
-    assert decision.harness is None
-
-
-async def test_glm_arm_pick_stamps_no_substitution_arrow() -> None:
-    """The arm id and the servable spelling are the same arm, not a swap."""
-    client = FakeRoutingClient(
-        RoutingResult(model=GLM_SERVABLE, rationale="delegate down", raw_model="glm-5-2")
-    )
-    decision = await resolve_subagent_route(
-        "conv_1",
-        _request(harness="codex-native", prompt=None, task_name="lint-fixer"),
-        caps=FakeCaps(routing_client=client),
-    )
-    assert decision.action == "rewrite"
-    assert decision.model == GLM_SERVABLE
-    assert decision.raw_model is None
-    assert decision_record(_request(harness="codex-native"), decision).raw_model is None
-
-
-async def test_glm_spawn_from_a_live_catalog_is_applied_exactly() -> None:
-    """A workspace catalog listing GLM routes to the alias, not a substitute."""
-    client = FakeRoutingClient(RoutingResult(model=GLM_SERVABLE, rationale="delegate down"))
-    decision = await resolve_subagent_route(
-        "conv_1",
-        _request(harness="codex-native", prompt=None, task_name="lint-fixer"),
-        caps=FakeCaps(routing_client=client),
-        catalog={"self": [GLM_MODEL, "databricks-gpt-5-6-luna"]},
-    )
-    assert client.calls[0][1] == {"codex-native": [GLM_SERVABLE, "databricks-gpt-5-6-luna"]}
-    assert decision.action == "rewrite"
-    assert decision.model == GLM_SERVABLE
-
-
-async def test_claude_session_never_gets_a_glm_spawn() -> None:
-    """GLM is out of family for claude, so a GLM pick cannot be offered."""
-    candidates = candidate_models("claude-native", cross_harness=True)
-    assert GLM_SERVABLE in candidates["codex-native"]
-    assert GLM_SERVABLE not in candidates["claude-native"]
-
-
 async def test_fork_is_exempt_and_never_calls_router() -> None:
     client = FakeRoutingClient(RoutingResult(model=CLAUDE_MODEL, rationale="x"))
     decision = await resolve_subagent_route(
@@ -670,57 +269,6 @@ async def test_fork_is_exempt_and_never_calls_router() -> None:
     assert decision.action == "allow"
     assert decision.model == PARENT_MODEL
     assert client.calls == []
-
-
-async def test_unnamed_codex_spawn_routes_on_the_placeholder_task() -> None:
-    # A codex spawn with no prompt and no task/agent name still reaches the
-    # router: it scores ucode's placeholder label and lands on the floor arm,
-    # instead of skipping the router to inherit the parent's (pricier) model.
-    client = FakeRoutingClient(RoutingResult(model=GPT_MODEL, rationale="floor arm"))
-    decision = await resolve_subagent_route(
-        "conv_1",
-        _request(
-            harness="codex-native",
-            prompt=None,
-            task_name="",
-            parent_model="databricks-gpt-5-6-luna",
-        ),
-        caps=FakeCaps(routing_client=client),
-        available_models={"codex-native": [GPT_MODEL]},
-    )
-    assert client.calls[0][0] == "Codex subagent task"
-    assert decision.action == "rewrite"
-    assert decision.model == GPT_MODEL
-    assert "No routable signal" not in decision.rationale
-
-
-async def test_named_codex_spawn_routes_on_its_task_name() -> None:
-    # A codex spawn carries no prompt (encrypted), but a task/agent name is
-    # scored per-name, so named spawns already route individually — the
-    # placeholder only kicks in when there is no name.
-    client = FakeRoutingClient(RoutingResult(model=GPT_MODEL, rationale="named arm"))
-    await resolve_subagent_route(
-        "conv_1",
-        _request(harness="codex-native", prompt=None, task_name="doc-writer"),
-        caps=FakeCaps(routing_client=client),
-        available_models={"codex-native": [GPT_MODEL]},
-    )
-    assert client.calls[0][0] == "doc-writer"
-
-
-async def test_every_unnamed_codex_spawn_scores_the_same_placeholder() -> None:
-    # All unnamed spawns share one placeholder, so they route to the same
-    # (floor) arm: a cheap default, not per-spawn intelligence.
-    client = FakeRoutingClient(RoutingResult(model=GPT_MODEL, rationale="floor arm"))
-    caps = FakeCaps(routing_client=client)
-    for _ in range(2):
-        await resolve_subagent_route(
-            "conv_1",
-            _request(harness="codex-native", prompt=None, task_name=""),
-            caps=caps,
-            available_models={"codex-native": [GPT_MODEL]},
-        )
-    assert [call[0] for call in client.calls] == ["Codex subagent task", "Codex subagent task"]
 
 
 @pytest.mark.parametrize(
@@ -781,57 +329,7 @@ async def test_task_name_is_capped_at_parse_time() -> None:
     assert len(req.task_name) == 200
 
 
-def test_task_description_is_parsed_and_capped() -> None:
-    """The spawn's human label is agent-authored, so it is bounded like ``task_name``."""
-    parsed = SubagentRouteRequest.from_payload(
-        {"harness": "claude-native", "task_description": "  Research auth flows\n"}
-    )
-    assert parsed.task_description == "Research auth flows"
-    capped = SubagentRouteRequest.from_payload(
-        {"harness": "claude-native", "task_description": "x" * 5000}
-    )
-    assert capped.task_description is not None
-    assert len(capped.task_description) == 200
-    assert SubagentRouteRequest.from_payload({"harness": "codex"}).task_description is None
-
-
-@pytest.mark.parametrize("description", ["", " \t\n", None, 7])
-def test_invalid_task_description_keeps_the_unlabeled_fallback(description: Any) -> None:
-    req = SubagentRouteRequest.from_payload(
-        {"harness": "claude-native", "task_description": description}
-    )
-    assert req.task_description is None
-
-
 # ── Decision persistence ────────────────────────────────────────────
-
-
-async def test_every_decision_is_persisted_with_native_subagent_scope() -> None:
-    client = FakeRoutingClient(
-        RoutingResult(model=CLAUDE_MODEL, rationale="deep reasoning", harness="claude-sdk")
-    )
-    records: list[RoutingDecisionData] = []
-
-    async def _persist(record: RoutingDecisionData) -> None:
-        records.append(record)
-
-    decision = await resolve_subagent_route(
-        "conv_1",
-        _request(),
-        caps=FakeCaps(routing_client=client),
-        persist=_persist,
-    )
-    assert len(records) == 1
-    data = records[0].model_dump()
-    assert data["scope"] == "native_subagent"
-    assert data["decision_id"] == decision.decision_id
-    # The router named the model it resolved to, so there is no raw pick to
-    # report separately.
-    assert data["raw_model"] is None
-    assert data["model"] == CLAUDE_MODEL
-    assert data["harness"] == "claude-native"
-    assert data["applied"] is True
-    assert data["rationale"] == "deep reasoning"
 
 
 async def test_deny_is_persisted_unapplied() -> None:
@@ -848,31 +346,6 @@ async def test_deny_is_persisted_unapplied() -> None:
     await resolve_subagent_route("conv_1", _request(), caps=caps, persist=_persist)
     assert records[0].applied is False
     assert records[0].model == PARENT_MODEL
-
-
-async def test_persist_appends_routing_decision_item() -> None:
-    store = _FakeStore()
-    record = RoutingDecisionData(
-        model=CLAUDE_MODEL,
-        applied=True,
-        rationale="deep reasoning",
-        decision_id="dec_1",
-        harness="claude-native",
-        raw_model="claude-opus-4-8",
-        scope="native_subagent",
-    )
-    await persist_subagent_decision("conv_1", store, record)
-    assert len(store.appended) == 1
-    item = store.appended[0]
-    assert item.type == "routing_decision"
-    assert item.data.model == CLAUDE_MODEL
-    assert item.data.rationale == "deep reasoning"
-    # The additive fields ride along once the item model carries them.
-    if hasattr(item.data, "scope"):
-        assert item.data.scope == "native_subagent"
-        assert item.data.decision_id == "dec_1"
-        assert item.data.raw_model == "claude-opus-4-8"
-        assert item.data.harness == "claude-native"
 
 
 async def test_persist_failure_does_not_break_the_decision() -> None:
@@ -923,103 +396,6 @@ def _post(url: str, body: dict[str, Any], token: str | None) -> tuple[int, dict[
         return exc.code, json.loads(exc.read() or b"{}")
 
 
-async def test_loopback_endpoint_serves_decisions_and_checks_token(tmp_path: Path) -> None:
-    canned = SubagentRouteDecision(
-        action="rewrite", rationale="deep reasoning", model=CLAUDE_MODEL, raw_model=CLAUDE_MODEL
-    )
-    seen: list[SubagentRouteRequest] = []
-
-    async def _resolver(session_id: str, req: SubagentRouteRequest) -> SubagentRouteDecision:
-        del session_id
-        seen.append(req)
-        return canned
-
-    router = start_subagent_router(
-        bridge_dir=tmp_path,
-        session_id="conv_1",
-        resolver=_resolver,
-        loop=asyncio.get_running_loop(),
-    )
-    try:
-        advertised = read_router_endpoint(tmp_path)
-        assert advertised is not None
-        url = f"{advertised.url}/v1/sessions/conv_1/route-subagent"
-        body = {
-            "harness": "claude-native",
-            "task_name": "code-reviewer",
-            "prompt": "review the diff",
-            "fork": False,
-            "parent_model": PARENT_MODEL,
-        }
-
-        status, payload = await asyncio.to_thread(_post, url, body, advertised.token)
-        assert status == 200
-        assert payload == canned.to_payload()
-        assert seen[0].task_name == "code-reviewer"
-
-        status, _ = await asyncio.to_thread(_post, url, body, "wrong-token")
-        assert status == 401
-        status, _ = await asyncio.to_thread(_post, url, body, None)
-        assert status == 401
-        assert len(seen) == 1
-
-        status, _ = await asyncio.to_thread(
-            _post,
-            f"{advertised.url}/v1/sessions/other/route-subagent",
-            body,
-            advertised.token,
-        )
-        assert status == 404
-
-        status, _ = await asyncio.to_thread(_post, url, {"task_name": "x"}, advertised.token)
-        assert status == 400
-    finally:
-        router.close()
-    assert not (tmp_path / ADVERTISEMENT_FILE).exists()
-
-
-async def test_server_relay_resolver_forwards_and_parses() -> None:
-    posted: list[tuple[str, dict[str, Any]]] = []
-
-    class _Resp:
-        status_code = 200
-
-        def raise_for_status(self) -> None:
-            return None
-
-        def json(self) -> dict[str, Any]:
-            return {
-                "action": "redirect",
-                "model": GPT_MODEL,
-                "harness": "codex-native",
-                "raw_model": "gpt-5-6-sol",
-                "rationale": "narrow change",
-                "decision_id": "dec_9",
-            }
-
-    class _Client:
-        async def post(self, path: str, *, json: dict[str, Any], timeout: float) -> _Resp:
-            del timeout
-            posted.append((path, json))
-            return _Resp()
-
-    resolver = make_server_relay_resolver(_Client())
-    decision = await resolver(
-        "conv_1",
-        _request(requested_model=GLM_SERVABLE, task_description="Review auth.py"),
-    )
-    assert posted[0][0] == "/v1/sessions/conv_1/hooks/route-subagent"
-    assert posted[0][1]["harness"] == "claude-native"
-    # Every routing input survives the hop — dropping one here silently
-    # changes the server's verdict (requested_model was once lost this way).
-    assert posted[0][1]["requested_model"] == GLM_SERVABLE
-    assert posted[0][1]["prompt"] == "review the diff"
-    assert posted[0][1]["task_description"] == "Review auth.py"
-    assert decision.action == "redirect"
-    assert decision.harness == "codex-native"
-    assert decision.decision_id == "dec_9"
-
-
 async def test_server_relay_resolver_allows_on_hop_failure() -> None:
     class _DeadClient:
         async def post(self, path: str, *, json: dict[str, Any], timeout: float) -> Any:
@@ -1030,31 +406,6 @@ async def test_server_relay_resolver_allows_on_hop_failure() -> None:
     assert "unreachable" in decision.rationale
 
 
-async def test_loopback_endpoint_allows_when_the_resolver_errors(tmp_path: Path) -> None:
-    async def _resolver(session_id: str, req: SubagentRouteRequest) -> SubagentRouteDecision:
-        raise RuntimeError("boom")
-
-    router = start_subagent_router(
-        bridge_dir=tmp_path,
-        session_id="conv_1",
-        resolver=_resolver,
-        loop=asyncio.get_running_loop(),
-    )
-    try:
-        advertised = read_router_endpoint(tmp_path)
-        assert advertised is not None
-        status, payload = await asyncio.to_thread(
-            _post,
-            f"{advertised.url}/v1/sessions/conv_1/route-subagent",
-            {"harness": "claude-native"},
-            advertised.token,
-        )
-        assert status == 200
-        assert payload["action"] == "allow"
-    finally:
-        router.close()
-
-
 # ── Enablement gate + session router lifecycle (P7) ─────────────────
 #
 # Two gates, deliberately named apart. ``routing_enabled`` is the TURN gate: it
@@ -1063,52 +414,6 @@ async def test_loopback_endpoint_allows_when_the_resolver_errors(tmp_path: Path)
 # parent. ``subagent_routing_enabled`` is the SPAWN gate: two-state, stamped at
 # create, and it reads one explicit switch. The turn-gate tests below used to be
 # named ``test_routing_enabled_*``, which read as the spawn gate.
-
-
-@pytest.mark.parametrize(
-    ("mode", "parent_mode", "expected"),
-    [
-        ("on", None, True),
-        ("off", None, False),
-        (None, None, False),
-        # An unset session reads its parent's mode — the turn gate, not the
-        # spawn gate, which is two-state and never re-derives from a parent.
-        (None, "on", True),
-    ],
-)
-def test_turn_routing_enabled_reads_the_session_toggle(
-    mode: str | None, parent_mode: str | None, expected: bool
-) -> None:
-    assert routing_enabled(mode, parent_cost_control_mode=parent_mode) is expected
-
-
-@pytest.mark.parametrize(
-    ("routing_client", "expected"),
-    [
-        # Toggle on but nothing to route with: still off.
-        (None, False),
-        (object(), True),
-    ],
-)
-def test_turn_routing_enabled_requires_a_client_when_caps_are_given(
-    routing_client: object | None, expected: bool
-) -> None:
-    assert routing_enabled("on", caps=FakeCaps(routing_client=routing_client)) is expected
-
-
-def test_turn_routing_enabled_counts_a_managed_policy_llm_factory() -> None:
-    """A managed deployment supplies its routing client later, so it can route.
-
-    Reading the backends directly missed this arm and reported routing off for
-    a deployment the server would have routed.
-    """
-
-    class _ManagedCaps:
-        routing_client = None
-        routing_backends = None
-        policy_llm_connection_factory = object()
-
-    assert routing_enabled("on", caps=_ManagedCaps()) is True
 
 
 @pytest.mark.parametrize(
@@ -1136,79 +441,6 @@ def test_subagent_routing_enabled_is_two_state(override: str | None, expected: b
 # value rather than folded into one bool: "Smart Routing is on" and "Smart
 # Routing also owns the harness" buy different things on codex, and conflating
 # them is what made a plain session pay the routing path's costs.
-
-
-@pytest.mark.parametrize(
-    ("cost_control_mode", "harness_override", "labels", "expected"),
-    [
-        # Plain: no Smart Routing anywhere.
-        (None, None, {}, SessionRoutingClass()),
-        ("off", "codex-native", {}, SessionRoutingClass()),
-        # Pinned: Smart Routing as the model, codex chosen as the harness.
-        (
-            "on",
-            "codex-native",
-            {},
-            SessionRoutingClass(routing_enabled=True, turn_routing=True),
-        ),
-        # Auto-harness, before first-message routing replaces the sentinel.
-        (
-            "on",
-            "auto",
-            {},
-            SessionRoutingClass(routing_enabled=True, auto_harness=True, turn_routing=True),
-        ),
-        # …and after: the sentinel is gone, the durable label is not.
-        (
-            "on",
-            "codex-native",
-            {AUTO_HARNESS_LABEL_KEY: "1"},
-            SessionRoutingClass(routing_enabled=True, auto_harness=True, turn_routing=True),
-        ),
-        # An auto-harness session is a Smart Routing session by construction,
-        # so the label alone implies routing is on.
-        (
-            None,
-            None,
-            {AUTO_HARNESS_LABEL_KEY: "1"},
-            SessionRoutingClass(routing_enabled=True, auto_harness=True, turn_routing=True),
-        ),
-        # Already routed — a web create pinned the model before the pane
-        # launched. The session keeps every other routing affordance; only the
-        # first-message hook is dropped, since it could only say "already
-        # routed" once per prompt.
-        (
-            "on",
-            "claude-native",
-            {ROUTING_DECISION_LABEL_KEY: "rd_1"},
-            SessionRoutingClass(routing_enabled=True),
-        ),
-        # Routing off plus a stale decision label is still plain.
-        ("off", "claude-native", {ROUTING_DECISION_LABEL_KEY: "rd_1"}, SessionRoutingClass()),
-        # An auto session the create could not route keeps its hook: the first
-        # message is its retry.
-        (
-            "on",
-            "auto",
-            {AUTO_HARNESS_LABEL_KEY: "1"},
-            SessionRoutingClass(routing_enabled=True, auto_harness=True, turn_routing=True),
-        ),
-    ],
-)
-def test_routing_class_from_snapshot(
-    cost_control_mode: str | None,
-    harness_override: str | None,
-    labels: dict[str, str],
-    expected: SessionRoutingClass,
-) -> None:
-    assert (
-        routing_class_from_snapshot(
-            cost_control_mode=cost_control_mode,
-            harness_override=harness_override,
-            labels=labels,
-        )
-        == expected
-    )
 
 
 def test_the_recorded_routing_class_survives_until_the_session_ends() -> None:
@@ -1301,28 +533,6 @@ def test_ensure_session_router_quietly_skips_without_a_server_client(tmp_path: P
         is None
     )
     assert not (tmp_path / ADVERTISEMENT_FILE).exists()
-
-
-def test_ensure_session_router_quietly_swallows_a_bind_failure(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from omnigent.runner import subagent_routing as module
-
-    def _boom(session_id: str, **kwargs: Any) -> None:
-        raise OSError("address in use")
-
-    monkeypatch.setattr(module, "ensure_session_router", _boom)
-    assert (
-        ensure_session_router_quietly(
-            "conv_bind_fail",
-            bridge_dir=tmp_path,
-            server_client=object(),  # type: ignore[arg-type]
-            harness="codex-native",
-            caps=FakeCaps(),
-        )
-        is None
-    )
 
 
 def test_relayed_decisions_start_empty() -> None:
@@ -1422,18 +632,6 @@ async def test_an_external_only_deployment_cannot_route_an_off_gateway_spawn() -
     assert decision.model is None
     assert decision.router_source is None
     assert external.calls == []
-
-
-def test_candidate_models_skips_the_static_table_when_it_is_unreachable() -> None:
-    # No catalog and no static fallback leaves nothing to offer.
-    assert candidate_models("claude-native", allow_static_fallback=False) == {}
-    # The live catalog still supplies candidates, in the pane's own spelling.
-    offered = candidate_models(
-        "claude-native",
-        catalog={"self": ["claude-opus-4-8"]},
-        allow_static_fallback=False,
-    )
-    assert offered == {"claude-native": ["claude-opus-4-8"]}
 
 
 async def test_router_source_survives_the_payload_round_trip() -> None:

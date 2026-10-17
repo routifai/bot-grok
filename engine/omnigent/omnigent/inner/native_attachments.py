@@ -14,25 +14,15 @@ that shared decode-and-write step.
 from __future__ import annotations
 
 import base64
-import binascii
-import contextlib
-import errno
-import hashlib
 import logging
-import os
 import re
-import shutil
-import stat
 import urllib.parse
-import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
-from pathlib import Path, PurePath
-from typing import Any, Literal
+from pathlib import PurePath
+from typing import Any
 
 import httpx
-
-from omnigent.process_logging import data_dir
 
 _logger = logging.getLogger(__name__)
 
@@ -100,9 +90,6 @@ _FILESYSTEM_ATTACHMENT_EXTENSIONS: frozenset[str] = frozenset(
     {".zip", ".docx", ".xlsx", ".pptx", ".db", ".sqlite", ".sqlite3"}
 )
 
-# Harnesses supporting uploads and history restoration for these file formats.
-FILESYSTEM_ATTACHMENT_HARNESSES: frozenset[str] = frozenset({"claude-native", "codex-native"})
-
 # Advertised by builds that can deliver and restore these attachments.
 CAP_FILESYSTEM_ATTACHMENTS = "filesystem_attachments"
 
@@ -143,207 +130,6 @@ def inline_filesystem_attachment_name(content: object) -> str | None:
     return None
 
 
-def attachment_cache_dir(bridge_dir: Path) -> Path:
-    """Return the local attachment cache for a native session's bridge.
-
-    The bridge path identifies the session across live turns and resume rebuilds.
-    All harnesses share ``~/.omnigent/attachments/`` (or ``OMNIGENT_DATA_DIR``).
-    """
-    key = hashlib.sha256(os.fsencode(bridge_dir.resolve())).hexdigest()[:32]
-    return data_dir().resolve() / "attachments" / key
-
-
-def materialize_attachment(block: Mapping[str, object], bridge_dir: Path) -> Path | None:
-    """
-    Decode an attachment into the session's cache outside the working directory.
-
-    The artifact store retains the original upload. Local copies are recreated
-    when rebuilding history. Files are never extracted or made executable.
-
-    :param block: A content block dict with ``type`` of
-        ``"input_image"`` or ``"input_file"``. Expected to carry a
-        resolved data URI in ``image_url`` or ``file_data``,
-        e.g. ``"data:image/png;base64,iVBOR..."``. May also carry a
-        ``filename``, e.g. ``"diagram.png"``.
-    :param bridge_dir: Session bridge path, used to identify its attachment cache.
-    :returns: Path to the written file, or ``None`` if the block could
-        not be materialized (missing data URI, decode error).
-    """
-    decoded = _decode_attachment_block(block)
-    if decoded is None:
-        return None
-    raw_bytes, filename = decoded
-
-    if filename in (".", "..") or os.sep in filename:
-        return None
-
-    attachments_dir = attachment_cache_dir(bridge_dir)
-    try:
-        attachments_dir.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        root_fd = os.open(attachments_dir.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-        try:
-            with contextlib.suppress(FileExistsError):
-                os.mkdir(attachments_dir.name, mode=0o700, dir_fd=root_fd)
-            dir_fd = os.open(
-                attachments_dir.name,
-                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
-                dir_fd=root_fd,
-            )
-        finally:
-            os.close(root_fd)
-    except OSError:
-        _logger.warning("Refusing to materialize into %s", attachments_dir, exc_info=True)
-        return None
-    try:
-        stem, suffix = os.path.splitext(filename)
-        digest = hashlib.sha256(raw_bytes).hexdigest()[:12]
-        for name in (filename, f"{stem}_{digest}{suffix}"):
-            outcome = _place_no_follow(dir_fd, name, raw_bytes)
-            if outcome == "symlink":
-                _logger.warning("Refusing to write through symlink %s", attachments_dir / name)
-                return None
-            if outcome == "placed":
-                return attachments_dir / name
-        _logger.warning("Attachment names for %s already hold other content", filename)
-        return None
-    except OSError:
-        _logger.warning("Failed to materialize attachment %s", filename, exc_info=True)
-        return None
-    finally:
-        os.close(dir_fd)
-
-
-def _decode_attachment_block(block: Mapping[str, object]) -> tuple[bytes, str] | None:
-    """
-    Decode a block's data URI and derive a safe base filename for it.
-
-    :param block: Attachment content block (see
-        :func:`materialize_attachment`).
-    :returns: ``(raw_bytes, filename)`` where *filename* carries no
-        directory components and no marker-breaking characters, or ``None``
-        when the block has no usable data URI.
-    """
-    data_uri = block.get("image_url") or block.get("file_data")
-    if not isinstance(data_uri, str) or not data_uri.startswith("data:"):
-        if block.get("file_id"):
-            _logger.error(
-                "Native executor received unresolved file_id %s — "
-                "content resolver may not have run",
-                block["file_id"],
-            )
-        return None
-
-    try:
-        parsed = parse_data_uri(data_uri)
-        raw_bytes = base64.b64decode(parsed.base64_payload)
-    except (ValueError, binascii.Error):
-        _logger.warning("Failed to decode data URI for attachment", exc_info=True)
-        return None
-
-    ext = MIME_TO_EXT.get(parsed.mime_type, "")
-    filename = block.get("filename")
-    if not isinstance(filename, str) or not filename:
-        filename = f"attachment_{uuid.uuid4().hex[:8]}{ext}"
-    else:
-        # ``.name`` drops any directory part, so "../../etc/passwd" becomes
-        # "passwd" and a traversal attempt can't escape the destination dir.
-        filename = Path(filename).name or f"attachment_{uuid.uuid4().hex[:8]}{ext}"
-    return raw_bytes, _MARKER_UNSAFE.sub("_", filename)
-
-
-def _place_no_follow(
-    dir_fd: int, name: str, raw_bytes: bytes
-) -> Literal["placed", "taken", "symlink"]:
-    """
-    Reuse or create *name* under *dir_fd* without following symlinks.
-
-    :param dir_fd: No-follow descriptor for the attachments directory.
-    :param name: Base filename, no directory components.
-    :param raw_bytes: Decoded attachment payload.
-    :returns: ``"placed"`` when the name now holds *raw_bytes* (freshly
-        created, or an identical regular file reused with its execute bits
-        cleared); ``"taken"`` when it holds other content or is not a regular
-        file; ``"symlink"`` when it is a symlink.
-    :raises OSError: When writing a new file fails part-way.
-    """
-    try:
-        # O_NONBLOCK keeps a FIFO planted at the name from hanging the open.
-        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=dir_fd)
-    except FileNotFoundError:
-        return _create_no_follow(dir_fd, name, raw_bytes)
-    except OSError as exc:
-        return "symlink" if exc.errno == errno.ELOOP else "taken"
-    try:
-        info = os.fstat(fd)
-        if not stat.S_ISREG(info.st_mode) or info.st_size != len(raw_bytes):
-            return "taken"
-        if _read_fd(fd, info.st_size) != raw_bytes:
-            return "taken"
-        try:
-            os.fchmod(fd, stat.S_IMODE(info.st_mode) & ~0o111)
-        except OSError:
-            # A reused file must not stay executable; if the bits can't be
-            # cleared, fall through to the collision name instead.
-            return "taken"
-        return "placed"
-    finally:
-        os.close(fd)
-
-
-def _create_no_follow(
-    dir_fd: int, name: str, raw_bytes: bytes
-) -> Literal["placed", "taken", "symlink"]:
-    """
-    Create *name* exclusively under *dir_fd* and write *raw_bytes* to it.
-
-    :param dir_fd: No-follow descriptor for the attachments directory.
-    :param name: Base filename, no directory components.
-    :param raw_bytes: Decoded attachment payload.
-    :returns: ``"placed"`` on success; ``"taken"`` when something appeared at
-        the name first; ``"symlink"`` when that something is a symlink.
-    :raises OSError: When the write fails; the partial file is removed.
-    """
-    try:
-        # Private, non-executable files; existing entries are never overwritten.
-        fd = os.open(
-            name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=dir_fd
-        )
-    except FileExistsError:
-        return "taken"
-    except OSError as exc:
-        return "symlink" if exc.errno == errno.ELOOP else "taken"
-    try:
-        view = memoryview(raw_bytes)
-        while view:
-            view = view[os.write(fd, view) :]
-    except OSError:
-        os.close(fd)
-        with contextlib.suppress(OSError):
-            os.unlink(name, dir_fd=dir_fd)
-        raise
-    os.close(fd)
-    return "placed"
-
-
-def _read_fd(fd: int, size: int) -> bytes:
-    """
-    Read exactly *size* bytes from *fd*, stopping early at end of file.
-
-    :param fd: Open file descriptor positioned at the start.
-    :param size: Number of bytes to read.
-    :returns: The bytes read.
-    """
-    chunks: list[bytes] = []
-    remaining = size
-    while remaining > 0:
-        chunk = os.read(fd, min(remaining, 1024 * 1024))
-        if not chunk:
-            break
-        chunks.append(chunk)
-        remaining -= len(chunk)
-    return b"".join(chunks)
-
-
 # Regex source matching the exact line unresolved_attachment_marker() emits.
 # Consumers (title synthesis, TUI forwarders) compose their marker-matching
 # patterns from this so the shapes cannot drift apart.
@@ -374,26 +160,6 @@ def unresolved_attachment_marker(block: Mapping[str, object]) -> str:
     """
     name = str(block.get("filename") or block.get("file_id") or "attachment")
     return f"[Attachment {_MARKER_UNSAFE.sub('_', name)} could not be loaded]"
-
-
-def attachment_reference_line(block: Mapping[str, object], bridge_dir: Path) -> str:
-    """
-    Materialize *block* and return the transcript line referencing it.
-
-    The line shape is load-bearing: TUI forwarders and title seeding
-    (``omnigent/entities/conversation.py``) match it via
-    :data:`ATTACHMENT_MARKER_STRIP_PATTERN`.
-
-    :param block: Attachment content block (see
-        :func:`materialize_attachment`).
-    :param bridge_dir: Session bridge path identifying the attachment cache.
-    :returns: ``"[Attached: <path>]"`` on success, else the visible
-        marker from :func:`unresolved_attachment_marker`.
-    """
-    path = materialize_attachment(block, bridge_dir)
-    if path is not None:
-        return f"[Attached: {path}]"
-    return unresolved_attachment_marker(block)
 
 
 def has_unresolved_file_id(block: Mapping[str, object]) -> bool:
@@ -502,31 +268,6 @@ def expand_framework_notices(messages: list[dict[str, Any]]) -> list[dict[str, A
         if visible_content or not content:
             result.append({**message, "content": visible_content})
     return result
-
-
-def codex_resize_metadata_path(path: Path, source_metadata: object) -> Path:
-    """Encode resize metadata in a persistent attachment-cache alias."""
-    dimensions = resize_dimensions(source_metadata)
-    if dimensions is None:
-        return path
-    width, height = dimensions["width"], dimensions["height"]
-    try:
-        alias = path.with_name(
-            f"{path.stem[:80]}_{hashlib.sha256(path.read_bytes()).hexdigest()[:12]}"
-            f"__omnigent-downscaled-from-{width}x{height}"
-            f"-request-crop-for-fine-detail{path.suffix}"
-        )
-        if not alias.exists():
-            temporary = alias.with_name(f".{uuid.uuid4().hex}.tmp")
-            try:
-                shutil.copyfile(path, temporary)
-                temporary.replace(alias)
-            finally:
-                temporary.unlink(missing_ok=True)
-    except OSError:
-        _logger.warning("Failed to add resize metadata to Codex image path", exc_info=True)
-        return path
-    return alias
 
 
 async def resolve_file_id_block(

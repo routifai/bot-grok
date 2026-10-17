@@ -12,7 +12,6 @@ from omnigent.entities import (
     MessageData,
     NewConversationItem,
     ReasoningData,
-    SlashCommandData,
     parse_item_data,
 )
 
@@ -304,69 +303,6 @@ def test_parse_invalid_data() -> None:
 
 
 # ── SlashCommandData ───────────────────────────────────
-
-
-def test_parse_slash_command_minimal() -> None:
-    """Skill record (no args, no stdout) round-trips with ``output=None``."""
-    data = parse_item_data(
-        "slash_command",
-        {"agent": "claude-native-ui", "name": "dev-productivity:simplify", "arguments": ""},
-    )
-    assert isinstance(data, SlashCommandData)
-    assert data.name == "dev-productivity:simplify"
-    assert data.arguments == ""
-    assert data.output is None
-    # Records persisted before the ``kind`` field was added default to
-    # ``"skill"`` so old data deserializes without backfill.
-    assert data.kind == "skill"
-
-
-def test_parse_slash_command_with_stdout() -> None:
-    """Record with inline stdout deserializes intact."""
-    data = parse_item_data(
-        "slash_command",
-        {
-            "agent": "claude-native-ui",
-            "name": "oncall",
-            "arguments": "file-bug",
-            "output": "oncall: file-bug subcommand started",
-        },
-    )
-    assert isinstance(data, SlashCommandData)
-    assert data.output == "oncall: file-bug subcommand started"
-
-
-def test_parse_slash_command_kind_command_for_surfaced_cli() -> None:
-    """``kind="command"`` round-trips so the UI can switch the prefix."""
-    data = parse_item_data(
-        "slash_command",
-        {
-            "agent": "claude-native-ui",
-            "kind": "command",
-            "name": "effort",
-            "arguments": "high",
-        },
-    )
-    assert isinstance(data, SlashCommandData)
-    assert data.kind == "command"
-
-
-def test_slash_command_serializes_agent_as_model() -> None:
-    """``agent`` aliases to ``model`` on the wire (parity with MessageData)."""
-    data = SlashCommandData(
-        agent="claude-native-ui",
-        name="dev-productivity:simplify",
-        arguments="",
-    )
-    dumped = data.model_dump(exclude_none=True, by_alias=True)
-    # ``kind`` defaults to ``"skill"`` and is included on the wire so
-    # the UI gets a single shape to switch on (no implicit fallback).
-    assert dumped == {
-        "model": "claude-native-ui",
-        "kind": "skill",
-        "name": "dev-productivity:simplify",
-        "arguments": "",
-    }
 
 
 def test_slash_command_is_non_content() -> None:
