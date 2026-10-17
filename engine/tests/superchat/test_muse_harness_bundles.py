@@ -45,7 +45,7 @@ def test_pi_bundle_differs_from_default_only_in_harness_keys() -> None:
     ]
 
 
-HELPERS = ("worker", "worker/agents/subworker", "notes")
+HELPERS = ("worker", "worker/agents/subworker", "notes", "editor")
 PI_KEYS = ("context_files: false", "system_prompt_mode: replace", "skills: none")
 
 
@@ -96,8 +96,9 @@ def test_spec_loader_loads_both_bundles(
     # No model is named: a session runs on the model picked from its connection.
     assert spec.executor.model is None
     assert spec.executor.config["harness"] == harness
-    # ``notes`` is started by the engine for the daily-note passes, never by start_helper.
-    assert {a.name for a in spec.sub_agents} == {"worker", "notes"}
+    # ``notes`` (the daily-note passes) and ``editor`` (a file's studio) are started by the
+    # engine, never by start_helper.
+    assert {a.name for a in spec.sub_agents} == {"worker", "notes", "editor"}
     worker = next(a for a in spec.sub_agents if a.name == "worker")
     for sub in [*spec.sub_agents, *worker.sub_agents]:
         assert sub.executor.config["harness"] == harness, sub.name
@@ -119,6 +120,23 @@ def test_the_muse_may_call_its_reply_tools(bundle: Path) -> None:
         assert name in allow, name
     # Charts and dashboards are pages built in the host; the retired JSON chart tools stay out.
     assert not {"display_chart", "display_dashboard"} & allow
+
+
+@pytest.mark.parametrize("bundle", [CLAUDE, PI], ids=["claude", "pi"])
+def test_the_editor_edits_one_file_and_never_delegates(bundle: Path) -> None:
+    config = (bundle / "agents/editor/config.yaml").read_text()
+    allow = {line.strip().removeprefix("- ").strip('"') for line in config.splitlines()}
+    for name in ("artifact_save", "artifact_list", "deck_check", "deck_export", "files_*"):
+        assert name in allow, name
+    for name in ("sys_os_*", "session_history", "memory_search", "memory_get", "memory_remember"):
+        assert name in allow, name
+    assert not {"start_helper", "report_progress", "raise_flag", "render_card"} & allow
+    # Outside the helper caps, and no Helper role: start_helper never picks it.
+    keys = {line.split(":", 1)[0] for line in config.splitlines() if line[:1].isalpha()}
+    assert not {"max_sessions", "params"} & keys
+    prompt = config.split("prompt:", 1)[1]
+    assert "base_version" in prompt and "`memory_remember`" in prompt
+    assert "one line" in prompt and "No plan, no delegation" in prompt
 
 
 @pytest.mark.parametrize("bundle", [CLAUDE, PI], ids=["claude", "pi"])

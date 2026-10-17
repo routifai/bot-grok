@@ -3,7 +3,7 @@
 #
 # Superchat's Super Chat bundle (docs/architecture.md), backing
 # `omnigent.context.mode=superside-chat` Conversations. Runs on the Claude Agent SDK harness, with
-# Sub-agent Types (worker, notes) under agents/<type>/ — a Muse launches one by its
+# Sub-agent Types (worker, notes, editor) under agents/<type>/ — a Muse launches one by its
 # declared name, never by naming a model. The prompt (AGENTS.md) carries the Superchat/Muse voice;
 # per-turn Memory, Rollover and the Activity Feed all come from Omnigent itself
 # (ADR 0001, docs/adr/0006-omnigent-owns-everything.md) — Superchat no longer
@@ -73,3 +73,5 @@ tools:
     - worker
     # System-started only (daily-note passes): no Helper role, so start_helper never picks it.
     - notes
+    # A file's studio chat (ADR 0024), made by the engine; no Helper role either.
+    - editor
