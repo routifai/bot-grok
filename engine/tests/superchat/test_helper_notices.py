@@ -163,3 +163,14 @@ def test_a_notice_needs_text_and_a_helper(posted, monkeypatch) -> None:
     monkeypatch.setattr(notices, "_helper_info", _not_a_helper)
     assert "error" in _call("raise_flag", "hello")
     assert posted["posts"] == []
+
+
+def test_the_activity_shows_both_notices_as_plain_lines_of_the_helper() -> None:
+    from omnigent.superchat.activity.derive import step_title_for_call
+
+    progress = json.dumps({"text": "Read the Q3 ledger"})
+    flag = json.dumps({"text": "Using the ledger, not the board pack"})
+    assert step_title_for_call("report_progress", progress) == "Read the Q3 ledger"
+    assert step_title_for_call("raise_flag", flag) == (
+        "Flagged: Using the ledger, not the board pack"
+    )

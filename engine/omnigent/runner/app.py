@@ -135,7 +135,8 @@ from omnigent.server.schemas import (
 )
 from omnigent.spec.skill_sources import resolve_session_skills
 from omnigent.spec.types import AgentSpec, LocalToolInfo, SkillSpec
-from omnigent.superchat.feature import is_helper
+from omnigent.superchat.feature import is_helper, is_super_chat
+from omnigent.superchat.helpers.notices import take_waiting_progress
 from omnigent.superchat.helpers.saved_files import (
     collect_saved_files,
     forget_saved_files,
@@ -5364,6 +5365,21 @@ def create_runner_app(
                 _ingest_now_serving[conv_id] = _seq + 1
                 _cond.notify_all()
 
+    #: When each session's current turn started, until its first streamed token is logged.
+    _turn_started_mono: dict[str, float] = {}
+
+    async def _log_first_token(conv_id: str) -> None:
+        """Log, once per Conversation turn, how long the first streamed token took."""
+        started = _turn_started_mono.pop(conv_id, None)
+        if started is None or not is_super_chat(await _tool_labels_for_session(conv_id)):
+            return
+        _logger.info(
+            "first token for %s %.2fs after the turn started",
+            conv_id,
+            time.monotonic() - started,
+            extra={"session_id": conv_id},
+        )
+
     def _begin_turn_slot(conv_id: str) -> None:
         """Bind the ``None`` sentinel and stamp a fresh epoch for the new turn.
 
@@ -5372,6 +5388,7 @@ def create_runner_app(
         """
         _active_turns[conv_id] = None
         _turn_bind_epoch[conv_id] = next(_turn_epoch_seq)
+        _turn_started_mono[conv_id] = time.monotonic()
 
     def _release_live_turn_markers(conv_id: str) -> None:
         """Clear ``_live_response_id`` and the process-manager in-flight marker atomically.
@@ -5945,6 +5962,9 @@ def create_runner_app(
                     collect_saved_files(entry.child_session_id, _subagent_children)
                 ),
             )
+            # Progress the parent was idle for rides on this wake: one line per other Helper.
+            waiting = take_waiting_progress(entry.parent_session_id, done=entry.child_session_id)
+            notice = "\n".join([*waiting, notice])
             entry.wake_inlined = True
         else:
             notice = _format_subagent_wake_notice(
@@ -7478,6 +7498,8 @@ def create_runner_app(
                                 if _evt_type == "response.output_text.delta":
                                     delta = event.get("delta")
                                     if delta is not None:
+                                        if conv_id in _turn_started_mono:
+                                            await _log_first_token(conv_id)
                                         _text_acc.append(delta)
                                 elif _evt_type == "response.completed":
                                     _stream_failed_error = None

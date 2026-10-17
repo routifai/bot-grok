@@ -211,6 +211,11 @@ def step_title_for_call(tool_name: str, raw_arguments: str) -> str:
         return (
             f"Sent a message to sub-agent '{title}'" if title else "Sent a message to a sub-agent"
         )
+    if tool_name in ("report_progress", "raise_flag"):
+        text = " ".join(str(args.get("text") or "").split())
+        if tool_name == "raise_flag":
+            return f"Flagged: {text}" if text else "Flagged something to check"
+        return text or "Finished a step"
     if tool_name == "artifact_save":
         title = args.get("title")
         name = str(args.get("path") or "").rstrip("/").rsplit("/", 1)[-1]
