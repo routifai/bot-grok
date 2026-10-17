@@ -1,7 +1,7 @@
 # Decks
 
 How the assistant makes slide decks and how they become PowerPoint, as of 2026-10-17. The
-decisions are [ADR 0011](adr/0011-a-deck-is-an-html-file-exported-in-the-computer.md) (a deck is
+decisions are [ADR 0011](adr/0011-a-deck-is-an-html-file-exported-in-the-host.md) (a deck is
 an HTML file exported in the host), [ADR 0012](adr/0012-native-powerpoint-is-a-second-deck-path.md)
 (native PowerPoint as a second path) and
 [ADR 0013](adr/0013-deck-charts-are-chartjs-exported-as-native-charts.md) (Chart.js charts exported

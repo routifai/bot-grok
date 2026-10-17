@@ -11,9 +11,9 @@ One Compose project, `superchat`, from `deployment/compose.yaml`:
 |---|---|---|
 | `postgres` | `postgres:16-alpine` | one database (`omnigent`) with an `engine` schema, created on first init by `deployment/postgres/schemas.sql`; no host port |
 | `engine` | `superchat/engine:local` (`deployment/engine.Dockerfile`) | the API, the built web and the published apps in one process; starts each person's host over the Docker socket |
-| `computer` | `superchat/computer:local` (`deployment/computer.Dockerfile`) | build only (the `build` profile), so `up` never starts it; the engine starts one container per person from this image |
+| `host` | `superchat/host:local` (`deployment/host.Dockerfile`) | build only (the `build` profile), so `up` never starts it; the engine starts one container per person from this image |
 
-The host (the Computer container today) is Ubuntu 24.04 with the distro's Python and data stack,
+The host (one container per person, started by the `docker` host provider) is Ubuntu 24.04 with the distro's Python and data stack,
 the `claude` and `pi` CLIs, the pptx runtime, Chromium (copied out of Playwright's image) and the
 helpers from [`host/`](../host). It has no desktop. Its runner dials the engine back at
 `ENGINE_PUBLIC_URL`, which is why the engine port is published. There is no app server: the browser
@@ -39,7 +39,7 @@ gained), fills blank secrets with `openssl rand`, copies `ANTHROPIC_API_KEY`,
 them, then runs, from the repo root:
 
 ```sh
-docker compose --env-file .env -f deployment/compose.yaml --profile build build computer
+docker compose --env-file .env -f deployment/compose.yaml --profile build build host
 docker compose --env-file .env -f deployment/compose.yaml build engine
 docker compose --env-file .env -f deployment/compose.yaml up -d --wait --wait-timeout 300
 ```
@@ -65,7 +65,7 @@ host.
 | `ENGINE_PUBLIC_URL` | `http://host.docker.internal:<engine port>` | where each host reaches the engine |
 | `SUPERCHAT_ENGINE_BIND` | `127.0.0.1` | the address the engine port binds to |
 | `DOCKER_SOCKET_PATH` | `/var/run/docker.sock` | the socket the engine starts hosts with, as seen inside the Docker VM; set it only for setups such as rootless Docker |
-| `COMPUTER_MEMORY`, `COMPUTER_CPUS`, `COMPUTER_PIDS_LIMIT` | `2g`, `2`, `2048` | per-host limits |
+| `HOST_MEMORY`, `HOST_CPUS`, `HOST_PIDS_LIMIT` | `2g`, `2`, `2048` | per-host limits |
 | `OMNIGENT_ARTIFACT_URI` | blank | artifacts in S3/R2 instead of the `/data` volume |
 | `OMNIGENT_LOCAL_SINGLE_USER` | `1` | set `0` behind a sign-in broker |
 | `IMAGE_REGISTRY`, `IMAGE_TAG` | `superchat`, `local` | which images Compose builds and runs |
@@ -98,7 +98,7 @@ in front of the engine and:
 `deployment/build.sh` builds both images without Compose:
 
 ```sh
-deployment/build.sh                 # superchat/engine:local and superchat/computer:local
+deployment/build.sh                 # superchat/engine:local and superchat/host:local
 deployment/build.sh engine          # one image
 IMAGE_REGISTRY=registry.example/superchat IMAGE_TAG=v1.0.0 \
   PLATFORM=linux/amd64,linux/arm64 PUSH=1 deployment/build.sh
@@ -115,11 +115,11 @@ Compose, keep the CA in a Compose file of your own, outside the repo, that decla
 | Image | Stages |
 |---|---|
 | engine | `web` (pnpm install and `vite build` of `web/app`), `python` (installs `engine/` into `/opt/venv` with the `memory,postgres,s3` extras, CPU-only torch first), `engine` (`python:3.12-slim` with the venv, the web build and `/opt/bundle`: agent bundles, config templates, `start.sh`) |
-| computer | `chromium` (Chromium alone from Playwright's pinned image), `node` (Node 22 for the CLIs), `venv` (the `omnigent` package, whose host half runs here), `computer` (`ubuntu:24.04`, user `superchat`, uid 1000) |
+| host | `chromium` (Chromium alone from Playwright's pinned image), `node` (Node 22 for the CLIs), `venv` (the `omnigent` package, whose host half runs here), `host` (`ubuntu:24.04`, user `superchat`, uid 1000) |
 
 In the engine image, `deployment/engine/start.sh` renders the engine config from the environment
 and runs `deployment/entrypoint.py` (config, migrations, app). PID 1 in a host is
-`superchat-computer`, which only keeps the container alive; the runner and every tool arrive
+`superchat-host`, which only keeps the container alive; the runner and every tool arrive
 through `docker exec` from the engine.
 
 For web development, `pnpm install && pnpm dev` runs the web dev server against the engine at
@@ -131,13 +131,13 @@ a time from `engine/` (see [`engine/README.md`](../engine/README.md)).
 ```sh
 docker compose --env-file .env -f deployment/compose.yaml ps
 docker compose --env-file .env -f deployment/compose.yaml logs -f engine
-docker ps --filter label=omnigent.computer        # the hosts the engine started
-docker logs -f superchat-computer-<key>           # one host
+docker ps --filter label=omnigent.host        # the hosts the engine started
+docker logs -f superchat-host-<key>           # one host
 ```
 
 A blank required secret fails closed at Compose validation; re-run `./deployment/setup.sh` to fill
 it. If a host never starts, the engine cannot reach the Docker socket (check `DOCKER_SOCKET_PATH`)
-or the `superchat/computer` image is missing. If a host starts but the chat waits, its runner
+or the `superchat/host` image is missing. If a host starts but the chat waits, its runner
 cannot reach `ENGINE_PUBLIC_URL`.
 
 ## Reset
@@ -147,11 +147,11 @@ cannot reach `ENGINE_PUBLIC_URL`.
 ./deployment/reset.sh       # stop and delete the Postgres and engine volumes and ./data (asks first; -y skips)
 ```
 
-The hosts are not part of the Compose project: each is a container `superchat-computer-<key>` with
+The hosts are not part of the Compose project: each is a container `superchat-host-<key>` with
 its home on a volume `superchat-home-<key>`, and `reset.sh` leaves both. To remove them too:
 
 ```sh
-docker rm -f $(docker ps -aq --filter label=omnigent.computer)
+docker rm -f $(docker ps -aq --filter label=omnigent.host)
 docker volume ls -q --filter name=superchat-home- | xargs docker volume rm
 ```
 
@@ -191,7 +191,7 @@ set `IMAGE_REGISTRY` and `IMAGE_TAG` in `.env`, then:
 
 ```sh
 docker compose --env-file .env -f deployment/compose.yaml pull engine
-docker compose --env-file .env -f deployment/compose.yaml --profile build pull computer
+docker compose --env-file .env -f deployment/compose.yaml --profile build pull host
 docker compose --env-file .env -f deployment/compose.yaml up -d --wait
 ```
 

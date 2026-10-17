@@ -1,7 +1,7 @@
 # Engine
 
 The engine is one Python package, `omnigent`, and one process. It serves the API and the built web,
-owns Postgres, sessions and scheduling, and starts each person's host (the Computer container
+owns Postgres, sessions and scheduling, and starts each person's host (a Docker container
 today), where a runner runs one harness per session. The same package is installed in the host;
 the host only uses its HOST half. The layers and their rules are decided in
 [ADR 0019](../docs/adr/0019-repository-layout-and-layers.md); the words (engine, host, runner,
@@ -22,7 +22,7 @@ engine/
 └── README.md   the layer map and the where-is table
 ```
 
-Folders not named in the tree (`onboarding/`, `memory/`, `sandbox/`, `terminals/`, `telemetry/`,
+Folders not named in the tree (`hosts/`, `onboarding/`, `memory/`, `sandbox/`, `terminals/`, `telemetry/`,
 `connections/`, `extensions/`, `api/`, `resources/` and the top-level modules) are SHARED until a
 later wave places them.
 
@@ -48,7 +48,7 @@ root, and importing it registers Superchat's tools with `tools/manager.py`
 | Memory and recall | Long-term memory: `memory/` (service, index, upkeep) and `superchat/memory/` (the `memory_*` tools and the profile). Recall: `superchat/recall_hint/` (the bounded hint and its planner) and `superchat/knowledge/recall.py`. File search: `superchat/knowledge/` (engine relays plus the index that runs in the host). |
 | Artifacts and decks | `superchat/artifacts/` (store, routes, patches, write-back) and `superchat/decks/` (the deck kit under `decks/kit/`, authoring, look). Live pages: `superchat/live/`. Sheets: `superchat/sheets/`. |
 | Postgres | Models: `db/db_models.py`. Migrations: `db/migrations/` (Alembic, `db/alembic.ini`). Stores: `stores/` (one folder per store) and `superchat/*/store.py` for feature stores. |
-| The host provider | `hosts/docker.py` launches the host container; `server/hosts.py` tracks the hosts the engine started. |
+| The host provider | `hosts/docker.py` (the `docker` provider; the launcher contract in `hosts/launcher.py`, the provider registry in `hosts/registry.py`) launches the host container; `server/hosts.py` parses the `host:` config block and tracks the hosts the engine started. |
 | The two harnesses | `harnesses/claude_sdk_executor.py` (Claude Agent SDK) and `harnesses/pi_executor.py` (Pi), with their harness wrappers `harnesses/claude_sdk_harness.py` and `harnesses/pi_harness.py`. |
 | The host daemon | `host/` (connect, runner zygote, skills) and the `omnigent host` command in `cli.py`. It runs in every host and starts the runners (`runner/_entry.py`). |
 | The engine entry point | `deployment/entrypoint.py` (config, migrations, app), started by `deployment/engine/start.sh` in the engine image. |

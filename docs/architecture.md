@@ -14,7 +14,7 @@ per-person machine are configured, not rented from a fixed vendor.
 |---|---|---|
 | web | the browser | the UI in `web/app`, built into the engine image and served by the engine |
 | engine | the `engine` container | one Python process (`omnigent`): the API, the built web, Postgres, sessions, scheduling, the model proxy; starts hosts over the Docker socket |
-| host | one container per person (the Computer container today) | runs `omnigent host`, which launches one runner per session; each runner runs one harness |
+| host | one Docker container per person today | runs `omnigent host`, which launches one runner per session; each runner runs one harness |
 
 A message travels:
 
@@ -55,7 +55,7 @@ Everything is a session in Postgres. Two kinds matter:
 - **The conversation.** One per person and tenant, found or created by `GET /v1/me/muse`
   (`superchat/muse.py`). Its id is derived from a hash of the person and tenant, so two first calls
   land on one row. It carries the label `omnigent.context.mode=superside-chat`, which turns on the
-  Superchat tools, and `omnigent.computer.owner`, which picks the host. The agent bundle it runs is
+  Superchat tools, and `omnigent.host.owner`, which picks the host. The agent bundle it runs is
   `OMNIGENT_SUPERCHAT_DEFAULT_AGENT` (`superchat-claude` by default, `superchat-pi` for Pi).
   `POST /v1/sessions/{id}/reset` clears it; the old items stay stored.
 - **Helpers.** Child sessions the assistant starts with `start_helper` for one bounded job. They
@@ -77,12 +77,12 @@ What is added to each turn on top of the prompt is in [context.md](context.md).
 
 ## The host lifecycle
 
-The host provider is `computer` (`engine/omnigent/onboarding/sandboxes/computer.py`); the engine's
-side is `engine/omnigent/server/managed_hosts.py`.
+The host provider is `docker` (`engine/omnigent/hosts/docker.py`), configured by the server
+config's `host:` block; the engine's side is `engine/omnigent/server/hosts.py`.
 
 - **Launch.** The first turn of a session with no live host makes the engine provision the
-  person's container through the Docker Engine API: `superchat-computer-<key>` from
-  `OMNIGENT_COMPUTER_IMAGE`, home on the volume `superchat-home-<key>` mounted at
+  person's container through the Docker Engine API: `superchat-host-<key>` from
+  `OMNIGENT_HOST_IMAGE`, home on the volume `superchat-home-<key>` mounted at
   `/home/superchat`, all capabilities dropped, `no-new-privileges`, the memory, CPU and pid limits
   from the env file, restart policy `unless-stopped`. An existing container is reused (started if
   stopped) and recreated only when the image changed; the home volume survives a recreate. The
@@ -90,10 +90,10 @@ side is `engine/omnigent/server/managed_hosts.py`.
   loop.
 - **Launch token.** The engine mints a launch token per launch and stores only its digest and
   expiry. The host uses it to authenticate its tunnel, and the harness uses `<host_id>:<token>` as
-  its credential at the model proxy. The token lives 7 days (`COMPUTER_MANAGED_TOKEN_TTL_S`); a
+  its credential at the model proxy. The token lives 7 days (`HOST_TOKEN_TTL_S`); a
   relaunch mints a new one. The person's own credentials never enter the host.
 - **Registration.** A launch waits up to 120 seconds for the host to register
-  (`MANAGED_HOST_ONLINE_TIMEOUT_S`); a message that arrives during a launch waits up to 240 seconds
+  (`HOST_ONLINE_TIMEOUT_S`); a message that arrives during a launch waits up to 240 seconds
   for it to settle.
 - **Tunnel ping and liveness.** The engine pings each host and runner tunnel every 30 seconds and
   drops one after 3 missed pings. Liveness is a database stamp refreshed on that ping and read as
@@ -103,11 +103,11 @@ side is `engine/omnigent/server/managed_hosts.py`.
 - **No terminate.** The provider deliberately has no terminate or keep-alive: the host outlives
   any one session.
 
-`GET /v1/sessions/{id}/computer` answers `{ready, launch}`: whether the conversation's runner is
+`GET /v1/sessions/{id}/host` answers `{ready, launch}`: whether the conversation's runner is
 connected, and the launch stage while one is in flight or failed.
 
 A runner sees only an allowlist of process variables plus the names listed in the server config's
-`sandbox.runner_env`, resolved from the engine's environment at launch and passed to the
+`host.runner_env`, resolved from the engine's environment at launch and passed to the
 `docker exec` call (never into a command string). The host has no outbound network filter today.
 
 ## Models and keys

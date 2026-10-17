@@ -20,7 +20,7 @@ Later steps follow the same rule:
 - The decisions inbox and the Feed served by the engine.
 - Error and outcome codes instead of English copy.
 - Redaction applied by the engine.
-- Generic labels for the Computer launcher.
+- Generic labels for the host launcher.
 
 ## Considered options
 
