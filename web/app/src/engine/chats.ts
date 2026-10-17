@@ -49,6 +49,14 @@ async function requireOwnHelper(botId: string, chatId: string): Promise<void> {
   }
 }
 
+/** Where a message goes: the Conversation, or one of the Muse's chats a person writes in (a
+ * file's studio chat, `artifacts.chat`); `NOT_FOUND` for any other chat. */
+async function targetChat(input: { botId: string; chatId?: string }): Promise<string> {
+  if (!input.chatId) return requireMuse(input.botId);
+  await requireOwnHelper(input.botId, input.chatId);
+  return input.chatId;
+}
+
 /** A workspace folder (relative, as the Files browser lists it; `""` is the whole workspace) as
  * an absolute path under the Muse's workspace root. */
 async function folderWorkspace(
@@ -143,7 +151,9 @@ export async function* watchFamily(
         yield { type: "turnDone", chatId: frame.chat_id, status: frame.status };
       } else if (frame.type === "chats.changed") yield { type: "chatsChanged" };
       else if (frame.type === "activities.changed") yield { type: "activitiesChanged" };
-      else yield { type: "heartbeat" };
+      else if (frame.type === "artifacts.changed") {
+        yield { type: "artifactsChanged", groupId: frame.group_id };
+      } else yield { type: "heartbeat" };
     }
   } catch (error) {
     // A closed tab aborts the fetch; that is the normal end of a watch, not a failure.
@@ -159,12 +169,13 @@ export async function* watchFamily(
  */
 export async function sendToChat(input: {
   botId: string;
+  chatId?: string;
   text?: string;
   attachments?: Parameters<typeof validateWorkspaceAttachments>[0];
   folders?: string[];
   context?: { openArtifact?: { artifactId: string; version: number } };
 }): Promise<{ ok: true }> {
-  const sessionId = await requireMuse(input.botId);
+  const sessionId = await targetChat(input);
   const text = promptTextForWorkspaceAttachments(
     input.text,
     validateWorkspaceAttachments(input.attachments ?? []),
@@ -246,7 +257,7 @@ export const chatsRouter = {
       setMessageArtifact(input),
     ),
     interrupt: os.chats.interrupt.handler(async ({ input }) => {
-      const sessionId = await requireMuse(input.botId);
+      const sessionId = await targetChat(input);
       await onSuperChat(interruptOmnigentSession(engineClient(), NO_EMAIL, sessionId));
       return { ok: true as const };
     }),

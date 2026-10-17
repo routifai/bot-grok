@@ -21,6 +21,8 @@ export const FamilyEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("chatReset"), chatId: z.string(), itemId: z.string() }),
   z.object({ type: z.literal("chatsChanged") }),
   z.object({ type: z.literal("activitiesChanged") }),
+  /** A version of a file was saved (`groupId`: the file, `Artifact.groupId`). */
+  z.object({ type: z.literal("artifactsChanged"), groupId: z.string() }),
   z.object({ type: z.literal("heartbeat") }),
 ]);
 export type FamilyEvent = z.infer<typeof FamilyEventSchema>;
@@ -55,6 +57,8 @@ export const chatsContract = {
         z
           .object({
             botId: Id,
+            /** A file's studio chat (`artifacts.chat`) instead of the Conversation (ADR 0024). */
+            chatId: Id.optional(),
             text: z.string().optional(),
             attachments: z.array(WorkspaceAttachmentSchema).max(ATTACHMENT_MAX_COUNT).optional(),
             /** Workspace folders (relative, as the Files browser lists them) the message points at. */
@@ -84,7 +88,15 @@ export const chatsContract = {
       .input(z.object({ botId: Id, itemId: Id, artifactId: Id.nullable() }))
       .output(ThreadMessageSchema),
     /** Stops the turn running in the Muse's Conversation; messages waiting behind it are cancelled. */
-    interrupt: oc.input(z.object({ botId: Id })).output(z.object({ ok: z.literal(true) })),
+    interrupt: oc
+      .input(
+        z.object({
+          botId: Id,
+          /** A file's studio chat instead of the Conversation. */
+          chatId: Id.optional(),
+        }),
+      )
+      .output(z.object({ ok: z.literal(true) })),
     /** Where the Conversation works: its Project (its working directory is a Project folder) or
      * null, the folder relative to the workspace (null: the whole workspace) and whether the
      * person chose it. */

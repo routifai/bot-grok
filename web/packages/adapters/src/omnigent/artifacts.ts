@@ -27,6 +27,8 @@ export interface OmnigentArtifact {
   /** The version this one was edited from (set on `manual` versions). */
   parent_version_id?: string | null;
   edit_summary?: string | null;
+  /** The file's stable id, the same on every version (ADR 0024). */
+  group_id?: string;
 }
 
 export type OmnigentPublishAudience = "owner" | "org" | "link";
@@ -60,8 +62,11 @@ export interface OmnigentArtifactVersion {
   /** The person's message of the turn that saved it, in whichever chat ran the turn. */
   turn_item_id?: string | null;
   chat_id?: string | null;
-  /** The person's message in the Conversation that led to it (docs/conversation.md). */
+  /** The person's message that led to it (docs/conversation.md): in the file's studio chat
+   * when `from_studio`, else in the Conversation. */
   item_id?: string | null;
+  /** Saved from the file's own studio chat (ADR 0024). */
+  from_studio?: boolean;
 }
 
 /** The person's Conversation message a version came from, or null (made by hand, or by a chat
@@ -71,6 +76,7 @@ export function versionMessageId(
   version: OmnigentArtifactVersion,
   conversationId: string,
 ): string | null {
+  if (version.from_studio) return version.item_id ?? null;
   if (version.item_id !== undefined) return version.item_id ?? null;
   if (version.origin === "manual" || version.origin === "restore") return null;
   return version.chat_id === conversationId ? (version.turn_item_id ?? null) : null;
@@ -127,6 +133,21 @@ export async function fetchOmnigentArtifactContent(
   const response = await fetch(url, { headers: omnigentHeaders(config, email) });
   await throwOnError(response, "read artifact content", config.secrets);
   return new Uint8Array(await response.arrayBuffer());
+}
+
+/** `POST /v1/artifacts/{id}/chat` — the file's studio chat session (any version id), made on
+ * first open (ADR 0024). Never wakes the host. */
+export async function openOmnigentArtifactChat(
+  config: OmnigentClientConfig,
+  email: string,
+  id: string,
+): Promise<{ session_id: string; created: boolean }> {
+  const response = await fetch(artifactUrl(config, id, "/chat"), {
+    method: "POST",
+    headers: omnigentHeaders(config, email),
+  });
+  await throwOnError(response, "open artifact chat", config.secrets);
+  return (await response.json()) as { session_id: string; created: boolean };
 }
 
 /** `DELETE /v1/artifacts/{id}` — the deliverable and all its versions. */

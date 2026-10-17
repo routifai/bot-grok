@@ -40,6 +40,8 @@ export const ArtifactSchema = z.object({
   origin: z.string().optional(),
   /** The chat that saved this version (a Helper or update run for theirs), if known. */
   chatId: Id.nullable().optional(),
+  /** The file's stable id, the same on every version (ADR 0024). */
+  groupId: Id.nullish(),
 });
 
 export type Artifact = z.infer<typeof ArtifactSchema>;
@@ -56,8 +58,11 @@ export const ArtifactVersionSchema = z.object({
   editSummary: z.string().nullable().optional(),
   /** The chat that saved it (a Helper or update run for theirs); null before this was kept. */
   chatId: Id.nullable().optional(),
-  /** The person's message whose turn saved it; null for a version made by hand. */
+  /** The person's message whose turn saved it; null for a version made by hand. In the file's
+   * studio chat when `fromStudio`, else in the Conversation. */
   itemId: Id.nullable().optional(),
+  /** Saved from the file's own studio chat (ADR 0024). */
+  fromStudio: z.boolean().optional(),
 });
 
 export type ArtifactVersion = z.infer<typeof ArtifactVersionSchema>;
@@ -121,6 +126,10 @@ export const artifactsContract = {
       ),
     listVersions: oc.input(z.object({ familyId: Id })).output(z.array(ArtifactVersionSchema)),
     getById: oc.input(z.object({ artifactId: Id })).output(ArtifactWithContentSchema),
+    /** The file's studio chat (any version id), made on first open; never wakes the host. */
+    chat: oc
+      .input(z.object({ artifactId: Id }))
+      .output(z.object({ sessionId: Id, created: z.boolean() })),
     remove: oc.input(z.object({ artifactId: Id })).output(z.object({ ok: z.literal(true) })),
     /** Makes this earlier version (its id) the newest again, as a new `restore` version. */
     restore: oc.input(z.object({ artifactId: Id })).output(ArtifactSchema),

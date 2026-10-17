@@ -11,6 +11,7 @@ import {
   getOmnigentArtifact,
   listOmnigentArtifacts,
   OmnigentApiError,
+  openOmnigentArtifactChat,
   restoreOmnigentArtifact,
   versionMessageId,
 } from "@superchat/adapters/omnigent/browser";
@@ -88,6 +89,7 @@ export const artifactsRouter = {
         editSummary: version.edit_summary ?? null,
         chatId: version.chat_id ?? null,
         itemId: versionMessageId(version, conversationId),
+        fromStudio: version.from_studio ?? false,
       }));
     }),
     getById: os.artifacts.getById.handler(async ({ input }) => {
@@ -100,6 +102,15 @@ export const artifactsRouter = {
         ...toArtifact(detail, (await ownerOf(detail.parent_session_id)) ?? null),
         contentBase64: bytesToBase64(bytes),
       };
+    }),
+    // The file's studio chat (ADR 0024): one per file, made on first open.
+    chat: os.artifacts.chat.handler(async ({ input }) => {
+      const opened = await openOmnigentArtifactChat(
+        engineClient(),
+        NO_EMAIL,
+        input.artifactId,
+      ).catch(notFound);
+      return { sessionId: opened.session_id, created: opened.created };
     }),
     restore: os.artifacts.restore.handler(async ({ input }) => {
       const created = await restoreOmnigentArtifact(

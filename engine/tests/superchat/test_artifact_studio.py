@@ -278,7 +278,9 @@ def test_a_studio_save_needs_its_base_and_stays_out_of_super_chat(env) -> None:
     version = client.get(f"/v1/artifacts/{ok.json()['id']}").json()["all_versions"][0]
     # The studio turn's own message; no chip on any of Super Chat's messages.
     assert version["item_id"] == asked
-    assert version["chat_id"] == studio
+    assert version["chat_id"] == studio and version["from_studio"] is True
+    first = client.get(f"/v1/artifacts/{v1['id']}").json()["all_versions"][-1]
+    assert first["from_studio"] is False
     assert linked == []
     # Another file saved from the studio (an export) needs no base.
     assert _save(client, chat, "deck.pdf", body=b"%PDF", chat_id=studio).status_code == 201

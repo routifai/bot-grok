@@ -691,6 +691,7 @@ def create_artifacts_router(
         versions = await asyncio.to_thread(store.versions, item)
         pub = await asyncio.to_thread(store.publication_for, item)
         stats = (await asyncio.to_thread(store.stats, [pub.slug])).get(pub.slug) if pub else None
+        studio = studio_of(item)
         return {
             **artifact_to_response(item, versions=len(versions), publication=pub, stats=stats),
             "all_versions": [
@@ -705,6 +706,8 @@ def create_artifacts_router(
                     "turn_item_id": v.turn_item_id,
                     "chat_id": v.chat_id,
                     "item_id": v.item_id,
+                    # Saved from the file's own studio chat; item_id is then its message there.
+                    "from_studio": v.chat_id is not None and v.chat_id == studio,
                 }
                 for v in versions
             ],

@@ -38,6 +38,7 @@ export function toArtifact(item: OmnigentArtifact, botId: string | null): Artifa
     createdAt: iso(item.created_at),
     origin: item.origin,
     chatId: item.chat_id ?? null,
+    groupId: item.group_id ?? null,
   };
 }
 

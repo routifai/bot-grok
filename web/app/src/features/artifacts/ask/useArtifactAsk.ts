@@ -10,6 +10,8 @@ export type AskArtifact = {
   version: number;
   /** The Muse that owns the artifact; its Conversation receives the request. */
   botId: string;
+  /** The file's studio chat (ADR 0024): the request goes there instead of the Conversation. */
+  chatId?: string;
 };
 
 export type AskStatus =
@@ -58,8 +60,20 @@ export function useArtifactAsk({
   statusRef.current = status;
   const base = useRef(0);
   const botId = artifact?.botId;
+  const chatId = artifact?.chatId;
+  // The chat whose turn answers: the studio's own, or the Conversation's.
+  const turnChat = chatId ?? botId;
   const artifactId = artifact?.id ?? "";
   const version = artifact?.version ?? 0;
+  // A studio turn is followed to its end (the canvas stays read-only until then), not only to
+  // the version it saves.
+  const [running, setRunning] = useState(false);
+  useEffect(() => {
+    if (!botId || !chatId || !running) return;
+    return watchFamily(botId, (event) => {
+      if (event.type === "turnDone" && event.chatId === chatId) setRunning(false);
+    });
+  }, [botId, chatId, running]);
 
   // A newer version on screen while asking is the answer. After a reply, a later version may be
   // anyone's (a Helper's, a hand edit): the reply is stale, so the line clears.
@@ -78,7 +92,7 @@ export function useArtifactAsk({
     let timer: number | undefined;
     let cancelled = false;
     const stop = watchFamily(botId, (event) => {
-      if (event.type !== "turnDone" || event.chatId !== botId) return;
+      if (event.type !== "turnDone" || event.chatId !== turnChat) return;
       window.clearTimeout(timer);
       timer = window.setTimeout(async () => {
         // A version saved but not on screen yet (the view's poll is paused in a hidden tab):
@@ -89,7 +103,7 @@ export function useArtifactAsk({
           .catch(() => 0);
         if (cancelled || newest > base.current) return;
         const reply = await rpc.chats
-          .transcript({ botId })
+          .transcript(chatId ? { botId, chatId } : { botId })
           .then((page) => lastReplyText(page.messages))
           .catch(() => "");
         const current = statusRef.current;
@@ -102,7 +116,7 @@ export function useArtifactAsk({
       window.clearTimeout(timer);
       stop();
     };
-  }, [botId, artifactId, status.kind]);
+  }, [botId, chatId, turnChat, artifactId, status.kind]);
 
   const send = useCallback(
     async (words: string, savedVersion?: number) => {
@@ -111,12 +125,15 @@ export function useArtifactAsk({
       // The newest saved version (one just saved by hand may not be on screen yet) is the base.
       base.current = Math.max(version, savedVersion ?? 0);
       setStatus({ kind: "sending", asked });
+      if (chatId) setRunning(true);
       try {
         const block = await contextBlock();
-        await rpc.chats.send({ botId, text: block ? `${block}\n\n${asked}` : asked });
+        const text = block ? `${block}\n\n${asked}` : asked;
+        await rpc.chats.send(chatId ? { botId, chatId, text } : { botId, text });
         setStatus((current) => (current.kind === "sending" ? { kind: "editing", asked } : current));
         return true;
       } catch (error) {
+        setRunning(false);
         setStatus({
           kind: "failed",
           asked,
@@ -125,16 +142,18 @@ export function useArtifactAsk({
         return false;
       }
     },
-    [botId, contextBlock, version],
+    [botId, chatId, contextBlock, version],
   );
 
   const stop = useCallback(async () => {
     if (!botId) return;
     setStatus({ kind: "idle" });
-    await rpc.chats.interrupt({ botId }).catch(() => undefined);
-  }, [botId]);
+    setRunning(false);
+    await rpc.chats.interrupt(chatId ? { botId, chatId } : { botId }).catch(() => undefined);
+  }, [botId, chatId]);
 
   const dismiss = useCallback(() => setStatus({ kind: "idle" }), []);
 
-  return { status, send, stop, dismiss, available: !!botId };
+  /** `running`: a studio turn this ask started has not ended yet. */
+  return { status, send, stop, dismiss, available: !!botId, running };
 }
