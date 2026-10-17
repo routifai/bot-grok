@@ -24,7 +24,6 @@ from starlette.datastructures import Headers
 from starlette.types import Message, Receive, Scope, Send
 
 from omnigent.context.labels import is_superside_chat
-from omnigent.context.side_chat_seeds import seed_pending, wait_for_seed
 from omnigent.db.workspace_cache import WorkspaceScopedCache
 from omnigent.debug_logging import add_audit_attrs, debug_event, mark_request_audit_suppressed
 from omnigent.entities import (
@@ -196,7 +195,6 @@ from omnigent.server.routes._sessions.helpers import (
     require_filesystem_attachment_runtime,
 )
 from omnigent.server.routes._sessions.orchestration import (
-    _adopt_parent_host_for_side_chat,
     _best_effort_stop,
     _child_session_summaries_from_conversations,
     _dispatch_session_event_to_runner,
@@ -238,7 +236,6 @@ from omnigent.stores import AgentStore, ConversationStore
 from omnigent.stores.artifact_store import ArtifactStore
 from omnigent.stores.conversation_store import (
     RUNNER_LIVENESS_TTL_S,
-    SIDE_CHAT_LABEL_KEY,
     runner_seen_is_fresh,
 )
 from omnigent.stores.file_store import FileStore
@@ -799,12 +796,6 @@ def register_events_routes(
             # Marked only after authorization, so an unauthorized caller
             # cannot flip a session to "running" even transiently.
             in_flight.enter_context(_mark_dispatch_in_flight(session_id))
-        if body.type in ("message", _SLASH_COMMAND_TYPE) and seed_pending(session_id):
-            # A side chat's seed must land before its first own message.
-            await wait_for_seed(session_id)
-            conv = (
-                await asyncio.to_thread(conversation_store.get_conversation, session_id)
-            ) or conv
         created_by = _attribution_user(user_id)
         body_created_by = _attribution_user(body.created_by)
         if body_created_by is not None:
@@ -825,17 +816,6 @@ def register_events_routes(
                 pass
             else:
                 created_by = body_created_by
-        # An archived Side Chat that gets a new user message is being resumed on
-        # purpose: unarchive it (maybe_unarchive_on_user_message holds the rule) and
-        # tell its family, so lists show it again.
-        if body.type == "message" and conv.archived:
-            from omnigent.superchat.family.signals import notify_session_changed
-            from omnigent.superchat.side_chats.chats import maybe_unarchive_on_user_message
-
-            if await asyncio.to_thread(
-                maybe_unarchive_on_user_message, conversation_store, session_id
-            ):
-                await notify_session_changed(conversation_store, session_id)
         # Validate event type at the route boundary. Anything not in
         # ``_ALLOWED_EVENT_TYPES`` is a client mistake — failing here
         # is far better than silently persisting an item the agent
@@ -1925,9 +1905,7 @@ def register_events_routes(
             and conv.kind != "sub_agent"
             and (
                 session_has_deferred_dispatch(session_id)
-                or await managed_wake_may_precede_dispatch(
-                    conv, request.app.state, conversation_store
-                )
+                or await managed_wake_may_precede_dispatch(conv, request.app.state)
             )
         ):
             if body.if_running:
@@ -1957,14 +1935,6 @@ def register_events_routes(
 
             schedule_deferred_message_dispatch(session_id, _wake_and_forward, _fail_turn)
             return {"queued": True, "item_id": stored.id}
-        # A Side Chat shares its parent's host: wake it once, bind, then relaunch below.
-        conv = await _adopt_parent_host_for_side_chat(
-            session_id=session_id,
-            conv=conv,
-            app_state=request.app.state,
-            conversation_store=conversation_store,
-            runner_router=runner_router,
-        )
         # Item event (message, function_call_output, etc.).
         if conv.host_id is not None and await _maybe_wake_stale_resumable_managed_sandbox(
             session_id=session_id,

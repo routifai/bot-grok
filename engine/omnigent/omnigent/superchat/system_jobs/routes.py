@@ -13,7 +13,6 @@ from fastapi import APIRouter, FastAPI, Request
 
 from omnigent.server.auth import RESERVED_USER_LOCAL, AuthProvider
 from omnigent.server.routes._auth_helpers import require_user
-from omnigent.superchat.muse import muse_key
 
 
 def _every(seconds: float) -> str:
@@ -39,7 +38,7 @@ def _last_upkeep_run(coordinator: Any, owner: str) -> int | None:
     return run.finished_at or run.started_at
 
 
-def collect_jobs(app: FastAPI, owner: str, key: str) -> list[dict[str, Any]]:
+def collect_jobs(app: FastAPI, owner: str) -> list[dict[str, Any]]:
     """Build the caller's job rows from what the server is running."""
     jobs: list[dict[str, Any]] = []
 
@@ -61,22 +60,6 @@ def collect_jobs(app: FastAPI, owner: str, key: str) -> list[dict[str, Any]]:
         }
     )
 
-    sweeper = getattr(app.state, "side_chat_archive_sweeper", None)
-    sweeper_interval = float(sweeper.interval_s) if sweeper is not None else 3600.0
-    jobs.append(
-        {
-            "id": "side_chat_archiving",
-            "name": "Side chat archiving",
-            "description": (
-                "Archives side chats you have not touched for a while, so your list stays tidy. "
-                "You choose how long in the settings, or turn it off."
-            ),
-            "schedule": _every(sweeper_interval),
-            "last_run_at": getattr(sweeper, "last_sweep_at", None),
-            "next_run_at": _next(getattr(sweeper, "last_sweep_at", None), sweeper_interval),
-            "enabled": sweeper is not None and sweeper.enabled_for(key),
-        }
-    )
     jobs.extend(_note_jobs(app, owner))
     return jobs
 
@@ -145,7 +128,9 @@ def _note_jobs(app: FastAPI, owner: str) -> list[dict[str, Any]]:
     ]
 
 
-def create_system_jobs_router(app: FastAPI, *, auth_provider: AuthProvider | None = None) -> APIRouter:
+def create_system_jobs_router(
+    app: FastAPI, *, auth_provider: AuthProvider | None = None
+) -> APIRouter:
     """Build the router (mount with ``prefix="/v1"``)."""
     router = APIRouter()
 
@@ -154,8 +139,7 @@ def create_system_jobs_router(app: FastAPI, *, auth_provider: AuthProvider | Non
         """The engine's recurring background jobs, with this person's last and next run."""
         user_id = require_user(request, auth_provider)
         owner = user_id or RESERVED_USER_LOCAL
-        tenant = auth_provider.get_tenant(request) if auth_provider is not None else None
-        jobs = await asyncio.to_thread(collect_jobs, app, owner, muse_key(owner, tenant))
+        jobs = await asyncio.to_thread(collect_jobs, app, owner)
         return {"jobs": jobs}
 
     return router

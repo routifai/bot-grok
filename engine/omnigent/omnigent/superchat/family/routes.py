@@ -32,9 +32,9 @@ def register_family_routes(
     @router.get("/sessions/{session_id}/family/stream", response_model=None)
     async def stream_family(request: Request, session_id: str) -> StreamingResponse:
         """
-        Subscribe to the events of a Super Chat, its Side Chats and its Helpers.
+        Subscribe to the events of a Super Chat and its Helpers.
 
-        :param session_id: The Super Chat (or one of its Side Chats, resolved to its Super Chat).
+        :param session_id: The Super Chat.
         :returns: SSE frames: ``message.done``, ``message.delivery``, ``turn.done``,
             ``chat.reset``, ``chats.changed``, ``activities.changed``, ``session.heartbeat``.
             Ids only; the client refetches.
@@ -48,11 +48,6 @@ def register_family_routes(
         root_id = await asyncio.to_thread(resolve_super_chat_id, conversation_store, session_id)
         if root_id is None:
             raise _session_not_found()
-        if root_id != session_id:
-            # The stream covers the whole family: READ on the one asked for is not enough.
-            await _require_access_and_level(
-                user_id, root_id, LEVEL_READ, permission_store, conversation_store
-            )
 
         async def frames():
             async for event in watch_family(conversation_store, root_id):

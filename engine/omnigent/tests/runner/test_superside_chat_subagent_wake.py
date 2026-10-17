@@ -1,13 +1,9 @@
 """Tests for the superside-chat sub-agent wake (slice S3).
 
-Two behaviors on top of the plain-mode wake (``[System: ... waiting in
-inbox]``, covered by ``test_stranded_wake_retry_on_reconnect.py``):
-
-- a ``superside_chat`` work entry's wake notice inlines the sub-agent's
-  Result itself instead of only announcing "N results waiting";
-- when the Originating Chat is an archived Side Chat, the wake is
-  redirected to its Super Chat (resolved from ``omnigent.side_chat.parent_id``),
-  with a one-line note naming the archived chat.
+On top of the plain-mode wake (``[System: ... waiting in inbox]``, covered by
+``test_stranded_wake_retry_on_reconnect.py``), a ``superside_chat`` work entry's
+wake notice inlines the sub-agent's Result itself instead of only announcing
+"N results waiting".
 """
 
 from __future__ import annotations
@@ -20,7 +16,6 @@ import httpx
 import pytest
 
 from omnigent.runner import create_runner_app
-from omnigent.stores.conversation_store import SIDE_CHAT_LABEL_KEY, SIDE_CHAT_PARENT_LABEL_KEY
 from tests.runner.conftest import _FakeProcessManager, _runner_client, _ScriptedHarnessClient
 from tests.runner.helpers import NullServerClient
 
@@ -194,62 +189,3 @@ async def test_plain_mode_wake_is_unchanged(_no_wake_backoff: list[float]) -> No
     finally:
         runner_app.unregister_subagent_work(child_id)
         runner_app._session_inboxes_ref.pop(parent_id, None)
-
-
-@pytest.mark.asyncio
-async def test_superside_chat_wake_redirects_archived_side_chat_to_super_chat(
-    _no_wake_backoff: list[float],
-) -> None:
-    """An archived Side Chat's wake is redirected to its Super Chat, with a note."""
-    from omnigent.runner import app as runner_app
-
-    side_chat_id = "e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
-    super_chat_id = "f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3"
-    child_id = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"
-    session_inbox: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
-    server_client = _RecordingServerClient(
-        snapshots={
-            side_chat_id: {
-                "archived": True,
-                "labels": {
-                    SIDE_CHAT_LABEL_KEY: "1",
-                    SIDE_CHAT_PARENT_LABEL_KEY: super_chat_id,
-                },
-            },
-        }
-    )
-    pm = _FakeProcessManager(_ScriptedHarnessClient([]))
-    app = create_runner_app(
-        process_manager=pm,  # type: ignore[arg-type]
-        server_client=server_client,  # type: ignore[arg-type]
-    )
-
-    # The entry's bookkeeping (inbox, wake-pending dedup) stays keyed by the
-    # Side Chat — only the wake POST's destination is redirected.
-    runner_app._session_inboxes_ref[side_chat_id] = session_inbox
-    runner_app.register_subagent_work(
-        parent_session_id=side_chat_id,
-        child_session_id=child_id,
-        agent="reviewer",
-        title="auth",
-        superside_chat=True,
-    )
-    try:
-        async with _runner_client(app) as client:
-            await _complete_child(client, child_id, "FINDINGS: redirected result.")
-            deadline = asyncio.get_running_loop().time() + 5.0
-            while not server_client.posts:
-                if asyncio.get_running_loop().time() > deadline:
-                    raise AssertionError("no wake POST observed within 5s")
-                await asyncio.sleep(0.01)
-
-        assert len(server_client.posts) == 1
-        url, _body = server_client.posts[0]
-        assert url == f"/v1/sessions/{super_chat_id}/events"
-        text = _notice_text(server_client.posts[0])
-        assert "archived Side Chat" in text
-        assert side_chat_id in text
-        assert "FINDINGS: redirected result." in text
-    finally:
-        runner_app.unregister_subagent_work(child_id)
-        runner_app._session_inboxes_ref.pop(side_chat_id, None)

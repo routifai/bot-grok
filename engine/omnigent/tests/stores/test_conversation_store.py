@@ -5025,29 +5025,6 @@ def test_fork_conversation_agent_id_override(
     )
 
 
-def test_side_chat_parent_id_falls_back_to_the_fork_label_for_older_side_chats() -> None:
-    from omnigent.stores.conversation_store import (
-        FORK_SOURCE_LABEL_KEY,
-        SIDE_CHAT_LABEL_KEY,
-        SIDE_CHAT_PARENT_LABEL_KEY,
-        side_chat_parent_id,
-    )
-
-    assert side_chat_parent_id({SIDE_CHAT_LABEL_KEY: "1", FORK_SOURCE_LABEL_KEY: "old"}) == "old"
-    assert (
-        side_chat_parent_id(
-            {
-                SIDE_CHAT_LABEL_KEY: "1",
-                SIDE_CHAT_PARENT_LABEL_KEY: "new",
-                FORK_SOURCE_LABEL_KEY: "x",
-            }
-        )
-        == "new"
-    )
-    # A plain fork is not a Side Chat: its fork label is no parent link.
-    assert side_chat_parent_id({FORK_SOURCE_LABEL_KEY: "src"}) is None
-
-
 def test_get_session_connectivity_batches_runner_and_host(
     conversation_store: SqlAlchemyConversationStore,
     db_uri: str,
@@ -5888,28 +5865,6 @@ def test_list_conversations_filters_by_pinned_label(
     # Unpin (Alice's key deleted) removes it from her pinned filter.
     conversation_store.delete_label(pinned.id, pinned_label_key("alice"))
     assert conversation_store.list_conversations(pinned=True, pinned_owner="alice").data == []
-
-
-def test_list_conversations_filters_by_fork_source_id(
-    conversation_store: SqlAlchemyConversationStore,
-) -> None:
-    """``list_conversations(fork_source_id=X)`` returns only sessions whose
-    ``FORK_SOURCE_LABEL_KEY`` label equals ``X`` — powers ``session_history``'s
-    ``list_chats`` side-chat discovery."""
-    from omnigent.stores.conversation_store import FORK_SOURCE_LABEL_KEY
-
-    source = conversation_store.create_conversation(title="source")
-    child = conversation_store.create_conversation(title="child")
-    other_child = conversation_store.create_conversation(title="other child")
-    unrelated = conversation_store.create_conversation(title="unrelated")
-    conversation_store.set_labels(child.id, {FORK_SOURCE_LABEL_KEY: source.id})
-    conversation_store.set_labels(other_child.id, {FORK_SOURCE_LABEL_KEY: "conv_someone_else"})
-
-    page = conversation_store.list_conversations(fork_source_id=source.id)
-    ids = {c.id for c in page.data}
-    assert ids == {child.id}
-    assert other_child.id not in ids
-    assert unrelated.id not in ids
 
 
 def test_pinned_label_key_fits_column_for_long_user_ids() -> None:

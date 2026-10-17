@@ -158,9 +158,9 @@ def test_store_reads_person_messages_of_live_super_chats(db_uri: str) -> None:
     from omnigent.db.utils import get_or_create_engine
 
     notes = SqlAlchemyDailyNoteStore(db_uri)
-    chat, side = uuid.uuid4().hex, uuid.uuid4().hex
+    chat, helper = uuid.uuid4().hex, uuid.uuid4().hex
     with Session(get_or_create_engine(db_uri)) as db:
-        for cid, labels in ((chat, {}), (side, {"omnigent.side_chat": "1"})):
+        for cid, labels in ((chat, {}), (helper, {"omnigent.subagent": "1"})):
             db.add(
                 SqlConversation(
                     id=cid, created_at=1, updated_at=1, root_conversation_id=cid, archived=False

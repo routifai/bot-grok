@@ -39,7 +39,6 @@ from omnigent.server.routes.sessions.routes_core import CoreSessionOps
 from omnigent.server.schemas import SessionCreateRequest
 from omnigent.stores import AgentStore, ConversationStore
 from omnigent.stores.conversation_store import (
-    SIDE_CHAT_LABEL_KEY,
     ConversationAlreadyExistsError,
 )
 from omnigent.superchat.feature import is_super_chat
@@ -128,8 +127,6 @@ def register_muse_routes(
             if (
                 conv is not None
                 and conv.labels.get(MUSE_LABEL_KEY) == "true"
-                # Side chats and forks made before their copies dropped these labels.
-                and SIDE_CHAT_LABEL_KEY not in conv.labels
                 and _owns(user_id, session_id)
             ):
                 return conv
@@ -245,7 +242,7 @@ def register_muse_routes(
         session again is a no-op.
 
         :raises OmnigentError: 404 unless the caller owns the session; 422 ``not_a_super_chat``
-            for a side chat, Helper or plain session; 409 ``muse_already_set`` when another
+            for a Helper or plain session; 409 ``muse_already_set`` when another
             Super Chat is already theirs here; 409 ``muse_tenant_mismatch`` when the session
             sits in another tenant.
         """
@@ -258,7 +255,6 @@ def register_muse_routes(
         if (
             conv.kind == "sub_agent"
             or conv.parent_conversation_id is not None
-            or SIDE_CHAT_LABEL_KEY in conv.labels
             or not is_super_chat(conv.labels)
         ):
             raise OmnigentError(

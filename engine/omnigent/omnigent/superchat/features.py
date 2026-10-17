@@ -43,7 +43,6 @@ def _load() -> list[Feature]:
     from omnigent.superchat.projects import FEATURE as projects
     from omnigent.superchat.recall_hint import FEATURE as recall_hint
     from omnigent.superchat.sheets import FEATURE as sheets
-    from omnigent.superchat.side_chats import FEATURE as side_chats
     from omnigent.superchat.state_file import FEATURE as state_file
     from omnigent.superchat.step_limit import FEATURE as step_limit
     from omnigent.superchat.system_jobs import FEATURE as system_jobs
@@ -64,7 +63,6 @@ def _load() -> list[Feature]:
         apps,
         sheets,
         decks,
-        side_chats,
         helpers,
         projects,
         recall_hint,

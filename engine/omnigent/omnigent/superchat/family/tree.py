@@ -1,8 +1,8 @@
 """The family tree of a Super Chat: which chats belong to it, and where a Helper stands.
 
-A Super Chat, its Side Chats (the chats a person talks in) and the Helpers either of them
-started. Every capability that follows a family (the family event stream, search, the transcript,
-Activity) builds on these reads; none of them is owned by a capability.
+A Super Chat (the chat a person talks in) and the Helpers it started. Every capability that
+follows a family (the family event stream, search, the transcript, Activity) builds on these
+reads; none of them is owned by a capability.
 """
 
 from __future__ import annotations
@@ -79,13 +79,10 @@ def sub_agent_status(
 def resolve_super_chat_id(conv_store: ConversationStore, session_id: str) -> str | None:
     """Resolve ``session_id`` to its Super Chat id.
 
-    A Super Chat resolves to itself; a Side Chat resolves to the Super
-    Chat it was forked from. One read: a fork of a fork (ADR 0010) also
-    carries the Super Chat as its Side Chat parent, and keeps the fork it
-    came from in its own label.
+    A Super Chat resolves to itself.
 
     :param conv_store: Store to query.
-    :param session_id: A Super Chat or Side Chat conversation id.
+    :param session_id: A Super Chat conversation id.
     :returns: The Super Chat's conversation id, or ``None`` if
         ``session_id`` does not exist.
     """
@@ -94,37 +91,23 @@ def resolve_super_chat_id(conv_store: ConversationStore, session_id: str) -> str
     # (wrong) "Super Chat".
     if conversation is None or conversation.kind == "sub_agent":
         return None
-    from omnigent.stores.conversation_store import side_chat_parent_id
-
-    return side_chat_parent_id(conversation.labels) or session_id
+    return session_id
 
 
 def list_chat_roots(conv_store: ConversationStore, super_chat_id: str) -> list[Conversation]:
-    """The Super Chat and its Side Chats: the chats a person talks in (no Helpers).
+    """The chat a person talks in: ``[super_chat]`` (no Helpers).
 
     Returns ``[]`` when ``super_chat_id`` does not exist or is not a ``superside-chat``
     session. One cheap read however many Helpers the Muse has ever started.
     """
-    from omnigent.context.rollover import list_related_chats
-
     root = conv_store.get_conversation(super_chat_id)
     if root is None or not is_superside_chat(root.labels):
         return []
-    chats = [root]
-    side_chat_ids = [chat["id"] for chat in list_related_chats(conv_store, super_chat_id)]
-    if side_chat_ids:
-        side_chats_by_id = conv_store.get_conversations(side_chat_ids)
-        chats.extend(
-            conv
-            for conv_id in side_chat_ids
-            if (conv := side_chats_by_id.get(conv_id)) is not None
-            and is_superside_chat(conv.labels)
-        )
-    return chats
+    return [root]
 
 
 def list_chat_family(conv_store: ConversationStore, super_chat_id: str) -> list[Conversation]:
-    """The Super Chat, its Side Chats, and every Sub-agent descendant of either.
+    """The Super Chat and every Sub-agent descendant of it.
 
     Returns ``[]`` when ``super_chat_id`` does not exist or is not a
     ``superside-chat`` session — the Activity Feed only ever covers that
@@ -132,7 +115,7 @@ def list_chat_family(conv_store: ConversationStore, super_chat_id: str) -> list[
 
     :param conv_store: Store to query.
     :param super_chat_id: The Super Chat's conversation id.
-    :returns: ``[super_chat, *side_chats, *sub_agents]``, each a full
+    :returns: ``[super_chat, *sub_agents]``, each a full
         :class:`Conversation`.
     """
     chats = list_chat_roots(conv_store, super_chat_id)

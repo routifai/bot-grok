@@ -11,7 +11,7 @@ from typing import Any
 
 import pytest
 
-from omnigent.context.rollover import SIDE_CHAT_SEED_HEADER, checkpoint_header
+from omnigent.context.rollover import checkpoint_header
 from omnigent.entities import CompactionData
 from omnigent.runner.memory import files
 from omnigent.runner.memory.sync import (
@@ -21,12 +21,8 @@ from omnigent.runner.memory.sync import (
     record_checkpoint,
     record_daily_note,
 )
-from omnigent.stores.conversation_store import SIDE_CHAT_LABEL_KEY, SIDE_CHAT_PARENT_LABEL_KEY
-from omnigent.superchat.lineage import FORK_ANCHOR_LABEL_KEY
 
 MAIN = files.Origin("main", "conv_main")
-SIDE = files.Origin("side", "conv_side", 'Deck "feedback"')
-FORK = files.Origin("fork", "conv_fork", "venue line")
 STATE_TEXT = "## Working list\n- [t-launch · 2026-10-09] Spring launch budget"
 SUMMARY = f"{checkpoint_header('size')}\n\n{STATE_TEXT}"
 
@@ -75,14 +71,6 @@ def test_a_line_without_a_date_gets_the_default_date(tmp_path: Path) -> None:
     )
 
 
-def test_side_and_fork_lines_name_their_chat() -> None:
-    side = files.format_line("2026-10-12", "Did a thing", SIDE)[1]
-    fork = files.format_line("2026-10-12", "Did a thing", FORK)[1]
-
-    assert side == "- 2026-10-12 · Did a thing · side \"Deck 'feedback'\" <!-- conv_side -->"
-    assert fork == '- 2026-10-12 · Did a thing · fork @ "venue line" <!-- conv_fork -->'
-
-
 def test_a_line_cannot_end_the_trailing_comment() -> None:
     line = files.format_line("2026-10-12", "a --> b\nc", MAIN)[1]
 
@@ -105,7 +93,7 @@ def test_evicted_entries_are_kept_word_for_word_and_marked() -> None:
 
 def test_two_appends_in_a_row_keep_both(tmp_path: Path) -> None:
     files.append_lines(tmp_path, [files.format_line("2026-10-12", "first", MAIN)])
-    files.append_lines(tmp_path, [files.format_line("2026-10-12", "second", SIDE)])
+    files.append_lines(tmp_path, [files.format_line("2026-10-12", "second", MAIN)])
 
     text = _journal(tmp_path, "2026-10-12")
     assert text.index("first") < text.index("second")
@@ -220,29 +208,11 @@ def test_state_file_is_the_state_text_under_a_note(tmp_path: Path) -> None:
 # ── a stored checkpoint ──────────────────────────────────────────────────
 
 
-class _Server:
-    """Answers the session snapshot and records nothing else."""
-
-    def __init__(self, title: str = "Deck feedback") -> None:
-        self._title = title
-
-    async def get(self, url: str, **_kwargs: Any) -> Any:
-        title = self._title
-
-        class _Resp:
-            status_code = 200
-
-            def json(self) -> dict[str, Any]:
-                return {"title": title}
-
-        return _Resp()
-
-
 @pytest.mark.asyncio
 async def test_main_checkpoint_writes_journal_and_state(tmp_path: Path) -> None:
     item = _item(journal=["2026-10-12 · Planned the launch"], evicted=["- [t-x · 2026-07-01] old"])
 
-    await record_checkpoint(_Server(), "conv_main", {}, item, workspace=tmp_path)
+    await record_checkpoint("conv_main", {}, item, workspace=tmp_path)
 
     text = _journal(tmp_path, "2026-10-12")
     assert "Planned the launch · main <!-- conv_main -->" in text
@@ -253,64 +223,14 @@ async def test_main_checkpoint_writes_journal_and_state(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_side_checkpoint_journals_but_leaves_state_alone(tmp_path: Path) -> None:
-    labels = {SIDE_CHAT_LABEL_KEY: "1", SIDE_CHAT_PARENT_LABEL_KEY: "conv_main"}
-
-    await record_checkpoint(
-        _Server(),
-        "conv_side",
-        labels,
-        _item(journal=["2026-10-12 · Side work"]),
-        workspace=tmp_path,
-    )
-
-    assert 'Side work · side "Deck feedback" <!-- conv_side -->' in _journal(
-        tmp_path, "2026-10-12"
-    )
-    assert not (tmp_path / "memory" / "STATE.md").exists()
-
-
-@pytest.mark.asyncio
-async def test_fork_checkpoint_names_the_fork(tmp_path: Path) -> None:
-    labels = {
-        SIDE_CHAT_LABEL_KEY: "1",
-        SIDE_CHAT_PARENT_LABEL_KEY: "conv_main",
-        FORK_ANCHOR_LABEL_KEY: "msg_9",
-    }
-
-    await record_checkpoint(
-        _Server("venue line"),
-        "conv_fork",
-        labels,
-        _item(journal=["2026-10-12 · Forked work"]),
-        workspace=tmp_path,
-    )
-
-    assert 'fork @ "venue line"' in _journal(tmp_path, "2026-10-12")
-
-
-@pytest.mark.asyncio
 async def test_a_helper_writes_nothing(tmp_path: Path) -> None:
     labels = {"omnigent.context.mode": "superside-chat", "omnigent.subagent": "1"}
 
     await record_checkpoint(
-        _Server(), "conv_h", labels, _item(journal=["2026-10-12 · x"]), workspace=tmp_path
+        "conv_h", labels, _item(journal=["2026-10-12 · x"]), workspace=tmp_path
     )
 
     assert not (tmp_path / "memory").exists()
-
-
-@pytest.mark.asyncio
-async def test_a_failing_snapshot_still_writes(tmp_path: Path) -> None:
-    class _Down:
-        async def get(self, *_a: Any, **_k: Any) -> Any:
-            raise RuntimeError("server down")
-
-    await record_checkpoint(
-        _Down(), "conv_main", {}, _item(journal=["2026-10-12 · Kept going"]), workspace=tmp_path
-    )
-
-    assert "Kept going" in _journal(tmp_path, "2026-10-12")
 
 
 # ── rebuild ──────────────────────────────────────────────────────────────
@@ -330,21 +250,14 @@ def _stored(item_id: str, summary: str, **extra: Any) -> dict[str, Any]:
 
 
 class _Chats:
-    """The routes a rebuild reads: snapshot, related chats and compaction items."""
+    """The routes a rebuild reads: snapshot and compaction items."""
 
     def __init__(self, items: dict[str, list[dict[str, Any]]]) -> None:
         self._items = items
 
     async def get(self, url: str, **kwargs: Any) -> Any:
         body: dict[str, Any] = {}
-        if url.endswith("/related_chats"):
-            body = {
-                "data": [
-                    {"id": "conv_side", "title": "Deck", "anchor_item_id": None},
-                    {"id": "conv_fork", "title": "venue line", "anchor_item_id": "msg_9"},
-                ]
-            }
-        elif url.endswith("/items"):
+        if url.endswith("/items"):
             chat = url.split("/")[3]
             rows = self._items.get(chat, [])
             after = (kwargs.get("params") or {}).get("after")
@@ -365,7 +278,6 @@ class _Chats:
 
 
 def _chats() -> _Chats:
-    seed = _stored("c_seed", f"{SIDE_CHAT_SEED_HEADER}\n\nseed state")
     return _Chats(
         {
             "conv_main": [
@@ -377,8 +289,6 @@ def _chats() -> _Chats:
                     evicted_entries=["- [t-old · 2026-07-01] Old plan"],
                 ),
             ],
-            "conv_side": [seed, _stored("c3", SUMMARY, journal_lines=["2026-10-12 · Side step"])],
-            "conv_fork": [],
         }
     )
 
@@ -392,8 +302,6 @@ async def test_rebuild_regenerates_the_files_from_stored_checkpoints(tmp_path: P
     assert "Asked for a budget · main <!-- conv_main -->" in first
     assert "Booked the venue · main" in second
     assert "Moved out of the working list: [t-old · 2026-07-01] Old plan" in second
-    assert 'Side step · side "Deck" <!-- conv_side -->' in second
-    assert "seed state" not in second
     assert STATE_TEXT in (tmp_path / "memory" / "STATE.md").read_text()
 
 
@@ -418,7 +326,7 @@ async def test_rebuild_writes_the_refs_exactly_as_the_checkpoint_did(tmp_path: P
         journal_refs=REFS,
     )
     live, rebuilt = tmp_path / "live", tmp_path / "rebuilt"
-    await record_checkpoint(_Server(), "conv_main", {}, item, workspace=live)
+    await record_checkpoint("conv_main", {}, item, workspace=live)
     stored = _stored("c1", SUMMARY, **item.model_dump(exclude={"summary"}))
 
     await rebuild(_Chats({"conv_main": [stored]}), "conv_main", workspace=rebuilt)
@@ -641,7 +549,7 @@ def _reset(item_id: str = "c_reset", created_at: int = DAY) -> dict[str, Any]:
 
 
 class _Convo:
-    """Snapshot, related chats, newest-first compaction items and notes for a few chats."""
+    """Snapshot, newest-first compaction items and notes for a few chats."""
 
     def __init__(
         self,
@@ -652,7 +560,6 @@ class _Convo:
         self._items = items
         self._labels = labels or {}
         self._notes = notes or []
-        self.related_reads = 0
         #: Chats the server answers 404 for (deleted).
         self.deleted: set[str] = set()
 
@@ -661,9 +568,6 @@ class _Convo:
         body: dict[str, Any]
         if url == "/v1/me/daily-notes":
             body = {"daily_notes": self._notes}
-        elif url.endswith("/related_chats"):
-            self.related_reads += 1
-            body = {"data": []}
         elif url.endswith("/items"):
             rows = list(self._items.get(url.split("/")[3], []))
             if params.get("order") == "desc":
@@ -783,21 +687,6 @@ async def test_a_different_main_conversation_wipes_and_rebuilds(tmp_path: Path) 
 
 
 @pytest.mark.asyncio
-async def test_a_side_chat_or_fork_of_the_same_main_does_not_wipe(tmp_path: Path) -> None:
-    await rebuild(_Convo({"conv_main": [_stored("c1", SUMMARY)]}), "conv_main", workspace=tmp_path)
-    files.append_lines(tmp_path, [files.format_line("2026-10-12", "keep", MAIN)])
-    side = {SIDE_CHAT_LABEL_KEY: "1", SIDE_CHAT_PARENT_LABEL_KEY: "conv_main"}
-    fork = {**side, FORK_ANCHOR_LABEL_KEY: "msg_9"}
-    chats = _Convo({"conv_main": [_stored("c1", SUMMARY)]})
-
-    await reconcile(chats, "conv_side", side, workspace=tmp_path)
-    await reconcile(chats, "conv_fork", fork, workspace=tmp_path)
-
-    assert "keep" in _journal(tmp_path, "2026-10-12")
-    assert files.owner_of(tmp_path) == "conv_main"
-
-
-@pytest.mark.asyncio
 async def test_a_folder_without_a_marker_is_adopted(tmp_path: Path) -> None:
     files.append_lines(tmp_path, [files.format_line("2026-10-12", "kept", MAIN)])
 
@@ -808,13 +697,13 @@ async def test_a_folder_without_a_marker_is_adopted(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_an_unresolved_main_or_a_helper_touches_nothing(tmp_path: Path) -> None:
+async def test_a_helper_touches_nothing(tmp_path: Path) -> None:
     await rebuild(_Convo({"conv_main": [_stored("c1", SUMMARY)]}), "conv_main", workspace=tmp_path)
     before = _tree(tmp_path)
-    orphan = {SIDE_CHAT_LABEL_KEY: "1"}
+    helper = {"omnigent.context.mode": "superside-chat", "omnigent.subagent": "1"}
     chats = _Convo({"conv_other": [_stored("x", SUMMARY)]})
 
-    await reconcile(chats, "conv_side", orphan, workspace=tmp_path)
+    await reconcile(chats, "conv_h", helper, workspace=tmp_path)
 
     assert _tree(tmp_path) == before
     assert files.owner_of(tmp_path) == "conv_main"
@@ -822,7 +711,7 @@ async def test_an_unresolved_main_or_a_helper_touches_nothing(tmp_path: Path) ->
 
 @pytest.mark.asyncio
 async def test_a_checkpoint_marks_a_new_folder_with_its_main_conversation(tmp_path: Path) -> None:
-    await record_checkpoint(_Server(), "conv_main", {}, _item(), workspace=tmp_path)
+    await record_checkpoint("conv_main", {}, _item(), workspace=tmp_path)
 
     assert files.owner_of(tmp_path) == "conv_main"
 
@@ -854,23 +743,16 @@ def _turns(prefix: str, count: int) -> list[dict[str, Any]]:
 
 
 class _Record:
-    """The routes the conversation source reads: snapshot, related chats, items (both orders)."""
+    """The routes the conversation source reads: snapshot and items (both orders)."""
 
-    def __init__(
-        self,
-        items: dict[str, list[dict[str, Any]]],
-        related: dict[str, list[dict[str, Any]]] | None = None,
-    ) -> None:
+    def __init__(self, items: dict[str, list[dict[str, Any]]]) -> None:
         self.items = items
-        self.related = related or {}
         self.deleted: set[str] = set()
         self.reads: list[tuple[str, dict[str, Any]]] = []
 
     async def get(self, url: str, **kwargs: Any) -> Any:
         params = dict(kwargs.get("params") or {})
         chat = url.split("/")[3]
-        if url.endswith("/related_chats"):
-            return _Resp(200, {"data": self.related.get(chat, [])})
         if url.endswith("/items"):
             self.reads.append((chat, params))
             rows = [r for r in self.items.get(chat, []) if params.get("type") in (None, r["type"])]
@@ -908,25 +790,20 @@ def _passages(service: Any) -> dict[str, dict[str, str]]:
     return {m["turn_item_id"]: m for m in db.turn_meta([c.id for c, _ in found]).values()}
 
 
-SIDE_LABELS = {SIDE_CHAT_LABEL_KEY: "1", SIDE_CHAT_PARENT_LABEL_KEY: "conv_main"}
-
-
 @pytest.mark.asyncio
 async def test_retired_turns_become_one_passage_each_with_their_metadata(tmp_path: Path) -> None:
     from omnigent.runner.memory.sync import index_retired_turns
 
     service = _service(tmp_path)
-    window = [*_turns("s", 2), _say("n1", "user", "[System: x]", "rn")]
+    window = [*_turns("m", 2), _say("n1", "user", "[System: x]", "rn")]
     record = _Record({})
 
-    await index_retired_turns(
-        record, "conv_side", SIDE_LABELS, window, project="spring", runtime=service
-    )
+    await index_retired_turns(record, "conv_main", {}, window, project="spring", runtime=service)
 
     found = _passages(service)
-    assert sorted(found) == ["su0", "su1"]  # a notice is never one
-    assert found["su1"] == {
-        "chat_id": "conv_side", "turn_item_id": "su1", "date": "2026-10-12", "origin": "side",
+    assert sorted(found) == ["mu0", "mu1"]  # a notice is never one
+    assert found["mu1"] == {
+        "chat_id": "conv_main", "turn_item_id": "mu1", "date": "2026-10-12", "origin": "main",
         "project": "spring", "person_text": "question 1 about the venue",
     }  # fmt: skip
     assert record.reads == []  # the window is in hand: nothing is read
@@ -971,37 +848,6 @@ async def test_a_turn_in_the_current_epoch_is_indexed_by_the_compaction_that_ret
 
 
 @pytest.mark.asyncio
-async def test_an_archived_side_chat_indexes_the_turns_after_its_last_anchor(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from omnigent.runner.memory import sync
-
-    monkeypatch.setattr(sync, "_ARCHIVE_CHECK_SECONDS", 0)
-    service = _service(tmp_path)
-    related = {
-        "conv_main": [
-            {"id": "conv_side", "title": "deck", "archived": True, "updated_at": 5},
-            {"id": "conv_open", "title": "open", "archived": False, "updated_at": 5},
-        ]
-    }
-    side = [*_turns("s", 3)]
-    side.insert(2, _stored("c1", SUMMARY, last_item_id="sa0"))  # su0 left the window there
-    record = _Record({"conv_side": side, "conv_open": _turns("o", 2)}, related)
-
-    await sync.index_archived_chats(record, "conv_main", {}, runtime=service)
-
-    found = _passages(service)
-    assert sorted(found) == ["su1", "su2"]  # su0 was its compaction's; an open chat waits
-    assert found["su2"]["origin"] == "side"
-    record.reads.clear()
-    await sync.index_archived_chats(record, "conv_main", {}, runtime=service)
-    assert record.reads == []  # once per archive
-    related["conv_main"][0]["updated_at"] = 9  # unarchived, used, archived again
-    await sync.index_archived_chats(record, "conv_main", {}, runtime=service)
-    assert {chat for chat, _ in record.reads} == {"conv_side"}
-
-
-@pytest.mark.asyncio
 async def test_a_helper_turn_is_not_indexed_and_a_failing_write_does_not_raise(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1032,17 +878,12 @@ async def test_a_helper_turn_is_not_indexed_and_a_failing_write_does_not_raise(
 async def test_outside_a_computer_nothing_is_indexed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from omnigent.runner.memory.sync import (
-        backfill_turns,
-        index_archived_chats,
-        index_retired_turns,
-    )
+    from omnigent.runner.memory.sync import backfill_turns, index_retired_turns
 
     monkeypatch.delenv("IS_SANDBOX", raising=False)
     record = _Record({"conv_main": _turns("m", 2)})
     await index_retired_turns(record, "conv_main", {}, _turns("m", 2))
     await backfill_turns(record, "conv_main", {})
-    await index_archived_chats(record, "conv_main", {})
     assert record.reads == []
 
 
@@ -1056,11 +897,9 @@ async def test_backfill_is_bounded_resumes_and_never_duplicates(
     monkeypatch.setattr(sync, "_BACKFILL_PAGES", 2)
     monkeypatch.setattr(sync, "_BACKFILL_TURNS", 6)
     service = _service(tmp_path)
-    related = {"conv_main": [{"id": "conv_fork", "title": "f", "anchor_item_id": "mu1"}]}
     main = _turns("m", 12)
     main.insert(23, _stored("c1", SUMMARY, last_item_id="ma10"))  # mu11 ran while it summarized
-    fork = [*_turns("f", 3), _stored("c2", SUMMARY, last_item_id="fa1")]
-    record = _Record({"conv_main": main, "conv_fork": fork}, related)
+    record = _Record({"conv_main": main})
 
     await sync.backfill_turns(record, "conv_main", {}, runtime=service)
     assert sorted(_passages(service)) == sorted(f"mu{n}" for n in range(6))  # six turns a run
@@ -1069,11 +908,10 @@ async def test_backfill_is_bounded_resumes_and_never_duplicates(
     for _ in range(4):
         await sync.backfill_turns(record, "conv_main", {}, runtime=restarted)
     found = _passages(restarted)
-    # Every retired turn once; each chat's current epoch waits for the compaction that retires it.
-    assert sorted(found) == sorted([*(f"mu{n}" for n in range(11)), "fu0", "fu1"])
-    assert found["fu0"]["origin"] == "fork"
+    # Every retired turn once; the current epoch waits for the compaction that retires it.
+    assert sorted(found) == sorted(f"mu{n}" for n in range(11))
     db = restarted.indexer.db
-    assert sum(len(db.chunks_for(r.file_id)) for r in db.files(turns=True)) == 13
+    assert sum(len(db.chunks_for(r.file_id)) for r in db.files(turns=True)) == 11
     assert db.meta("turns_backfilled.v3:conv_main") == "done"
     record.reads.clear()
     await sync.backfill_turns(record, "conv_main", {}, runtime=restarted)
@@ -1099,22 +937,19 @@ async def test_backfill_indexes_every_retired_turn_and_none_of_the_current_epoch
     from omnigent.runner.memory import sync
 
     service = _service(tmp_path)
-    related = {"conv_main": [{"id": "conv_side", "title": "s"}]}
-    # The main record ends at its anchor: its newest turn is retired, and no compaction is left
-    # to write it. The Side chat's newest turn is after its anchor: the current epoch.
-    main = [*_turns("m", 2), _stored("c1", SUMMARY, last_item_id="ma1")]
-    side = _turns("s", 3)
-    side.insert(4, _stored("c2", SUMMARY, last_item_id="sa1"))
-    record = _Record({"conv_main": main, "conv_side": side}, related)
+    # The record's newest turn is after its anchor: the current epoch.
+    main = _turns("m", 3)
+    main.insert(4, _stored("c1", SUMMARY, last_item_id="ma1"))
+    record = _Record({"conv_main": main})
 
     await sync.backfill_turns(record, "conv_main", {}, runtime=service)
 
-    assert sorted(_passages(service)) == ["mu0", "mu1", "su0", "su1"]
+    assert sorted(_passages(service)) == ["mu0", "mu1"]
     assert service.indexer.db.meta("turns_backfilled.v3:conv_main") == "done"
 
 
 @pytest.mark.asyncio
-async def test_a_deleted_conversation_takes_its_passages_and_its_side_chats_with_it(
+async def test_a_deleted_conversation_takes_its_passages_with_it(
     tmp_path: Path,
 ) -> None:
     from omnigent.runner.memory.sync import index_retired_turns
@@ -1123,17 +958,15 @@ async def test_a_deleted_conversation_takes_its_passages_and_its_side_chats_with
     record = _Record(
         {
             "conv_main": [_stored("c1", SUMMARY), *_turns("m", 2)],
-            "conv_side": _turns("s", 2),
             "conv_new": [_stored("n1", SUMMARY), *_turns("n", 2)],
         }
     )
     await rebuild(record, "conv_main", workspace=tmp_path)
-    for chat, labels, prefix in (("conv_main", {}, "m"), ("conv_side", SIDE_LABELS, "s")):
-        await index_retired_turns(record, chat, labels, _turns(prefix, 2), runtime=service)
+    await index_retired_turns(record, "conv_main", {}, _turns("m", 2), runtime=service)
     await index_retired_turns(record, "conv_new", {}, _turns("n", 2), runtime=service)
 
     await reconcile(record, "conv_new", {}, workspace=tmp_path, runtime=service)
-    assert len(_passages(service)) == 6  # the old Conversation still exists: nothing goes
+    assert len(_passages(service)) == 4  # the old Conversation still exists: nothing goes
 
     record.deleted.add("conv_main")
     await reconcile(record, "conv_new", {}, workspace=tmp_path, runtime=service)

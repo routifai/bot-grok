@@ -1,52 +1,25 @@
-"""Where a session sits in a Super Chat family: kind, root, parent, seed, open Project and folder.
+"""Where a session sits in a Super Chat family: kind, root, parent, open Project and folder.
 
 Shared by the transcript route and the session snapshot (``GET /v1/sessions/{id}``), so a client
-holding only a session id can tell a Super Chat from a Side Chat or a Helper without its own map.
+holding only a session id can tell a Super Chat from a Helper without its own map.
 """
 
 from __future__ import annotations
 
-from collections import OrderedDict
-from collections.abc import Mapping
 from typing import Any
 
 from omnigent.context.labels import is_superside_chat
-from omnigent.context.rollover import side_chat_seed_checkpoint
 from omnigent.entities import Conversation
 from omnigent.stores import ConversationStore
-from omnigent.stores.conversation_store import SIDE_CHAT_LABEL_KEY, side_chat_parent_id
 from omnigent.superchat.feature import is_helper, is_super_chat
 from omnigent.superchat.projects.card import project_slug_from_workspace, workspace_folder
 from omnigent.superchat.projects.choice import chosen_by_person
 
 _MAX_HELPER_HOPS = 8
 
-#: The message a fork started from (an item id of its parent chat).
-FORK_ANCHOR_LABEL_KEY = "omnigent.side_chat.anchor_item_id"
-#: The chat holding the anchor: the Super Chat, or the fork a fork of a fork came from.
-FORK_PARENT_LABEL_KEY = "omnigent.side_chat.fork_parent_id"
-
 #: Session label holding the open Project's card name, stamped when ``open_project`` moves the
 #: working directory (the card itself lives on the session's host, not the server).
 PROJECT_NAME_LABEL_KEY = "omnigent.project.name"
-
-#: A Side Chat's seed item never changes once written, so a found id is cached (bounded) and
-#: the session snapshot, which clients poll, pays the items read once per chat per process.
-_SEED_CACHE_MAX = 4096
-_seed_cache: OrderedDict[str, str] = OrderedDict()
-
-
-def _cached_seed_item_id(conv_store: ConversationStore, conversation: Conversation) -> str | None:
-    cached = _seed_cache.get(conversation.id)
-    if cached is not None:
-        _seed_cache.move_to_end(conversation.id)
-        return cached
-    _, seed_item_id = side_chat_seed_checkpoint(conv_store, conversation)
-    if seed_item_id is not None:
-        _seed_cache[conversation.id] = seed_item_id
-        if len(_seed_cache) > _SEED_CACHE_MAX:
-            _seed_cache.popitem(last=False)
-    return seed_item_id
 
 
 def _helper_root(conv_store: ConversationStore, conversation: Conversation) -> Conversation | None:
@@ -65,25 +38,9 @@ def _helper_root(conv_store: ConversationStore, conversation: Conversation) -> C
     return root
 
 
-def fork_anchor_id(labels: Mapping[str, str]) -> str | None:
-    """The anchor of a fork, or ``None`` for any other chat."""
-    if SIDE_CHAT_LABEL_KEY not in labels:
-        return None
-    return labels.get(FORK_ANCHOR_LABEL_KEY) or None
-
-
-def fork_parent_id(labels: Mapping[str, str]) -> str | None:
-    """The chat a fork's anchor is in, or ``None`` when *labels* are not a fork's."""
-    if fork_anchor_id(labels) is None:
-        return None
-    return labels.get(FORK_PARENT_LABEL_KEY) or side_chat_parent_id(labels)
-
-
 def _super_chat_id_of(root: Conversation) -> str | None:
-    """A top-level chat's Super Chat: a Side Chat's parent, else itself (``None`` for a Helper)."""
-    if root.kind == "sub_agent":
-        return None
-    return side_chat_parent_id(root.labels) or root.id
+    """A top-level chat's Super Chat: itself (``None`` for a Helper)."""
+    return None if root.kind == "sub_agent" else root.id
 
 
 def session_lineage(
@@ -92,36 +49,19 @@ def session_lineage(
     *,
     helper_root: Conversation | None = None,
 ) -> dict[str, Any]:
-    """Where a session sits: ``kind`` (``super`` / ``side`` / ``helper`` / ``None``), its root.
+    """Where a session sits: ``kind`` (``super`` / ``helper`` / ``None``), its root and parent.
 
     :param helper_root: A Helper's already-read root, to skip reading it again.
-    :returns: ``{"kind", "root_id", "parent_id", "seed_item_id", "anchor_item_id"}``;
-        ``seed_item_id`` is the checkpoint a with-context Side Chat starts after. A Fork's
-        ``anchor_item_id`` is the message it started from, and its ``parent_id`` the chat
-        holding it (a fork of a fork's parent is that fork; its root is still the Super Chat).
+    :returns: ``{"kind", "root_id", "parent_id"}``.
     """
     labels = conversation.labels
-    lineage: dict[str, Any] = {
-        "kind": None,
-        "root_id": None,
-        "parent_id": None,
-        "seed_item_id": None,
-        "anchor_item_id": None,
-    }
+    lineage: dict[str, Any] = {"kind": None, "root_id": None, "parent_id": None}
     if conversation.kind == "sub_agent" or is_helper(labels):
         root = helper_root or _helper_root(conv_store, conversation) or conversation
         lineage.update(
             kind="helper",
             root_id=_super_chat_id_of(root),
             parent_id=conversation.parent_conversation_id,
-        )
-    elif (parent := side_chat_parent_id(labels)) is not None:
-        lineage.update(
-            kind="side",
-            root_id=parent,
-            parent_id=fork_parent_id(labels) or parent,
-            seed_item_id=_cached_seed_item_id(conv_store, conversation),
-            anchor_item_id=fork_anchor_id(labels),
         )
     elif is_super_chat(labels):
         lineage.update(kind="super", root_id=conversation.id)
@@ -153,8 +93,7 @@ def session_superchat(
 ) -> dict[str, Any] | None:
     """The ``superchat`` block of a session snapshot, or ``None`` outside a Super Chat family.
 
-    No store read for a plain session; one for a Helper (its root); a Side Chat's seed is read
-    once and cached.
+    No store read for a plain session; one for a Helper (its root).
     """
     root: Conversation | None = None
     if conversation.kind == "sub_agent":

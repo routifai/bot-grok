@@ -6,8 +6,8 @@ and says ``activities.changed`` whenever one of them starts, steps, settles or i
 The payload carries no content: the client refetches the feed, which stays the one source of
 truth.
 
-What is watched stays small however long the history is: the chats a person talks in (the
-Super Chat and its Side Chats), whose streams already carry their Helpers' lifecycle
+What is watched stays small however long the history is: the chat a person talks in (the
+Super Chat), whose stream already carries its Helpers' lifecycle
 (``session.created``, ``session.child_session.updated``), plus the Helpers that are not
 settled yet, for their steps and for the parts they hand on. A Helper's stream is dropped the
 moment it settles.
@@ -67,10 +67,10 @@ async def watch_activity_changes(
 
     Yields one immediately (the subscription is live; the client reads the feed now),
     then one per burst of relevant events (coalesced over ``debounce_s``), and a heartbeat
-    after ``heartbeat_s`` of quiet, which also picks up a Side Chat created since.
+    after ``heartbeat_s`` of quiet.
 
     :param conv_store: Store used to resolve the chats to watch.
-    :param session_id: The Super Chat, or one of its Side Chats.
+    :param session_id: The Super Chat.
     :param debounce_s: How long a burst of events is coalesced into one signal.
     :param heartbeat_s: Quiet time before a heartbeat.
     :param subscribe: Per-conversation live event source (injectable for tests).

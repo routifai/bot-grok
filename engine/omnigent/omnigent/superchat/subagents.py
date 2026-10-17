@@ -10,13 +10,10 @@ before calling in, except where a function takes that fact as an argument.
 
 from __future__ import annotations
 
-import logging
 import os
 from collections.abc import Iterable, Mapping
 
 from omnigent.util.session_lifecycle import is_session_closed
-
-_logger = logging.getLogger(__name__)
 
 # ── Default concurrency cap (across all Sub-agent Types, per tree) ────────
 
@@ -327,49 +324,3 @@ def format_subagent_wake_notice_with_result(
         "thing (the answer, comparison or draft, as a card or file if that fits), not a status "
         "update. Mention anything still open in one line. Do not raise unrelated topics.]"
     )
-
-
-# ── Archived Originating Side Chat: redirect the Result to its Super Chat ─
-
-
-def resolve_wake_target(
-    *,
-    parent_id: str,
-    archived: bool,
-    is_side_chat: bool,
-    fork_source_id: str | None,
-) -> tuple[str, str | None]:
-    """Resolve where a sub-agent's wake/Result should actually be delivered.
-
-    ``rollover/CONTEXT.md`` ("Originating Chat", "Archived"): a Side Chat is
-    hidden once archived, not deleted; the Result of work it launched still
-    reaches the user, so it is redirected to the Super Chat instead
-    (resolved from the Side Chat's ``omnigent.fork.source_id`` label).
-
-    :param parent_id: The sub-agent's recorded Originating Chat id.
-    :param archived: Whether that chat is currently archived.
-    :param is_side_chat: Whether that chat carries the Side Chat label.
-    :param fork_source_id: That chat's ``omnigent.fork.source_id`` label
-        (its Super Chat), when present.
-    :returns: ``(target_session_id, note)`` — ``target_session_id`` is
-        ``parent_id`` unchanged unless redirected; ``note`` is ``None``
-        unless a redirect happened, in which case it names the archived
-        Side Chat for the Super Chat reader.
-    """
-    if archived and is_side_chat and fork_source_id:
-        return fork_source_id, (
-            f"[System: this result's Originating Chat ({parent_id}) is an "
-            "archived Side Chat; delivering it here, to its Super Chat, "
-            "instead.]"
-        )
-    if archived and is_side_chat:
-        # Missing the fork-source label (see FORK_SOURCE_LABEL_KEY's "not a
-        # complete fork index" caveat): there is no Super Chat to redirect
-        # to, so the wake still delivers to the archived chat itself — just
-        # not silently, since that chat is hidden from the user's chat list.
-        _logger.warning(
-            "sub-agent wake delivered to an archived Side Chat with no fork_source label: %s",
-            parent_id,
-            extra={"session_id": parent_id},
-        )
-    return parent_id, None

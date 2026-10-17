@@ -14,7 +14,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from omnigent.context.labels import CONTEXT_MODE_LABEL
+from omnigent.context.labels import CONTEXT_MODE_LABEL, SCHEDULED_HELPER_LABEL_KEY
 from omnigent.entities.conversation import (
     FunctionCallData,
     FunctionCallOutputData,
@@ -22,7 +22,6 @@ from omnigent.entities.conversation import (
     NewConversationItem,
     ReasoningData,
 )
-from omnigent.stores.conversation_store import FORK_SOURCE_LABEL_KEY, SIDE_CHAT_LABEL_KEY
 from omnigent.stores.conversation_store.sqlalchemy_store import SqlAlchemyConversationStore
 from omnigent.tools.base import ToolContext
 from omnigent.tools.builtins.session_history import (
@@ -351,117 +350,101 @@ def test_status_action_reads_session_labels(session_fixture: _Fixture) -> None:
     assert result["current_context_tokens"] == 42
 
 
-# ── list_chats: related-chat discovery ──────────────────────
+# ── list_chats: what a Helper may read ──────────────────────
 
 
-def test_list_chats_finds_child_side_chat(session_fixture: _Fixture) -> None:
-    """A side chat forked from the caller shows up, with a preview."""
-    store = session_fixture.conv_store
-    side_chat = store.create_conversation(kind="default", title="Side chat")
-    store.set_labels(
-        side_chat.id, {FORK_SOURCE_LABEL_KEY: session_fixture.conv_id, SIDE_CHAT_LABEL_KEY: "1"}
+def _scheduled_helper(fx: _Fixture) -> ToolContext:
+    """A scheduled Helper of the fixture's session, and a ctx scoped to it."""
+    helper = fx.conv_store.create_conversation(
+        kind="sub_agent",
+        parent_conversation_id=fx.conv_id,
+        title="analyst:Daily note",
+        labels={SCHEDULED_HELPER_LABEL_KEY: "t1"},
     )
-    store.append(side_chat.id, [_user_msg("side chat question")])
-
-    tool = SessionHistoryTool()
-    result = json.loads(tool.invoke(json.dumps({"action": "list_chats"}), session_fixture.ctx))
-    found = next(c for c in result["chats"] if c["id"] == side_chat.id)
-    assert found["title"] == "Side chat"
-    assert found["last_message_preview"] == "side chat question"
+    return ToolContext(task_id="task_test", agent_id="agent_test", conversation_id=helper.id)
 
 
-def test_list_chats_excludes_fork_without_side_chat_label(session_fixture: _Fixture) -> None:
-    """A plain fork of the caller (not a side chat) is not a related chat."""
+@pytest.fixture()
+def single_user(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OMNIGENT_LOCAL_SINGLE_USER", "1")
+
+
+def test_list_chats_finds_a_scheduled_helpers_parent(
+    session_fixture: _Fixture, single_user: None
+) -> None:
+    """A scheduled Helper sees the Conversation it works for, with a preview."""
     store = session_fixture.conv_store
-    plain_fork = store.create_conversation(kind="default")
-    store.set_labels(plain_fork.id, {FORK_SOURCE_LABEL_KEY: session_fixture.conv_id})
+    store.append(session_fixture.conv_id, [_user_msg("main chat question")])
+    ctx = _scheduled_helper(session_fixture)
 
-    tool = SessionHistoryTool()
-    result = json.loads(tool.invoke(json.dumps({"action": "list_chats"}), session_fixture.ctx))
-    assert plain_fork.id not in [c["id"] for c in result["chats"]]
+    result = json.loads(SessionHistoryTool().invoke(json.dumps({"action": "list_chats"}), ctx))
+    [found] = result["chats"]
+    assert found["id"] == session_fixture.conv_id
+    assert found["last_message_preview"] == "main chat question"
 
 
-def test_list_chats_excludes_side_chat_of_unrelated_session(session_fixture: _Fixture) -> None:
-    """A side chat forked from a DIFFERENT session is excluded."""
+def test_list_chats_is_empty_for_a_top_level_chat_and_a_plain_subagent(
+    session_fixture: _Fixture, single_user: None
+) -> None:
     store = session_fixture.conv_store
-    unrelated = store.create_conversation(kind="default")
-    store.set_labels(
-        unrelated.id,
-        {FORK_SOURCE_LABEL_KEY: session_fixture.other_conv_id, SIDE_CHAT_LABEL_KEY: "1"},
+    plain = store.create_conversation(
+        kind="sub_agent", parent_conversation_id=session_fixture.conv_id, title="analyst:other"
     )
+    plain_ctx = ToolContext(task_id="task_test", agent_id="agent_test", conversation_id=plain.id)
+
     tool = SessionHistoryTool()
-    result = json.loads(tool.invoke(json.dumps({"action": "list_chats"}), session_fixture.ctx))
-    assert unrelated.id not in [c["id"] for c in result["chats"]]
+    top = json.loads(tool.invoke(json.dumps({"action": "list_chats"}), session_fixture.ctx))
+    assert top["chats"] == []
+    sub = json.loads(tool.invoke(json.dumps({"action": "list_chats"}), plain_ctx))
+    assert sub["chats"] == []
 
 
-def test_list_chats_excludes_other_users_side_chat(session_fixture: _Fixture, db_uri: str) -> None:
-    """A side chat owned by a different user never surfaces as related."""
+def test_list_chats_excludes_another_users_parent(session_fixture: _Fixture, db_uri: str) -> None:
+    """A parent owned by a different user never surfaces as readable."""
     from omnigent.server.auth import LEVEL_OWNER
     from omnigent.stores.permission_store.sqlalchemy_store import SqlAlchemyPermissionStore
 
-    store = session_fixture.conv_store
     perms = SqlAlchemyPermissionStore(db_uri)
     perms.ensure_user("alice@example.com")
     perms.ensure_user("mallory@example.com")
-    perms.grant("alice@example.com", session_fixture.conv_id, LEVEL_OWNER)
+    perms.grant("mallory@example.com", session_fixture.conv_id, LEVEL_OWNER)
+    ctx = _scheduled_helper(session_fixture)
+    perms.grant("alice@example.com", ctx.conversation_id, LEVEL_OWNER)
 
-    other_owner_chat = store.create_conversation(kind="default")
-    store.set_labels(
-        other_owner_chat.id,
-        {FORK_SOURCE_LABEL_KEY: session_fixture.conv_id, SIDE_CHAT_LABEL_KEY: "1"},
-    )
-    perms.grant("mallory@example.com", other_owner_chat.id, LEVEL_OWNER)
-
-    tool = SessionHistoryTool()
-    result = json.loads(tool.invoke(json.dumps({"action": "list_chats"}), session_fixture.ctx))
-    assert other_owner_chat.id not in [c["id"] for c in result["chats"]]
-
-
-def test_list_chats_finds_parent_when_caller_is_side_chat(session_fixture: _Fixture) -> None:
-    """A side chat's list_chats includes its own parent."""
-    store = session_fixture.conv_store
-    parent = store.create_conversation(kind="default", title="Main chat")
-    side_chat = store.create_conversation(kind="default")
-    store.set_labels(side_chat.id, {FORK_SOURCE_LABEL_KEY: parent.id, SIDE_CHAT_LABEL_KEY: "1"})
-    ctx = ToolContext(task_id="task_test", agent_id="agent_test", conversation_id=side_chat.id)
-
-    tool = SessionHistoryTool()
-    result = json.loads(tool.invoke(json.dumps({"action": "list_chats"}), ctx))
-    assert parent.id in [c["id"] for c in result["chats"]]
+    result = json.loads(SessionHistoryTool().invoke(json.dumps({"action": "list_chats"}), ctx))
+    assert result["chats"] == []
 
 
 # ── read / search: chat_id ───────────────────────────────────
 
 
-def test_read_with_chat_id_reads_the_related_chat(session_fixture: _Fixture) -> None:
+def test_read_with_chat_id_reads_the_parent(session_fixture: _Fixture, single_user: None) -> None:
     store = session_fixture.conv_store
-    side_chat = store.create_conversation(kind="default")
-    store.set_labels(
-        side_chat.id, {FORK_SOURCE_LABEL_KEY: session_fixture.conv_id, SIDE_CHAT_LABEL_KEY: "1"}
-    )
-    store.append(side_chat.id, [_user_msg("side chat first message")])
+    store.append(session_fixture.conv_id, [_user_msg("main chat first message")])
+    ctx = _scheduled_helper(session_fixture)
 
-    tool = SessionHistoryTool()
     result = json.loads(
-        tool.invoke(json.dumps({"action": "read", "chat_id": side_chat.id}), session_fixture.ctx)
+        SessionHistoryTool().invoke(
+            json.dumps({"action": "read", "chat_id": session_fixture.conv_id}), ctx
+        )
     )
     texts = [m["content"] for turn in result["turns"] for m in turn["messages"]]
-    assert any("side chat first message" in t for t in texts)
+    assert any("main chat first message" in t for t in texts)
 
 
-def test_search_with_chat_id_searches_the_related_chat(session_fixture: _Fixture) -> None:
+def test_search_with_chat_id_searches_the_parent(
+    session_fixture: _Fixture, single_user: None
+) -> None:
     store = session_fixture.conv_store
-    side_chat = store.create_conversation(kind="default")
-    store.set_labels(
-        side_chat.id, {FORK_SOURCE_LABEL_KEY: session_fixture.conv_id, SIDE_CHAT_LABEL_KEY: "1"}
-    )
-    store.append(side_chat.id, [_user_msg("uniquemarker in side chat")])
+    store.append(session_fixture.conv_id, [_user_msg("uniquemarker in main chat")])
+    ctx = _scheduled_helper(session_fixture)
 
-    tool = SessionHistoryTool()
     result = json.loads(
-        tool.invoke(
-            json.dumps({"action": "search", "query": "uniquemarker", "chat_id": side_chat.id}),
-            session_fixture.ctx,
+        SessionHistoryTool().invoke(
+            json.dumps(
+                {"action": "search", "query": "uniquemarker", "chat_id": session_fixture.conv_id}
+            ),
+            ctx,
         )
     )
     assert len(result["results"]) == 1

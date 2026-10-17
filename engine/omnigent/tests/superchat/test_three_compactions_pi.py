@@ -506,7 +506,7 @@ async def test_three_compactions_reach_pi_on_cold_starts(
 
         async def _on_stored(item: Any, _window: Any = None) -> None:
             stored.append(item)
-            await record_checkpoint(server, CHAT_ID, labels, item, workspace=tmp_path)
+            await record_checkpoint(CHAT_ID, labels, item, workspace=tmp_path)
 
         rolled = await roll_over_session(
             CHAT_ID,

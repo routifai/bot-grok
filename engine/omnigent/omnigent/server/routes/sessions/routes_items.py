@@ -80,8 +80,8 @@ async def _caller_readable_ids(
 
     A Super Chat family / related-chats listing is resolved by *owner*
     (``list_chat_family``, ``list_related_chats``), not by the caller's own
-    grants, so it can hand back Side Chats and Sub-agents the caller has no
-    access to at all (shared only one Side Chat of the family). This re-runs
+    grants, so it can hand back sessions the caller has no access to at all.
+    This re-runs
     the same per-session check the routes already require on the URL
     session, against every family member, before any of it reaches the
     caller. The owner always passes (their own grant satisfies READ); a
@@ -214,8 +214,7 @@ def register_items_routes(
         :param query: The search query string.
         :param limit: Maximum number of results (1-20, default 10).
         :param scope: ``session`` (default): this session's items, ranked by relevance.
-            ``family``: the messages of its Conversation and Side Chats (no Helpers, no copied
-            Side Chat context), newest first, each ``{"session_id", "message_id", "role",
+            ``family``: the messages of its Conversation (no Helpers), newest first, each ``{"session_id", "message_id", "role",
             "created_at", "text", "item"}``; only chats the caller may read.
         :returns: A :class:`PaginatedList` of matching item dicts
             (``first_id``/``last_id``/``has_more`` unset — search results are not
@@ -255,13 +254,11 @@ def register_items_routes(
         return PaginatedList(data=[redactor.deep(m.to_api_dict()) for m in items])
 
     # ── GET /sessions/{session_id}/related_chats ──────────────────
-    # Side chats related to session_id for ``session_history``'s
-    # ``list_chats`` action: forked FROM it (carrying the side-chat label),
-    # plus its own parent when session_id is itself a side chat.
-    # ``list_related_chats`` resolves by owner, not by the caller's grants,
-    # so a session merely shared with the caller could otherwise surface a
-    # sibling they have no access to; ``_caller_readable_ids`` re-checks
-    # each one against the caller's own permissions before it is returned.
+    # The chats session_id may read besides itself, for ``session_history``'s
+    # ``list_chats`` action run by the runner: a scheduled or ad-hoc Helper's
+    # parent Conversation. ``list_related_chats`` resolves by owner, not by the
+    # caller's grants, so ``_caller_readable_ids`` re-checks each one against
+    # the caller's own permissions before it is returned.
 
     @router.get(
         "/sessions/{session_id}/related_chats",
@@ -273,16 +270,14 @@ def register_items_routes(
         session_id: str,
     ) -> PaginatedList:
         """
-        List the side chats related to one session.
+        List the chats one session may read besides itself.
 
         :param session_id: Session/conversation identifier,
             e.g. ``"conv_abc123"``.
         :returns: A :class:`PaginatedList` of chat summary dicts
             (``id``, ``title``, ``created_at``, ``updated_at``,
-            ``last_message_preview``, ``live``, …) plus the caller's ``unread`` and
-            ``last_read_at`` (epoch seconds or ``None``); not cursor-paginated. Returns up to
-            :data:`~omnigent.context.rollover.RELATED_CHATS_MAX` side chats / forks
-            (newest-updated first) plus the parent chat.
+            ``last_message_preview``, ``archived``, ``live``, ``project``);
+            not cursor-paginated.
         :raises OmnigentError: 404 if no session exists.
         """
         user_id = _get_user_id(request, auth_provider)
@@ -299,18 +294,14 @@ def register_items_routes(
         allowed_ids = await _caller_readable_ids(
             user_id, [chat["id"] for chat in chats], permission_store, conversation_store
         )
-        chats = [chat for chat in chats if chat["id"] in allowed_ids]
-        from omnigent.superchat.family.unread import unread_by_chat
-
-        unread = await asyncio.to_thread(unread_by_chat, conversation_store, user_id, chats)
         redactor = await session_redactor(request, conversation_store, session_id, user_id)
         return PaginatedList(
-            data=[redactor.deep({**chat, **unread[chat["id"]]}) for chat in chats]
+            data=[redactor.deep(chat) for chat in chats if chat["id"] in allowed_ids]
         )
 
     # ── POST /sessions/{session_id}/read ──────────────────────────
     # Server-side "the caller read this chat": moves the caller's read-state
-    # baseline (the one ``related_chats``' ``unread`` and the session list use).
+    # baseline (the one the session list's ``unread`` uses).
 
     @router.post("/sessions/{session_id}/read", response_model=None)
     async def mark_session_read(
@@ -496,9 +487,8 @@ def register_items_routes(
 
     # ── GET /sessions/{session_id}/activities ────────────────────
     # The Activity Feed: every Activity under session_id's Super Chat family
-    # (the Super Chat itself, its Side Chats, and their Sub-agents). Derived
-    # on read from conversations/items — see omnigent/superchat/activity.py.
-    # session_id may be the Super Chat or one of its Side Chats.
+    # (the Super Chat itself and its Sub-agents). Derived on read from
+    # conversations/items — see omnigent/superchat/activity/derive.py.
 
     @router.get(
         "/sessions/{session_id}/activities",
@@ -515,7 +505,7 @@ def register_items_routes(
         """
         List the Activity Feed for ``session_id``'s Super Chat family.
 
-        :param session_id: A Super Chat or Side Chat session id.
+        :param session_id: A Super Chat session id.
         :param limit: Maximum Activities to return, newest-first (1-100).
         :param before: Only Activities started strictly before this epoch
             timestamp.
@@ -580,7 +570,7 @@ def register_items_routes(
         """
         Subscribe to ``activities.changed`` signals for ``session_id``'s family.
 
-        :param session_id: A Super Chat or Side Chat session id.
+        :param session_id: A Super Chat session id.
         :returns: An SSE stream of ``activities.changed`` / heartbeat frames.
         :raises OmnigentError: 403 if the caller lacks READ on ``session_id``;
             404 if no session exists there or it is not a Super Chat family.
@@ -620,7 +610,7 @@ def register_items_routes(
         """
         Return one Activity with full step detail.
 
-        :param session_id: A Super Chat or Side Chat session id.
+        :param session_id: A Super Chat session id.
         :param activity_id: An id previously returned by
             ``GET .../activities``.
         :returns: The Activity dict, steps including each call's

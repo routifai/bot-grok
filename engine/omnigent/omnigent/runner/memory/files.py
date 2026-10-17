@@ -5,8 +5,8 @@ Layout::
     memory/STATE.md                  the Conversation's working list, one note line on top
     memory/journal/YYYY-MM-DD.md     "# <date>", a "## Journal" heading, then one line per event
 
-A journal line is ``- <date> · <text> · <origin> <!-- <chat id> <refs> -->``. The origin says where
-it came from: ``main``, ``side "<title>"`` or ``fork @ "<title>"``. The refs, written by code, are
+A journal line is ``- <date> · <text> · <origin> <!-- <chat id> <refs> -->``. The origin names the
+chat it came from: ``main``, the Conversation. The refs, written by code, are
 ``key:value,value`` pairs naming what the work touched (:mod:`omnigent.context.refs`), e.g.
 ``files:projects/q3/budget.xlsx project:q3``; a line without any ends at the chat id. Lines are
 appended under the heading and never edited. The day file also holds two sections written by
@@ -41,10 +41,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from omnigent.context.refs import format_refs
-from omnigent.context.rollover import _strip_seed_header
+from omnigent.context.rollover import strip_checkpoint_header
 from omnigent.entities.daily_note import SECTION_TITLES, WRITER_KEYS
-from omnigent.stores.conversation_store import SIDE_CHAT_LABEL_KEY
-from omnigent.superchat.lineage import fork_anchor_id
 
 try:  # POSIX only; elsewhere the thread lock alone guards a single runner process
     import fcntl
@@ -81,33 +79,17 @@ _thread_lock = threading.Lock()
 class Origin:
     """The chat a line came from.
 
-    :param kind: ``"main"``, ``"side"`` or ``"fork"``.
+    :param kind: ``"main"``: the Conversation (the line's ``<origin>`` field).
     :param chat_id: The chat's session id.
-    :param title: The chat's title, empty when unknown.
     """
 
     kind: str
     chat_id: str
-    title: str = ""
 
     @property
     def label(self) -> str:
-        """:returns: ``main``, ``side "<title>"`` or ``fork @ "<title>"``."""
-        title = _one_line(self.title).replace('"', "'")[:TITLE_MAX_CHARS]
-        if self.kind == "main":
-            return "main"
-        if self.kind == "fork":
-            return f'fork @ "{title}"'
-        return f'side "{title}"'
-
-
-def origin_of(chat_id: str, labels: dict[str, str] | None, title: str | None = None) -> Origin:
-    """:returns: The :class:`Origin` of a chat, read from its labels (fork, side chat or main)."""
-    found = labels or {}
-    if SIDE_CHAT_LABEL_KEY not in found:
-        return Origin("main", chat_id, title or "")
-    kind = "fork" if fork_anchor_id(found) else "side"
-    return Origin(kind, chat_id, title or "")
+        """:returns: The ``<origin>`` field of a journal line."""
+        return self.kind
 
 
 def _one_line(text: str) -> str:
@@ -197,7 +179,7 @@ def hand_edit_line(
 
 def state_text_of(summary: str | None) -> str:
     """:returns: The state file text of a stored checkpoint summary, without its header."""
-    return _strip_seed_header(summary or "").strip()
+    return strip_checkpoint_header(summary or "").strip()
 
 
 def memory_dir(workspace: Path) -> Path:

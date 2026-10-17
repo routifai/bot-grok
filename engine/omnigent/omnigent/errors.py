@@ -198,12 +198,8 @@ class ErrorCode:
         newest (HTTP 409): the editor reloads the latest and the person edits again.
     :cvar MUSE_TENANT_MISMATCH: The session to adopt belongs to another
         tenant than the caller's (HTTP 409).
-    :cvar NOT_A_SUPER_CHAT: The session is not a Super Chat root (a side
-        chat, Helper or plain session) (HTTP 422).
-    :cvar FORK_ANCHOR_INVALID: A fork's anchor is not a visible user or
-        assistant message of the chat it is opened from (HTTP 422).
-    :cvar FORK_TOO_DEEP: A fork was asked of a fork of a fork; forks nest one
-        level only (HTTP 422).
+    :cvar NOT_A_SUPER_CHAT: The session is not a Super Chat root (a Helper or
+        plain session) (HTTP 422).
     :cvar MODEL_PROVIDER_UNREACHABLE: The model provider (Anthropic, OpenRouter) could not
         be reached or answered unexpectedly while checking a key; retrying later may help.
     :cvar MODEL_NOT_SUPPORTED: The model asked for cannot be served by the connection the
@@ -221,8 +217,6 @@ class ErrorCode:
         OpenRouter) and the deployment bills model calls to the owner's key. HTTP 412, like
         ``HARNESS_NOT_CONFIGURED``: the request is valid and a retry cannot succeed until
         the user adds a key in Settings.
-    :cvar NOT_A_FORK: The session is not a fork (a side chat with an anchor)
-        (HTTP 422).
     :cvar UNAUTHORIZED: No valid authentication credentials (HTTP 401).
     :cvar FORBIDDEN: Authenticated but insufficient permissions (HTTP 403).
     :cvar RUNNER_CAPABILITY_MISMATCH: The selected runner cannot
@@ -286,9 +280,6 @@ class ErrorCode:
     MUSE_TENANT_MISMATCH = "muse_tenant_mismatch"
     ARTIFACT_STALE = "artifact_stale"
     NOT_A_SUPER_CHAT = "not_a_super_chat"
-    FORK_ANCHOR_INVALID = "fork_anchor_invalid"
-    FORK_TOO_DEEP = "fork_too_deep"
-    NOT_A_FORK = "not_a_fork"
     MODEL_PROVIDER_UNREACHABLE = "model_provider_unreachable"
     MODEL_KEY_REQUIRED = "model_key_required"
     MODEL_NOT_SUPPORTED = "model_not_supported"
@@ -341,9 +332,6 @@ _CODE_TO_HTTP_STATUS: dict[str, int] = {
     ErrorCode.MUSE_TENANT_MISMATCH: 409,
     ErrorCode.ARTIFACT_STALE: 409,
     ErrorCode.NOT_A_SUPER_CHAT: 422,
-    ErrorCode.FORK_ANCHOR_INVALID: 422,
-    ErrorCode.FORK_TOO_DEEP: 422,
-    ErrorCode.NOT_A_FORK: 422,
     ErrorCode.MODEL_PROVIDER_UNREACHABLE: 502,
     ErrorCode.MODEL_KEY_REQUIRED: 412,
     ErrorCode.MODEL_NOT_SUPPORTED: 400,
@@ -393,9 +381,6 @@ _CODE_TO_CATEGORY: dict[str, ErrorCategory] = {
     ErrorCode.MUSE_TENANT_MISMATCH: ErrorCategory.USER,
     ErrorCode.ARTIFACT_STALE: ErrorCategory.USER,
     ErrorCode.NOT_A_SUPER_CHAT: ErrorCategory.USER,
-    ErrorCode.FORK_ANCHOR_INVALID: ErrorCategory.USER,
-    ErrorCode.FORK_TOO_DEEP: ErrorCategory.USER,
-    ErrorCode.NOT_A_FORK: ErrorCategory.USER,
     ErrorCode.MODEL_PROVIDER_UNREACHABLE: ErrorCategory.UPSTREAM,
     ErrorCode.MODEL_KEY_REQUIRED: ErrorCategory.USER,
     ErrorCode.MODEL_NOT_SUPPORTED: ErrorCategory.USER,
@@ -450,9 +435,6 @@ _CODE_TO_IMPACT: dict[str, ErrorImpact] = {
     ErrorCode.MUSE_TENANT_MISMATCH: ErrorImpact.BENIGN,
     ErrorCode.ARTIFACT_STALE: ErrorImpact.BENIGN,
     ErrorCode.NOT_A_SUPER_CHAT: ErrorImpact.BENIGN,
-    ErrorCode.FORK_ANCHOR_INVALID: ErrorImpact.BENIGN,
-    ErrorCode.FORK_TOO_DEEP: ErrorImpact.BENIGN,
-    ErrorCode.NOT_A_FORK: ErrorImpact.BENIGN,
     ErrorCode.MODEL_PROVIDER_UNREACHABLE: ErrorImpact.TRANSIENT,
     ErrorCode.MODEL_KEY_REQUIRED: ErrorImpact.BENIGN,
     ErrorCode.MODEL_NOT_SUPPORTED: ErrorImpact.BENIGN,
@@ -502,9 +484,6 @@ _CODE_TO_PHASE: dict[str, ErrorPhase] = {
     ErrorCode.MUSE_TENANT_MISMATCH: ErrorPhase.REQUEST,
     ErrorCode.ARTIFACT_STALE: ErrorPhase.REQUEST,
     ErrorCode.NOT_A_SUPER_CHAT: ErrorPhase.REQUEST,
-    ErrorCode.FORK_ANCHOR_INVALID: ErrorPhase.REQUEST,
-    ErrorCode.FORK_TOO_DEEP: ErrorPhase.REQUEST,
-    ErrorCode.NOT_A_FORK: ErrorPhase.REQUEST,
     ErrorCode.MODEL_PROVIDER_UNREACHABLE: ErrorPhase.REQUEST,
     ErrorCode.MODEL_KEY_REQUIRED: ErrorPhase.REQUEST,
     ErrorCode.MODEL_NOT_SUPPORTED: ErrorPhase.REQUEST,

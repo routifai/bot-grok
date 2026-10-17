@@ -137,11 +137,9 @@ def _spec() -> AgentSpec:
     return AgentSpec(spec_version=1, skills_filter="none")
 
 
-def test_registered_for_super_chat_and_side_chat_not_helpers() -> None:
+def test_registered_for_super_chat_not_helpers() -> None:
     mode = {"omnigent.context.mode": "superside-chat"}
     assert "render_card" in ToolManager(_spec(), labels=mode).get_tool_names()
-    side = {**mode, "omnigent.side_chat": "1"}
-    assert "render_card" in ToolManager(_spec(), labels=side).get_tool_names()
     helper = {**mode, "omnigent.subagent": "researcher"}
     assert "render_card" not in ToolManager(_spec(), labels=helper).get_tool_names()
     assert "render_card" not in ToolManager(_spec()).get_tool_names()

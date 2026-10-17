@@ -2582,27 +2582,6 @@
         "title": "FailedResponseObject",
         "type": "object"
       },
-      "ForkAddRequest": {
-        "additionalProperties": false,
-        "description": "Request body for `POST /v1/sessions/{fork_id}/add_to_conversation`.",
-        "properties": {
-          "summary": {
-            "anyOf": [
-              {
-                "maxLength": 500,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "The one line to add under the fork's anchor. `None` lets the engine write it from the fork.",
-            "title": "Summary"
-          }
-        },
-        "title": "ForkAddRequest",
-        "type": "object"
-      },
       "FunctionCallData": {
         "description": "Data for a function_call item.\n\n**Parameters**\n\n- `agent` \u2014 Agent name. Serialized as `\"model\"` in JSON.",
         "properties": {
@@ -5699,22 +5678,6 @@
             "description": "Which configured sandbox provider to provision on `host_type: \"managed\"` (one of the server's `sandbox_providers`); `None` takes the server's first. Only valid with `host_type: \"managed\"`.",
             "title": "Sandbox Provider"
           },
-          "side_chat": {
-            "default": false,
-            "title": "Side Chat",
-            "type": "boolean"
-          },
-          "side_chat_anchor_item_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Side Chat Anchor Item Id"
-          },
           "terminal_launch_args": {
             "anyOf": [
               {
@@ -7662,24 +7625,11 @@
       "SessionSuperchat": {
         "description": "Where a session sits in a Super Chat family.",
         "properties": {
-          "anchor_item_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "A Fork's anchor: the message it started from (ADR 0010).",
-            "title": "Anchor Item Id"
-          },
           "kind": {
             "anyOf": [
               {
                 "enum": [
                   "super",
-                  "side",
                   "helper"
                 ],
                 "type": "string"
@@ -7688,7 +7638,7 @@
                 "type": "null"
               }
             ],
-            "description": "`\"super\"`, `\"side\"`, `\"helper\"`, or `None`.",
+            "description": "`\"super\"`, `\"helper\"`, or `None`.",
             "title": "Kind"
           },
           "parent_id": {
@@ -7700,7 +7650,7 @@
                 "type": "null"
               }
             ],
-            "description": "A Side Chat's Super Chat (a Fork's: the chat holding its anchor, which for a fork of a fork is that fork), or a Helper's direct parent.",
+            "description": "A Helper's direct parent.",
             "title": "Parent Id"
           },
           "project": {
@@ -7725,18 +7675,6 @@
             ],
             "description": "The family's Super Chat.",
             "title": "Root Id"
-          },
-          "seed_item_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "The item a with-context Side Chat's own messages start after.",
-            "title": "Seed Item Id"
           }
         },
         "title": "SessionSuperchat",
@@ -8315,148 +8253,6 @@
           }
         },
         "title": "SetSharingRequest",
-        "type": "object"
-      },
-      "SideChatOpenRequest": {
-        "additionalProperties": false,
-        "description": "Request body for `POST /v1/sessions/{id}/side_chats`.\n\nOpens a Side Chat branched from a superside-chat Super Chat \u2014 the same\noperation the model-facing `side_chat_open` tool performs (see\n`omnigent/superchat/side_chats/chats.py`). Refused unless the target session is\nitself the Super Chat (never a Side Chat, never a Sub-agent).",
-        "properties": {
-          "anchor_item_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Opens a Fork (ADR 0010): a visible user or assistant message of the chat this is posted to (the Super Chat, or a fork of it). The fork knows that chat only up to and including this message. Requires `start: \"with_context\"`.",
-            "title": "Anchor Item Id"
-          },
-          "first_message": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Optional first user message, posted to the new Side Chat once it exists \u2014 after its seed when it starts `\"with_context\"`, so then after this request has answered.",
-            "title": "First Message"
-          },
-          "start": {
-            "description": "`\"with_context\"` forks the Super Chat with a seeded checkpoint summary; `\"blank\"` creates a fresh top-level session carrying only the discovery labels.",
-            "enum": [
-              "with_context",
-              "blank"
-            ],
-            "title": "Start",
-            "type": "string"
-          },
-          "title": {
-            "anyOf": [
-              {
-                "maxLength": 200,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Optional title for the new Side Chat. `None` titles it from `first_message` (then a short model-written title replaces that in the background), or leaves it untitled until its first message.",
-            "title": "Title"
-          }
-        },
-        "required": [
-          "start"
-        ],
-        "title": "SideChatOpenRequest",
-        "type": "object"
-      },
-      "SideChatOpenResponse": {
-        "description": "Response body for `POST /v1/sessions/{id}/side_chats`.",
-        "properties": {
-          "anchor_item_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "A Fork's anchor (echoes the request), else `None`.",
-            "title": "Anchor Item Id"
-          },
-          "conversation_id": {
-            "description": "The new Side Chat's session id.",
-            "title": "Conversation Id",
-            "type": "string"
-          },
-          "first_message_error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Set when the Side Chat was created but its `first_message` could not be delivered, after the server's own bounded retry; the caller may resend it. Never set for a message sent after the response (`\"with_context\"`): that one shows as unanswered instead.",
-            "title": "First Message Error"
-          },
-          "first_message_error_code": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "The failure's code: the events route's error code (e.g. `runner_unavailable`, `invalid_input`) or `transport_error`.",
-            "title": "First Message Error Code"
-          },
-          "parent_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "A Fork's parent: the chat holding its anchor (the Super Chat, or the fork it was forked from), else `None`.",
-            "title": "Parent Id"
-          },
-          "start": {
-            "description": "Echoes the request's `start`.",
-            "enum": [
-              "with_context",
-              "blank"
-            ],
-            "title": "Start",
-            "type": "string"
-          },
-          "title": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Its actual title \u2014 the caller's own, or the one the server derived.",
-            "title": "Title"
-          }
-        },
-        "required": [
-          "conversation_id",
-          "start"
-        ],
-        "title": "SideChatOpenResponse",
         "type": "object"
       },
       "SkillSummary": {
@@ -12711,65 +12507,6 @@
         ]
       }
     },
-    "/v1/sessions/{session_id}/add_to_conversation": {
-      "post": {
-        "description": "Add a fork's one-line summary back under its anchor (ADR 0010).\n\nStores the summary on the fork (its state becomes `added`; the transcript draws a\n`fork_summary` block under the anchor) and appends a system notice to the chat\nholding the anchor, so the Muse reads it. Asking again with the same summary changes\nnothing; a new summary replaces it.\n\n**Parameters**\n\n- `body` \u2014 Optional `summary`; without one the engine writes it from the fork.\n\n**Returns:** `{\"fork_id\", \"session_id\", \"anchor_item_id\", \"item_id\", \"title\", \"summary\", \"state\"}`: `session_id` is the chat holding the anchor, `item_id` the notice the Muse reads.\n\n**Raises**\n\n- `OmnigentError` \u2014 404 if the fork does not exist; 403 without EDIT on the fork and its parent chat; 422 `not_a_fork` for any other chat; 400 when no summary was given and the fork has nothing to summarise yet.",
-        "operationId": "add_fork_to_conversation_v1_sessions__session_id__add_to_conversation_post",
-        "parameters": [
-          {
-            "description": "The fork.",
-            "in": "path",
-            "name": "session_id",
-            "required": true,
-            "schema": {
-              "title": "Session Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "anyOf": [
-                  {
-                    "$ref": "#/components/schemas/ForkAddRequest"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Body"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Add Fork To Conversation",
-        "tags": [
-          "sessions"
-        ]
-      }
-    },
     "/v1/sessions/{session_id}/agent": {
       "get": {
         "description": "Return the `AgentObject` for the session's bound agent.\n\nReplaces the standalone `GET /api/agents/{id}` endpoint by\nresolving the agent through the session's `agent_id` foreign\nkey. The caller only needs to know the session id.\n\n**Returns:** The bound agent's `AgentObject`.\n\n**Raises**\n\n- `OmnigentError` \u2014 If the session or agent is not found.",
@@ -14865,7 +14602,7 @@
     },
     "/v1/sessions/{session_id}/related_chats": {
       "get": {
-        "description": "List the side chats related to one session.\n\n**Returns:** A `PaginatedList` of chat summary dicts (`id`, `title`, `created_at`, `updated_at`, `last_message_preview`, `live`, \u2026) plus the caller's `unread` and `last_read_at` (epoch seconds or `None`); not cursor-paginated. Returns up to `~omnigent.context.rollover.RELATED_CHATS_MAX` side chats / forks (newest-updated first) plus the parent chat.\n\n**Raises**\n\n- `OmnigentError` \u2014 404 if no session exists.",
+        "description": "List the chats one session may read besides itself.\n\n**Returns:** A `PaginatedList` of chat summary dicts (`id`, `title`, `created_at`, `updated_at`, `last_message_preview`, `archived`, `live`, `project`); not cursor-paginated.\n\n**Raises**\n\n- `OmnigentError` \u2014 404 if no session exists.",
         "operationId": "list_related_chats_route_v1_sessions__session_id__related_chats_get",
         "parameters": [
           {
@@ -16660,60 +16397,6 @@
         ]
       }
     },
-    "/v1/sessions/{session_id}/side_chats": {
-      "post": {
-        "description": "Open a Side Chat branched from a Super Chat.\n\nDoes exactly what the `side_chat_open` tool does today: refuses\nunless *session_id* is itself a superside-chat Super Chat (never a\nSide Chat, never a Sub-agent \u2014 `refuse_side_chat_open`);\n`start: \"with_context\"` forks it with a seeded checkpoint\n(`POST /sessions/{id}/fork`, `side_chat: true`); `\"blank\"`\ncreates a fresh top-level session carrying the discovery labels\n(`POST /sessions`). Either way the new Side Chat is stamped with\nhow it started, bound to the Super Chat's host (best-effort, as\n`POST /hosts/{host_id}/runners` already is for an unbound fork),\nand \u2014 when `first_message` is given \u2014 sent that as its first\nuser message. A `with_context` chat answers before its seed is written\n(`omnigent/context/side_chat_seeds.py`): its first message goes out once\nthe seed lands. An untitled chat is titled from that message at once, and\nby the model in the background once it is delivered.\n\nWith `anchor_item_id` it opens a Fork (ADR 0010): *session_id* may\nthen also be a fork of the Super Chat (once), the seed ends at the\nanchor, and the anchor and its chat are stamped on the new Side Chat\n(`omnigent/superchat/side_chats/forks.py`).\n\n**Parameters**\n\n- `body` \u2014 `start` (required), optional `title` / `first_message` / `anchor_item_id`.\n\n**Returns:** `{conversation_id, title, start, anchor_item_id, parent_id}`.\n\n**Raises**\n\n- `OmnigentError` \u2014 404 if *session_id* does not exist; 403 if it is a Side Chat (an anchorless one, for a fork) or a Sub-agent, or isn't in superside-chat mode; 422 `fork_too_deep` / `fork_anchor_invalid` for a fork; whatever the fork/create/message step raises on failure.",
-        "operationId": "open_side_chat_v1_sessions__session_id__side_chats_post",
-        "parameters": [
-          {
-            "description": "The Super Chat to branch the Side Chat from (or, for a fork, the chat holding the anchor).",
-            "in": "path",
-            "name": "session_id",
-            "required": true,
-            "schema": {
-              "title": "Session Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SideChatOpenRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SideChatOpenResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Open Side Chat",
-        "tags": [
-          "sessions"
-        ]
-      }
-    },
     "/v1/sessions/{session_id}/sign-in-link": {
       "get": {
         "description": "Return the sign-in link the session's terminal is waiting on right now.\n\nAsked by the error card at click time, so the user opens the live\nprompt rather than a link saved earlier that its launcher process has\nsince abandoned.\n\n**Returns:** The runner's `{\"pending\", \"url\", \"code\", \"terminal_id\"}` payload.",
@@ -16870,7 +16553,7 @@
     },
     "/v1/sessions/{session_id}/transcript": {
       "get": {
-        "description": "A session's transcript as typed blocks (`text`, `card`, `helper`, `file`,\n`secure_entry`, `error`).\n\n**Returns:** `{\"data\": [message], \"has_more\", \"older_cursor\", \"lineage\", \"reset\", \"live\"}`: `reset` is `{\"item_id\", \"created_at\"}` of the latest reset or `None`; `live` is whether a turn is in flight. Each message has `forks` (`[]` when none: `{session_id, title, replies, live, unread, state, summary, created_at}`) and an added fork's `fork_summary` block. A user message still waiting behind the running turn has `delivered: \"queued\"` (from the runner's live queue).\n\n**Raises**\n\n- `OmnigentError` \u2014 403 without READ; 404 if no session exists.",
+        "description": "A session's transcript as typed blocks (`text`, `card`, `helper`, `file`,\n`secure_entry`, `error`).\n\n**Returns:** `{\"data\": [message], \"has_more\", \"older_cursor\", \"lineage\", \"reset\", \"live\"}`: `reset` is `{\"item_id\", \"created_at\"}` of the latest reset or `None`; `live` is whether a turn is in flight. A user message still waiting behind the running turn has `delivered: \"queued\"` (from the runner's live queue).\n\n**Raises**\n\n- `OmnigentError` \u2014 403 without READ; 404 if no session exists.",
         "operationId": "get_session_transcript_v1_sessions__session_id__transcript_get",
         "parameters": [
           {
@@ -16911,17 +16594,6 @@
                 }
               ],
               "title": "Before"
-            }
-          },
-          {
-            "description": "Also return a with-context Side Chat's copied context.",
-            "in": "query",
-            "name": "include_seed",
-            "required": false,
-            "schema": {
-              "default": false,
-              "title": "Include Seed",
-              "type": "boolean"
             }
           },
           {

@@ -1,8 +1,9 @@
 # Context assembly
 
 This page explains what the model sees on one Muse turn, where each part comes from, how big each
-part can get, and what happens when a part fails. It covers the Conversation (the Super Chat), Side
-chats, Forks and Helpers, on both Muse harnesses (`claude-sdk` and `pi`).
+part can get, and what happens when a part fails. It covers the Conversation (the Super Chat) and
+Helpers, on both Muse harnesses (`claude-sdk` and `pi`). Side chats and Forks were removed
+([ADR 0021](../adr/0021-one-conversation-messages-link-to-artifacts.md)).
 
 The overview is [README.md](README.md). Delegation and Activity are in
 [delegation-and-activity.md](delegation-and-activity.md). This page goes deeper on context only.
@@ -40,7 +41,7 @@ the label `omnigent.context.mode=superside-chat` (`omnigent/context/labels.py:18
 6. [Memory Profile](#6-memory-profile)
 7. [On-demand context tools](#7-on-demand-context-tools)
 8. [Steering and context](#8-steering-and-context)
-9. [Side chats, Forks and Helpers](#9-side-chats-forks-and-helpers)
+9. [Helpers](#9-helpers)
 10. [Size and budget](#10-size-and-budget)
 11. [Security](#11-security)
 12. [Failure modes](#12-failure-modes)
@@ -225,7 +226,6 @@ Section headings in `deployment/engine/templates/AGENTS.md` (line numbers in the
 | How you work | 28 | What a Helper starts from (`:40-41`); a mid-turn message is a steer (`:51-56`) |
 | Managing your conversation context | 77 | Rollover, "the summary is a pointer, not the truth", use `session_history` (`:77-90`); search `memory/journal` with `files_query` for questions about the past, `state_close` for a wrong line of the working list, `memory/STATE.md` is read-only, an older pointer is history, a `stale?` line is asked about once (`:91-102`) |
 | Long-term memory | 105 | When and how to call `memory_remember`, two bars, supersede, withdrawals (`:105-152`) |
-| Side Chats and Sub-agents | 154 | "Side chat opened from the person's main Conversation" framing (`:159-160`) |
 | Projects | 232 | "Each message lists every Project" (`:255`) |
 | The person's files | 289 | `<attachment_context>` is untrusted data (`:296`); short files inline, long files indexed (`:306-308`) |
 | Date and time | 428 | "Each message comes with the current date and time" (`:430`) |
@@ -260,7 +260,7 @@ exposed as `mcp__omnigent__<name>` (`omnigent/inner/claude_sdk_executor.py:1049-
 - `state_close` (close a line of the working list at the next checkpoint),
 - `memory_*` (long-term memory),
 - `files_*` (the person's indexed files),
-- `side_chat_open`, `open_project`, `start_helper`, `message_helper`.
+- `open_project`, `start_helper`, `message_helper`.
 
 A `worker` Helper has a smaller list (`deployment/engine/templates/agents/worker/config.yaml:46-78`).
 It has `memory_search` and `memory_get`, but no `memory_remember`.
@@ -545,7 +545,7 @@ The runner also copies it into the person's Computer (`record_checkpoint`,
 `omnigent/runner/memory/sync.py:62-90`; layout in `omnigent/runner/memory/files.py:1-22`):
 
 - the journal lines and the evicted entries are appended to `~/workspace/memory/journal/YYYY-MM-DD.md`,
-  each line naming the chat it came from (`main`, a Side chat or a Fork); a Helper writes nothing;
+  each line naming the chat it came from (`main`); a Helper writes nothing;
 - for the main Conversation, the state file is written to `~/workspace/memory/STATE.md`.
 
 The folder is a projection: nothing in the engine reads it back, and it is rebuilt from the stored
@@ -587,8 +587,8 @@ and tools, so any drop, failure or prompt change sends them in full again
 Mechanics:
 
 - Applied only when the session's context mode is `superside-chat`
-  (`omnigent/runner/app.py:10025-10027`, `:10079-10080`). That covers the Conversation, Side chats,
-  Forks and Helpers (Helpers inherit the mode label: `omnigent/runner/tool_dispatch.py:3137`,
+  (`omnigent/runner/app.py:10025-10027`, `:10079-10080`). That covers the Conversation and
+  Helpers (Helpers inherit the mode label: `omnigent/runner/tool_dispatch.py:3137`,
   `omnigent/context/labels.py:110-143`).
 - Each block goes in front of the first text block of the **latest user message**; with no text
   block, a new one is inserted (`omnigent/runner/app.py:1368-1390`, `:1396-1438`).
@@ -841,7 +841,7 @@ untrusted data, not instructions.
 | `session_history` `read` | Whole earlier turns of this chat, newest first, paged by cursor | Before answering about earlier messages, exact wording, decisions (`deployment/engine/templates/AGENTS.md:86-90`) | 5 turns default, 20 max; fields clipped to 2,000 chars | `omnigent/tools/builtins/session_history.py:22-40`, `:62-85` |
 | `session_history` `search` | Full-text matches in this chat's items | Finding a topic before reading | 10 default, 20 max | same |
 | `session_history` `status` | Tokens used, window, tokens left before the next Rollover | Rarely | n/a | `omnigent/tools/builtins/session_history.py:76-78` |
-| `session_history` `list_chats` | Related Side chats and Forks (and the parent, from a Side chat) | The person refers to another chat | 200 chats | `omnigent/context/rollover.py:912-1033` |
+| `session_history` `list_chats` | The Conversation a scheduled or ad-hoc Helper works for | A quiet-moment Helper reads the day's conversation | one chat | `list_related_chats` in `omnigent/context/rollover.py` |
 | `memory_search` | Ranked active claims (hybrid score × confidence + recency boost) | Before answering about preferences, prior work, decisions (`deployment/engine/templates/AGENTS.md:97-98`) | 10 default, 20 max | `omnigent/memory/service.py:52-55`, `omnigent/server/routes/session_memory.py:35-36` |
 | `memory_get`, `memory_explain` | One claim; the quote, sources and supersede chain | "Why do you think that?" | n/a | `omnigent/superchat/memory/handlers.py:86-95` |
 | `files_search`, `files_vsearch`, `files_query` | Passages from the person's indexed files (keyword, vector, hybrid + rerank) | Long attachments, or any question about the person's files (`deployment/engine/templates/AGENTS.md:349-357`) | 8 results default, 25 max | `omnigent/runner/knowledge/indexer.py:79-84`, `omnigent/superchat/knowledge/handlers.py:28` |
@@ -906,57 +906,16 @@ model would see only a path line. So:
 `AGENTS.md` tells the model that a mid-turn message is part of the current request, not a new one
 (`deployment/engine/templates/AGENTS.md:51-56`).
 
-## 9. Side chats, Forks and Helpers
-
-### 9.1 What each one starts with
+## 9. Helpers
 
 | Chat | History at start | Per-turn prefix | Reference |
 |---|---|---|---|
 | Conversation | Its own record, rolled over | Yes | 3, 4, 5 |
-| Side chat, "Knows our conversation" on (`with_context`) | A seed checkpoint: the Conversation's summary plus its recent turns | Yes | `omnigent/superchat/side_chats/chats.py:70-90`, `omnigent/server/routes/sessions/routes_core.py:3003-3087` |
-| Side chat, switch off (`blank`) | Nothing | Yes | `omnigent/superchat/side_chats/chats.py:92-116` |
-| Fork | A seed checkpoint built only up to the anchor message | Yes | `omnigent/superchat/side_chats/forks.py:1-11`, `omnigent/context/rollover.py:687-693` |
 | Helper | Its Brief, with the Memory Profile put in front | Yes (it inherits the mode label) | `omnigent/runner/tool_dispatch.py:3392-3397`, `:3137` |
 
-Every one of them is a Super Chat mode session, so every turn gets the prefix blocks of section 5.
+Both are Super Chat mode sessions, so every turn gets the prefix blocks of section 5.
 
-### 9.2 "Knows our conversation" on: the seed checkpoint
-
-Opening a `with_context` Side chat forks the Conversation: the server deep-copies the record, then
-appends a **seed** `compaction` item in the background
-(`omnigent/server/routes/sessions/routes_core.py:3003-3087`, `:3089-3101`). The seed:
-
-- reuses the Conversation's latest checkpoint and folds in only what happened since, or summarizes
-  the whole record if there was never a Rollover (`omnigent/context/rollover.py:701-738`);
-- starts after the latest reset, if any (`omnigent/context/rollover.py:694-697`);
-- stops before the request that is opening the Side chat, so the new chat does not act on it
-  (`omnigent/context/rollover.py:609-636`, `:698-699`);
-- swaps the checkpoint header for a Side chat header, so the model knows it is a separate chat
-  (`omnigent/context/rollover.py:93-100`, `:584-606`).
-
-```text
-[Context checkpoint inserted by the system, not a message from the user.] [Side chat opened from the person's main Conversation. Below is a summary of that Conversation and its recent turns, for context. This side chat is separate: it does not send anything back to the main Conversation.]
-```
-
-`AGENTS.md` tells the model what that header means (`deployment/engine/templates/AGENTS.md:143-144`).
-
-A message sent to the new chat waits for the seed, at most 120 seconds
-(`omnigent/context/side_chat_seeds.py:1-23`). If the seed fails, the copy stays in place and is
-replayed instead (`omnigent/server/routes/sessions/routes_core.py:3090-3110`).
-
-**A Fork** is a `with_context` Side chat with an anchor. Its seed is cut right after the anchor item
-(`omnigent/context/rollover.py:687-693`), and it must start `with_context`
-(`omnigent/superchat/side_chats/routes.py:171-172`). "Add to Conversation" appends a one-line system
-notice to the parent chat and drops the parent's warm client when idle, so the Muse reads it on its
-next turn (`omnigent/superchat/side_chats/routes.py:277-341`).
-
-### 9.3 "Knows our conversation" off: a clean start
-
-A `blank` Side chat is a fresh session with the mode label and the Side chat labels, and no copied
-record (`omnigent/superchat/side_chats/chats.py:92-116`). Its first turn sees only the fixed
-instructions and that turn's prefix blocks: local time, Projects and the Memory Profile.
-
-### 9.4 Helpers: Brief plus Memory Profile
+### Brief plus Memory Profile
 
 A new Helper's first message is the Brief the Muse wrote with `start_helper`, with the Memory
 Profile in front (`omnigent/superchat/subagents.py:312-323`, called at
@@ -1102,7 +1061,6 @@ early. See [Known gaps](#15-known-gaps), item 9.
 | State file rewrite | Summarizer drops a tag, or merges into a missing one | Entry put back word for word and counted in `repairs`; the rewrite is accepted | `omnigent/context/state_file.py:217-240` |
 | `memory/` copy | Journal or `STATE.md` write fails | Logged; the turn and the checkpoint are unaffected; rebuilt from compaction items when missing | `omnigent/runner/memory/sync.py:62-90` |
 | Rollover race | Another process already rolled over | 409, treated as a lost race | `omnigent/superchat/rollover.py:304-308` |
-| Side chat seed | Summary fails or times out (120 s) | Copied record replayed instead | `omnigent/server/routes/sessions/routes_core.py:3090-3110`, `omnigent/context/side_chat_seeds.py:22-23` |
 | Helper profile | Profile fetch fails | Brief sent without a profile | `omnigent/superchat/subagents.py:320-323` |
 | Upkeep | No LLM configured | Run recorded as skipped | `omnigent/memory/upkeep.py:854-857` |
 | Upkeep | Classifier reply unparseable or times out | Candidate rejected | `omnigent/memory/upkeep.py:662-697`, `:739-744` |
@@ -1136,8 +1094,6 @@ Terms are defined in [CONTEXT.md](../../CONTEXT.md). Engine terms are in
 |---|---|
 | Muse | [CONTEXT.md — Muse](../../CONTEXT.md) |
 | Conversation (engine: Super Chat) | [CONTEXT.md — Conversation](../../CONTEXT.md) |
-| Side chat | [CONTEXT.md — Side chat](../../CONTEXT.md) |
-| Fork | [CONTEXT.md — Fork](../../CONTEXT.md) |
 | Helper (engine: Sub-agent) | [CONTEXT.md — Helper](../../CONTEXT.md) |
 | Computer | [CONTEXT.md — Computer](../../CONTEXT.md) |
 | Project | [CONTEXT.md — Project](../../CONTEXT.md) |
@@ -1149,7 +1105,7 @@ Terms used only on this page:
 
 - **Prefix block**: text the runner puts in front of the person's latest message for one turn, for
   the model only. Never stored.
-- **Checkpoint**: a stored `compaction` item: a Rollover summary, a Side chat seed, or a reset.
+- **Checkpoint**: a stored `compaction` item: a Rollover summary or a reset.
 - **Kept tail**: the recent whole turns a checkpoint keeps word for word.
 - **Warm session / cold start**: a harness that still holds the conversation, versus one rebuilt
   from stored items.

@@ -211,7 +211,7 @@ def test_turn_with_tool_call_becomes_one_activity_with_a_step() -> None:
         _msg("a1", "assistant", "Researched side chat mechanics with quotes", created_at=4),
     ]
     activities = _activities_for_conversation(
-        _FakeItemsStore(items), conv, include_step_detail=False, super_chat_id=conv.id
+        _FakeItemsStore(items), conv, include_step_detail=False
     )
     assert len(activities) == 1
     activity = activities[0]
@@ -238,7 +238,7 @@ def test_turn_without_tool_call_is_not_an_activity() -> None:
         _msg("a1", "assistant", "hello", created_at=2),
     ]
     activities = _activities_for_conversation(
-        _FakeItemsStore(items), conv, include_step_detail=False, super_chat_id=conv.id
+        _FakeItemsStore(items), conv, include_step_detail=False
     )
     assert activities == []
 
@@ -250,7 +250,7 @@ def test_turn_step_detail_included_only_when_requested() -> None:
         _call_output("fo1", "result text", created_at=2),
     ]
     activities = _activities_for_conversation(
-        _FakeItemsStore(items), conv, include_step_detail=True, super_chat_id=conv.id
+        _FakeItemsStore(items), conv, include_step_detail=True
     )
     [activity] = activities
     [step] = activity.steps
@@ -270,7 +270,7 @@ def test_sub_agent_conversation_becomes_one_activity() -> None:
         _msg("a1", "assistant", "Found the auth flow docs", created_at=7),
     ]
     [activity] = _activities_for_conversation(
-        _FakeItemsStore(items), conv, include_step_detail=False, super_chat_id=conv.id
+        _FakeItemsStore(items), conv, include_step_detail=False
     )
     assert activity.kind == "sub_agent"
     assert activity.id == "sub_agent:conv_child"
@@ -416,9 +416,7 @@ def test_sub_agent_status_helper_that_replied_without_status_is_done() -> None:
 
 def test_failed_launch_says_so_in_plain_words() -> None:
     conv = _conv(kind="sub_agent", title="researcher:japan", labels=_LAUNCHING)
-    [activity] = _activities_for_conversation(
-        _FakeItemsStore([]), conv, include_step_detail=False, super_chat_id="conv_root"
-    )
+    [activity] = _activities_for_conversation(_FakeItemsStore([]), conv, include_step_detail=False)
     assert activity.status == STATUS_FAILED
     assert activity.outcome == "Could not get started"
 
@@ -435,7 +433,7 @@ def test_scheduled_run_that_could_not_launch_is_failed_with_its_reason() -> None
     )
     items = [_error("e1", "Your Computer didn't start.", response_id="resp_x", created_at=2)]
     [activity] = _activities_for_conversation(
-        _FakeItemsStore(items), conv, include_step_detail=False, super_chat_id="conv_super"
+        _FakeItemsStore(items), conv, include_step_detail=False
     )
     assert activity.status == STATUS_FAILED
     assert activity.source == "scheduled"
@@ -455,7 +453,6 @@ def test_sub_agent_activity_names_the_chat_that_started_it() -> None:
         _FakeItemsStore([_call("fc1", "memory_search", {"query": "japan"})]),
         conv,
         include_step_detail=False,
-        super_chat_id="conv_root",
     )
     assert activity.parent_chat_id == "conv_parent"
     assert activity.status == STATUS_IN_PROGRESS
@@ -470,7 +467,7 @@ def test_system_started_turn_is_titled_by_the_chat() -> None:
         _msg("a1", "assistant", "Here is the result", created_at=4),
     ]
     activities = _activities_for_conversation(
-        _FakeItemsStore(items), conv, include_step_detail=False, super_chat_id=conv.id
+        _FakeItemsStore(items), conv, include_step_detail=False
     )
     assert activities[0].title == "Here is the result", "named by what the turn said"
     assert activities[0].title_prompt is not None
@@ -486,7 +483,7 @@ def test_flagged_notice_without_the_legacy_prefix_is_still_system_started() -> N
         _msg("a1", "assistant", "Here is the result", created_at=4),
     ]
     activities = _activities_for_conversation(
-        _FakeItemsStore(items), conv, include_step_detail=False, super_chat_id=conv.id
+        _FakeItemsStore(items), conv, include_step_detail=False
     )
     assert activities[0].title == "Here is the result"
 
@@ -500,7 +497,7 @@ def test_turn_titled_by_request_stored_outside_its_response_group() -> None:
         _msg("a1", "assistant", "Totals match", created_at=4, response_id="resp_2"),
     ]
     activities = _activities_for_conversation(
-        _FakeItemsStore(items), conv, include_step_detail=False, super_chat_id=conv.id
+        _FakeItemsStore(items), conv, include_step_detail=False
     )
     assert activities[0].title == "Check the Q4 totals"
 
@@ -526,9 +523,7 @@ def _tool_turn_items(request: str = "yo what's tesla stock price?") -> list[Conv
 def test_stored_title_replaces_the_fallback_and_ends_the_title_job() -> None:
     conv = _conv()
     store = _FakeItemsStore(_tool_turn_items(), titles={"resp_1": "Check Tesla's latest price"})
-    [activity] = _activities_for_conversation(
-        store, conv, include_step_detail=False, super_chat_id=conv.id
-    )
+    [activity] = _activities_for_conversation(store, conv, include_step_detail=False)
     assert activity.title == "Check Tesla's latest price"
     # Titled but not yet summarised: the result is still to be written up by the model.
     assert activity.title_prompt is not None
@@ -542,9 +537,7 @@ def test_stored_title_and_summary_end_the_label_job() -> None:
     store.get_activity_labels = lambda ids: dict.fromkeys(  # type: ignore[method-assign]
         ids, ("Check Tesla's latest price", "Tesla trades at $240 today")
     )
-    [activity] = _activities_for_conversation(
-        store, conv, include_step_detail=False, super_chat_id=conv.id
-    )
+    [activity] = _activities_for_conversation(store, conv, include_step_detail=False)
     assert activity.title_prompt is None
     assert activity.summary == "Tesla trades at $240 today"
 
@@ -552,20 +545,9 @@ def test_stored_title_and_summary_end_the_label_job() -> None:
 def test_fallback_title_drops_greetings_and_the_question_mark() -> None:
     conv = _conv()
     [activity] = _activities_for_conversation(
-        _FakeItemsStore(_tool_turn_items()), conv, include_step_detail=False, super_chat_id=conv.id
+        _FakeItemsStore(_tool_turn_items()), conv, include_step_detail=False
     )
     assert activity.title == "What's tesla stock price"
-
-
-def test_a_side_chat_turn_has_the_side_chat_source() -> None:
-    conv = _conv("conv_side")
-    [activity] = _activities_for_conversation(
-        _FakeItemsStore(_tool_turn_items()),
-        conv,
-        include_step_detail=False,
-        super_chat_id="conv_super",
-    )
-    assert activity.source == "side_chat"
 
 
 def test_in_progress_turn_carries_only_its_latest_steps_call() -> None:
@@ -576,7 +558,7 @@ def test_in_progress_turn_carries_only_its_latest_steps_call() -> None:
         _call("fc2", "web_search", {"query": "b"}, created_at=3, response_id="resp_1"),
     ]
     [activity] = _activities_for_conversation(
-        _FakeItemsStore(items), conv, include_step_detail=False, super_chat_id=conv.id
+        _FakeItemsStore(items), conv, include_step_detail=False
     )
     assert activity.status == STATUS_IN_PROGRESS
     assert activity.summary is None
@@ -598,7 +580,7 @@ def test_scheduled_helper_shows_its_task_name_without_the_collision_suffix() -> 
         _msg("a1", "assistant", "Nothing new.", created_at=2),
     ]
     [activity] = _activities_for_conversation(
-        _FakeItemsStore(items), conv, include_step_detail=False, super_chat_id="conv_super"
+        _FakeItemsStore(items), conv, include_step_detail=False
     )
     assert activity.title == "Study"
     assert activity.source == "scheduled"
@@ -610,7 +592,7 @@ def test_followed_topic_titles() -> None:
     labels = {"omnigent.subagent.scheduled_task_id": "task_1"}
     topic = _conv("conv_a", kind="sub_agent", title="researcher:AI agent launches", labels=labels)
     [topic_activity] = _activities_for_conversation(
-        _FakeItemsStore([]), topic, include_step_detail=False, super_chat_id="conv_super"
+        _FakeItemsStore([]), topic, include_step_detail=False
     )
     assert (topic_activity.title, topic_activity.source) == ("AI agent launches", "scheduled")
 
@@ -624,7 +606,7 @@ def test_task_summary_names_a_background_helper() -> None:
     )
     items = [_msg("u1", "user", "Please look up the Tesla price", created_at=1)]
     [activity] = _activities_for_conversation(
-        _FakeItemsStore(items), conv, include_step_detail=False, super_chat_id="conv_super"
+        _FakeItemsStore(items), conv, include_step_detail=False
     )
     assert activity.title == "Check Tesla's latest price"
     assert activity.title_prompt is None
@@ -634,7 +616,7 @@ def test_generic_helper_title_falls_back_to_the_delegated_task_and_asks_for_a_ti
     conv = _conv("conv_child", kind="sub_agent", title="researcher:researcher-1")
     items = [_msg("u1", "user", "Please look up the Tesla price", created_at=1)]
     [activity] = _activities_for_conversation(
-        _FakeItemsStore(items), conv, include_step_detail=False, super_chat_id="conv_super"
+        _FakeItemsStore(items), conv, include_step_detail=False
     )
     assert activity.title == "Look up the Tesla price"
     assert activity.title_prompt == "Request to name:\nPlease look up the Tesla price"
@@ -648,7 +630,7 @@ def test_a_machine_readable_reply_gives_no_summary_and_no_title() -> None:
         _msg("a1", "assistant", '```json\n{"kind": "study"}\n```', created_at=4),
     ]
     [activity] = _activities_for_conversation(
-        _FakeItemsStore(items), conv, include_step_detail=False, super_chat_id=conv.id
+        _FakeItemsStore(items), conv, include_step_detail=False
     )
     assert activity.summary is None
     assert activity.title == "Side chat mechanics"
@@ -664,7 +646,7 @@ def test_a_scheduled_helper_without_a_usable_name_is_named_from_its_task() -> No
     )
     items = [_msg("u1", "user", "Track new AI agent launches every Monday", created_at=1)]
     [activity] = _activities_for_conversation(
-        _FakeItemsStore(items), conv, include_step_detail=False, super_chat_id="conv_super"
+        _FakeItemsStore(items), conv, include_step_detail=False
     )
     assert activity.title == "Track new AI agent launches every Monday"
     assert activity.source == "scheduled"
@@ -759,7 +741,7 @@ def test_adhoc_helper_is_housekeeping_and_its_title_has_no_utc_suffix() -> None:
         _msg("a1", "assistant", "ok", created_at=2),
     ]
     [activity] = _activities_for_conversation(
-        _FakeItemsStore(items), conv, include_step_detail=False, super_chat_id="conv_super"
+        _FakeItemsStore(items), conv, include_step_detail=False
     )
     assert activity.source == "housekeeping"
     assert "UTC" not in activity.title

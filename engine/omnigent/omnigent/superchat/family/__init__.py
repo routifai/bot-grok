@@ -1,4 +1,4 @@
-"""Family: one event stream for a Super Chat, its Side Chats and its Helpers.
+"""Family: one event stream for a Super Chat and its Helpers.
 
 Layout: ``stream`` (the fan-in over the per-session streams), ``signals`` (changes no session
 stream carries), ``routes`` (the SSE route), this module (registration).

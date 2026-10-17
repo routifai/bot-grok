@@ -10,7 +10,7 @@ in Settings, Models (stored in :class:`~omnigent.superchat.models.selection.Mode
   the shared model catalog's), else the catalog's default when nothing is priced.
 
 A Super Chat Helper names only ``fast`` or ``strong``: ``fast`` runs on Light, ``strong`` on
-Default. Background work (memory upkeep, the daily note, Dreaming, side-chat seeds, reranking)
+Default. Background work (memory upkeep, the daily note, Dreaming, reranking)
 runs on Light (:mod:`.background`). The runner (inside a Computer, no database) asks
 ``GET /v1/sessions/{id}/helper-models`` (:mod:`.selection`).
 """

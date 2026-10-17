@@ -29,11 +29,10 @@ from omnigent.server.jwt_bearer import JwtBearerConfig, JwtBearerVerifier
 from omnigent.stores.agent_store.sqlalchemy_store import SqlAlchemyAgentStore
 from omnigent.stores.artifact_store.local import LocalArtifactStore
 from omnigent.stores.comment_store.sqlalchemy_store import SqlAlchemyCommentStore
-from omnigent.stores.conversation_store import SIDE_CHAT_LABEL_KEY
 from omnigent.stores.conversation_store.sqlalchemy_store import SqlAlchemyConversationStore
 from omnigent.stores.file_store.sqlalchemy_store import SqlAlchemyFileStore
 from omnigent.stores.permission_store.sqlalchemy_store import SqlAlchemyPermissionStore
-from omnigent.superchat.muse import MUSE_KEY_LABEL_KEY, MUSE_LABEL_KEY, muse_session_id
+from omnigent.superchat.muse import MUSE_LABEL_KEY, muse_session_id
 from tests.server.conftest import ControllableMockClient
 from tests.server.helpers import build_agent_bundle
 
@@ -244,45 +243,41 @@ async def test_session_read_carries_kind_root_and_project(
         "kind": "super",
         "root_id": muse_id,
         "parent_id": None,
-        "seed_item_id": None,
-        "anchor_item_id": None,
         "project": None,
         "folder": None,
         "workspace_chosen": False,
     }
     agent_id = muse["agent_id"]
-    side = store.create_conversation(
+    in_project = store.create_conversation(
         agent_id=agent_id,
-        labels={**_MODE, SIDE_CHAT_LABEL_KEY: "true", "omnigent.side_chat.parent_id": muse_id},
+        labels=_MODE,
         host_id="f" * 32,
         workspace="/home/u/workspace/projects/q3-deck",
     )
     store.set_labels(
-        side.id,
+        in_project.id,
         {
             "omnigent.project.name": "Q3 board deck",
             "omnigent.superchat.workspace.chosen": "person",
         },
     )
-    SqlAlchemyPermissionStore(store.storage_location).grant("alice@example.com", side.id, 4)
-    side_view = (await client.get(f"/v1/sessions/{side.id}", headers=ALICE)).json()
-    assert side_view["superchat"] == {
-        "kind": "side",
-        "root_id": muse_id,
-        "parent_id": muse_id,
-        "seed_item_id": None,
-        "anchor_item_id": None,
+    SqlAlchemyPermissionStore(store.storage_location).grant("alice@example.com", in_project.id, 4)
+    project_view = (await client.get(f"/v1/sessions/{in_project.id}", headers=ALICE)).json()
+    assert project_view["superchat"] == {
+        "kind": "super",
+        "root_id": in_project.id,
+        "parent_id": None,
         "project": {"slug": "q3-deck", "name": "Q3 board deck"},
         "folder": "projects/q3-deck",
         "workspace_chosen": True,
     }
     helper = store.create_conversation(
-        kind="sub_agent", agent_id=agent_id, parent_conversation_id=side.id, title="Job"
+        kind="sub_agent", agent_id=agent_id, parent_conversation_id=muse_id, title="Job"
     )
     helper_view = (await client.get(f"/v1/sessions/{helper.id}", headers=ALICE)).json()
     assert helper_view["superchat"]["kind"] == "helper"
     assert helper_view["superchat"]["root_id"] == muse_id
-    assert helper_view["superchat"]["parent_id"] == side.id
+    assert helper_view["superchat"]["parent_id"] == muse_id
     plain = store.create_conversation(agent_id=agent_id)
     SqlAlchemyPermissionStore(store.storage_location).grant("alice@example.com", plain.id, 4)
     plain_view = (await client.get(f"/v1/sessions/{plain.id}", headers=ALICE)).json()
@@ -430,51 +425,24 @@ async def test_adopt_makes_an_existing_super_chat_the_one_get_returns(
     assert (launcher._bot_id, launcher._space_id) == ("computer-key-1", "space-1")
 
 
-async def test_get_ignores_a_side_chat_that_copied_the_muse_labels(
-    client: httpx.AsyncClient, stores: dict[str, Any]
-) -> None:
-    """Forks made before forks dropped the Muse labels still carry them; GET must
-    keep returning the Conversation, never the newer side chat."""
-    muse = (await client.get("/v1/me/muse", headers=ALICE_SPACE_1)).json()["session_id"]
-    conv_store = stores["conversation"]
-    labels = dict(conv_store.get_conversation(muse).labels)
-    side = await client.post(
-        "/v1/sessions",
-        json={"agent_id": "a" * 32, "labels": {**_MODE, "omnigent.side_chat": "1"}},
-        headers=ALICE,
-    )
-    assert side.status_code == 201, side.text
-    side_id = side.json()["id"]
-    conv_store.set_labels(
-        side_id,
-        {MUSE_LABEL_KEY: "true", MUSE_KEY_LABEL_KEY: labels[MUSE_KEY_LABEL_KEY]},
-    )
-
-    found = (await client.get("/v1/me/muse", headers=ALICE_SPACE_1)).json()
-    assert found["session_id"] == muse
-
-
 async def test_adopt_someone_elses_session_is_not_found(client: httpx.AsyncClient) -> None:
     session_id = await _existing_super_chat(client, ALICE)
     resp = await client.post("/v1/me/muse/adopt", json={"session_id": session_id}, headers=BOB)
     assert resp.status_code == 404
 
 
-async def test_adopt_refuses_a_side_chat_and_a_helper(
+async def test_adopt_refuses_a_plain_session_and_a_helper(
     client: httpx.AsyncClient, stores: dict[str, Any]
 ) -> None:
     store: SqlAlchemyConversationStore = stores["conversation"]
     root = await _existing_super_chat(client, ALICE)
-    side = store.create_conversation(
-        agent_id="a" * 32,
-        labels={**_MODE, SIDE_CHAT_LABEL_KEY: "true", "omnigent.side_chat.parent_id": root},
-    )
-    SqlAlchemyPermissionStore(store.storage_location).grant("alice@example.com", side.id, 4)
+    plain = store.create_conversation(agent_id="a" * 32)
+    SqlAlchemyPermissionStore(store.storage_location).grant("alice@example.com", plain.id, 4)
     helper = store.create_conversation(
         kind="sub_agent", agent_id="a" * 32, parent_conversation_id=root, title="Job"
     )
     SqlAlchemyPermissionStore(store.storage_location).grant("alice@example.com", helper.id, 4)
-    for session_id in (side.id, helper.id):
+    for session_id in (plain.id, helper.id):
         resp = await client.post(
             "/v1/me/muse/adopt", json={"session_id": session_id}, headers=ALICE_SPACE_1
         )

@@ -3,9 +3,9 @@
 The rollover super chat compacts older messages into a summary — "the
 summary is a pointer, not the truth" (``rollover/README.md``). This tool
 lets the model page backward through, or full-text search, the exact items
-that summary was built from, check how much context headroom is left, and
-look into a related side chat (``list_chats``, then ``chat_id``) the same
-way Muse's main chat reads a side chat.
+that summary was built from, check how much context headroom is left, and,
+from a scheduled or ad-hoc Helper, read the Conversation it works for
+(``list_chats``, then ``chat_id``).
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ _ACTIONS = frozenset({"list_chats", "read", "search", "status"})
 class SessionHistoryTool(Tool):
     """
     Page, search, and check token headroom for the calling session, and
-    look into one of its related side chats.
+    look into a chat it may read (a Helper's parent Conversation).
 
     Scoped by construction: the session id always comes from
     :attr:`ToolContext.conversation_id` (set by the runtime from the turn
@@ -77,13 +77,11 @@ class SessionHistoryTool(Tool):
             "this session's own items. action='status' reports tokens "
             "used, the context window, and tokens left before the next "
             "rollover. Always scoped to the session that called this tool "
-            "by default. action='list_chats' lists the side chats related "
-            "to this one (forked from it, or its parent if this IS a side "
-            "chat) with a short preview of each. When the user refers to "
-            "work from another chat, call list_chats first, then pass that "
-            "chat's id as chat_id to read or search to look into it — name "
-            "the source chat in your answer. This tool is read-only: it "
-            "never writes into another chat, only this one's own turns do."
+            "by default. action='list_chats' lists the other chats this "
+            "session may read (a Helper's parent conversation) with a short "
+            "preview of each; pass that chat's id as chat_id to read or "
+            "search to look into it. This tool is read-only: it never "
+            "writes into another chat, only this one's own turns do."
         )
 
     def get_schema(self) -> dict[str, Any]:
@@ -108,8 +106,8 @@ class SessionHistoryTool(Tool):
                                 "'read' returns full turns of this session, newest "
                                 "first; 'search' full-text searches its items; "
                                 "'status' reports token usage and headroom before "
-                                "the next rollover; 'list_chats' lists the side "
-                                "chats related to this session."
+                                "the next rollover; 'list_chats' lists the other "
+                                "chats this session may read."
                             ),
                         },
                         "cursor": {
