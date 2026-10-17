@@ -295,8 +295,6 @@ class SessionResourceRegistry:
         per_session_workspace: bool = False,
     ) -> None:
         self._terminal_registry = terminal_registry
-        if terminal_registry is not None:
-            terminal_registry.environment_resolver = self._resolve_terminal_environment
         self._runner_workspace = runner_workspace
         self._per_session_workspace = per_session_workspace
         self._primary_envs: dict[str, OSEnvironment] = {}
@@ -703,18 +701,6 @@ class SessionResourceRegistry:
 
         raise ValueError(f"Environment {environment_id!r} not found for session {session_id!r}")
 
-    def uses_copy_on_write(self, session_id: str) -> bool:
-        """Preserve disposable semantics if a later spec lookup is unavailable."""
-        with self._lock:
-            environment = self._primary_envs.get(session_id)
-            return bool(
-                getattr(getattr(environment, "sandbox", None), "copy_on_write_roots", None)
-            )
-
-    def _resolve_terminal_environment(self, session_id: str, spec: OSEnvSpec) -> OSEnvironment:
-        """Resolve the environment shared by inherited terminals and file tools."""
-        return self._resolve_primary(session_id, None, os_env_spec=spec)
-
     def _resolve_primary(
         self,
         session_id: str,
@@ -734,30 +720,7 @@ class SessionResourceRegistry:
                 requested_spec = self._effective_primary_spec(session_id, requested_spec)
             cached = self._primary_envs.get(session_id)
             if cached is not None:
-                previous_spec = self._primary_env_specs.get(session_id)
-                requested_cow = (
-                    requested_spec is not None
-                    and requested_spec.sandbox is not None
-                    and any(p.copy_on_write for p in requested_spec.sandbox.write_path_specs)
-                )
-                cached_cow = bool(
-                    getattr(getattr(cached, "sandbox", None), "copy_on_write_roots", None)
-                )
-                if requested_spec is not None and (requested_cow or cached_cow):
-                    if previous_spec is None and not cached_cow:
-                        # The filesystem panel may create a host read view before
-                        # the agent's sandbox configuration becomes available.
-                        cached.close()
-                        self._primary_envs.pop(session_id)
-                    elif previous_spec != requested_spec:
-                        raise ValueError(
-                            "Cannot change an active copy-on-write environment; "
-                            "start a new session"
-                        )
-                    else:
-                        return cached
-                else:
-                    return cached
+                return cached
 
             os_env = (
                 self._create_primary_env(session_id, agent_spec, os_env_spec=os_env_spec)

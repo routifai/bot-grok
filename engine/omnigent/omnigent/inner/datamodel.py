@@ -513,16 +513,13 @@ class CredentialProxySpec:
 
 @dataclass(frozen=True)
 class WritePathSpec:
-    """A directory write grant, optionally backed by a disposable overlay."""
+    """A directory write grant."""
 
     path: str
-    copy_on_write: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.path, str) or not self.path:
             raise ValueError("write_paths.path must be a non-empty string")
-        if not isinstance(self.copy_on_write, bool):
-            raise ValueError("write_paths.copy_on_write must be a boolean")
 
 
 def parse_write_paths(raw: object) -> list[str | WritePathSpec] | None:
@@ -539,13 +536,12 @@ def parse_write_paths(raw: object) -> list[str | WritePathSpec] | None:
         elif isinstance(entry, WritePathSpec):
             result.append(entry)
         elif isinstance(entry, dict):
-            if set(entry) - {"path", "copy_on_write"}:
-                raise ValueError("write_paths entries only accept path and copy_on_write")
+            if set(entry) - {"path"}:
+                raise ValueError("write_paths entries only accept path")
             path = entry.get("path")
-            copy_on_write = entry.get("copy_on_write", False)
-            if not isinstance(path, str) or not isinstance(copy_on_write, bool):
-                raise ValueError("write_paths requires a string path and boolean copy_on_write")
-            result.append(WritePathSpec(path, copy_on_write))
+            if not isinstance(path, str):
+                raise ValueError("write_paths requires a string path")
+            result.append(WritePathSpec(path))
         else:
             raise ValueError("write_paths entries must be path strings or mappings")
     return result
@@ -811,14 +807,6 @@ class OSEnvSpec:
     sandbox: OSEnvSandboxSpec | None = None
     fork: bool = False
     start_in_scratch: bool = False
-
-    def __post_init__(self) -> None:
-        if (
-            self.fork
-            and self.sandbox is not None
-            and any(p.copy_on_write for p in self.sandbox.write_path_specs)
-        ):
-            raise ValueError("os_env.fork cannot be combined with copy_on_write paths")
 
 
 @dataclass

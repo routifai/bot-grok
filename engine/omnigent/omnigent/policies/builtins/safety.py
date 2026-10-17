@@ -765,7 +765,6 @@ POLICY_REGISTRY: list[dict[str, object]] = [
                                 "type": "object",
                                 "properties": {
                                     "path": {"type": "string", "minLength": 1},
-                                    "copy_on_write": {"type": "boolean", "default": False},
                                 },
                                 "required": ["path"],
                                 "additionalProperties": False,

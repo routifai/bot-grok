@@ -168,8 +168,6 @@ class SandboxPolicy:
     write_roots: list[Path]
     write_files: list[Path]
     allow_network: bool
-    copy_on_write_roots: list[Path] | None = None
-    copy_on_write_namespace: tuple[int, int, int] | None = None
     cwd_allow_hidden: list[str] | None = None
     cwd_hidden_scan_max_entries: int = 50000
     cwd_hidden_scan_overflow: str = "warn"
@@ -208,12 +206,6 @@ class SandboxPolicy:
             "active": self.active,
             "read_roots": (
                 _json_string_list(self.read_roots) if self.read_roots is not None else None
-            ),
-            "copy_on_write_roots": _json_string_list(self.copy_on_write_roots or []),
-            "copy_on_write_namespace": (
-                cast(list[JsonValue], list(self.copy_on_write_namespace))
-                if self.copy_on_write_namespace
-                else None
             ),
             "write_roots": _json_string_list(self.write_roots),
             "write_files": _json_string_list(self.write_files),
@@ -311,18 +303,7 @@ class SandboxPolicy:
             if isinstance(credential_source_paths_data, list)
             else None
         )
-        cow_roots = data.get("copy_on_write_roots", [])
-        if not isinstance(cow_roots, list) or any(not isinstance(p, str) for p in cow_roots):
-            raise ValueError("Invalid copy_on_write_roots")
-        cow_namespace = data.get("copy_on_write_namespace")
-        namespace = None
-        if cow_namespace is not None:
-            from omnigent.sandbox.copy_on_write import parse_namespace
-
-            namespace = parse_namespace(cow_namespace)
         return cls(
-            copy_on_write_roots=[Path(str(p)) for p in cow_roots] or None,
-            copy_on_write_namespace=namespace,
             backend_type=str(data.get("backend_type", "none")),
             active=bool(data.get("active", False)),
             read_roots=read_roots,
@@ -495,10 +476,6 @@ def _resolve_grant_root(cwd: Path, root: str) -> Path:
 
 def resolve_sandbox(spec: OSEnvSpec, cwd: Path) -> SandboxPolicy:
     sandbox_spec = spec.sandbox or _default_sandbox_for_platform()
-    if sandbox_spec.type != "linux_bwrap" and any(
-        grant.copy_on_write for grant in sandbox_spec.write_path_specs
-    ):
-        raise ValueError("copy_on_write requires sandbox.type=linux_bwrap")
     if sandbox_spec.type == "none":
         # ``sandbox.type: none`` runs the helper UNSANDBOXED, so path grants
         # cannot *restrict* the (unconfined) shell -- a network restriction is
@@ -537,10 +514,6 @@ def resolve_sandbox(spec: OSEnvSpec, cwd: Path) -> SandboxPolicy:
                 or entry.source.refresh_interval_seconds is not None
             ):
                 protect_credential_source(entry.source, policy, cwd=cwd)
-    if policy.copy_on_write_roots:
-        from omnigent.sandbox.copy_on_write import attach_shared_environment
-
-        attach_shared_environment(policy)
     return policy
 
 
@@ -792,10 +765,6 @@ def _clone_policy_with(
     helpers without each one redeclaring every constructor arg.
     """
     return SandboxPolicy(
-        copy_on_write_roots=list(policy.copy_on_write_roots)
-        if policy.copy_on_write_roots
-        else None,
-        copy_on_write_namespace=policy.copy_on_write_namespace,
         backend_type=policy.backend_type,
         active=policy.active,
         read_roots=read_roots,
@@ -1056,9 +1025,6 @@ def run_launcher(
     :returns: The target process's exit code.
     :raises ValueError: If *encoded_sandbox* does not decode to a dict.
     """
-    from omnigent.sandbox.copy_on_write import SHARED_ENVIRONMENT_VAR
-
-    os.environ.pop(SHARED_ENVIRONMENT_VAR, None)
     for secret_name in RUNNER_AUTH_SECRET_ENV_VARS:
         os.environ.pop(secret_name, None)
 
