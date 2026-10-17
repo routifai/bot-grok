@@ -128,69 +128,6 @@ describe("mapTranscriptPage", () => {
     expect(mapTranscriptPage("s1", page([])).reset).toBeNull();
   });
 
-  it("maps a message's forks, an added fork's summary and a fork's lineage", () => {
-    const result = mapTranscriptPage("f1", {
-      ...page([
-        {
-          id: "m1",
-          role: "assistant",
-          created_at: 100,
-          blocks: [
-            { type: "text", text: "6.4%." },
-            {
-              type: "fork_summary",
-              fork_id: "f2",
-              anchor_item_id: "m1",
-              title: "Slide 7",
-              summary: "Bars by segment",
-            },
-          ],
-          forks: [
-            {
-              session_id: "f2",
-              title: "Slide 7",
-              replies: 4,
-              live: false,
-              unread: true,
-              state: "added",
-              summary: "Bars by segment",
-              created_at: 90,
-            },
-          ],
-        },
-        { id: "m2", role: "user", created_at: 101, blocks: [{ type: "text", text: "ok" }] },
-      ]),
-      lineage: {
-        kind: "side",
-        root_id: "s1",
-        parent_id: "s1",
-        seed_item_id: null,
-        anchor_item_id: "m0",
-      },
-    });
-    expect(result.messages[0]?.blocks[1]).toEqual({
-      kind: "fork_summary",
-      forkId: "f2",
-      anchorItemId: "m1",
-      title: "Slide 7",
-      summary: "Bars by segment",
-    });
-    expect(result.messages[0]?.forks).toEqual([
-      {
-        chatId: "f2",
-        title: "Slide 7",
-        replies: 4,
-        live: false,
-        unread: true,
-        state: "added",
-        summary: "Bars by segment",
-        createdAt: new Date(90_000).toISOString(),
-      },
-    ]);
-    // A message the engine sent without forks stays without the field.
-    expect(result.messages[1]?.forks).toBeUndefined();
-    expect(result.lineage).toEqual({ rootId: "s1", parentId: "s1", anchorItemId: "m0" });
-  });
   it("marks a file the person delivered, and leaves the Muse's own saves unmarked", () => {
     const file = { type: "file" as const, artifact_id: "a1", name: "q3.pptx", mime: null };
     const result = mapTranscriptPage(

@@ -61,8 +61,8 @@ const DEFAULT_LIST_LIMIT = 200;
 /**
  * Maps an engine session to the Muse it belongs to. A deliverable is keyed by the chat that saved
  * it (`artifact_save` by a Helper lands on the chat that launched it), so besides the Muse's own
- * Conversation its Side Chats and their Helpers (any depth) count: the adapter's one ownership
- * rule, built once per request. Returns the Muse's id (its session id) or undefined.
+ * Conversation its Helpers (any depth) count: the adapter's one ownership rule, built once per
+ * request. Returns the Muse's id (its session id) or undefined.
  */
 async function ownerResolver(): Promise<(sessionId: string) => Promise<string | undefined>> {
   const muse = await museSessionId();
@@ -73,8 +73,8 @@ async function ownerResolver(): Promise<(sessionId: string) => Promise<string | 
 }
 
 async function listWithCounts(limit: number): Promise<Array<Artifact & { versionCount: number }>> {
-  // The engine can only scope by one chat, and the Muse's deliverables span its Side Chats and
-  // Helpers, so take its newest page and attribute each row.
+  // The engine can only scope by one chat, and the Muse's deliverables span its Helpers, so take
+  // its newest page and attribute each row.
   const [items, ownerOf] = await Promise.all([
     listOmnigentArtifacts(engineClient(), NO_EMAIL, undefined, ENGINE_LIST_MAX),
     ownerResolver(),

@@ -1,12 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  addOmnigentForkToConversation,
   adoptOmnigentMuse,
   answerOmnigentAsk,
-  archiveOmnigentSession,
-  createOmnigentSideChat,
   forgetOmnigentMemoryClaim,
-  getOmnigentArchiving,
   getOmnigentComputer,
   getOmnigentMemoryProfile,
   getOmnigentMuse,
@@ -16,18 +12,15 @@ import {
   listOmnigentDailyNotes,
   listOmnigentMemoryClaims,
   OmnigentApiError,
-  OmnigentSideChatError,
   omnigentErrorCopy,
   patchOmnigentMemoryClaim,
   postOmnigentMessage,
-  putOmnigentArchiving,
   putOmnigentDailyNote,
   putOmnigentMuseAgent,
   putOmnigentProactivity,
   reindexOmnigentKnowledge,
   streamOmnigentFamily,
   streamOmnigentSession,
-  unarchiveOmnigentSession,
   writeOmnigentFile,
 } from "./client.js";
 
@@ -134,24 +127,6 @@ describe("omnigent client", () => {
     const [, init] = fetchMock.mock.calls[1] as unknown as [URL, RequestInit];
     expect(init.method).toBe("PUT");
     expect(JSON.parse(init.body as string)).toEqual({ proactivity: "high" });
-  });
-
-  it("reads and writes the side chat auto-archive days on /v1/me/archiving", async () => {
-    const fetchMock = vi.fn(async () =>
-      jsonResponse({ side_chat_auto_archive_days: 7, default_days: 30 }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-
-    await expect(getOmnigentArchiving(CONFIG, "e@x.test")).resolves.toEqual({
-      side_chat_auto_archive_days: 7,
-      default_days: 30,
-    });
-    await putOmnigentArchiving(CONFIG, "e@x.test", { side_chat_auto_archive_days: "default" });
-
-    const [url, init] = fetchMock.mock.calls[1] as unknown as [URL, RequestInit];
-    expect(url.pathname).toBe("/v1/me/archiving");
-    expect(init.method).toBe("PUT");
-    expect(JSON.parse(init.body as string)).toEqual({ side_chat_auto_archive_days: "default" });
   });
 
   it("getOmnigentSession requests a cheap snapshot and returns host_id", async () => {
@@ -336,134 +311,8 @@ describe("throwOnError redaction (docs/super-chat/WIRING.md review item 5)", () 
   });
 });
 
-describe("createOmnigentSideChat error handling (docs/super-chat/WIRING.md review item 3)", () => {
+describe("computer", () => {
   afterEach(() => vi.unstubAllGlobals());
-
-  it("sets conversationId on OmnigentSideChatError when the body shows the chat was created anyway", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () =>
-        jsonResponse({ conversation_id: "conv_new", error: "first message failed" }, 502),
-      ),
-    );
-
-    let caught: unknown;
-    try {
-      await createOmnigentSideChat(CONFIG, "p@x.test", "conv_super", { start: "blank" });
-    } catch (error) {
-      caught = error;
-    }
-    expect(caught).toBeInstanceOf(OmnigentSideChatError);
-    expect((caught as OmnigentSideChatError).conversationId).toBe("conv_new");
-  });
-
-  it("leaves conversationId null when the body never names one", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response("internal error", { status: 500 })),
-    );
-
-    let caught: unknown;
-    try {
-      await createOmnigentSideChat(CONFIG, "p@x.test", "conv_super", { start: "blank" });
-    } catch (error) {
-      caught = error;
-    }
-    expect(caught).toBeInstanceOf(OmnigentSideChatError);
-    expect((caught as OmnigentSideChatError).conversationId).toBeNull();
-  });
-
-  it("returns first_message_error through on a 2xx so the caller can retry the post", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () =>
-        jsonResponse({
-          conversation_id: "conv_new",
-          title: "t",
-          start: "blank",
-          first_message_error: "could not post",
-        }),
-      ),
-    );
-
-    const result = await createOmnigentSideChat(CONFIG, "p@x.test", "conv_super", {
-      start: "blank",
-      firstMessage: "hi",
-    });
-    expect(result.first_message_error).toBe("could not post");
-  });
-
-  it("opens a fork with its anchor, and carries the engine's refusal code", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(
-        jsonResponse({
-          conversation_id: "conv_fork",
-          title: "t",
-          start: "with_context",
-          anchor_item_id: "msg_1",
-          parent_id: "conv_super",
-        }),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({ error: { code: "fork_too_deep", message: "too deep" } }, 422),
-      );
-    vi.stubGlobal("fetch", fetchMock);
-
-    const created = await createOmnigentSideChat(CONFIG, "p@x.test", "conv_super", {
-      start: "with_context",
-      firstMessage: "why?",
-      anchorItemId: "msg_1",
-    });
-    expect(created.anchor_item_id).toBe("msg_1");
-    const [, init] = fetchMock.mock.calls[0] as unknown as [URL, RequestInit];
-    expect(JSON.parse(init.body as string)).toEqual({
-      start: "with_context",
-      first_message: "why?",
-      anchor_item_id: "msg_1",
-    });
-
-    const refused = await createOmnigentSideChat(CONFIG, "p@x.test", "conv_fork2", {
-      start: "with_context",
-      anchorItemId: "msg_2",
-    }).catch((error: unknown) => error);
-    expect(refused).toBeInstanceOf(OmnigentSideChatError);
-    expect((refused as OmnigentSideChatError).code).toBe("fork_too_deep");
-  });
-
-  it("adds a fork back and archives a chat on their own routes", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(
-        jsonResponse({
-          fork_id: "f 1",
-          session_id: "conv_super",
-          anchor_item_id: "msg_1",
-          item_id: "notice_1",
-          title: "t",
-          summary: "Bars by segment",
-          state: "added",
-        }),
-      )
-      .mockResolvedValueOnce(jsonResponse({ id: "f 1", archived: true }))
-      .mockResolvedValueOnce(jsonResponse({ id: "f 1", archived: false }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    const added = await addOmnigentForkToConversation(CONFIG, "p@x.test", "f 1");
-    expect(added.summary).toBe("Bars by segment");
-    await archiveOmnigentSession(CONFIG, "p@x.test", "f 1");
-    await unarchiveOmnigentSession(CONFIG, "p@x.test", "f 1");
-
-    const calls = fetchMock.mock.calls as unknown as [URL, RequestInit][];
-    expect(calls.map(([url, init]) => `${init.method} ${url.pathname}`)).toEqual([
-      "POST /v1/sessions/f%201/add_to_conversation",
-      "PATCH /v1/sessions/f%201",
-      "PATCH /v1/sessions/f%201",
-    ]);
-    expect(JSON.parse(calls[0]![1].body as string)).toEqual({});
-    expect(JSON.parse(calls[1]![1].body as string)).toEqual({ archived: true });
-    expect(JSON.parse(calls[2]![1].body as string)).toEqual({ archived: false });
-  });
 
   it("computer status hits the session-scoped route with identity/proxy headers", async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({ ready: true, launch: null }));

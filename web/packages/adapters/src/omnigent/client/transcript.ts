@@ -32,34 +32,13 @@ export type OmnigentTranscriptBlock =
       by?: "user";
     }
   | { type: "secure_entry"; request_id: string; name: string; site: string; reason?: string }
-  | { type: "error"; code: string; level?: "info" }
-  | {
-      type: "fork_summary";
-      fork_id: string;
-      anchor_item_id: string;
-      title: string | null;
-      summary: string;
-    };
-
-/** A Fork started from a transcript message (ADR 0010). */
-export interface OmnigentTranscriptFork {
-  session_id: string;
-  title: string | null;
-  replies: number;
-  live: boolean;
-  unread: boolean;
-  state: "open" | "added" | "archived";
-  summary: string | null;
-  created_at: number | null;
-}
+  | { type: "error"; code: string; level?: "info" };
 
 export interface OmnigentTranscriptMessage {
   id: string;
   role: "user" | "assistant";
   created_at: number | null;
   blocks: OmnigentTranscriptBlock[];
-  /** The forks of this message, oldest first (`[]` when none). */
-  forks?: OmnigentTranscriptFork[];
   /** `queued` while this user message waits behind the running turn. */
   delivered?: "queued";
 }
@@ -69,8 +48,6 @@ export interface OmnigentTranscriptLineage {
   root_id: string | null;
   parent_id: string | null;
   seed_item_id: string | null;
-  /** A Fork's anchor; its `parent_id` is then the chat holding that message. */
-  anchor_item_id?: string | null;
 }
 
 export interface OmnigentTranscriptPage {
@@ -112,8 +89,8 @@ export type OmnigentFamilyEvent =
   | { type: "activities.changed"; root_id: string }
   | { type: "session.heartbeat" };
 
-/** `GET /v1/sessions/{root}/family/stream` — one SSE stream for a Conversation, its Side Chats
- * and its Helpers. Ends when the response ends or `signal` aborts. */
+/** `GET /v1/sessions/{root}/family/stream` — one SSE stream for a Conversation and its
+ * Helpers. Ends when the response ends or `signal` aborts. */
 export async function* streamOmnigentFamily(
   config: OmnigentClientConfig,
   email: string,
@@ -141,7 +118,7 @@ export async function* streamOmnigentFamily(
 }
 
 /** A message the engine's family search found: `sessionId` is the chat it is in (the
- * Conversation or one of its Side Chats), `id` its transcript message's id. */
+ * Conversation, or another chat of its family), `id` its transcript message's id. */
 export interface OmnigentSearchHit {
   sessionId: string;
   id: string;
@@ -150,7 +127,7 @@ export interface OmnigentSearchHit {
 }
 
 /** `GET /v1/sessions/{root}/items/search?scope=family` — full-text search over the
- * Conversation and its Side Chats, ranked. Only the person's and the Muse's messages are
+ * Conversation's family, ranked. Only the person's and the Muse's messages are
  * returned (tool calls and outputs are the engine's plumbing); the engine has already
  * redacted the text. */
 export async function searchOmnigentFamily(

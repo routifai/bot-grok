@@ -30,12 +30,10 @@ export const AskSchema = z.object({
   /** Free-form answer field when set; otherwise answer with a choice. */
   input: z.enum(["text", "secret"]).nullable(),
   createdAt: z.string(),
-  /** Set on an approval the engine is holding for the person: the Side Chat it belongs to,
-   * `null` for the Conversation (and its Helpers); the call's arguments, shown quoted; and
-   * the other policies' asks the same Approve covers. */
+  /** Set on an approval the engine is holding for the person: the call's arguments, shown
+   * quoted, and the other policies' asks the same Approve covers. */
   approval: z
     .object({
-      chatId: Id.nullable(),
       arguments: z.string().nullable().optional(),
       alsoAsks: z.array(z.string()).optional(),
     })

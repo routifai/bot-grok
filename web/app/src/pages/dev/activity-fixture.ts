@@ -2,8 +2,7 @@ import type { Activity, ActivityStep, ThreadMessage } from "@superchat/contracts
 
 // Fixture data for /dev/activity (ActivityPreviewPage.tsx): the Activity panel on in-memory
 // data, so the panel's grouping, live line, and run page can be reviewed without the
-// Omnigent backend (`activities.*` isn't served by the local dev API). Same reasoning as
-// /dev/side-chats (side-chat-fixture.ts). Steps use real engine tool names and realistic
+// Omnigent backend (`activities.*` isn't served by the local dev API). Steps use real engine tool names and realistic
 // payloads (engine/omnigent/omnigent/tools/builtins/) so the icon + title + snippet registry
 // (web/packages/core/src/tool-presentation.ts) has something true to life to present.
 

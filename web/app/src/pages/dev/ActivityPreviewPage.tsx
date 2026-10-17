@@ -11,7 +11,7 @@ import {
   HELPER_MESSAGES,
   INITIAL_ACTIVITIES,
 } from "./activity-fixture";
-import { DEV_MUSE_NAME } from "./side-chat-fixture";
+import { DEV_MUSE_NAME } from "./dev-muse";
 
 function delay<T>(value: T, ms = 350): Promise<T> {
   return new Promise((resolve) => {
@@ -20,8 +20,7 @@ function delay<T>(value: T, ms = 350): Promise<T> {
 }
 
 /**
- * Dev-only route (`/dev/activity`, gated by `import.meta.env.DEV`, following
- * `/dev/side-chats`): the real context panel — identity header, segmented tabs, Activity,
+ * Dev-only route (`/dev/activity`, gated by `import.meta.env.DEV`): the real context panel — identity header, segmented tabs, Activity,
  * and Memory — on in-memory fixture data, at its real width (ContextPanel.tsx's own
  * `w-[340px]`) beside a blank stand-in for the Conversation. `activitiesOverride` and
  * `memoryWire` are ContextPanel's dev-preview seams; the local dev API doesn't serve

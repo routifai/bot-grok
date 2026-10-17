@@ -44,9 +44,8 @@ function labelled(ask: OmnigentAsk, labels: Record<string, string>): Ask["choice
   });
 }
 
-/** An engine ask as the Ask the Feed, the waiting list and the Conversation show. `chatId` is
- * the Side Chat an approval belongs to (`null` for the Conversation and its Helpers). */
-function toAsk(ask: OmnigentAsk, chatId: string | null): Ask {
+/** An engine ask as the Ask the Feed, the waiting list and the Conversation show. */
+function toAsk(ask: OmnigentAsk): Ask {
   const createdAt = iso(ask.created_at);
   if (ask.kind === "approval") {
     const { subject } = ask;
@@ -62,7 +61,6 @@ function toAsk(ask: OmnigentAsk, chatId: string | null): Ask {
       input: null,
       createdAt,
       approval: {
-        chatId,
         arguments: subject.arguments ?? null,
         alsoAsks: subject.also_asks ?? [],
       },
@@ -102,7 +100,7 @@ function toAsk(ask: OmnigentAsk, chatId: string | null): Ask {
 }
 
 /** The asks of the Muse: its Goals' (on its Conversation) and the approvals held in its
- * Conversation, Side Chats and Helpers. Newest first, as the engine orders them. */
+ * Conversation and Helpers. Newest first, as the engine orders them. */
 async function listAsks(): Promise<Ask[]> {
   const superSessionId = await museSessionId();
   const waiting = await onSuperChat(listOmnigentAsks(engineClient(), NO_EMAIL));
@@ -112,10 +110,10 @@ async function listAsks(): Promise<Ask[]> {
   const asks: Ask[] = [];
   for (const ask of waiting) {
     if (ask.session_id === superSessionId) {
-      asks.push(toAsk(ask, null));
+      asks.push(toAsk(ask));
     } else if (ask.kind === "approval") {
       const owner = await ownershipOf(ask.session_id);
-      if (owner) asks.push(toAsk(ask, owner.kind === "side_chat" ? ask.session_id : null));
+      if (owner) asks.push(toAsk(ask));
     }
   }
   return asks;

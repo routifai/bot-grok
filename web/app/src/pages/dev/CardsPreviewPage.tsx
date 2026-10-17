@@ -7,7 +7,7 @@ import type { ArtifactTarget } from "../../lib/artifact-open";
 import { setDeckThemeSources } from "../../lib/deck-themes";
 import { Transcript } from "../app/conversation/Transcript";
 import { type CardsScenario, replyTo, seedMessages } from "./cards-fixture";
-import { DEV_BOT_ID, DEV_MUSE_COLOR, DEV_MUSE_NAME } from "./side-chat-fixture";
+import { DEV_BOT_ID, DEV_MUSE_COLOR, DEV_MUSE_NAME } from "./dev-muse";
 
 const noop = () => undefined;
 const ASK_PREVIEWS = { "deck-theme": DeckThemeChoice };
@@ -21,8 +21,8 @@ type DevWindow = Window & {
 };
 
 /**
- * Dev-only routes (`/dev/clarify`, `/dev/followups`, `/dev/looks`, gated by `import.meta.env.DEV` in App.tsx,
- * like `/dev/forks`): the real Conversation transcript with a clarification card or follow-up
+ * Dev-only routes (`/dev/clarify`, `/dev/followups`, `/dev/looks`, gated by `import.meta.env.DEV` in App.tsx):
+ * the real Conversation transcript with a clarification card or follow-up
  * chips (`/dev/looks`: the deck look question; a run provides the theme dictionary and sample
  * decks through `window.__deckThemes` / `__deckThemeSample`). Clicking sends the text as the
  * person's message, the fixture "Muse" works for a moment

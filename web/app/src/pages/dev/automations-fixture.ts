@@ -61,13 +61,4 @@ export const DEV_SYSTEM_JOBS: SystemJob[] = [
     nextRunAt: new Date(now + 20 * 60_000).toISOString(),
     enabled: true,
   },
-  {
-    id: "side_chat_archiving",
-    name: "Side chat archiving",
-    description: "Archives side chats you have not touched for a while, so your list stays tidy.",
-    schedule: "Every hour",
-    lastRunAt: null,
-    nextRunAt: null,
-    enabled: false,
-  },
 ];

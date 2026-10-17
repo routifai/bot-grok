@@ -1,20 +1,15 @@
 // The engine's transcript page -> Superchat's `ThreadMessagePage`. Mechanical only: snake_case to
 // camelCase and engine block types onto the chat's existing block types. Every rule (de-duping,
-// dropping system notices, hiding a Side Chat's copied context, error codes) is the engine's
+// dropping system notices, error codes) is the engine's
 // (engine/omnigent/omnigent/superchat/transcript/). The wording of the file and secure-entry
 // fallbacks is Superchat's.
 import type {
   MessageBlock,
-  MessageFork,
   ReplyCardBlock,
   ThreadMessage,
   ThreadMessagePage,
 } from "@superchat/contracts";
-import type {
-  OmnigentTranscriptBlock,
-  OmnigentTranscriptFork,
-  OmnigentTranscriptPage,
-} from "./client/transcript.js";
+import type { OmnigentTranscriptBlock, OmnigentTranscriptPage } from "./client/transcript.js";
 
 function epochSecondsToIso(epochSeconds: number | null | undefined): string {
   return new Date((epochSeconds ?? 0) * 1000).toISOString();
@@ -78,28 +73,7 @@ function mapBlock(block: OmnigentTranscriptBlock): MessageBlock {
       return secureEntryCard(block);
     case "error":
       return { kind: "error", code: block.code, ...(block.level ? { level: block.level } : {}) };
-    case "fork_summary":
-      return {
-        kind: "fork_summary",
-        forkId: block.fork_id,
-        anchorItemId: block.anchor_item_id,
-        title: block.title ?? "",
-        summary: block.summary,
-      };
   }
-}
-
-function mapFork(fork: OmnigentTranscriptFork): MessageFork {
-  return {
-    chatId: fork.session_id,
-    title: fork.title ?? "",
-    replies: fork.replies,
-    live: fork.live,
-    unread: fork.unread,
-    state: fork.state,
-    summary: fork.summary,
-    createdAt: epochSecondsToIso(fork.created_at),
-  };
 }
 
 /** The artifact (and version, when the card names one) a `render_card file` block points at. */
@@ -159,7 +133,6 @@ export function mapTranscriptPage(chatId: string, page: OmnigentTranscriptPage):
     role: message.role === "assistant" ? "bot" : "user",
     blocks: message.blocks.map(mapBlock),
     createdAt: epochSecondsToIso(message.created_at),
-    ...(message.forks ? { forks: message.forks.map(mapFork) } : {}),
     ...(message.delivered ? { delivered: message.delivered } : {}),
   }));
   return {
@@ -167,15 +140,6 @@ export function mapTranscriptPage(chatId: string, page: OmnigentTranscriptPage):
     messages,
     olderCursor: null,
     olderItemCursor: page.has_more ? page.older_cursor : null,
-    ...(page.lineage
-      ? {
-          lineage: {
-            rootId: page.lineage.root_id,
-            parentId: page.lineage.parent_id,
-            anchorItemId: page.lineage.anchor_item_id ?? null,
-          },
-        }
-      : {}),
     ...(page.live === undefined ? {} : { running: page.live }),
     ...(page.reset
       ? {

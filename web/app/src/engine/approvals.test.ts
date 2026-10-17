@@ -112,7 +112,7 @@ describe("asks", () => {
     const [ask] = await listAsks();
     expect(ask).toMatchObject({
       text: "Over budget. Continue? (web_search)",
-      approval: { chatId: null, arguments: '{"query": "q3"}', alsoAsks: ["Pushes need a look."] },
+      approval: { arguments: '{"query": "q3"}', alsoAsks: ["Pushes need a look."] },
     });
   });
 
@@ -143,7 +143,6 @@ describe("asks", () => {
         { id: "approve_always", label: "Always allow" },
         { id: "deny", label: "Deny" },
       ],
-      approval: { chatId: null },
     });
     expect(asks[1]).toMatchObject({
       runId: "obj-1",
@@ -174,25 +173,20 @@ describe("asks", () => {
     expect(ask?.detail).toBeUndefined();
   });
 
-  it("keeps only this Muse's asks, and names the Side Chat an approval belongs to", async () => {
+  it("keeps only the asks of this Muse's Conversation and its Helpers", async () => {
     stub({
       "GET /v1/me/asks": {
         data: [
-          approval("side", "sess-side"),
           approval("helper", "sess-helper"),
           approval("other", "sess-other"),
           proposal("p-other", true, "sess-2"),
         ],
       },
-      "GET /v1/sessions/sess-side": session("sess-side", "side", "sess-1"),
       "GET /v1/sessions/sess-helper": session("sess-helper", "helper", "sess-1"),
-      "GET /v1/sessions/sess-other": session("sess-other", "side", "sess-2"),
+      "GET /v1/sessions/sess-other": session("sess-other", "helper", "sess-2"),
     });
     const asks = await listAsks();
-    expect(asks.map((ask) => [ask.id, ask.approval?.chatId])).toEqual([
-      ["approval:side", "sess-side"],
-      ["approval:helper", null],
-    ]);
+    expect(asks.map((ask) => ask.id)).toEqual(["approval:helper"]);
   });
 
   it("counts what is waiting", async () => {

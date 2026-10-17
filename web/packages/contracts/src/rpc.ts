@@ -5,6 +5,7 @@ import { appsContract } from "./rpc/apps.js";
 import { artifactsContract } from "./rpc/artifacts.js";
 import { automationsContract } from "./rpc/automations.js";
 import { botsContract } from "./rpc/bots.js";
+import { chatsContract } from "./rpc/chats.js";
 import { computerContract } from "./rpc/computer.js";
 import { dailyNotesContract } from "./rpc/daily-notes.js";
 import { decksContract } from "./rpc/decks.js";
@@ -14,7 +15,6 @@ import { memoryContract } from "./rpc/memory.js";
 import { engineModelsContract } from "./rpc/models.js";
 import { museContract } from "./rpc/muse.js";
 import { sheetsContract } from "./rpc/sheets.js";
-import { sideChatsContract } from "./rpc/side-chats.js";
 import { vaultContract } from "./rpc/vault.js";
 
 export const appContract = {
@@ -25,6 +25,7 @@ export const appContract = {
   ...artifactsContract,
   ...automationsContract,
   ...botsContract,
+  ...chatsContract,
   ...computerContract,
   ...dailyNotesContract,
   ...decksContract,
@@ -34,7 +35,6 @@ export const appContract = {
   ...memoryContract,
   ...museContract,
   ...sheetsContract,
-  ...sideChatsContract,
   ...vaultContract,
 };
 

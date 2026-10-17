@@ -2,7 +2,7 @@ import * as z from "zod";
 
 // Shapes shared by the Muse edition: Proactivity and Muse settings, the Muse's state and its
 // starting profile. Words follow CONTEXT.md. The Goal, Ask, Approval, Post, Followed topic, Idea
-// and Side Chat shapes live in rpc/<capability>.ts and are re-exported from the package index.
+// and chat shapes live in rpc/<capability>.ts and are re-exported from the package index.
 
 export const PROACTIVITY_LEVELS = ["off", "low", "normal", "high"] as const;
 export const ProactivitySchema = z.enum(PROACTIVITY_LEVELS);

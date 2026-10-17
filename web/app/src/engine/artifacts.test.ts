@@ -23,7 +23,7 @@ const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 /** A session in the Muse's family, as `GET /v1/sessions/{id}` reports it. */
-const family = (id: string, kind: "side" | "helper") => ({
+const family = (id: string, kind: "helper") => ({
   id,
   status: "idle",
   superchat: { kind, root_id: "sess-1", parent_id: "sess-1", seed_item_id: null, project: null },
@@ -67,20 +67,18 @@ describe("artifacts", () => {
     });
   });
 
-  it("lists deliverables saved in a Side Chat or its Helper under the Muse", async () => {
-    const side = { ...row, id: "a2", parent_session_id: "side-1", name: "side.html" };
+  it("lists deliverables saved by a Helper under the Muse", async () => {
     const helperSaved = { ...row, id: "a3", parent_session_id: "helper-1", name: "h.html" };
     const stranger = { ...row, id: "a4", parent_session_id: "elsewhere", name: "x.html" };
     engine((url) => {
       if (url.pathname === "/v1/artifacts") {
-        return json({ artifacts: [row, side, helperSaved, stranger] });
+        return json({ artifacts: [row, helperSaved, stranger] });
       }
-      if (url.pathname === "/v1/sessions/side-1") return json(family("side-1", "side"));
       if (url.pathname === "/v1/sessions/helper-1") return json(family("helper-1", "helper"));
       return json({ id: "elsewhere", status: "idle", superchat: null });
     });
     const page = await call(artifactsRouter.artifacts.list, { botId: "sess-1" });
-    expect(page.map((item) => item.id).sort()).toEqual(["a1", "a2", "a3"]);
+    expect(page.map((item) => item.id).sort()).toEqual(["a1", "a3"]);
     expect(page.every((item) => item.botId === "sess-1")).toBe(true);
   });
 

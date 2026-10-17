@@ -6,7 +6,7 @@ export interface OmnigentSessionSuperchat {
   kind: "super" | "side" | "helper" | null;
   /** The family's Super Chat. */
   root_id: string | null;
-  /** A Side Chat's Super Chat, or a Helper's direct parent. */
+  /** A Helper's direct parent. */
   parent_id: string | null;
   seed_item_id: string | null;
   /** The Project the session has open (ADR 0008). */

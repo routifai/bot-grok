@@ -10,19 +10,14 @@ import { ActivityPreviewPage } from "./pages/dev/ActivityPreviewPage";
 import { AutomationsPreviewPage } from "./pages/dev/AutomationsPreviewPage";
 import { CardsPreviewPage } from "./pages/dev/CardsPreviewPage";
 import { DeckPreviewPage } from "./pages/dev/DeckPreviewPage";
-import { ForksPreviewPage } from "./pages/dev/ForksPreviewPage";
 import { MemoryPreviewPage } from "./pages/dev/MemoryPreviewPage";
 import { SheetPreviewPage } from "./pages/dev/SheetPreviewPage";
-import { SideChatsPreviewPage } from "./pages/dev/SideChatsPreviewPage";
 import { ShellPage } from "./pages/Shell";
 
 export function App() {
   // Dev-only fixture routes: no session needed, so screenshots and eyeballing don't require a
-  // signed-in account or a live agent run. The Side Chats sidebar + session (SideChatsPreviewPage.tsx).
-  if (import.meta.env.DEV && window.location.pathname === "/dev/side-chats") {
-    return <SideChatsPreviewPage />;
-  }
-  // Dev-only fixture routes for the clarification card and follow-up chips (CardsPreviewPage.tsx).
+  // signed-in account or a live agent run. The clarification card and follow-up chips
+  // (CardsPreviewPage.tsx).
   if (import.meta.env.DEV && window.location.pathname === "/dev/clarify") {
     return <CardsPreviewPage scenario="clarify" />;
   }
@@ -36,10 +31,6 @@ export function App() {
   // reasoning — `activities.*` isn't served by the local dev API either.
   if (import.meta.env.DEV && window.location.pathname === "/dev/activity") {
     return <ActivityPreviewPage />;
-  }
-  // Dev-only fixture route for message forks (ForksPreviewPage.tsx), same reasoning.
-  if (import.meta.env.DEV && window.location.pathname === "/dev/forks") {
-    return <ForksPreviewPage />;
   }
   if (import.meta.env.DEV && window.location.pathname === "/dev/sheet") {
     return <SheetPreviewPage />;

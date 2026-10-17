@@ -2,8 +2,8 @@ import { useMemo } from "react";
 import type { DaysWire } from "../../features/daily-notes";
 import type { MemoryClaim, MemoryWire } from "../../features/memory";
 import { ContextPanel } from "../app/chrome/ContextPanel";
+import { DEV_MUSE_NAME } from "./dev-muse";
 import { DEV_CLAIMS, DEV_MEMORY_BOT_ID, DEV_NOTES } from "./memory-fixture";
-import { DEV_MUSE_NAME } from "./side-chat-fixture";
 
 /**
  * Dev-only route (`/dev/memory`, gated by `import.meta.env.DEV`, following `/dev/activity`):
