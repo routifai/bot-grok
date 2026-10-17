@@ -202,41 +202,6 @@ class TestModelFamilyMismatch:
             assert "pi" in msg
 
 
-@pytest.mark.parametrize(
-    ("model", "expected"),
-    [
-        # Bare canonical vendor ids gain the gateway prefix mechanically.
-        ("claude-opus-4-8", "databricks-claude-opus-4-8"),
-        ("claude-sonnet-4-6", "databricks-claude-sonnet-4-6"),
-        ("gpt-5-4", "databricks-gpt-5-4"),
-        ("gpt-5.4-mini", "databricks-gpt-5.4-mini"),
-        # The codex-compatible families localize the same way: they are
-        # dispatchable, so a caller can name a bare one, and leaving them out
-        # persisted the bare id verbatim onto a gateway-backed child.
-        ("glm-5-2", "databricks-glm-5-2"),
-        ("kimi-k2.6", "databricks-kimi-k2.6"),
-        # Already gateway-local: no double prefix.
-        ("databricks-claude-opus-4-8", "databricks-claude-opus-4-8"),
-        ("databricks-glm-5-2", "databricks-glm-5-2"),
-        # Non-mechanical shapes pass through to the fail-loud path:
-        # vendor-prefixed, slash-routed, alias-bracketed, other-family.
-        ("us.anthropic.claude-sonnet-4-6", "us.anthropic.claude-sonnet-4-6"),
-        ("openai/gpt-4o", "openai/gpt-4o"),
-        ("claude-opus-4-8[1m]", "claude-opus-4-8[1m]"),
-        ("meta-llama-3.3-70b-instruct", "meta-llama-3.3-70b-instruct"),
-    ],
-)
-def test_normalize_localizes_canonical_ids_for_gateway_children(model: str, expected: str) -> None:
-    """
-    A Databricks-gateway child localizes bare canonical vendor ids.
-
-    A missed prefix means the child spawns on an id the gateway cannot
-    route; a wrongly-added prefix on a non-mechanical shape would
-    fabricate an endpoint name that does not exist.
-    """
-    assert normalize_model_for_provider(model, "databricks") == expected
-
-
 @pytest.mark.parametrize("provider_kind", ["key", "subscription"])
 @pytest.mark.parametrize(
     ("model", "expected"),
@@ -317,31 +282,3 @@ def test_canonical_model_spelling(model: str, expected: str) -> None:
     :param expected: The canonical spelling.
     """
     assert canonical_model_spelling(model) == expected
-
-
-@pytest.mark.parametrize(
-    ("harness", "model"),
-    [
-        # The family guard sees the PRE-normalization id; its verdict is
-        # identical post-transform because the family token survives the
-        # prefix in both directions.
-        ("claude-native", "claude-opus-4-8"),
-        ("codex-native", "gpt-5-4"),
-    ],
-)
-def test_family_tokens_survive_normalization_in_both_directions(harness: str, model: str) -> None:
-    """
-    Guard-then-normalize ordering cannot change the family verdict.
-
-    The dispatch gate documents family-guard-first (so errors quote the
-    caller's exact id); this pins the property that makes the order
-    safe: a compatible id stays compatible after localization, and the
-    localized id round-trips back to a compatible id when stripped.
-    """
-    localized = normalize_model_for_provider(model, "databricks")
-    assert localized == f"databricks-{model}"
-    # Compatible before AND after localization.
-    assert model_family_mismatch(harness, model) is None
-    assert model_family_mismatch(harness, localized) is None
-    # The strip direction round-trips to the original canonical id.
-    assert normalize_model_for_provider(localized, "key") == model

@@ -1,8 +1,8 @@
 """Read/write the kind-typed model-provider config in ``~/.omnigent/config.yaml``.
 
-For open-source users who route coding agents through a non-Databricks
-endpoint (a vendor API key, a subscription CLI login, a gateway like
-OpenRouter, a local Ollama, or a Databricks profile), the ``providers:``
+For users who route coding agents through a model endpoint (a vendor API
+key, a subscription CLI login, a gateway like OpenRouter or LiteLLM, or a
+local Ollama), the ``providers:``
 block in ``~/.omnigent/config.yaml`` is the source of truth for the
 active model selection. Defaults are **per family**: a provider marked
 **``default: true``** is the default for the family/families it serves,
@@ -18,7 +18,7 @@ This module is the data layer of the model-selection feature (chunk 1a of
 family-based provider shape with:
 
 - an explicit **kind** per provider entry — one of ``key`` /
-  ``subscription`` / ``gateway`` / ``local`` / ``databricks`` — so the
+  ``subscription`` / ``gateway`` / ``local`` — so the
   readout and routing can describe *how* a provider authenticates;
 - a **secret reference** (``api_key_ref: env:<VAR>`` or
   ``keychain:<name>``) as an alternative to an inline ``api_key: $VAR``;
@@ -68,10 +68,9 @@ _VALID_FAMILIES = (ANTHROPIC_FAMILY, OPENAI_FAMILY)
 # entry never carries a ``pi:`` block — but defaults are scoped per harness
 # surface, and pi consumes both families, so it gets its own scope name a
 # ``default:`` value may reference (``default: ["anthropic", "pi"]``).
-# An inline key/gateway/local (with an anthropic/openai family) and a
-# databricks profile drive pi directly; a ``cli-config`` may claim the scope
-# too (a Databricks AI Gateway is pi-consumable — Pi speaks its Anthropic
-# surface), with the actual gateway capability validated at resolution time.
+# An inline key/gateway/local (with an anthropic/openai family) drives pi
+# directly; a ``cli-config`` may claim the scope too, with the actual gateway
+# capability validated at resolution time.
 # A ``subscription`` (CLI login, unusable outside its own CLI) and ``bedrock``
 # (native-``omnigent claude`` only) can never drive pi — EXCEPT for a pi
 # subscription (``kind="subscription", cli="pi"``), which explicitly opts into
@@ -93,7 +92,6 @@ _VALID_WIRE_API = (RESPONSES_WIRE_API, CHAT_WIRE_API)
 #   no base_url; the CLI carries its own auth.
 # - ``gateway``: an OpenAI/Anthropic-compatible proxy (OpenRouter, LiteLLM).
 # - ``local``: a self-hosted endpoint (Ollama, vLLM) reached via families.
-# - ``databricks``: a Databricks profile from ``~/.databrickscfg``.
 # - ``cli-config``: a custom model provider the harness CLI's own config
 #   file defines and authenticates (today: a ``[model_providers.X]`` table
 #   in ``~/.codex/config.toml`` with self-contained auth, e.g. written by
@@ -103,7 +101,6 @@ KEY_KIND = "key"
 SUBSCRIPTION_KIND = "subscription"
 GATEWAY_KIND = "gateway"
 LOCAL_KIND = "local"
-DATABRICKS_KIND: Literal["databricks"] = "databricks"
 # ``connection: model`` on a gateway provider: the owner's saved Anthropic/OpenRouter key.
 MODEL_CONNECTION = "model"
 CLI_CONFIG_KIND = "cli-config"
@@ -121,20 +118,16 @@ _VALID_KINDS = (
     SUBSCRIPTION_KIND,
     GATEWAY_KIND,
     LOCAL_KIND,
-    DATABRICKS_KIND,
     CLI_CONFIG_KIND,
     BEDROCK_KIND,
 )
 
 # Provider kinds that resolve their model/credentials from inline families
 # (``key`` / ``gateway`` / ``local``) — as opposed to ``subscription`` (a
-# CLI login) and ``databricks`` (a profile), neither of which carries
-# families. _parse_provider dispatches subscription/databricks first, then
-# treats every remaining kind as a family kind.
+# CLI login), which carries no families. _parse_provider dispatches
+# subscription first, then treats every remaining kind as a family kind.
 
-ProviderKind = Literal[
-    "key", "subscription", "gateway", "local", "databricks", "cli-config", "bedrock"
-]
+ProviderKind = Literal["key", "subscription", "gateway", "local", "cli-config", "bedrock"]
 
 # Maps a canonical harness name to the provider family it consumes. The
 # ``pi`` harness consumes both families and so is absent here — callers
@@ -324,11 +317,9 @@ class ProviderEntry:
     The :attr:`kind` discriminates how the provider authenticates:
 
     - ``key`` / ``gateway`` / ``local`` carry :attr:`families` (and no
-      :attr:`cli` / :attr:`profile`).
+      :attr:`cli`).
     - ``subscription`` carries :attr:`cli` (``"claude"`` / ``"codex"``)
       and no families/base_url — the CLI's own login supplies auth.
-    - ``databricks`` carries :attr:`profile` and no families — auth is
-      resolved from ``~/.databrickscfg`` + ucode state by the runtime.
     - ``cli-config`` carries :attr:`cli` (``"codex"`` only today) and
       :attr:`model_provider` — the provider definition and credential live
       in the CLI's own config file (``~/.codex/config.toml``); the entry
@@ -337,11 +328,11 @@ class ProviderEntry:
     :param name: The provider name as keyed under ``providers:``, e.g.
         ``"anthropic"`` or ``"openrouter"``.
     :param kind: The provider kind, one of ``"key"`` / ``"subscription"``
-        / ``"gateway"`` / ``"local"`` / ``"databricks"``.
+        / ``"gateway"`` / ``"local"``.
     :param families: Parsed families keyed by family name
         (``"anthropic"`` / ``"openai"``), e.g.
-        ``{"openai": FamilyConfig(...)}``. Empty for ``subscription`` /
-        ``databricks`` kinds. The ``base_url`` / ``api_key`` values stored
+        ``{"openai": FamilyConfig(...)}``. Empty for the ``subscription``
+        kind. The ``base_url`` / ``api_key`` values stored
         here may still hold raw ``$VAR`` references — they are expanded
         lazily by :meth:`family`, so consumers should go through
         :meth:`family` rather than indexing :attr:`families` directly.
@@ -349,24 +340,22 @@ class ProviderEntry:
         CLI whose login / config file carries auth, ``"claude"`` or
         ``"codex"`` (``cli-config`` supports only ``"codex"`` today).
         ``None`` otherwise.
-    :param profile: For ``kind="databricks"`` only: the Databricks profile
-        name from ``~/.databrickscfg``, e.g. ``"oss"``. ``None`` otherwise.
-    :param connection: For managed ``kind="databricks"`` providers, ``"databricks"``
-        selects the session owner's connection. Mutually exclusive with ``profile``.
+    :param connection: ``"model"`` on a gateway provider selects the session
+        owner's saved model key. ``None`` otherwise.
     :param model_provider: For ``kind="cli-config"`` only: the custom
         provider id in the CLI's config file that the launch pins, i.e. the
-        ``X`` in ``[model_providers.X]``, e.g. ``"Databricks"``. ``None``
+        ``X`` in ``[model_providers.X]``, e.g. ``"corp-gateway"``. ``None``
         otherwise.
     :param display_name: For ``kind="cli-config"`` only: the provider's
         human display name (the table's ``name`` field, snapshotted at
-        adoption), e.g. ``"Databricks AI Gateway"``. ``None`` otherwise and
+        adoption), e.g. ``"Corp AI Gateway"``. ``None`` otherwise and
         when the table named none.
     :param default_families: The set of model families this provider is
         the **default** for. Sourced from the entry's ``default:`` flag:
         ``true`` → every family it serves (:func:`provider_families`); a
         family name (``default: openai``) or list (``default: [anthropic]``)
         → just those. Empty when not a default. Per-family scoping lets a
-        shared provider (gateway / OpenRouter / Databricks) be the default
+        shared provider (gateway / OpenRouter) be the default
         for one harness's surface without claiming the other. At most one
         default may serve a given family (enforced in
         :func:`get_default_provider`). See
@@ -377,7 +366,6 @@ class ProviderEntry:
     kind: ProviderKind
     families: dict[str, FamilyConfig] = field(default_factory=dict)
     cli: str | None = None
-    profile: str | None = None
     connection: str | None = None
     model_provider: str | None = None
     display_name: str | None = None
@@ -447,17 +435,17 @@ class ResolvedCredential:
     :param kind: The provider's kind, e.g. ``"key"`` or ``"subscription"``.
     :param family: The family selected for the harness (``"anthropic"`` /
         ``"openai"``), or ``None`` for kinds without families
-        (``subscription`` / ``databricks``).
+        (``subscription``).
     :param model: The resolved model id (override > family default), e.g.
         ``"claude-sonnet-4-6"``, or ``None`` when no model is determinable
         (e.g. a subscription whose model the CLI picks).
     :param source: A non-secret descriptor of where the credential comes
         from, suitable for display, e.g. ``"$ANTHROPIC_API_KEY"``,
         ``"env:ANTHROPIC_API_KEY"``, ``"keychain:anthropic"``,
-        ``"claude CLI login"``, or ``"profile: oss"``.
+        or ``"claude CLI login"``.
     :param base_url: The endpoint base URL for inline-family kinds, e.g.
-        ``"https://openrouter.ai/api/v1"``, or ``None`` for
-        ``subscription`` / ``databricks`` kinds (no inline base URL).
+        ``"https://openrouter.ai/api/v1"``, or ``None`` for the
+        ``subscription`` kind (no inline base URL).
     """
 
     provider_name: str
@@ -844,8 +832,7 @@ def _parse_provider(name: str, raw: dict[str, object]) -> ProviderEntry:
     """Parse one entry under ``providers:`` into a :class:`ProviderEntry`.
 
     Dispatches on the entry's ``kind:``. ``key`` / ``gateway`` / ``local``
-    require at least one family; ``subscription`` requires a ``cli``;
-    ``databricks`` requires a ``profile``.
+    require at least one family; ``subscription`` requires a ``cli``.
 
     :param name: The provider name keyed under ``providers:``, e.g.
         ``"anthropic"``.
@@ -949,32 +936,6 @@ def _parse_provider(name: str, raw: dict[str, object]) -> ProviderEntry:
             connection=MODEL_CONNECTION,
             default_families=_parse_default_families(
                 name, default_raw, {ANTHROPIC_FAMILY}, pi_capable=True
-            ),
-        )
-
-    if kind == DATABRICKS_KIND:
-        profile_raw = raw.get("profile")
-        connection_raw = raw.get("connection")
-        if connection_raw is not None and (
-            connection_raw != "databricks" or profile_raw is not None
-        ):
-            raise OmnigentError(
-                f"provider {name!r}: use exactly one of profile or connection: databricks.",
-                code=ErrorCode.INVALID_INPUT,
-            )
-        if connection_raw is None and (not isinstance(profile_raw, str) or not profile_raw):
-            raise OmnigentError(
-                f"provider {name!r}: a profile or connection: databricks is required.",
-                code=ErrorCode.INVALID_INPUT,
-            )
-        # Databricks (ucode) routes the anthropic/openai surfaces + pi.
-        return ProviderEntry(
-            name=name,
-            kind=kind,
-            profile=profile_raw if isinstance(profile_raw, str) else None,
-            connection=connection_raw,
-            default_families=_parse_default_families(
-                name, default_raw, set(_VALID_FAMILIES), pi_capable=True
             ),
         )
 
@@ -1147,14 +1108,10 @@ def provider_families(entry: ProviderEntry) -> frozenset[str]:
       serves the ``anthropic`` surface, ``codex`` serves the ``openai``
       surface, ``pi`` serves only the :data:`PI_SURFACE` scope (signals
       "use Pi's own native auth"). Other CLIs serve nothing.
-    - ``databricks``: both families plus pi — ucode routes the Claude,
-      Codex, and pi surfaces.
 
     :param entry: The provider entry to classify.
     :returns: The scope names this provider can be the default for, e.g.
-        ``frozenset({"anthropic"})`` for a Claude subscription, or
-        ``frozenset({"anthropic", "openai", "pi"})`` for a Databricks
-        profile.
+        ``frozenset({"anthropic"})`` for a Claude subscription.
     """
     if entry.kind == BEDROCK_KIND:
         # Bedrock mode is native-``omnigent claude`` only — the in-process /
@@ -1174,9 +1131,6 @@ def provider_families(entry: ProviderEntry) -> frozenset[str]:
         if entry.cli == "codex":
             return frozenset({OPENAI_FAMILY})
         return frozenset()
-    if entry.kind == DATABRICKS_KIND:
-        # ucode routes anthropic/openai + pi.
-        return frozenset(_VALID_FAMILIES) | {PI_SURFACE}
     return frozenset()
 
 
@@ -1416,18 +1370,6 @@ def describe_active_credential(
             family=None,
             model=model_override,
             source=f"{provider.cli} CLI login",
-            base_url=None,
-        )
-
-    if provider.kind == DATABRICKS_KIND:
-        # Auth + model resolve from the Databricks profile / ucode state at
-        # the harness boundary; the readout reports the profile pointer.
-        return ResolvedCredential(
-            provider_name=provider.name,
-            kind=provider.kind,
-            family=None,
-            model=model_override,
-            source=f"profile: {provider.profile}",
             base_url=None,
         )
 

@@ -35,7 +35,6 @@ from omnigent.onboarding.provider_config import (
     BEDROCK_KIND,
     CHAT_WIRE_API,
     CLI_CONFIG_KIND,
-    DATABRICKS_KIND,
     GATEWAY_KIND,
     KEY_KIND,
     LOCAL_KIND,
@@ -60,7 +59,6 @@ _KIND_GLYPH: dict[str, str] = {
     SUBSCRIPTION_KIND: "\N{ADMISSION TICKETS}\N{VARIATION SELECTOR-16}",
     GATEWAY_KIND: "\N{GLOBE WITH MERIDIANS}",
     LOCAL_KIND: "\N{DESKTOP COMPUTER}\N{VARIATION SELECTOR-16}",
-    DATABRICKS_KIND: "\N{BRICK}",
     # GEAR carries a VS16 for the same 2-cell-emoji rendering reason as the
     # ADMISSION TICKETS glyph above.
     CLI_CONFIG_KIND: "\N{GEAR}\N{VARIATION SELECTOR-16}",
@@ -78,7 +76,6 @@ _KIND_ASCII_GLYPH: dict[str, str] = {
     SUBSCRIPTION_KIND: "Sb",
     GATEWAY_KIND: "Gw",
     LOCAL_KIND: "Lc",
-    DATABRICKS_KIND: "Db",
     CLI_CONFIG_KIND: "Cf",
     BEDROCK_KIND: "Cl",
 }
@@ -92,7 +89,6 @@ _KIND_STYLE: dict[str, str] = {
     SUBSCRIPTION_KIND: "magenta",
     GATEWAY_KIND: "cyan",
     LOCAL_KIND: "green",
-    DATABRICKS_KIND: "red",
     CLI_CONFIG_KIND: "blue",
 }
 
@@ -296,7 +292,7 @@ def kind_glyph(kind: str) -> str:
     listing degrades rather than dying on the write.
 
     :param kind: A provider kind, e.g. ``"key"``, ``"subscription"``,
-        ``"gateway"``, ``"local"``, or ``"databricks"``.
+        ``"gateway"``, or ``"local"``.
     :returns: The kind's glyph (e.g. ``"🔑"`` for ``"key"``), or an
         empty string for an unknown kind.
     """
@@ -354,8 +350,6 @@ def credential_label(
         # Within a harness there is only one subscription, so the plan
         # name adds no information — just "Subscription".
         return "Subscription"
-    if kind == DATABRICKS_KIND:
-        return f"Databricks ({profile})" if profile else "Databricks"
     if kind == CLI_CONFIG_KIND:
         # Use the entry name (e.g. "isaac-databricks-codex" → "Isaac-Databricks-Codex")
         # so cli-config providers show consistently alongside other provider kinds.
@@ -687,8 +681,6 @@ def _entry_models_summary(entry: ProviderEntry) -> str:
     """
     if entry.kind == SUBSCRIPTION_KIND:
         return _subscription_auth_summary(entry)
-    if entry.kind == DATABRICKS_KIND:
-        return f"profile: {entry.profile}"
     if entry.kind == CLI_CONFIG_KIND:
         return f"~/.{entry.cli}/config.toml: {entry.model_provider}"
     # Inline-family kinds: list each family's default model, else note the

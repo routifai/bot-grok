@@ -210,13 +210,9 @@ def normalize_model_for_provider(model: str, provider_kind: str | None) -> str:
         :func:`validate_model_override`, e.g. ``"claude-sonnet-4-6"``.
     :param provider_kind: The child's resolved provider kind from
         :func:`omnigent.models.model_catalog.resolve_model_provider`, e.g.
-        ``"databricks"`` or ``"key"``; ``None`` when undeterminable.
+        ``"key"`` or ``"gateway"``; ``None`` when undeterminable.
     :returns: The localized model id, or *model* unchanged.
     """
-    if provider_kind == "databricks":
-        if _MECHANICAL_VENDOR_ID_RE.fullmatch(model):
-            return _DATABRICKS_MODEL_PREFIX + model
-        return model
     if provider_kind in _VENDOR_DIRECT_PROVIDER_KINDS:
         return canonical_model_spelling(model)
     return model
