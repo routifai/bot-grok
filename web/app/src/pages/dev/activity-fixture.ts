@@ -126,7 +126,61 @@ const DONE_TURN_STEPS: ActivityStep[] = [
   },
 ];
 
+// The work strip under a reply (WorkStrip.tsx): a deck Helper that has reported progress and
+// raised a flag, and a reading Helper that finished in 2:14.
+const DECK_STARTED = minutesAgo(1.2);
+export const DECK_HELPER_CHAT_ID = "helper-deck";
+export const READ_HELPER_CHAT_ID = "helper-read";
+
 export const INITIAL_ACTIVITIES: Activity[] = [
+  {
+    id: "act-helper-deck",
+    kind: "sub_agent",
+    source: "background",
+    chatId: DECK_HELPER_CHAT_ID,
+    parentChatId: "conv-1",
+    title: "Write the Q3 lending deck",
+    outcome: null,
+    summary: null,
+    status: "in_progress",
+    startedAt: DECK_STARTED,
+    finishedAt: null,
+    date: dateOf(DECK_STARTED),
+    steps: [
+      {
+        itemId: "deck-1",
+        title: "Read the Q2 review for its structure",
+        createdAt: minutesAgo(1),
+        tool: "report_progress",
+      },
+      {
+        itemId: "deck-2",
+        title: "Flagged: Ledger says 6.1% loan growth, the memo says 5.4%; using the ledger",
+        createdAt: minutesAgo(0.8),
+        tool: "raise_flag",
+      },
+      {
+        itemId: "deck-3",
+        title: "Slide 6 of 10 written",
+        createdAt: minutesAgo(0.2),
+        tool: "report_progress",
+      },
+    ],
+  },
+  {
+    id: "act-helper-read",
+    kind: "sub_agent",
+    source: "background",
+    chatId: READ_HELPER_CHAT_ID,
+    parentChatId: "conv-1",
+    title: "Read the three files you dropped",
+    outcome: "Read the ledger, the memo and the provisions sheet.",
+    summary: "Read the ledger, the memo and the provisions sheet.",
+    status: "done",
+    startedAt: minutesAgo(30),
+    finishedAt: new Date(now - 30 * 60_000 + 134_000).toISOString(),
+    date: dateOf(minutesAgo(30)),
+  },
   {
     id: "act-helper-running",
     kind: "sub_agent",

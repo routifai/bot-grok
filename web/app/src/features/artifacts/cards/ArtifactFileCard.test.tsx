@@ -90,3 +90,16 @@ it("labels a deck as a deck with its slide count, not as an HTML file", () => {
   const page = render({ name: "plan.html", artifactId: "art-2", kind: "html", size: 1000 });
   expect(page.textContent).toContain("HTML · 1 KB");
 });
+
+it("marks a draft a Helper is still writing as Updating, in place of its version", () => {
+  const host = document.createElement("div");
+  document.body.append(host);
+  hosts.push(host);
+  const data = { name: "q3.deck.html", artifactId: "art-1", version: 3, versions: 3 };
+  act(() => createRoot(host).render(<ArtifactFileCard data={data} updating />));
+  expect(host.querySelector("[data-testid=artifact-updating]")?.textContent).toBe("Updating");
+  expect(host.querySelector("[data-testid=artifact-version]")).toBeNull();
+  const done = render(data);
+  expect(done.querySelector("[data-testid=artifact-updating]")).toBeNull();
+  expect(done.querySelector("[data-testid=artifact-version]")?.textContent).toBe("v3");
+});

@@ -10,6 +10,7 @@ vi.mock("react-dom/client", async (orig) =>
 );
 
 import { ACTIVITY_LOADING_GRACE_MS, ActivityPanel } from "./ActivityPanel";
+import { focusActivity } from "./activityFocus";
 import { activity, helper, step } from "./activityTestKit";
 
 vi.mock("@lingui/react/macro", () => {
@@ -147,5 +148,31 @@ it("skips the skeleton while the page is hidden, since the feed is paused", asyn
     expect(container.querySelector("[data-testid=activity-loading]")).not.toBeNull();
   } finally {
     visibility.mockRestore();
+  }
+});
+
+it("brings the Helper that Show details asked for into view, once", async () => {
+  const scrolled: string[] = [];
+  // jsdom has no layout, so no scrollIntoView of its own.
+  HTMLElement.prototype.scrollIntoView ??= () => undefined;
+  const scrollIntoView = vi
+    .spyOn(HTMLElement.prototype, "scrollIntoView")
+    .mockImplementation(function (this: HTMLElement) {
+      scrolled.push(this.getAttribute("data-activity-id") ?? "");
+    });
+  try {
+    focusActivity("sub_agent:h2");
+    const container = await mount([
+      helper("h1", { status: "done" }),
+      helper("h2", { title: "Write the deck", status: "in_progress", startedAt, finishedAt: null }),
+    ]);
+    expect(scrolled).toEqual(["sub_agent:h2"]);
+    const row = container.querySelector('[data-activity-id="sub_agent:h2"]');
+    expect(row?.classList.contains("sc-message-flash")).toBe(true);
+    // Settled: a panel mounted later does not scroll again.
+    await mount([helper("h2", { status: "in_progress", startedAt, finishedAt: null })]);
+    expect(scrolled).toHaveLength(1);
+  } finally {
+    scrollIntoView.mockRestore();
   }
 });
