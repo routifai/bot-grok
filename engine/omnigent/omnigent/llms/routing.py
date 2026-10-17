@@ -77,7 +77,6 @@ def parse_model_string(model: str) -> RoutedModel:
 # Used by :func:`infer_harness_from_model` when a spec doesn't name
 # a harness explicitly.
 _HARNESS_FOR_MODEL_PREFIX: dict[str, str] = {
-    "databricks-claude-": "claude-sdk",
     "anthropic/claude-": "claude-sdk",
 }
 
@@ -93,7 +92,7 @@ def infer_harness_from_model(model: str) -> str:
     validator surface a "harness required" error if one is needed.
 
     :param model: Model string from the spec's ``llm.model`` or
-        ``executor.model`` field, e.g. ``"databricks-claude-sonnet-4"``.
+        ``executor.model`` field, e.g. ``"anthropic/claude-sonnet-4"``.
     :returns: A harness name such as ``"claude-sdk"``, or ``""`` when
         *model* is unrecognised.
     """

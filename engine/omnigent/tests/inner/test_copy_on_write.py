@@ -487,7 +487,7 @@ def test_keeper_timeout_stops_process_tree(monkeypatch):
     process.stdout.close.assert_called_once()
 
 
-@pytest.mark.parametrize("harness", ["openai-agents", "codex", "codex-native", "claude-sdk"])
+@pytest.mark.parametrize("harness", ["codex", "codex-native", "claude-sdk", "pi"])
 @pytest.mark.parametrize("legacy", [False, True])
 def test_agent_parser_rejects_unshared_harness(tmp_path, harness, legacy):
     import yaml
@@ -513,8 +513,5 @@ def test_agent_parser_rejects_unshared_harness(tmp_path, harness, legacy):
     def load():
         return _parse_agent_def(config, allow_dynamic_tools=True) if legacy else parse(tmp_path)
 
-    if harness == "openai-agents":
-        assert load().os_env is not None
-    else:
-        with pytest.raises(ValueError, match="openai-agents"):
-            load()
+    with pytest.raises(ValueError, match="copy_on_write is not supported by harness"):
+        load()

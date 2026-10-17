@@ -726,8 +726,7 @@ _RUNNER_ENV_ALLOWLIST_PREFIXES: tuple[str, ...] = ("LC_", "MLFLOW_", "OTEL_", "O
 # and CLAUDE_CODE_OAUTH_TOKEN for `claude setup-token` subscription auth),
 # OPENAI_* for codex / pi (CODEX_ACCESS_TOKEN is the codex
 # CLI's headless ChatGPT-workspace credential, minted in the ChatGPT
-# admin console — Business/Enterprise plans), GEMINI_API_KEY for the
-# gemini family. GIT_TOKEN / GIT_USERNAME feed the sandbox host
+# admin console — Business/Enterprise plans). GIT_TOKEN / GIT_USERNAME feed the sandbox host
 # image's git credential helper (deploy/docker/Dockerfile `host`
 # target) so the agent's own fetch/push against a private repository
 # authenticates, not just the launch-time clone. Unlike the rest of
@@ -748,7 +747,6 @@ _BASE_HARNESS_CREDENTIAL_ENV_VARS: frozenset[str] = frozenset(
         "CODEX_ACCESS_TOKEN",
         "OPENAI_API_KEY",
         "OPENAI_BASE_URL",
-        "GEMINI_API_KEY",
         "GIT_TOKEN",
         "GIT_USERNAME",
     }

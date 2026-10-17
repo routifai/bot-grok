@@ -89,8 +89,6 @@ def test_unknown_provider_raises() -> None:
         # Databricks-hosted Claude → claude-sdk harness; these are the
         # models that triggered the original routing bug (Responses API
         # passthrough 400s for Claude).
-        ("databricks-claude-sonnet-4", "claude-sdk"),
-        ("databricks-claude-sonnet-4-6", "claude-sdk"),
         # Anthropic-prefixed models also need claude-sdk.
         ("anthropic/claude-sonnet-4-20250514", "claude-sdk"),
         # Every non-Claude model — no prefix match — returns empty string

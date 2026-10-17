@@ -170,7 +170,7 @@ def _render_menu(
         render_console.print()
     render_console.print(Text(f"  {title}", style=f"bold {ACCENT}"))
     if not compact:
-        # The compact overview hugs the title to the list (Hermes-style); other
+        # The compact overview hugs the title to the list; other
         # menus keep a blank line below the title for breathing room.
         render_console.print()
 

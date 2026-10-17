@@ -408,7 +408,6 @@ def _list_provider_names() -> list[str]:
             "cohere",
             "cohere_chat",
             "dashscope",
-            "databricks",
             "deepinfra",
             "deepseek",
             "featherless_ai",
@@ -498,7 +497,6 @@ def _normalize_provider(provider: str) -> str:
 COMMON_PROVIDERS: list[str] = [
     "openai",
     "anthropic",
-    "databricks",
     "bedrock",
     "gemini",
     "vertex_ai",
@@ -624,10 +622,6 @@ _BEDROCK_ANTHROPIC_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-# Databricks Unity Catalog system models (``system.ai.<model>``): the same
-# model the workspace serves as its ``databricks-<model>`` endpoint.
-_DATABRICKS_SYSTEM_AI_PREFIX = "system.ai."
-
 
 def _catalog_lookup_targets(model: str) -> list[tuple[str, str]]:
     """Return bounded provider/id pairs for a model catalog lookup."""
@@ -647,32 +641,17 @@ def _catalog_lookup_targets(model: str) -> list[tuple[str, str]]:
         _add("openrouter", normalized)
         return targets
 
-    if normalized.lower().startswith(_DATABRICKS_SYSTEM_AI_PREFIX):
-        bare = normalized[len(_DATABRICKS_SYSTEM_AI_PREFIX) :]
-        _add("databricks", f"databricks-{bare}")
-        _add(_inferred_catalog_provider(bare), bare)
-        _add("openrouter", bare)
-        return targets
-
     if "/" in normalized:
         namespace, bare = normalized.split("/", 1)
         provider = namespace.lower()
         if provider in known_providers:
             _add(provider, bare)
-            if provider == "databricks" and bare.lower().startswith("databricks-"):
-                base = bare[len("databricks-") :]
-                _add(_inferred_catalog_provider(base), base)
         else:
             _add("openrouter", normalized)
             _add(_inferred_catalog_provider(bare), bare)
         return targets
 
-    if normalized.lower().startswith("databricks-"):
-        _add("databricks", normalized)
-        base = normalized[len("databricks-") :]
-        _add(_inferred_catalog_provider(base), base)
-    else:
-        _add(_inferred_catalog_provider(normalized), normalized)
+    _add(_inferred_catalog_provider(normalized), normalized)
     _add("openrouter", normalized)
     return targets
 
@@ -1006,27 +985,6 @@ _PROVIDER_AUTH_MODES: dict[str, dict[str, dict[str, Any]]] = {
             ],
         },
     },
-    "databricks": {
-        "pat_token": {
-            "display_name": "Personal Access Token",
-            "description": "Use Databricks Personal Access Token",
-            "default": True,
-            "fields": [
-                {
-                    "name": "api_key",
-                    "description": "Databricks Personal Access Token",
-                    "secret": True,
-                    "required": True,
-                },
-                {
-                    "name": "api_base",
-                    "description": "Databricks workspace URL",
-                    "secret": False,
-                    "required": True,
-                },
-            ],
-        },
-    },
     "sagemaker": {
         "access_keys": {
             "display_name": "Access Keys",
@@ -1067,7 +1025,6 @@ _PROVIDER_DISPLAY_NAMES: dict[str, str] = {
     "vertex_ai": "Google Vertex AI",
     "azure": "Azure OpenAI",
     "groq": "Groq",
-    "databricks": "Databricks",
     "xai": "xAI",
     "cohere": "Cohere",
     "mistral": "Mistral AI",
