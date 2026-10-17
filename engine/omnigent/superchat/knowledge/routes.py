@@ -31,7 +31,6 @@ from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnigent.errors import ErrorCode, OmnigentError
-from omnigent.runner.knowledge.limits import INGEST_TIMEOUT_S
 from omnigent.server.auth import LEVEL_EDIT, LEVEL_READ, AuthProvider
 from omnigent.server.routes._auth_helpers import get_user_id as _get_user_id
 from omnigent.server.routes._auth_helpers import require_access_and_level as _require_access
@@ -40,6 +39,7 @@ from omnigent.stores.permission_store import PermissionStore
 from omnigent.superchat._handler_http import HEX_ID_RE
 from omnigent.superchat.artifacts import SqlAlchemyArtifactStore, request_owner
 from omnigent.superchat.feature import RELAY_MARK
+from omnigent.superchat.knowledge.limits import INGEST_TIMEOUT_S
 from omnigent.superchat.knowledge.tools import UPLOADS_PREFIX
 
 #: How long a search waits for the Computer to wake and its runner to connect.

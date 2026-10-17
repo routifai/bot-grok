@@ -1,6 +1,6 @@
 """A file as one Markdown document, with a marker where each page starts.
 
-The same pages the passages are cut from (:mod:`omnigent.runner.knowledge.parse`) are written
+The same pages the passages are cut from (:mod:`omnigent.superchat.knowledge.parse`) are written
 out as Markdown, so what a model reads whole (``files_get``, an attached file's text) and what a
 search cites (``page 3``) agree. A PDF keeps its real pages; a text, Markdown or CSV file keeps
 its virtual pages; a workbook has one page per sheet and its rows become Markdown tables. Pure:
@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable
 
-from omnigent.runner.knowledge.chunking import Block, ParsedPage
+from omnigent.superchat.knowledge.chunking import Block, ParsedPage
 
 _MARKER = "<!-- page {n} -->"
 _MARKER_LINE = re.compile(r"^<!-- page (\d+) -->$", re.MULTILINE)

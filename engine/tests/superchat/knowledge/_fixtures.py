@@ -7,15 +7,15 @@ import math
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from omnigent.runner.knowledge.db import TurnPassage
-from omnigent.runner.knowledge.embedder import (
+from omnigent.superchat.knowledge.db import TurnPassage
+from omnigent.superchat.knowledge.embedder import (
     Embedded,
     Embedder,
     EmbeddingPlan,
     EmbeddingUnavailable,
 )
-from omnigent.runner.knowledge.indexer import Indexer
-from omnigent.runner.knowledge.rerank import Reranker, RerankUnavailable
+from omnigent.superchat.knowledge.indexer import Indexer
+from omnigent.superchat.knowledge.rerank import Reranker, RerankUnavailable
 
 DIMS = 64
 TAG = "openrouter:fake-embed:64"

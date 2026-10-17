@@ -2423,7 +2423,7 @@ async def test_write_file_base64_keeps_binary_bytes_and_tells_the_file_search(
     import base64
 
     told: list[object] = []
-    monkeypatch.setattr("omnigent.runner.knowledge.runtime.notify_written", told.append)
+    monkeypatch.setattr("omnigent.superchat.knowledge.runtime.notify_written", told.append)
     data = bytes(range(256)) * 4
     resp = await client.put(
         f"/v1/sessions/conv_test/resources/environments"

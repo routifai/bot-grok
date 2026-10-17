@@ -7,11 +7,11 @@ from pathlib import Path
 import httpx
 import pytest
 
-from omnigent.runner.knowledge import runtime as rt
-from omnigent.runner.knowledge.runtime import KnowledgeRuntime
 from omnigent.superchat.feature import HandlerCtx
+from omnigent.superchat.knowledge import runtime as rt
 from omnigent.superchat.knowledge.handlers import handle_knowledge_tool
-from tests.runner.knowledge._fixtures import FakeEmbedder, make_pdf, run_all
+from omnigent.superchat.knowledge.runtime import KnowledgeRuntime
+from tests.superchat.knowledge._fixtures import FakeEmbedder, make_pdf, run_all
 
 SESSION = "a" * 32
 PDF = make_pdf([[("Risks", 20), ("Currency exposure is the main risk.", 11)]])

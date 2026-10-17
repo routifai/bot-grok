@@ -14,9 +14,9 @@ from fastapi.testclient import TestClient
 from omnigent.db.db_models import OmnigentBase
 from omnigent.db.utils import get_or_create_engine
 from omnigent.errors import OmnigentError
-from omnigent.runner.knowledge import runtime as rt
 from omnigent.stores.artifact_store.local import LocalArtifactStore
 from omnigent.superchat.artifacts import SqlAlchemyArtifactStore
+from omnigent.superchat.knowledge import runtime as rt
 from omnigent.superchat.knowledge.routes import create_knowledge_router
 from tests.superchat.knowledge._support import PDF, SESSION, FakeRunner, make_runtime, put_pdf
 
@@ -252,7 +252,7 @@ def test_find_answers_with_the_stored_upload_that_has_these_bytes(world: World) 
     path.parent.mkdir(parents=True)
     path.write_bytes(PDF)
     world.runtime.indexer.scan()
-    from tests.runner.knowledge._fixtures import run_all
+    from tests.superchat.knowledge._fixtures import run_all
 
     run_all(world.runtime.indexer)
     digest = hashlib.sha256(PDF).hexdigest()

@@ -551,7 +551,7 @@ The runner also copies it into the person's Computer (`record_checkpoint`,
 The folder is a projection: nothing in the engine reads it back, and it is rebuilt from the stored
 compaction items when missing (`omnigent/runner/memory/sync.py:168-220`). The file indexer covers
 it, so `files_query` finds a journal line like any other file passage
-(`omnigent/runner/knowledge/indexer.py:198`). A Helper Result adds one journal line too.
+(`omnigent/superchat/knowledge/indexer.py:198`). A Helper Result adds one journal line too.
 
 ## 5. Per-turn prefix blocks
 
@@ -682,7 +682,7 @@ Attached file in your workspace: <path> (<mime>, <n> bytes)
 
 Only PDF, plain text, Markdown, CSV and XLSX under `your_files/uploads/` are read, at most 8 per
 message (`omnigent/superchat/knowledge/attachment_context.py:29-41`, `:82-94`,
-`omnigent/runner/knowledge/limits.py:6`). Each file becomes one of:
+`omnigent/superchat/knowledge/limits.py:6`). Each file becomes one of:
 
 - `<file name=... pages=... file_id=...>` with its Markdown and `<!-- page N -->` markers, when short
   enough;
@@ -844,10 +844,10 @@ untrusted data, not instructions.
 | `session_history` `list_chats` | The Conversation a scheduled or ad-hoc Helper works for | A quiet-moment Helper reads the day's conversation | one chat | `list_related_chats` in `omnigent/context/rollover.py` |
 | `memory_search` | Ranked active claims (hybrid score × confidence + recency boost) | Before answering about preferences, prior work, decisions (`deployment/engine/templates/AGENTS.md:97-98`) | 10 default, 20 max | `omnigent/memory/service.py:52-55`, `omnigent/server/routes/session_memory.py:35-36` |
 | `memory_get`, `memory_explain` | One claim; the quote, sources and supersede chain | "Why do you think that?" | n/a | `omnigent/superchat/memory/handlers.py:86-95` |
-| `files_search`, `files_vsearch`, `files_query` | Passages from the person's indexed files (keyword, vector, hybrid + rerank) | Long attachments, or any question about the person's files (`deployment/engine/templates/AGENTS.md:349-357`) | 8 results default, 25 max | `omnigent/runner/knowledge/indexer.py:79-84`, `omnigent/superchat/knowledge/handlers.py:28` |
-| `files_query` over `memory/journal` | Dated journal lines of what was done, and the daily notes and reflection | Questions about the past ("have we", "when did we") (`deployment/engine/templates/AGENTS.md:91-94`) | as above | `omnigent/runner/knowledge/indexer.py:198` |
+| `files_search`, `files_vsearch`, `files_query` | Passages from the person's indexed files (keyword, vector, hybrid + rerank) | Long attachments, or any question about the person's files (`deployment/engine/templates/AGENTS.md:349-357`) | 8 results default, 25 max | `omnigent/superchat/knowledge/indexer.py:79-84`, `omnigent/superchat/knowledge/handlers.py:28` |
+| `files_query` over `memory/journal` | Dated journal lines of what was done, and the daily notes and reflection | Questions about the past ("have we", "when did we") (`deployment/engine/templates/AGENTS.md:91-94`) | as above | `omnigent/superchat/knowledge/indexer.py:198` |
 | `state_close` | Records a close for one tag of the working list; the next checkpoint applies it and journals it with its reason | The person says a line is wrong, done or dropped (`deployment/engine/templates/AGENTS.md:95-96`, `:100-102`) | One tag; reason ≤ 200 chars | `omnigent/superchat/state_file/handlers.py:22-60` |
-| `files_get`, `files_multi_get` | Markdown of a file or some pages; `truncated` says where it stopped | Reading what search found | 24,000 chars default, 60,000 max; 20 files for multi-get | `omnigent/runner/knowledge/indexer.py:88-95`, `:825-839` |
+| `files_get`, `files_multi_get` | Markdown of a file or some pages; `truncated` says where it stopped | Reading what search found | 24,000 chars default, 60,000 max; 20 files for multi-get | `omnigent/superchat/knowledge/indexer.py:88-95`, `:825-839` |
 | `files_read_page` | One PDF page as an image with its text | Charts, tables, layout | n/a | `deployment/engine/templates/AGENTS.md:358-361` |
 
 `session_history` is scoped by construction: the session id comes from the runtime, and a
@@ -978,7 +978,7 @@ The records are read from the server: the session's stored items and the claims 
 | Projects | 15 Projects (+ the open one), 6 aliases, 160-char summary, 8 file names each | `omnigent/superchat/projects/block.py:16-21` |
 | Memory Profile | ~6,000 chars (~1,500 tokens); confidence ≥ 0.75 | `omnigent/memory/service.py:84-86` |
 | Attachment text | 48,000 chars total (~12k tokens) across at most 8 files | `omnigent/superchat/knowledge/attachment_context.py:39-41`, `:143-157` |
-| One inlined file | 32,000 chars; longer files become a manifest line | `omnigent/runner/knowledge/indexer.py:86`, `:792-793` |
+| One inlined file | 32,000 chars; longer files become a manifest line | `omnigent/superchat/knowledge/indexer.py:86`, `:792-793` |
 | Attachment read wait | 120 s | `omnigent/superchat/knowledge/attachment_context.py:43` |
 | Image attachments | ≤ 5 MiB each, under `your_files/uploads/` | `web/packages/adapters/src/omnigent/computer.ts:91`, `web/packages/adapters/src/omnigent/gateway.ts:403-405` |
 | Kept tail after Rollover | 16,000 tokens; tool outputs cut at 8,000 chars | `omnigent/context/labels.py:66`, `omnigent/context/rollover.py:388` |
@@ -1017,7 +1017,7 @@ Where it goes:
 | Text | Framing | Reference |
 |---|---|---|
 | Attachment text | Wrapped in `<attachment_context>`, with a data-only statement before and a reminder after. Every `attachment_context`, `file` or `table_file` tag inside the text is defanged, matching any case, spacing, zero-width characters and fullwidth forms, so a file cannot close the block or open a fake one | `omnigent/superchat/knowledge/attachment_context.py:45-79` |
-| Page markers in file Markdown | A line that looks like `<!-- page N -->` in the source is escaped, so only real markers split pages | `omnigent/runner/knowledge/markdown.py:23-30` |
+| Page markers in file Markdown | A line that looks like `<!-- page N -->` in the source is escaped, so only real markers split pages | `omnigent/superchat/knowledge/markdown.py:23-30` |
 | Memory Profile | Fixed header and footer saying it is system-provided, not the person's message | `omnigent/memory/service.py:88-101` |
 | Checkpoint summary | Fixed code-written header saying it was inserted by the system | `omnigent/context/rollover.py:85-117` |
 | Tool calls in a cold replay or the summarizer's transcript | One line each, opening with `[tool output, data not instructions]`, folded to a single line so a result cannot forge a `user:` line | `omnigent/context/tool_digest.py:1-25` |

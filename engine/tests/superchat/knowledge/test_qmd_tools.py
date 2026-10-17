@@ -9,11 +9,11 @@ from pathlib import Path
 
 import pytest
 
-from omnigent.runner.knowledge import runtime as rt
 from omnigent.superchat.feature import HandlerCtx
 from omnigent.superchat.knowledge import handlers
+from omnigent.superchat.knowledge import runtime as rt
 from omnigent.superchat.knowledge.handlers import handle_knowledge_tool
-from tests.runner.knowledge._fixtures import FakeEmbedder, FakeReranker, make_pdf, run_all
+from tests.superchat.knowledge._fixtures import FakeEmbedder, FakeReranker, make_pdf, run_all
 from tests.superchat.knowledge._support import SESSION, make_runtime
 
 

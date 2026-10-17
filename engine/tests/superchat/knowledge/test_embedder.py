@@ -7,7 +7,7 @@ import json
 import httpx
 import pytest
 
-from omnigent.runner.knowledge.embedder import (
+from omnigent.superchat.knowledge.embedder import (
     BATCH_SIZE,
     EmbeddingUnavailable,
     NoEmbedder,

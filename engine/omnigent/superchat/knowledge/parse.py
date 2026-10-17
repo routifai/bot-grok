@@ -2,7 +2,7 @@
 
 A PDF keeps its real pages. A text or Markdown file gets virtual pages of about
 :data:`VIRTUAL_PAGE_CHARS` so a citation can still say "page 3". CSV and XLSX files are not paged
-text: see :mod:`omnigent.runner.knowledge.tabular`. Nothing here calls a model.
+text: see :mod:`omnigent.superchat.knowledge.tabular`. Nothing here calls a model.
 """
 
 from __future__ import annotations
@@ -10,8 +10,8 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable
 
-from omnigent.runner.knowledge.chunking import Block, ParsedPage
-from omnigent.runner.knowledge.pdf import extract_pages
+from omnigent.superchat.knowledge.chunking import Block, ParsedPage
+from omnigent.superchat.knowledge.pdf import extract_pages
 
 #: Artifact kinds this capability indexes.
 INDEXABLE_KINDS = frozenset({"pdf", "txt", "md", "csv", "xlsx"})

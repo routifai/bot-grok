@@ -19,7 +19,7 @@ published, and the "Keep this page updated" chip is offered for pages only.
 - Trigger: a source file changing in the Computer (debounced ~2 minutes), the schedule as a safety
   net (`kind="live_artifact"` scheduled task, parent = the page's chat, Helper type `worker`), and
   "Update now". The Computer polls the modified time of the sources of live pages (every ~30 s,
-  `runner/live/`, nothing is seen while it sleeps) and reports changes to the engine, which debounces
+  `superchat/live/watcher.py`, nothing is seen while it sleeps) and reports changes to the engine, which debounces
   per page and starts the run; a run already going is looked at again after another debounce.
   `on_change` (default true) turns it off per page.
 - Sources: files in the person's Computer for now (no web). If none are given, the first run

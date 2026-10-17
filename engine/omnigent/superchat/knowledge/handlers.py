@@ -16,9 +16,12 @@ from dataclasses import asdict, replace
 from datetime import date
 from typing import Any
 
-from omnigent.runner.knowledge.db import FileRow
-from omnigent.runner.knowledge.indexer import DEFAULT_K, MAX_K, RERANK_CANDIDATES, AmbiguousFile
-from omnigent.runner.knowledge.recall import (
+from omnigent.runtime.mcp_tool_result import encode_mcp_image_result
+from omnigent.superchat._handler_http import HEX_ID_RE, error
+from omnigent.superchat.feature import HandlerCtx
+from omnigent.superchat.knowledge.db import FileRow
+from omnigent.superchat.knowledge.indexer import DEFAULT_K, MAX_K, RERANK_CANDIDATES, AmbiguousFile
+from omnigent.superchat.knowledge.recall import (
     MAX_QUERIES,
     SOURCES,
     ClaimSearch,
@@ -26,10 +29,7 @@ from omnigent.runner.knowledge.recall import (
     journal_line,
     recall_with_reason,
 )
-from omnigent.runner.knowledge.runtime import KnowledgeRuntime, configure, get_runtime
-from omnigent.runtime.mcp_tool_result import encode_mcp_image_result
-from omnigent.superchat._handler_http import HEX_ID_RE, error
-from omnigent.superchat.feature import HandlerCtx
+from omnigent.superchat.knowledge.runtime import KnowledgeRuntime, configure, get_runtime
 from omnigent.superchat.knowledge.tools import UPLOADS_PREFIX
 from omnigent.superchat.memory.handlers import handle_memory_tool
 

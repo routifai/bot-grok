@@ -5,7 +5,7 @@ Revises: kn1b2c3d4e5f
 Create Date: 2026-10-09 18:00:00.000000
 
 ``file_index_jobs`` and ``file_chunks`` held the knowledge worker's state in the engine database.
-File search now runs in the person's Computer (``omnigent.runner.knowledge``), with its index
+File search now runs in the person's Computer (``omnigent.superchat.knowledge``), with its index
 on the Computer's home volume, so nothing is kept here. The downgrade recreates the empty tables.
 """
 

@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from omnigent.runner.knowledge import runtime as rt
 from omnigent.superchat.feature import HandlerCtx
 from omnigent.superchat.knowledge import FEATURE
+from omnigent.superchat.knowledge import runtime as rt
 from omnigent.superchat.knowledge.handlers import handle_knowledge_tool
 from tests.superchat.knowledge._support import SESSION, make_runtime, put_pdf
 
@@ -152,7 +152,7 @@ def test_relay_ops_pass_the_runners_granted_tool_gate_only_for_a_super_chat() ->
 
 def test_a_journal_line_is_found_and_comes_back_as_file_data(tmp_path: Path, monkeypatch) -> None:
     from omnigent.runner.memory import files
-    from tests.runner.knowledge._fixtures import run_all
+    from tests.superchat.knowledge._fixtures import run_all
 
     runtime = make_runtime(tmp_path, monkeypatch)
     files.append_lines(

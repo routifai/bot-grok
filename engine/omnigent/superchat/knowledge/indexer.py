@@ -14,7 +14,7 @@ when the owner has no embedding connection), render PDF page thumbnails, settle.
 The index also holds the ``conversation`` source (:meth:`Indexer.index_turns`): one passage per
 completed turn, written by the runner when a compaction retires it; its only pass is the embedding.
 
-Everything blocks; the runtime (:mod:`omnigent.runner.knowledge.runtime`) runs it in one thread.
+Everything blocks; the runtime (:mod:`omnigent.superchat.knowledge.runtime`) runs it in one thread.
 """
 
 from __future__ import annotations
@@ -31,8 +31,8 @@ from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from omnigent.runner.knowledge.chunking import chunk_pages
-from omnigent.runner.knowledge.db import (
+from omnigent.superchat.knowledge.chunking import chunk_pages
+from omnigent.superchat.knowledge.db import (
     EMBED_EMBEDDED,
     EMBED_KEYWORD,
     KIND_TURN,
@@ -47,25 +47,25 @@ from omnigent.runner.knowledge.db import (
     file_id_for,
     search_text,
 )
-from omnigent.runner.knowledge.embedder import (
+from omnigent.superchat.knowledge.embedder import (
     REASON_ERROR,
     REASON_NO_CONNECTION,
     Embedder,
     EmbeddingUnavailable,
 )
-from omnigent.runner.knowledge.fsio import read_bytes, sha256_of
-from omnigent.runner.knowledge.limits import INGEST_TIMEOUT_S, UPLOADS_PREFIX
-from omnigent.runner.knowledge.markdown import (
+from omnigent.superchat.knowledge.fsio import read_bytes, sha256_of
+from omnigent.superchat.knowledge.limits import INGEST_TIMEOUT_S, UPLOADS_PREFIX
+from omnigent.superchat.knowledge.markdown import (
     parse_page_spec,
     select_pages,
     split_pages,
     to_markdown,
 )
-from omnigent.runner.knowledge.parse import INDEXABLE_KINDS, parse_file
-from omnigent.runner.knowledge.pdf import render_page, render_thumbnails
-from omnigent.runner.knowledge.refs import journal_refs
-from omnigent.runner.knowledge.rerank import Reranker, RerankUnavailable
-from omnigent.runner.knowledge.tabular import (
+from omnigent.superchat.knowledge.parse import INDEXABLE_KINDS, parse_file
+from omnigent.superchat.knowledge.pdf import render_page, render_thumbnails
+from omnigent.superchat.knowledge.refs import journal_refs
+from omnigent.superchat.knowledge.rerank import Reranker, RerankUnavailable
+from omnigent.superchat.knowledge.tabular import (
     TABULAR_KINDS,
     manifest_pages,
     profile_table,

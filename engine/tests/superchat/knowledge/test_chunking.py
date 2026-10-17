@@ -6,10 +6,10 @@ import io
 
 import pytest
 
-from omnigent.runner.knowledge.chunking import MAX_CHARS, Block, ParsedPage, chunk_pages
-from omnigent.runner.knowledge.parse import INDEXABLE_KINDS, parse_file
-from omnigent.runner.knowledge.pdf import extract_pages, render_page, render_thumbnails
-from tests.runner.knowledge._fixtures import make_pdf
+from omnigent.superchat.knowledge.chunking import MAX_CHARS, Block, ParsedPage, chunk_pages
+from omnigent.superchat.knowledge.parse import INDEXABLE_KINDS, parse_file
+from omnigent.superchat.knowledge.pdf import extract_pages, render_page, render_thumbnails
+from tests.superchat.knowledge._fixtures import make_pdf
 
 
 def test_chunks_never_span_pages_and_keep_the_page_number() -> None:

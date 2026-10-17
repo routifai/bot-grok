@@ -101,7 +101,7 @@ and multi-get; status) are adapted from the pi-qmd extension and its qmd-knowled
 hjanuschka, licensed under the MIT License (declared in its package.json and README; the repository
 ships no separate LICENSE file), which wraps qmd (https://github.com/tobi/qmd, MIT, Copyright (c)
 Tobi Lutke). No qmd or pi-qmd code is included: the tools are re-implemented in Python over SQLite
-FTS5 and sqlite-vec (omnigent/runner/knowledge).
+FTS5 and sqlite-vec (omnigent/superchat/knowledge).
 
 Charts. The chart capability (packages/charts, engine/omnigent/omnigent/superchat/charts,
 apps/api/src/features/charts, web/app/src/features/charts) contains portions modified from nao

@@ -64,10 +64,10 @@ dependencies = [
     # Decode and validate public branding assets before serving them.
     "pillow>=12.2,<13",
     # PDF text layer + page rendering for the file search that runs in the Computer
-    # (omnigent/runner/knowledge/pdf.py). Apache-2.0 / BSD-3 bindings to PDFium (BSD-3);
+    # (omnigent/superchat/knowledge/pdf.py). Apache-2.0 / BSD-3 bindings to PDFium (BSD-3);
     # bundled wheels, no system poppler/ghostscript. Pinned: page text and renders feed the index.
     "pypdfium2==5.0.0",
-    # Vector half of that index (omnigent/runner/knowledge/db.py): a SQLite extension, MIT OR
+    # Vector half of that index (omnigent/superchat/knowledge/db.py): a SQLite extension, MIT OR
     # Apache-2.0, one small wheel with the extension inside (no torch, no numpy). BM25 is SQLite's
     # own FTS5. See docs/adr/0014-files-live-in-the-computer.md.
     "sqlite-vec>=0.1.9,<0.2",

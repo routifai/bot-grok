@@ -778,8 +778,8 @@ class _Record:
 
 
 def _service(tmp_path: Path) -> Any:
-    from omnigent.runner.knowledge.runtime import KnowledgeRuntime
-    from tests.runner.knowledge._fixtures import FakeEmbedder
+    from omnigent.superchat.knowledge.runtime import KnowledgeRuntime
+    from tests.superchat.knowledge._fixtures import FakeEmbedder
 
     return KnowledgeRuntime(tmp_path / "index", tmp_path / "workspace", FakeEmbedder())
 
@@ -999,8 +999,8 @@ async def test_a_reset_keeps_the_passages(tmp_path: Path) -> None:
 async def test_a_delivered_hand_edit_becomes_one_journal_line_with_its_version(
     _isolated_knowledge_workspace: Path,
 ) -> None:
-    from omnigent.runner.knowledge.refs import line_refs
     from omnigent.superchat.artifacts.writeback import deliver_manual_edits
+    from omnigent.superchat.knowledge.refs import line_refs
 
     edit = {"id": "art_7f2", "name": "budget.xlsx", "version": 3, "origin": "manual",
             "edit_summary": "B4 1200 → 1500", "created_at": DAY, "write_back": False}  # fmt: skip

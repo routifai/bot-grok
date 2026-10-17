@@ -9,7 +9,7 @@ from pathlib import Path
 
 import httpx
 
-from omnigent.runner.live.watcher import SourceWatcher
+from omnigent.superchat.live.watcher import SourceWatcher
 
 
 def _watcher(tmp_path: Path, paths: list[str], posted: list[list[str]]) -> SourceWatcher:
@@ -58,7 +58,7 @@ def test_a_failed_report_is_sent_again_next_pass(tmp_path: Path) -> None:
 
 
 def test_the_poll_carries_the_computers_load(tmp_path: Path, monkeypatch) -> None:
-    from omnigent.runner.live import watcher as watcher_mod
+    from omnigent.superchat.live import watcher as watcher_mod
 
     seen: list[dict[str, str]] = []
 

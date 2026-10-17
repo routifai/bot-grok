@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from omnigent.runner.knowledge.recall import SOURCES, recall_search, recency_factor
 from omnigent.runner.memory import files as journal
-from tests.runner.knowledge._fixtures import (
+from omnigent.superchat.knowledge.recall import SOURCES, recall_search, recency_factor
+from tests.superchat.knowledge._fixtures import (
     FakeEmbedder,
     build_indexer,
     put_turn,
@@ -139,7 +139,7 @@ def test_the_current_epoch_of_a_chat_is_left_out(tmp_path: Path) -> None:
 
 
 def test_a_checkpoint_anchor_on_a_reply_leaves_the_turns_after_it_out(tmp_path: Path) -> None:
-    from omnigent.runner.knowledge.turns import passage_of, split_turns
+    from omnigent.superchat.knowledge.turns import passage_of, split_turns
 
     def say(item_id: str, role: str, text: str, at: int) -> dict:
         kind = "input_text" if role == "user" else "output_text"

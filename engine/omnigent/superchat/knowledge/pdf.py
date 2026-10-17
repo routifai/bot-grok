@@ -11,7 +11,7 @@ from collections import Counter
 from collections.abc import Iterator
 from typing import Any
 
-from omnigent.runner.knowledge.chunking import Block, ParsedPage
+from omnigent.superchat.knowledge.chunking import Block, ParsedPage
 
 THUMB_WIDTH = 256
 PAGE_WIDTH = 1024

@@ -14,7 +14,7 @@ import pytest
 from fastapi import FastAPI
 
 from omnigent.errors import OmnigentError
-from omnigent.runner.knowledge import recall
+from omnigent.superchat.knowledge import recall
 from omnigent.superchat.recall_hint import hint as hint_mod
 from omnigent.superchat.recall_hint.hint import (
     FOOTER,

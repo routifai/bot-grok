@@ -24,11 +24,11 @@ import httpx
 
 from omnigent.context.rollover import CHECKPOINT_HEADERS, is_placeholder_summary, is_reset_item
 from omnigent.entities import CompactionData
-from omnigent.runner.knowledge.db import TurnPassage
-from omnigent.runner.knowledge.runtime import KnowledgeRuntime, default_workspace
-from omnigent.runner.knowledge.turns import Turn, passage_of, split_turns
 from omnigent.runner.memory import files
 from omnigent.superchat.feature import is_helper
+from omnigent.superchat.knowledge.db import TurnPassage
+from omnigent.superchat.knowledge.runtime import KnowledgeRuntime, default_workspace
+from omnigent.superchat.knowledge.turns import Turn, passage_of, split_turns
 from omnigent.superchat.projects.card import project_slug_from_workspace
 from omnigent.superchat.rollover import (
     ItemsPageFetchError,
@@ -346,7 +346,7 @@ def _knowledge(server_client: Any, runtime: KnowledgeRuntime | None) -> Knowledg
         return runtime
     if os.environ.get("IS_SANDBOX") != "1":
         return None
-    from omnigent.runner.knowledge import runtime as service
+    from omnigent.superchat.knowledge import runtime as service
 
     base_url = getattr(server_client, "base_url", None)
     service.configure(str(base_url) if base_url else None)

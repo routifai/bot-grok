@@ -16,9 +16,9 @@ import threading
 from collections.abc import Callable
 from pathlib import Path
 
-from omnigent.runner.knowledge.embedder import Embedder, ProxyEmbedder
-from omnigent.runner.knowledge.indexer import Indexer
-from omnigent.runner.knowledge.rerank import ProxyReranker, Reranker
+from omnigent.superchat.knowledge.embedder import Embedder, ProxyEmbedder
+from omnigent.superchat.knowledge.indexer import Indexer
+from omnigent.superchat.knowledge.rerank import ProxyReranker, Reranker
 
 _logger = logging.getLogger(__name__)
 

@@ -158,7 +158,7 @@ async def proxy_chat(system: str, user: str) -> str:
 
     :raises PlannerUnavailable: when no model answered.
     """
-    from omnigent.runner.knowledge.runtime import proxy_access
+    from omnigent.superchat.knowledge.runtime import proxy_access
 
     base, credential = proxy_access()
     if not base or not credential:

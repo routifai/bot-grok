@@ -22,9 +22,9 @@ from typing import Any
 
 from omnigent.context.tool_digest import digest_tool_items
 from omnigent.entities.conversation import is_system_notice_text
-from omnigent.runner.knowledge.chunking import MAX_CHARS
-from omnigent.runner.knowledge.db import TurnPassage
-from omnigent.runner.knowledge.refs import turn_refs
+from omnigent.superchat.knowledge.chunking import MAX_CHARS
+from omnigent.superchat.knowledge.db import TurnPassage
+from omnigent.superchat.knowledge.refs import turn_refs
 from omnigent.superchat.prompt_prefix import person_words
 from omnigent.superchat.transcript.blocks import item_text
 

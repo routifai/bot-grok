@@ -20,7 +20,7 @@ from typing import Any
 
 import httpx
 
-from omnigent.runner.knowledge.embedder import (
+from omnigent.superchat.knowledge.embedder import (
     REASON_BUDGET,
     REASON_ERROR,
     REASON_NO_CONNECTION,

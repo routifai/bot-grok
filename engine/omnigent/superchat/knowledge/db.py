@@ -13,7 +13,7 @@ Layout (all in ``<home>/.superchat/knowledge/index.sqlite3``, on the Computer's 
   passages, so they share the FTS and vector tables and the embedding pass; such a row is never a
   file (left out of :meth:`KnowledgeDb.files`, the pending counts and file searches).
 * ``refs``: the references a passage carries (``files``, ``artifacts``, ``project``, ``helpers``;
-  see :mod:`omnigent.runner.knowledge.refs`), from a journal line's trailing comment
+  see :mod:`omnigent.superchat.knowledge.refs`), from a journal line's trailing comment
   or a turn's tool calls, so a search can filter on them.
 
 ``search`` fuses the two rankings with reciprocal rank fusion, or returns BM25 alone when the
@@ -35,7 +35,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from omnigent.runner.knowledge.chunking import Chunk
+from omnigent.superchat.knowledge.chunking import Chunk
 
 STATE_QUEUED = "queued"
 STATE_TEXT_READY = "text_ready"

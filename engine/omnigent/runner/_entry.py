@@ -1513,10 +1513,10 @@ def create_app(
     async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
         await _start_pm()
         # A managed Computer keeps its person's file index current (reconcile, then upkeep).
-        from omnigent.runner.knowledge.runtime import start_for_runner
+        from omnigent.superchat.knowledge.runtime import start_for_runner
 
         knowledge = start_for_runner(server_url)
-        from omnigent.runner.live.watcher import start_for_runner as watch_live_sources
+        from omnigent.superchat.live.watcher import start_for_runner as watch_live_sources
 
         live_watcher = watch_live_sources(server_url)
         try:

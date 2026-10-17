@@ -5,9 +5,9 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from omnigent.runner.knowledge.db import file_id_for
-from omnigent.runner.knowledge.indexer import MAX_ATTEMPTS
-from tests.runner.knowledge._fixtures import FakeEmbedder, build_indexer, make_pdf, run_all
+from omnigent.superchat.knowledge.db import file_id_for
+from omnigent.superchat.knowledge.indexer import MAX_ATTEMPTS
+from tests.superchat.knowledge._fixtures import FakeEmbedder, build_indexer, make_pdf, run_all
 
 PDF = make_pdf(
     [

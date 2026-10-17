@@ -9,10 +9,10 @@ from pathlib import Path
 import httpx
 import pytest
 
-from omnigent.runner.knowledge import runtime as rt
 from omnigent.superchat.feature import HandlerCtx
+from omnigent.superchat.knowledge import runtime as rt
 from omnigent.superchat.knowledge.handlers import handle_knowledge_tool
-from tests.runner.knowledge._fixtures import put_turn, run_all
+from tests.superchat.knowledge._fixtures import put_turn, run_all
 from tests.superchat.knowledge._support import SESSION, make_runtime
 
 CLAIM = {"claim_id": "k1", "text": "Prefers the hotel venue", "kind": "preference",

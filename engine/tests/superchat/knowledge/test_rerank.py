@@ -7,8 +7,8 @@ import json
 import httpx
 import pytest
 
-from omnigent.runner.knowledge.markdown import parse_page_spec, select_pages, split_pages
-from omnigent.runner.knowledge.rerank import ProxyReranker, RerankUnavailable, parse_order
+from omnigent.superchat.knowledge.markdown import parse_page_spec, select_pages, split_pages
+from omnigent.superchat.knowledge.rerank import ProxyReranker, RerankUnavailable, parse_order
 
 PLAN = {"available": True, "reason": None, "provider": "openrouter", "model": "openai/gpt-4o-mini"}
 

@@ -343,7 +343,7 @@ async def search(
     """Run the sub-queries through ``recall_search``: those marked historical in a call of
     their own with recency off, the rest in one call; the two lists merge by best score.
     *since* and *until* (``YYYY-MM-DD``) bound both calls to the dates the message asks about."""
-    from omnigent.runner.knowledge.recall import recall_search
+    from omnigent.superchat.knowledge.recall import recall_search
 
     groups = [
         ([q.text for q in queries if q.historical == historical], not historical)

@@ -19,8 +19,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from omnigent.runner.knowledge.limits import UPLOADS_PREFIX
 from omnigent.superchat.artifacts import ArtifactTool
+from omnigent.superchat.knowledge.limits import UPLOADS_PREFIX
 
 __all__ = ["UPLOADS_PREFIX"]
 

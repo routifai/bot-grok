@@ -381,4 +381,4 @@ consolidation follows the web's switch, route by route.
 - Memory layer comparisons consulted: https://dev.to/plur9/mem0-vs-letta-vs-zep-which-should-you-use-for-agent-memory-1n8m ,
   https://mcp.directory/blog/mem0-vs-letta-vs-zep-vs-cognee-2026 , https://vectorize.io/articles/langchain-memory-alternatives
 - This repo: `docs/adr/0014-files-live-in-the-computer.md`, `docs/super-chat/context-memory-plan.md`,
-  `omnigent/runner/knowledge/indexer.py`, `omnigent/runner/memory/files.py`.
+  `omnigent/superchat/knowledge/indexer.py`, `omnigent/runner/memory/files.py`.

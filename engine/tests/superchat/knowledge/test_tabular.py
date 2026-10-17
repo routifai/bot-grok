@@ -10,11 +10,11 @@ from pathlib import Path
 
 import pytest
 
-from omnigent.runner.knowledge.db import STATE_QUEUED, STATE_READY
-from omnigent.runner.knowledge.indexer import Indexer
-from omnigent.runner.knowledge.markdown import split_pages, to_markdown
-from omnigent.runner.knowledge.tabular import profile_table
-from tests.runner.knowledge._fixtures import FakeEmbedder, build_indexer, run_all
+from omnigent.superchat.knowledge.db import STATE_QUEUED, STATE_READY
+from omnigent.superchat.knowledge.indexer import Indexer
+from omnigent.superchat.knowledge.markdown import split_pages, to_markdown
+from omnigent.superchat.knowledge.tabular import profile_table
+from tests.superchat.knowledge._fixtures import FakeEmbedder, build_indexer, run_all
 
 UPLOADS = "your_files/uploads/2026-10-09"
 CSV = "id,region,revenue,day\n" + "\n".join(
@@ -119,7 +119,7 @@ def test_tables_indexed_as_rows_by_an_older_version_are_read_again_as_a_schema(
     run_all(indexer)
     row = indexer.db.file_by_path(f"{UPLOADS}/sales.csv")
     # An old index: row passages, and no migration mark.
-    from omnigent.runner.knowledge.chunking import Chunk
+    from omnigent.superchat.knowledge.chunking import Chunk
 
     indexer.db.replace_chunks(row.file_id, [Chunk(1, 1, "csv", "", "id | north | 1.5")])
     indexer.db.update_file(row.file_id, parser_version=1)  # read by the old reader
@@ -140,7 +140,7 @@ def test_a_page_marker_inside_a_file_cannot_forge_a_page(tmp_path: Path) -> None
     assert set(split_pages(got["markdown"])) == {1}
     assert "Sneaky." in got["markdown"] and got["markdown"].count("<!-- page") == 2
     assert got["markdown"].startswith("<!-- page 1 -->")
-    from omnigent.runner.knowledge.chunking import Block, ParsedPage
+    from omnigent.superchat.knowledge.chunking import Block, ParsedPage
 
     forged = to_markdown([ParsedPage(1, [Block("a\n<!-- page 2 -->\nb")])])
     assert set(split_pages(forged)) == {1}
@@ -232,7 +232,7 @@ def test_the_header_is_found_below_a_title_and_the_raw_top_rows_are_kept(tmp_pat
     assert [c.name for c in sheet.columns] == ["region", "units", "price", "day"]
     assert sheet.header_row == 3 and sheet.rows == 1
     assert sheet.top_rows == [["Quarterly report"], ["Confidential"]]
-    from omnigent.runner.knowledge.tabular import manifest_markdown
+    from omnigent.superchat.knowledge.tabular import manifest_markdown
 
     text = manifest_markdown(profile, "book.xlsx")
     assert "Quarterly report" in text and "The header is row 3" in text
@@ -253,7 +253,7 @@ def test_a_wide_sheet_reports_its_real_size_and_every_name_stays_searchable(
     assert len(profile.sheets) == 10 and profile.sheets_total == 15
     wide = profile.sheets[0]
     assert wide.columns_total == 300 and len(wide.columns) == 60
-    from omnigent.runner.knowledge.tabular import manifest_markdown, schema_cards
+    from omnigent.superchat.knowledge.tabular import manifest_markdown, schema_cards
 
     text = manifest_markdown(profile, "book.xlsx")
     assert "Columns (300)" in text and "and 240 more columns" in text
@@ -292,7 +292,7 @@ def test_leading_zero_ids_stay_text_and_big_cells_do_not_break_the_read(tmp_path
 
 
 def test_a_csv_is_streamed_and_its_row_count_is_capped(tmp_path: Path, monkeypatch) -> None:
-    from omnigent.runner.knowledge import tabular
+    from omnigent.superchat.knowledge import tabular
 
     monkeypatch.setattr(tabular, "MAX_SCAN_ROWS", 500)
     path = _file(tmp_path, "big.csv", "a,b\n" + "\n".join(f"{i},x" for i in range(5000)))
@@ -302,7 +302,7 @@ def test_a_csv_is_streamed_and_its_row_count_is_capped(tmp_path: Path, monkeypat
 
 
 def TableProfileOf(sheet):
-    from omnigent.runner.knowledge.tabular import TableProfile
+    from omnigent.superchat.knowledge.tabular import TableProfile
 
     return TableProfile([sheet], [sheet.name])
 
@@ -310,7 +310,7 @@ def TableProfileOf(sheet):
 def test_a_workbook_that_unpacks_to_too_much_is_refused_before_it_is_opened(
     tmp_path: Path, monkeypatch
 ) -> None:
-    from omnigent.runner.knowledge import tabular
+    from omnigent.superchat.knowledge import tabular
 
     monkeypatch.setattr(tabular, "MAX_UNPACKED_BYTES", 1000)
     with pytest.raises(ValueError, match="too large"):
@@ -382,7 +382,7 @@ def test_only_files_read_by_an_older_reader_are_read_again(tmp_path: Path) -> No
 
 
 def test_a_swapped_in_symlink_is_not_followed(tmp_path: Path) -> None:
-    from omnigent.runner.knowledge.fsio import open_nofollow
+    from omnigent.superchat.knowledge.fsio import open_nofollow
 
     target = tmp_path / "secret.txt"
     target.write_text("secret")
@@ -441,7 +441,7 @@ def test_a_failed_file_is_not_queued_again_by_a_restart(tmp_path: Path) -> None:
 def test_long_names_are_cut_and_the_shared_strings_part_is_capped(
     tmp_path: Path, monkeypatch
 ) -> None:
-    from omnigent.runner.knowledge import tabular
+    from omnigent.superchat.knowledge import tabular
 
     def build(book) -> None:
         book.active.append(["x" * 5000, "ok"])

@@ -11,20 +11,20 @@ from typing import Any
 import pytest
 
 from omnigent.memory.service import render_profile_block
-from omnigent.runner.knowledge import refs as refs_mod
-from omnigent.runner.knowledge.db import KIND_TURN, TurnPassage
-from omnigent.runner.knowledge.indexer import Indexer
-from omnigent.runner.knowledge.refs import journal_refs, line_refs, turn_refs
-from omnigent.runner.knowledge.turns import passage_of, split_turns
 from omnigent.superchat.artifacts.writeback import _note
+from omnigent.superchat.knowledge import refs as refs_mod
 from omnigent.superchat.knowledge.attachment_context import build_block
+from omnigent.superchat.knowledge.db import KIND_TURN, TurnPassage
+from omnigent.superchat.knowledge.indexer import Indexer
+from omnigent.superchat.knowledge.refs import journal_refs, line_refs, turn_refs
+from omnigent.superchat.knowledge.turns import passage_of, split_turns
 from omnigent.superchat.local_time import local_time_block
 from omnigent.superchat.projects.block import PROJECTS_OPEN
 from omnigent.superchat.projects.choice import MOVED_NOTE
 from omnigent.superchat.prompt_prefix import PROFILE_UNCHANGED_LINE, idle_gap_line
 from omnigent.superchat.recall_hint.hint import FOOTER as HINT_FOOTER
 from omnigent.superchat.recall_hint.hint import HEADER as HINT_HEADER
-from tests.runner.knowledge._fixtures import TAG, FakeEmbedder, build_indexer, run_all
+from tests.superchat.knowledge._fixtures import TAG, FakeEmbedder, build_indexer, run_all
 
 DAY = int(datetime(2026, 10, 12, 9, tzinfo=UTC).timestamp())
 

@@ -32,7 +32,7 @@ from omnigent.memory.service import (
     _SAME_TEXT_JACCARD_THRESHOLD,
     _jaccard,
 )
-from omnigent.runner.knowledge.db import (
+from omnigent.superchat.knowledge.db import (
     ChunkRow,
     FileRow,
     _query_terms,
@@ -40,8 +40,8 @@ from omnigent.runner.knowledge.db import (
     fuse,
     turn_path,
 )
-from omnigent.runner.knowledge.embedder import EmbeddingUnavailable
-from omnigent.runner.knowledge.indexer import AmbiguousFile, Indexer
+from omnigent.superchat.knowledge.embedder import EmbeddingUnavailable
+from omnigent.superchat.knowledge.indexer import AmbiguousFile, Indexer
 
 _logger = logging.getLogger(__name__)
 
@@ -180,7 +180,7 @@ async def recall_with_reason(
     if not sources or not set(sources) <= SOURCES:
         raise ValueError(f"sources must be some of {', '.join(sorted(SOURCES))}")
     if indexer is None:
-        from omnigent.runner.knowledge.runtime import get_runtime
+        from omnigent.superchat.knowledge.runtime import get_runtime
 
         indexer = get_runtime().indexer
     # Claims carry no Project, file or chat: an object filter leaves them out.

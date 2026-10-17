@@ -25,9 +25,9 @@ from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from pathlib import Path
 
-from omnigent.runner.knowledge.chunking import MAX_CHARS, Block, Chunk, ParsedPage
-from omnigent.runner.knowledge.fsio import open_nofollow
-from omnigent.runner.knowledge.markdown import to_markdown
+from omnigent.superchat.knowledge.chunking import MAX_CHARS, Block, Chunk, ParsedPage
+from omnigent.superchat.knowledge.fsio import open_nofollow
+from omnigent.superchat.knowledge.markdown import to_markdown
 
 #: File kinds handled as tables.
 TABULAR_KINDS = frozenset({"csv", "xlsx"})

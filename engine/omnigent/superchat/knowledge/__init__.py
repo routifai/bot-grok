@@ -1,12 +1,16 @@
 """Knowledge: a person's own file search (a small RAG over the files in their Computer).
 
-The Computer's workspace is the one copy of a person's files, and the index lives there too
-(``omnigent.runner.knowledge``: parse, passages, thumbnails, FTS5 + sqlite-vec). This folder is the
-engine's side and holds no file data: ``tools`` / ``handlers`` register the Muse's qmd-style
+The Computer's workspace is the one copy of a person's files, and the index lives there too. The
+engine's side holds no file data: ``tools`` / ``handlers`` register the Muse's qmd-style
 ``files_*`` tools (the handler runs in the Computer), and ``routes`` relays ingest (an attachment
-read before its message is sent), status, search and page thumbnails to it for Superchat. Embeddings
-and the search rerank are made through the engine's model proxy (``models``), so no key enters the
-Computer.
+read before its message is sent), status, search and page thumbnails to it for Superchat.
+Embeddings and the search rerank are made through the engine's model proxy (``models``), so no key
+enters the Computer.
+
+The Computer side keeps parsing, passages, thumbnails and the index on the home volume
+(``~/.superchat/knowledge``): ``chunking`` / ``parse`` / ``pdf`` (text and renders, no ML), ``db``
+(SQLite: FTS5 BM25 plus sqlite-vec), ``embedder`` (the model proxy client), ``indexer``
+(reconcile, passes, search), ``runtime`` (the background thread and the handlers' way in).
 
 It sits on ``artifacts`` only to tell a Library file from a plain one in the answers (matched by
 the workspace path the artifact was saved from).
@@ -106,7 +110,7 @@ def _on_result(ctx: HandlerCtx, output: str) -> None:
     path = saved.get("source_path") if isinstance(saved, dict) else None
     if not isinstance(path, str) or not path:
         return
-    from omnigent.runner.knowledge.runtime import notify_saved
+    from omnigent.superchat.knowledge.runtime import notify_saved
 
     notify_saved(path)
 

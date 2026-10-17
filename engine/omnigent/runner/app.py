@@ -2728,7 +2728,7 @@ def normalize_anthropic_base_url(base_url: str) -> str:
 
 def _notify_file_written(relative_path: str, env: Any) -> None:
     """Tell the file search a file was written through the runner (an upload), if it runs here."""
-    from omnigent.runner.knowledge.runtime import notify_written
+    from omnigent.superchat.knowledge.runtime import notify_written
 
     try:
         root = getattr(env, "cwd", None)

@@ -7,8 +7,8 @@ import json
 
 import pytest
 
-from omnigent.runner.knowledge import runtime as rt
 from omnigent.superchat.knowledge import attachment_context as ctx
+from omnigent.superchat.knowledge import runtime as rt
 from omnigent.superchat.transcript.blocks import item_text
 from tests.superchat.knowledge._support import SESSION, make_runtime
 
