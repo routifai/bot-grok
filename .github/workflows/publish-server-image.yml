@@ -10,10 +10,9 @@ on:
   pull_request:
     paths:
       - ".github/workflows/publish-server-image.yml"
-      - "apps/**"
+      - "web/**"
       - "deployment/**"
       - "engine/omnigent/**"
-      - "packages/**"
       - "package.json"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"

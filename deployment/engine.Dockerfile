@@ -32,8 +32,8 @@ WORKDIR /src
 # The pnpm workspace is apps/* and packages/*; the web app needs the packages it imports.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc tsconfig.base.json ./
 COPY patches/ ./patches/
-COPY packages/ ./packages/
-COPY apps/web/ ./apps/web/
+COPY web/packages/ ./web/packages/
+COPY web/app/ ./web/app/
 RUN pnpm install --frozen-lockfile --filter "@superchat/web..."
 RUN pnpm --filter @superchat/web build
 
@@ -91,7 +91,7 @@ COPY --chmod=755 deployment/engine/start.sh deployment/engine/config.yaml.tmpl \
      deployment/engine/config.litellm.yaml.tmpl deployment/engine/config.byok.yaml.tmpl /opt/bundle/engine/
 # The web, served at "/" with an SPA fallback; /v1 and /health stay the API, /apps/<slug> the
 # published mini apps.
-COPY --from=web /src/apps/web/dist/ /opt/web/
+COPY --from=web /src/web/app/dist/ /opt/web/
 RUN sed -i 's/\r$//' /opt/bundle/engine/start.sh \
  && mkdir -p /data/artifacts
 ENV OMNIGENT_WEB_UI_DIST=/opt/web \

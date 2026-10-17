@@ -17,15 +17,15 @@ playwright-report
 docker-compose.local.yaml
 .env.computers
 data
-apps/**/data
+web/app/**/data
 .tmp
 .DS_Store
-apps/web/dist
+web/app/dist
 *.log
 .vercel
 .cache
 artifacts
-!apps/*/src/features/artifacts
+!web/app/src/features/artifacts
 backups
 test-report
 verify-report
@@ -36,6 +36,6 @@ design/
 PRODUCT_PLAN.md
 
 # Lingui compiled catalogs — Vite plugin compiles .po at build time
-apps/web/src/locales/**/*.mjs
-apps/web/src/locales/**/*.js
+web/app/src/locales/**/*.mjs
+web/app/src/locales/**/*.js
 playwright-report-www

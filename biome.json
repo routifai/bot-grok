@@ -58,7 +58,10 @@
   },
   "overrides": [
     {
-      "includes": ["packages/ui-web/src/components/ui/**", "packages/ui-web/src/shadcn.css"],
+      "includes": [
+        "web/packages/ui-web/src/components/ui/**",
+        "web/packages/ui-web/src/shadcn.css"
+      ],
       "linter": {
         "rules": {
           "a11y": {
@@ -73,7 +76,7 @@
       }
     },
     {
-      "includes": ["packages/adapters/**"],
+      "includes": ["web/packages/adapters/**"],
       "linter": {
         "rules": {
           "suspicious": {

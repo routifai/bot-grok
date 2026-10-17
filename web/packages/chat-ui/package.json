@@ -8,7 +8,7 @@
   },
   "scripts": {
     "check": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run --root ../.. packages/chat-ui/src"
+    "test": "vitest run --root ../../.. web/packages/chat-ui/src"
   },
   "dependencies": {
     "@superchat/contracts": "workspace:*",

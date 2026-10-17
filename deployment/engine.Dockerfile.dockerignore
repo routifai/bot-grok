@@ -10,8 +10,8 @@
 !.npmrc
 !tsconfig.base.json
 !patches/
-!packages/
-!apps/web/
+!web/packages/
+!web/app/
 
 # python stage
 !engine/omnigent/pyproject.toml

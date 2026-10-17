@@ -11,7 +11,7 @@ import { ALWAYS_ON_SUPERSIDE_CHAT_TOOLS, TOOL_PRESENTATION } from "./tool-presen
 // rather than a real parser; good enough for this bundle's shape.
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = join(HERE, "../../..");
+const REPO_ROOT = join(HERE, "../../../..");
 const SUPERCHAT_AGENT_BUNDLE_DIR = join(REPO_ROOT, "deployment/engine/agents/superchat-claude");
 
 function findConfigYamlFiles(dir: string): string[] {
