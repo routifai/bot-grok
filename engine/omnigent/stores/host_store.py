@@ -871,40 +871,6 @@ class HostStore:
                 return None
             return _row_to_host(row)
 
-    def get_computer_control_token(self, host_id: str) -> str | None:
-        """
-        Return the computer control token held on a host, if a person is in control.
-
-        :param host_id: Host identifier, e.g. ``"host_a1b2c3d4..."``.
-        :returns: The token, or ``None`` when nobody is in control or the host is gone.
-        """
-        with self._session("select_host_computer_control_token") as session:
-            return session.execute(
-                select(SqlHost.computer_control_token).where(
-                    SqlHost.workspace_id == current_workspace_id(),
-                    SqlHost.host_id == host_id,
-                    SqlHost.deleted_at.is_(None),
-                )
-            ).scalar_one_or_none()
-
-    def set_computer_control_token(self, host_id: str, token: str | None) -> None:
-        """
-        Record (or clear, with ``None``) the computer control token on a host.
-
-        :param host_id: Host identifier, e.g. ``"host_a1b2c3d4..."``.
-        :param token: Control token, or ``None`` to release control.
-        """
-        with self._session("update_host_computer_control_token") as session:
-            session.execute(
-                update(SqlHost)
-                .where(
-                    SqlHost.workspace_id == current_workspace_id(),
-                    SqlHost.host_id == host_id,
-                    SqlHost.deleted_at.is_(None),
-                )
-                .values(computer_control_token=token)
-            )
-
     # "managed" stays in the next three names: this store also holds external hosts (a machine
     # that ran ``omnigent host`` itself, with no provider), and these touch only the hosts the
     # engine started through a host provider.

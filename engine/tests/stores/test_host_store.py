@@ -1484,25 +1484,3 @@ def test_replace_managed_host_sandbox_refuses_cross_owner(db_uri: str) -> None:
     assert resolved.sandbox_id == "sb-m7"
     # Bob's token never armed Alice's host: it does not match the stored digest.
     assert store.resolve_launch_token("58f80f7592c6a72ba121eb5aedde8a82", "bob-token-7") is None
-
-
-def test_computer_control_token_persists_across_store_instances(db_uri: str) -> None:
-    """A take-over token set through one store is read by a fresh one, and clears on release."""
-    host_id = "e932ccae9eeb8f2a86f7ebfc5089c28e"
-    store = HostStore(db_uri)
-    store.register_managed_host(
-        host_id=host_id,
-        name="managed-ctl",
-        user_id="alice@example.com",
-        token="raw-launch-token-ctl",
-        provider="docker",
-        sandbox_id="sb-ctl",
-        token_expires_at=now_epoch() + 3600,
-    )
-    assert store.get_computer_control_token(host_id) is None
-
-    store.set_computer_control_token(host_id, "ctl-token")
-    assert HostStore(db_uri).get_computer_control_token(host_id) == "ctl-token"
-
-    store.set_computer_control_token(host_id, None)
-    assert HostStore(db_uri).get_computer_control_token(host_id) is None
