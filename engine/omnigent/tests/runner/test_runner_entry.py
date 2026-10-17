@@ -21,7 +21,6 @@ from omnigent.runner._entry import (
     _DEFAULT_RUNNER_IDLE_TIMEOUT_S,
     _DEFAULT_RUNNER_THREADPOOL_MAX_WORKERS,
     _agent_cache_dest,
-    _InitialAuthTokenFactory,
     _install_crash_logging,
     _install_signal_handlers,
     _load_runner_idle_timeout_s_from_config,
@@ -131,355 +130,6 @@ def test_server_url_from_env_strips_configured_value(
     monkeypatch.setenv("RUNNER_SERVER_URL", " http://127.0.0.1:8123 ")
 
     assert _server_url_from_env() == "http://127.0.0.1:8123"
-
-
-def test_make_auth_token_factory_returns_factory_when_databricks_creds_available(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The factory is created when Databricks SDK credentials exist.
-
-    The runner uses this factory to refresh tokens on each WebSocket
-    reconnect and each httpx callback. Without it, tokens expire
-    after 1 hour and long-running sessions break.
-
-    :param monkeypatch: Pytest environment patch fixture.
-    :returns: None.
-    """
-    from omnigent.inner.databricks_executor import _DatabricksBearerAuth
-
-    class _Cfg:
-        """Config double whose authenticate() yields a Bearer header."""
-
-        def authenticate(self) -> dict[str, str]:
-            return {"Authorization": "Bearer fresh-token"}
-
-    # The factory resolves SDK auth via _resolve_databricks_auth (reused
-    # once) and reads tokens through _DatabricksBearerAuth.current_token().
-    monkeypatch.delenv("RUNNER_SERVER_URL", raising=False)  # skip OIDC branch
-    monkeypatch.setattr(
-        "omnigent.inner.databricks_executor._resolve_databricks_auth",
-        lambda profile=None: (_DatabricksBearerAuth(_Cfg(), profile_name=None), "https://ex.test"),
-    )
-
-    factory = _make_auth_token_factory()
-
-    # Factory must be created so the runner can refresh tokens.
-    # If None, the runner has no way to mint fresh tokens on reconnect.
-    assert factory is not None, (
-        "_make_auth_token_factory returned None despite Databricks credentials being available."
-    )
-    assert factory() == "fresh-token"
-
-
-def test_make_auth_token_factory_returns_none_without_databricks_creds(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Without Databricks credentials the factory is ``None``.
-
-    Local unauthenticated servers don't need auth — the runner
-    connects over loopback without a bearer token.
-
-    :param monkeypatch: Pytest environment patch fixture.
-    :returns: None.
-    """
-    from omnigent.inner.databricks_executor import DatabricksAuthError
-
-    def _no_creds(profile: str | None = None) -> tuple[Any, str]:
-        """Stand in for _resolve_databricks_auth with no credentials."""
-        raise DatabricksAuthError("no Databricks credentials configured")
-
-    # No stored OIDC token and SDK resolution fails → factory is None, so the
-    # runner connects to a local unauthenticated server without a bearer.
-    monkeypatch.delenv("RUNNER_SERVER_URL", raising=False)  # skip OIDC branch
-    monkeypatch.setattr(
-        "omnigent.inner.databricks_executor._resolve_databricks_auth",
-        _no_creds,
-    )
-
-    assert _make_auth_token_factory() is None
-
-
-def test_make_auth_token_factory_re_resolves_when_reused_sdk_auth_goes_stale(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The factory replaces stale SDK auth before retrying a mint."""
-    from omnigent.inner.databricks_executor import _DatabricksBearerAuth
-
-    class _Cfg:
-        def __init__(self, token: str) -> None:
-            self.token = token
-            self.stale = False
-
-        def authenticate(self) -> dict[str, str]:
-            if self.stale:
-                raise FileNotFoundError("baked CLI binary path was deleted")
-            return {"Authorization": f"Bearer {self.token}"}
-
-    cfgs: list[_Cfg] = []
-
-    def _resolve(profile: str | None = None) -> tuple[_DatabricksBearerAuth, str]:
-        cfgs.append(_Cfg(f"cli-token-{len(cfgs) + 1}"))
-        return _DatabricksBearerAuth(cfgs[-1], profile_name=None), "https://ex.test"
-
-    monkeypatch.delenv("RUNNER_SERVER_URL", raising=False)  # skip OIDC branch
-    monkeypatch.setattr(
-        "omnigent.inner.databricks_executor._resolve_databricks_auth",
-        _resolve,
-    )
-
-    factory = _make_auth_token_factory()
-    assert factory is not None
-    assert factory() == "cli-token-1"
-
-    cfgs[0].stale = True
-
-    assert factory() == "cli-token-2", (
-        "the factory kept the stale SDK auth instead of re-resolving, so a "
-        "live session stays fail-closed after a CLI upgrade"
-    )
-    assert len(cfgs) == 2
-
-
-def test_make_auth_token_factory_uses_managed_mint_when_only_binding_token(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A managed sandbox runner (binding token, no user creds) gets a factory.
-
-    With no stored OIDC token and no Databricks credentials, the factory
-    would be ``None`` for a laptop runner — but a managed sandbox still
-    holds its tunnel binding token, so the factory falls back to minting a
-    short-lived owner JWT against it. This is what lets a managed runner's
-    HTTP callbacks authenticate under OIDC/accounts auth.
-
-    :param monkeypatch: Pytest environment patch fixture.
-    :returns: None.
-    """
-    from omnigent.inner.databricks_executor import DatabricksAuthError
-
-    def _no_sdk(profile: str | None = None) -> tuple[Any, str]:
-        """Stand in for _resolve_databricks_auth with no credentials."""
-        raise DatabricksAuthError("no Databricks credentials configured")
-
-    monkeypatch.setenv("RUNNER_SERVER_URL", "https://omnigent.example.com")
-    monkeypatch.setenv("OMNIGENT_RUNNER_TUNNEL_BINDING_TOKEN", "managed-binding-token")
-    monkeypatch.setattr("omnigent.cli_auth.load_token", lambda _url, **_kw: None)
-    monkeypatch.setattr("omnigent.inner.databricks_executor._resolve_databricks_auth", _no_sdk)
-    monkeypatch.setattr(
-        "omnigent.runner._entry._mint_managed_owner_token",
-        lambda mint_url, server_url, binding_token, **_kw: ("managed-jwt", time.time() + 1800),
-    )
-
-    factory = _make_auth_token_factory()
-
-    assert factory is not None
-    assert factory() == "managed-jwt"
-
-
-def test_make_auth_token_factory_prefers_host_delegation_over_user_credentials(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Host-launched runners mint a scoped bearer without resolving user auth."""
-    resolve_calls: list[int] = []
-
-    def _unexpected_sdk_auth(*args: Any, **kwargs: Any) -> tuple[Any, str]:
-        del args, kwargs
-        resolve_calls.append(1)
-        raise AssertionError("delegated runners must not resolve host Databricks auth")
-
-    monkeypatch.setenv("RUNNER_SERVER_URL", "https://omnigent.example.com")
-    monkeypatch.setenv("OMNIGENT_RUNNER_TUNNEL_BINDING_TOKEN", "host-binding-token")
-    monkeypatch.setenv("OMNIGENT_RUNNER_DELEGATED_AUTH", "1")
-    monkeypatch.setattr(
-        "omnigent.inner.databricks_executor._resolve_databricks_auth",
-        _unexpected_sdk_auth,
-    )
-    monkeypatch.setattr(
-        "omnigent.runner._entry._mint_managed_owner_token",
-        lambda mint_url, server_url, binding_token, **_kw: ("delegated-jwt", time.time() + 1800),
-    )
-
-    factory = _make_auth_token_factory()
-
-    assert factory is not None
-    assert factory() == "delegated-jwt"
-    assert resolve_calls == []
-
-
-def test_initial_host_token_defers_local_auth_until_rejected(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A host bearer covers startup and resolves runner auth only on rejection."""
-    resolve_calls: list[int] = []
-    mint_calls: list[int] = []
-
-    class _SdkAuth:
-        """Refreshable runner-local auth stand-in."""
-
-        def current_token(self) -> str:
-            return "runner-refreshed-token"
-
-    def _resolve(*args: Any, **kwargs: Any) -> tuple[_SdkAuth, str]:
-        del args, kwargs
-        resolve_calls.append(1)
-        return _SdkAuth(), "https://workspace.cloud.databricks.com"
-
-    def _unexpected_mint(*args: Any, **kwargs: Any) -> tuple[str, float]:
-        del args, kwargs
-        mint_calls.append(1)
-        raise AssertionError("SDK auth available — fallback must prefer it over managed mint")
-
-    # A host-launched runner: has an initial bearer and SDK auth, but no
-    # managed-sandbox delegation — OMNIGENT_RUNNER_DELEGATED_AUTH is absent.
-    monkeypatch.setenv("RUNNER_SERVER_URL", "https://app.databricksapps.com")
-    monkeypatch.setenv(RUNNER_INITIAL_AUTH_TOKEN_ENV_VAR, "host-bootstrap-token")
-    monkeypatch.setenv("OMNIGENT_RUNNER_TUNNEL_BINDING_TOKEN", "host-binding-token")
-    monkeypatch.delenv("OMNIGENT_RUNNER_DELEGATED_AUTH", raising=False)
-    monkeypatch.setattr("omnigent.cli_auth.load_token", lambda _url, **_kw: None)
-    monkeypatch.setattr("omnigent.inner.databricks_executor._resolve_databricks_auth", _resolve)
-    monkeypatch.setattr("omnigent.runner._entry._mint_managed_owner_token", _unexpected_mint)
-
-    factory = _make_auth_token_factory()
-
-    assert isinstance(factory, _InitialAuthTokenFactory)
-    assert RUNNER_INITIAL_AUTH_TOKEN_ENV_VAR not in os.environ
-    assert factory() == "host-bootstrap-token"
-    assert factory() == "host-bootstrap-token"
-    assert resolve_calls == []
-    assert mint_calls == []
-
-    request = httpx.Request("GET", "https://app.databricksapps.com/api/version")
-    redirect = httpx.Response(302, headers={"Location": "/oidc/oauth2/v2.0/authorize"})
-    captured = _drive_auth_flow(_RunnerDatabricksAuth(factory), request, redirect)
-
-    assert captured == [
-        "Bearer host-bootstrap-token",
-        "Bearer runner-refreshed-token",
-    ]
-    assert resolve_calls == [1]
-    assert mint_calls == []
-
-
-def test_initial_host_token_falls_back_to_managed_mint_when_no_sdk_auth(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """After the host bearer is rejected, a managed runner falls back to managed mint.
-
-    When no SDK/OIDC credential is available (managed sandbox with no user
-    credential), the fallback must reach the managed-mint path rather than
-    returning None and bricking all HTTP callbacks.
-    """
-    mint_calls: list[int] = []
-
-    def _no_sdk_auth(*args: Any, **kwargs: Any) -> tuple[None, None]:
-        from omnigent.inner.databricks_executor import DatabricksAuthError
-
-        raise DatabricksAuthError("no credential configured")
-
-    def _mint(*args: Any, **kwargs: Any) -> tuple[str, float]:
-        mint_calls.append(1)
-        return "managed-minted-token", time.time() + 3600
-
-    monkeypatch.setenv("RUNNER_SERVER_URL", "https://app.databricksapps.com")
-    monkeypatch.setenv(RUNNER_INITIAL_AUTH_TOKEN_ENV_VAR, "host-bootstrap-token")
-    monkeypatch.setenv("OMNIGENT_RUNNER_TUNNEL_BINDING_TOKEN", "host-binding-token")
-    monkeypatch.setenv("OMNIGENT_RUNNER_DELEGATED_AUTH", "1")
-    monkeypatch.setattr("omnigent.cli_auth.load_token", lambda _url: None)
-    monkeypatch.setattr(
-        "omnigent.inner.databricks_executor._resolve_databricks_auth", _no_sdk_auth
-    )
-    monkeypatch.setattr("omnigent.runner._entry._mint_managed_owner_token", _mint)
-
-    factory = _make_auth_token_factory()
-
-    assert isinstance(factory, _InitialAuthTokenFactory)
-    assert factory() == "host-bootstrap-token"
-    assert mint_calls == []
-
-    request = httpx.Request("GET", "https://app.databricksapps.com/api/version")
-    redirect = httpx.Response(302, headers={"Location": "/oidc/oauth2/v2.0/authorize"})
-    captured = _drive_auth_flow(_RunnerDatabricksAuth(factory), request, redirect)
-
-    # After the initial bearer is rejected, the fallback must mint via the
-    # managed-mint path rather than returning None and bricking callbacks.
-    assert captured == [
-        "Bearer host-bootstrap-token",
-        "Bearer managed-minted-token",
-    ]
-    assert len(mint_calls) >= 1
-
-
-def test_delegated_factory_falls_back_when_apps_proxy_redirects_mint(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """An Apps OAuth redirect makes delegation fall back to refreshable auth."""
-    mint_calls: list[int] = []
-
-    class _SdkAuth:
-        """Refreshable Databricks auth stand-in."""
-
-        def current_token(self) -> str:
-            return "workspace-token"
-
-    def _apps_redirect(
-        mint_url: str, server_url: str, binding_token: str, **_kw: object
-    ) -> tuple[str, float]:
-        """Model the Apps edge intercepting the mint request before Omnigent."""
-        del server_url, binding_token
-        mint_calls.append(1)
-        request = httpx.Request("POST", mint_url)
-        response = httpx.Response(
-            302,
-            headers={
-                "Location": (
-                    "https://workspace.cloud.databricks.com/oidc/oauth2/v2.0/authorize"
-                    "?redirect_uri=https%3A%2F%2Fapp.databricksapps.com%2F.auth%2Fcallback"
-                )
-            },
-            request=request,
-        )
-        raise httpx.HTTPStatusError("redirected to login", request=request, response=response)
-
-    monkeypatch.setenv("RUNNER_SERVER_URL", "https://app.databricksapps.com")
-    monkeypatch.setenv("OMNIGENT_RUNNER_TUNNEL_BINDING_TOKEN", "host-binding-token")
-    monkeypatch.setenv("OMNIGENT_RUNNER_DELEGATED_AUTH", "1")
-    monkeypatch.setattr("omnigent.cli_auth.load_token", lambda _url, **_kw: None)
-    monkeypatch.setattr(
-        "omnigent.inner.databricks_executor._resolve_databricks_auth",
-        lambda *args, **kwargs: (_SdkAuth(), "https://workspace.cloud.databricks.com"),
-    )
-    monkeypatch.setattr("omnigent.runner._entry._mint_managed_owner_token", _apps_redirect)
-
-    factory = _make_auth_token_factory()
-
-    assert factory is not None
-    assert factory() == "workspace-token"
-    assert mint_calls == [1]
-
-
-def test_make_auth_token_factory_none_without_creds_or_binding_token(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """No user creds AND no binding token → still ``None`` (unchanged posture).
-
-    The managed-mint fallback must not fire for a non-managed runner: with
-    no binding token there is nothing to mint against, so the factory is
-    ``None`` exactly as before.
-
-    :param monkeypatch: Pytest environment patch fixture.
-    :returns: None.
-    """
-    from omnigent.inner.databricks_executor import DatabricksAuthError
-
-    def _no_sdk(profile: str | None = None) -> tuple[Any, str]:
-        """Stand in for _resolve_databricks_auth with no credentials."""
-        raise DatabricksAuthError("no Databricks credentials configured")
-
-    monkeypatch.setenv("RUNNER_SERVER_URL", "https://omnigent.example.com")
-    monkeypatch.delenv("OMNIGENT_RUNNER_TUNNEL_BINDING_TOKEN", raising=False)
-    monkeypatch.setattr("omnigent.cli_auth.load_token", lambda _url, **_kw: None)
-    monkeypatch.setattr("omnigent.inner.databricks_executor._resolve_databricks_auth", _no_sdk)
-
-    assert _make_auth_token_factory() is None
 
 
 def test_managed_mint_factory_caches_token_until_refresh_skew(
@@ -1062,44 +712,6 @@ def test_managed_mint_factory_proxy_auth_failure_falls_through_to_sdk(
     assert installed is None
 
 
-def test_initial_host_token_re_resolves_to_sdk_when_proxy_auth_fails(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """When managed mint proxy_auth_fails, _InitialAuthTokenFactory falls back to SDK/OIDC."""
-
-    class _SdkAuth:
-        def current_token(self) -> str:
-            return "sdk-token"
-
-    def _resolve(*args: Any, **kwargs: Any) -> tuple[_SdkAuth, str]:
-        return _SdkAuth(), "https://workspace.cloud.databricks.com"
-
-    def _proxy_rejects(*args: Any, **kwargs: Any) -> tuple[str, float]:
-        request = httpx.Request("POST", "https://app.databricksapps.com/v1/runners/r/token")
-        raise httpx.HTTPStatusError(
-            "403", request=request, response=httpx.Response(403, request=request)
-        )
-
-    monkeypatch.setenv("RUNNER_SERVER_URL", "https://app.databricksapps.com")
-    monkeypatch.setenv("OMNIGENT_RUNNER_INITIAL_AUTH_TOKEN", "expired-host-bearer")
-    monkeypatch.setenv("OMNIGENT_RUNNER_TUNNEL_BINDING_TOKEN", "bind-tok")
-    monkeypatch.setenv("OMNIGENT_RUNNER_DELEGATED_AUTH", "1")
-    monkeypatch.setattr("omnigent.cli_auth.load_token", lambda _url, **_kw: None)
-    monkeypatch.setattr("omnigent.inner.databricks_executor._resolve_databricks_auth", _resolve)
-    monkeypatch.setattr("omnigent.runner._entry._mint_managed_owner_token", _proxy_rejects)
-
-    factory = _make_auth_token_factory()
-
-    assert isinstance(factory, _InitialAuthTokenFactory)
-    # Simulate the initial bearer expiring and being invalidated.
-    factory.invalidate()
-
-    # The fallback tries managed mint first (proxy bearer = expired-host-bearer).
-    # That 403s → proxy_auth_failed → re-resolves to SDK/OIDC.
-    token = factory()
-    assert token == "sdk-token"
-
-
 def test_managed_mint_403_after_prior_mint_latches_proxy_auth_failed_at_expiry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1152,61 +764,6 @@ def test_managed_mint_403_after_prior_mint_latches_proxy_auth_failed_at_expiry(
     assert factory() is None
     assert factory.proxy_auth_failed is True
     assert factory.declined is False  # bare requests would be wrong here
-
-
-def test_initial_host_token_re_resolves_to_sdk_when_remint_403s_after_expiry(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A post-install mint 403 at full expiry re-resolves SDK/OIDC in the same call.
-
-    Extends the construction-time fallback above to the mid-session case: the
-    managed mint worked (the runner ran on minted JWTs), then the session
-    outlived the JWT and the re-mint 403s. The factory chain must hand the
-    *current* request an SDK/OIDC token rather than returning ``None`` — one
-    ``None`` here means a raised callback, and before the fix it was ``None``
-    forever.
-
-    :param monkeypatch: Pytest environment patch fixture.
-    :returns: None.
-    """
-
-    class _SdkAuth:
-        def current_token(self) -> str:
-            return "sdk-token"
-
-    def _resolve(*args: Any, **kwargs: Any) -> tuple[_SdkAuth, str]:
-        return _SdkAuth(), "https://workspace.cloud.databricks.com"
-
-    calls: list[int] = []
-
-    def _mint_ok_then_403(*args: Any, **kwargs: Any) -> tuple[str, float]:
-        calls.append(1)
-        if len(calls) == 1:
-            return ("minted-jwt", time.time() + 3600)
-        request = httpx.Request("POST", "https://app.databricksapps.com/v1/runners/r/token")
-        raise httpx.HTTPStatusError(
-            "403", request=request, response=httpx.Response(403, request=request)
-        )
-
-    monkeypatch.setenv("RUNNER_SERVER_URL", "https://app.databricksapps.com")
-    monkeypatch.setenv("OMNIGENT_RUNNER_INITIAL_AUTH_TOKEN", "host-bearer")
-    monkeypatch.setenv("OMNIGENT_RUNNER_TUNNEL_BINDING_TOKEN", "bind-tok")
-    monkeypatch.setenv("OMNIGENT_RUNNER_DELEGATED_AUTH", "1")
-    monkeypatch.setattr("omnigent.cli_auth.load_token", lambda _url, **_kw: None)
-    monkeypatch.setattr("omnigent.inner.databricks_executor._resolve_databricks_auth", _resolve)
-    monkeypatch.setattr("omnigent.runner._entry._mint_managed_owner_token", _mint_ok_then_403)
-
-    factory = _make_auth_token_factory()
-    assert isinstance(factory, _InitialAuthTokenFactory)
-    factory.invalidate()
-    assert factory() == "minted-jwt"  # managed mint installed and serving
-
-    mint_factory = factory._fallback_factory
-    assert isinstance(mint_factory, _ManagedMintTokenFactory)
-    # The session outlives the minted JWT, and the edge 403s the re-mint.
-    mint_factory._cached_expires_at = time.time() - 1.0
-
-    assert factory() == "sdk-token"
 
 
 def test_mint_managed_owner_token_posts_binding_token_and_parses_response(
@@ -2549,74 +2106,6 @@ def test_main_preserves_unexpected_runtime_errors(
     assert capsys.readouterr().err == ""
 
 
-def test_make_auth_token_factory_resolves_sdk_auth_once(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    The token factory resolves Databricks SDK auth ONCE and reuses it across
-    every token fetch, instead of rebuilding ``Config`` per call.
-
-    This is the regression guard for the per-request Databricks CLI auth tax
-    (~0.5s/call) that dominated runner establish and per-turn latency on App
-    backends: each token fetch used to build a fresh ``Config`` and shell out
-    to ``databricks auth token``. If the factory regresses to per-call
-    resolution, ``resolve_calls`` jumps from 1 to the number of invocations
-    and this test fails.
-
-    :param monkeypatch: Pytest monkeypatch fixture.
-    :returns: None.
-    """
-    import omnigent.inner.databricks_executor as dbx
-
-    class _CountingConfig:
-        """Config double whose authenticate() counts calls."""
-
-        def __init__(self) -> None:
-            self.authenticate_calls = 0
-
-        def authenticate(self) -> dict[str, str]:
-            self.authenticate_calls += 1
-            return {"Authorization": "Bearer tok-abc"}
-
-    cfg = _CountingConfig()
-    resolve_calls = {"n": 0}
-
-    def _fake_resolve(profile: str | None = None) -> tuple[Any, str]:
-        """Stand in for _resolve_databricks_auth; counts resolutions."""
-        resolve_calls["n"] += 1
-        return (
-            dbx._DatabricksBearerAuth(cfg, profile_name="oss"),
-            "https://ex.databricks.com",
-        )
-
-    monkeypatch.setattr(dbx, "_resolve_databricks_auth", _fake_resolve)
-    # No stored OIDC token → the factory falls through to the SDK path.
-    monkeypatch.setattr("omnigent.cli_auth.load_token", lambda _url, **_kw: None)
-
-    factory = _make_auth_token_factory(server_url="https://ex.databricks.com")
-    assert factory is not None
-
-    tokens = [factory() for _ in range(5)]
-
-    # Bare bearer returned on every call (current_token strips the prefix).
-    # A failure means the SDK path didn't supply the token through reuse.
-    assert tokens == ["tok-abc"] * 5
-    # THE FIX: SDK auth resolved exactly once for the probe + 5 calls. A
-    # value > 1 means per-call resolution (the old _read_databrickscfg
-    # behavior, i.e. the per-request CLI auth tax) has regressed.
-    assert resolve_calls["n"] == 1, (
-        f"_resolve_databricks_auth called {resolve_calls['n']}x; expected 1 "
-        f"(resolve-once-and-cache). >1 means the per-request auth tax "
-        f"regressed."
-    )
-    # authenticate() runs once per token fetch: the factory's own probe (1)
-    # plus the 5 explicit calls = 6. These are cheap in-memory SDK cache
-    # hits, NOT CLI shell-outs — that's the behavior the fix preserves.
-    assert cfg.authenticate_calls == 6, (
-        f"Expected 6 authenticate() calls (probe + 5), got {cfg.authenticate_calls}."
-    )
-
-
 @pytest.mark.parametrize(
     "agent_id,version",
     [
@@ -2751,3 +2240,44 @@ def test_runner_global_cleanup_ownership_is_explicit(
         monkeypatch.setenv(RUNNER_HOST_OWNS_GLOBAL_CLEANUP_ENV_VAR, raw_value)
 
     assert _runner_host_owns_global_cleanup_from_env() is expected
+
+
+def test_make_auth_token_factory_uses_managed_mint_when_only_binding_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A managed sandbox runner (binding token, no user creds) gets a factory.
+
+    With no stored OIDC token, a managed sandbox still holds its tunnel
+    binding token, so the factory falls back to minting a short-lived owner
+    JWT against it.
+
+    :param monkeypatch: Pytest environment patch fixture.
+    :returns: None.
+    """
+    monkeypatch.setenv("RUNNER_SERVER_URL", "https://omnigent.example.com")
+    monkeypatch.setenv("OMNIGENT_RUNNER_TUNNEL_BINDING_TOKEN", "managed-binding-token")
+    monkeypatch.setattr("omnigent.cli_auth.load_token", lambda _url, **_kw: None)
+    monkeypatch.setattr(
+        "omnigent.runner._entry._mint_managed_owner_token",
+        lambda mint_url, server_url, binding_token, **_kw: ("managed-jwt", time.time() + 1800),
+    )
+
+    factory = _make_auth_token_factory()
+
+    assert factory is not None
+    assert factory() == "managed-jwt"
+
+
+def test_make_auth_token_factory_none_without_creds_or_binding_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No user creds and no binding token gives no factory.
+
+    :param monkeypatch: Pytest environment patch fixture.
+    :returns: None.
+    """
+    monkeypatch.setenv("RUNNER_SERVER_URL", "https://omnigent.example.com")
+    monkeypatch.delenv("OMNIGENT_RUNNER_TUNNEL_BINDING_TOKEN", raising=False)
+    monkeypatch.setattr("omnigent.cli_auth.load_token", lambda _url, **_kw: None)
+
+    assert _make_auth_token_factory() is None
