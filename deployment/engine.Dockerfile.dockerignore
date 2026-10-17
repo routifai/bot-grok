@@ -13,6 +13,10 @@
 !web/packages/
 !web/app/
 
+# agents stage (the bundles are rendered there, so the committed engine/agents/bundles stays out)
+!engine/agents/render-agents.mjs
+!engine/agents/templates/
+
 # python stage
 !engine/pyproject.toml
 !engine/setup.py
@@ -23,7 +27,6 @@
 
 # engine stage
 !deployment/entrypoint.py
-!engine/agents/bundles/
 !deployment/engine/start.sh
 !deployment/engine/*.tmpl
 
