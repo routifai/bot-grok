@@ -420,9 +420,9 @@ async def test_adopt_makes_an_existing_super_chat_the_one_get_returns(
     assert conv.labels["omnigent.tenant"] == "space-1"
     assert conv.labels["superchat.computer"] == "computer-key-1"
     # The computer launcher still resolves the same machine from the kept labels.
-    launcher = ComputerSandboxLauncher(supervisor_url="http://sup.test", supervisor_token="t")
+    launcher = ComputerSandboxLauncher()
     launcher.prepare_for_launch(labels=conv.labels)
-    assert (launcher._bot_id, launcher._space_id) == ("computer-key-1", "space-1")
+    assert (launcher._key, launcher._tenant) == ("computer-key-1", "space-1")
 
 
 async def test_adopt_someone_elses_session_is_not_found(client: httpx.AsyncClient) -> None:

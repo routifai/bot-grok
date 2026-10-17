@@ -1,6 +1,6 @@
 """Guard: the Docker entrypoint wires the same Super Chat stores as ``omnigent server``.
 
-The hosted image starts through ``deploy/docker/entrypoint.py``, not the CLI. Any store the CLI
+The hosted image starts through ``deployment/entrypoint.py``, not the CLI. Any store the CLI
 passes to ``create_app`` but the entrypoint omits silently disables a feature in production:
 without ``objective_store`` the ``/v1/objectives`` routes are never mounted (Goals answer 404),
 and without ``memory_service`` long-term memory is off.
@@ -9,13 +9,10 @@ and without ``memory_service`` long-term memory is off.
 from __future__ import annotations
 
 import importlib
-import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
-
-_REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 class _Captured(Exception):
@@ -26,11 +23,7 @@ class _Captured(Exception):
 
 @pytest.fixture
 def entrypoint():
-    sys.path.insert(0, str(_REPO_ROOT))
-    try:
-        return importlib.import_module("deploy.docker.entrypoint")
-    finally:
-        sys.path.remove(str(_REPO_ROOT))
+    return importlib.import_module("deployment.entrypoint")
 
 
 def test_entrypoint_passes_objective_and_memory_stores(

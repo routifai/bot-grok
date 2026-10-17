@@ -1,7 +1,7 @@
 """Guard: importing the OSS Docker entrypoint has no side effects.
 
-The Docker image runs ``python /app/entrypoint.py`` (see
-``deploy/docker/Dockerfile``), so all of the boot work — config load,
+The engine image runs ``python /app/entrypoint.py`` (see
+``deployment/engine.Dockerfile``), so all of the boot work — config load,
 Alembic migrations, store construction, ``create_app`` — lives behind
 ``main()`` and must not fire at import time. This test enforces that:
 the module must import cleanly with ``DATABASE_URL`` unset and without
@@ -22,7 +22,7 @@ import pytest
 from omnigent.stores.artifact_store.local import LocalArtifactStore
 from omnigent.stores.artifact_store.s3 import S3ArtifactStore
 
-_ENTRYPOINT_MODULE = "deploy.docker.entrypoint"
+_ENTRYPOINT_MODULE = "deployment.entrypoint"
 _BOOT_MODULES = (
     "fastapi",
     "omnigent.db.utils",
@@ -89,7 +89,7 @@ def test_entrypoint_imports_without_side_effects(
 def test_run_migrations_uses_central_schema_initializer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from deploy.docker.entrypoint import run_migrations
+    from deployment.entrypoint import run_migrations
 
     from omnigent.db import utils
 
@@ -108,7 +108,7 @@ def test_run_migrations_uses_central_schema_initializer(
 
 
 def test_run_migrations_preserves_sqlite_startup(tmp_path: Path) -> None:
-    from deploy.docker.entrypoint import run_migrations
+    from deployment.entrypoint import run_migrations
     from sqlalchemy import create_engine
 
     from omnigent.db.utils import _get_current_db_revision, _get_head_db_revision
@@ -148,14 +148,14 @@ def _entrypoint_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 def test_resolve_config_captures_s3_artifact_uri(
     _entrypoint_env: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from deploy.docker.entrypoint import _resolve_config
+    from deployment.entrypoint import _resolve_config
 
     monkeypatch.setenv("OMNIGENT_ARTIFACT_URI", "s3://my-bucket/artifacts")
     assert _resolve_config().artifact_store_uri == "s3://my-bucket/artifacts"
 
 
 def test_resolve_config_defaults_to_no_remote_store(_entrypoint_env: None) -> None:
-    from deploy.docker.entrypoint import _resolve_config
+    from deployment.entrypoint import _resolve_config
 
     assert _resolve_config().artifact_store_uri is None
 
@@ -163,7 +163,7 @@ def test_resolve_config_defaults_to_no_remote_store(_entrypoint_env: None) -> No
 def test_resolve_config_rejects_non_s3_artifact_uri(
     _entrypoint_env: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from deploy.docker.entrypoint import _resolve_config
+    from deployment.entrypoint import _resolve_config
 
     monkeypatch.setenv("OMNIGENT_ARTIFACT_URI", "gs://my-bucket")
     with pytest.raises(RuntimeError, match="s3://"):
@@ -180,7 +180,7 @@ def test_resolve_config_rejects_non_s3_artifact_uri(
 def test_select_artifact_store(
     tmp_path: Path, artifact_store_uri: str | None, expected_type: type
 ) -> None:
-    from deploy.docker.entrypoint import _ResolvedConfig, _select_artifact_store
+    from deployment.entrypoint import _ResolvedConfig, _select_artifact_store
 
     resolved = _ResolvedConfig(
         cfg={},
@@ -199,7 +199,7 @@ def test_select_artifact_store(
 
 
 def test_build_routing_carries_the_configured_settings() -> None:
-    from deploy.docker.entrypoint import _build_routing
+    from deployment.entrypoint import _build_routing
 
     cfg = {
         "routing": {
@@ -217,7 +217,7 @@ def test_build_routing_carries_the_configured_settings() -> None:
 
 
 def test_build_routing_defaults_without_a_routing_block() -> None:
-    from deploy.docker.entrypoint import _build_routing
+    from deployment.entrypoint import _build_routing
 
     from omnigent.server.smart_routing import RoutingSettings
 
@@ -234,6 +234,6 @@ def test_build_routing_defaults_without_a_routing_block() -> None:
     ],
 )
 def test_resolve_execution_timeout(cfg: dict[str, int], expected_timeout: int) -> None:
-    from deploy.docker.entrypoint import _resolve_execution_timeout
+    from deployment.entrypoint import _resolve_execution_timeout
 
     assert _resolve_execution_timeout(cfg) == expected_timeout
