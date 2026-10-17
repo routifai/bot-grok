@@ -110,6 +110,9 @@ don't use, so it can be removed before production.
 
 ## Follow-ups from the web cut
 
+- Web structure pass (2026-10-17, `241f34937`..`bcb7e66f9`): features no longer import from pages; `pages/muse` is `pages/app`; CSS prefix `rk-` is `sc-`. Two seams remain: `lib/useMuseLiveState` composes `features/approvals` and `features/computer`, and `components/conversation` imports features because the fork thread renders the message bubble. Both resolve when side chats and forks go (ADR 0021).
+- `packages/chat-ui` `markdown.test.ts` fails on a dropped React Native markdown package; delete the test or the native code path with it.
+
 - Root `NOTICE` still credits the nao-derived chart code that no longer exists; trim the entry.
 - `pnpm check` fails on a pre-existing error in `packages/adapters` (`BodyInit` not found in `src/omnigent/artifacts.ts`); CI's web job has been red on it since before the cut. Fix with the CI work in wave 5.
 - `tool-presentation.completeness.test.ts` fails because the `superchat-claude` bundle declares no `builtins`; decide whether the test or the bundle is right in wave 5.
