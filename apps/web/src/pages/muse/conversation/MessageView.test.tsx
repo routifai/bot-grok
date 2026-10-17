@@ -33,7 +33,6 @@ vi.mock("../../../components/cards/ReplyCard", () => ({ ReplyCardBlockView: () =
 vi.mock("../../shell/message-cards", () => ({
   ArtifactImage: () => null,
   CanvasBlockView: () => null,
-  ChartBlockView: () => null,
 }));
 vi.mock("../intro", () => ({ FirstRunHint: () => null }));
 vi.mock("./HelperTracker", () => ({ HelperTracker: () => null }));

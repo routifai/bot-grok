@@ -11,12 +11,10 @@ export function isFailureNote(message: ThreadMessage): boolean {
   );
 }
 
-/** One transcript row: a message, several failure notes in a row folded into one, or a run of
- * messages a capability draws as one set (`transcriptGroups.tsx`). */
+/** One transcript row: a message, or several failure notes in a row folded into one. */
 export type TranscriptRow =
   | { kind: "message"; message: ThreadMessage }
-  | { kind: "failures"; messages: ThreadMessage[] }
-  | { kind: "group"; messages: ThreadMessage[] };
+  | { kind: "failures"; messages: ThreadMessage[] };
 
 /**
  * The transcript as rows, with consecutive failure notes ("My computer restarted. Try

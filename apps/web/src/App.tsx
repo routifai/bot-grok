@@ -10,8 +10,6 @@ import { ActivityPreviewPage } from "./pages/dev/ActivityPreviewPage";
 import { AutomationsPreviewPage } from "./pages/dev/AutomationsPreviewPage";
 import { CanvasPreviewPage } from "./pages/dev/CanvasPreviewPage";
 import { CardsPreviewPage } from "./pages/dev/CardsPreviewPage";
-import { ChartPreviewPage } from "./pages/dev/ChartPreviewPage";
-import { DashboardPreviewPage } from "./pages/dev/DashboardPreviewPage";
 import { DeckPreviewPage } from "./pages/dev/DeckPreviewPage";
 import { ForksPreviewPage } from "./pages/dev/ForksPreviewPage";
 import { MemoryPreviewPage } from "./pages/dev/MemoryPreviewPage";
@@ -48,12 +46,6 @@ export function App() {
   // Dev-only fixture route for message forks (ForksPreviewPage.tsx), same reasoning.
   if (import.meta.env.DEV && window.location.pathname === "/dev/forks") {
     return <ForksPreviewPage />;
-  }
-  if (import.meta.env.DEV && window.location.pathname === "/dev/chart") {
-    return <ChartPreviewPage />;
-  }
-  if (import.meta.env.DEV && window.location.pathname === "/dev/dashboard") {
-    return <DashboardPreviewPage />;
   }
   if (import.meta.env.DEV && window.location.pathname === "/dev/sheet") {
     return <SheetPreviewPage />;

@@ -37,42 +37,9 @@ export type ProductEventType = z.infer<typeof ProductEventType>;
 
 export const MessageRole = z.enum(["user", "bot", "system"]);
 
-export const MAX_CHART_DATA_ROWS = 5_000;
-
-const ChartSpec = z.record(z.string(), z.any());
-
 /** Superchat Canvas tree (packages/contracts/src/canvas.ts has the strict `CanvasNodeSchema`
-    catalog); z.any here keeps the inferred type JSON-assignable for persistence, the same
-    reason ChartSpec does above — the tree is validated and repaired before publish. */
+    catalog); z.any here keeps the inferred type JSON-assignable for persistence — the tree is validated and repaired before publish. */
 const CanvasTree = z.record(z.string(), z.any());
-
-function embeddedChartRowCount(spec: Record<string, unknown>): number {
-  const specData = Array.isArray(spec.data) ? spec.data.length : 0;
-  const markData = Array.isArray(spec.marks)
-    ? spec.marks.reduce((total, mark) => {
-        if (!mark || typeof mark !== "object" || !Array.isArray(mark.data)) return total;
-        return total + mark.data.length;
-      }, 0)
-    : 0;
-  return specData + markData;
-}
-
-const ChartBlock = z
-  .object({
-    kind: z.literal("chart"),
-    name: z.string(),
-    /** Declarative Observable Plot spec, validated by render_plot before publish.
-        z.any keeps the inferred type JSON-assignable for persistence. */
-    spec: ChartSpec,
-    data: z.array(z.any()).max(MAX_CHART_DATA_ROWS),
-  })
-  .superRefine((block, ctx) => {
-    if (block.data.length + embeddedChartRowCount(block.spec) <= MAX_CHART_DATA_ROWS) return;
-    ctx.addIssue({
-      code: "custom",
-      message: `Chart data exceeds the ${MAX_CHART_DATA_ROWS.toLocaleString("en-US")}-row limit`,
-    });
-  });
 
 export const SecretAskPurpose = z.enum(["otp", "password", "api_key"]);
 export type SecretAskPurpose = z.infer<typeof SecretAskPurpose>;
@@ -213,7 +180,6 @@ export const MessageBlock = z.discriminatedUnion("kind", [
     prUrl: z.string().optional(),
     latestRunId: z.string().optional(),
   }),
-  ChartBlock,
   /** The Muse's `render_card` result (packages/contracts/src/reply-cards.ts). */
   ReplyCardBlock,
   z.object({

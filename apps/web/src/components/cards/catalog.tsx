@@ -3,7 +3,6 @@ import type { ReplyCardDataOf, ReplyCardKind } from "@superchat/contracts";
 import {
   Badge,
   Button,
-  CanvasChart,
   Card,
   CardAction,
   CardContent,
@@ -382,23 +381,6 @@ function Quote({ title, data }: Props<"quote">) {
   );
 }
 
-function Chart({ title, data }: Props<"chart">) {
-  // The shared chart draws its own frame, title and legend.
-  return (
-    <div data-testid="reply-card" className={CARD_WIDTH}>
-      <CanvasChart
-        kind={data.kind}
-        title={title}
-        unit={data.unit}
-        series={data.series.map((series) => ({
-          name: series.name,
-          data: data.x.map((label, index) => ({ label, value: series.values[index] ?? 0 })),
-        }))}
-      />
-    </div>
-  );
-}
-
 function Person({ title, data }: Props<"person">) {
   const href = safeHttpUrl(data.url);
   const initials = data.name
@@ -566,7 +548,6 @@ export const catalog = {
   ask: Ask,
   follow_ups: FollowUps,
   quote: Quote,
-  chart: Chart,
   person: Person,
   file: File,
   progress: Progress,

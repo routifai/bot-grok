@@ -156,7 +156,6 @@ vi.mock("../features/projects/WorkIn", () => ({
 vi.mock("./SettingsOverlay", () => ({ SettingsOverlay: Stub }));
 vi.mock("./shell/dialogs", () => ({ ClearConversationDialog: Stub }));
 vi.mock("./shell/message-cards", () => ({
-  ChartBlockView: Stub,
   ArtifactImage: Stub,
 }));
 

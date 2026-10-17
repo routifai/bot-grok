@@ -21,7 +21,6 @@
     "@lingui/core": "6.6.0",
     "@lingui/react": "6.6.0",
     "@superchat/adapters": "workspace:*",
-    "@superchat/charts": "workspace:*",
     "@superchat/chat-ui": "workspace:*",
     "@superchat/contracts": "workspace:*",
     "@superchat/core": "workspace:*",

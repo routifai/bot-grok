@@ -30,7 +30,6 @@ vi.mock("@superchat/ui-web", () => {
     CardContent: Passthrough,
     CardHeader: Passthrough,
     CardTitle: Passthrough,
-    CanvasChart: () => <div data-chart />,
     Checkbox: () => <input type="checkbox" readOnly />,
     Skeleton: () => <i data-skeleton />,
     Button: ({ render, ...props }: ComponentProps<"button"> & { render?: ReactNode }) =>

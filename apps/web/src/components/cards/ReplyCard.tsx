@@ -1,6 +1,7 @@
 import { ChatMarkdown } from "@superchat/chat-ui/web";
 import { parseReplyCard, type ReplyCardBlock } from "@superchat/contracts";
 import { ReplyArtifactFileCard } from "../../features/artifacts";
+import { LegacyChartNote } from "../../features/charts";
 import { PassageChips } from "../../features/knowledge";
 import { CardSkeleton, catalog } from "./catalog";
 import { useReplyCardRunning, useResolvedReplyCard } from "./context";
@@ -19,6 +20,8 @@ function Fallback({ text }: { text: string }) {
  * otherwise its markdown fallback. `answer` is the person's reply to it, when there is one. */
 export function ReplyCard({ block, answer }: { block: ReplyCardBlock; answer?: string }) {
   if (block.pending) return <CardSkeleton card={block.card} />;
+  // The chart card was retired; old transcripts still hold it.
+  if (block.card === "chart") return <LegacyChartNote />;
   const parsed = parseReplyCard(block);
   if (!parsed) return <Fallback text={block.fallback} />;
   const title = block.title;
@@ -35,8 +38,6 @@ export function ReplyCard({ block, answer }: { block: ReplyCardBlock; answer?: s
       return <catalog.follow_ups data={parsed.data} />;
     case "quote":
       return <catalog.quote title={title} data={parsed.data} />;
-    case "chart":
-      return <catalog.chart title={title} data={parsed.data} />;
     case "person":
       return <catalog.person title={title} data={parsed.data} />;
     case "file":

@@ -397,15 +397,6 @@ msgstr "cancelled"
 msgid "Cancelled"
 msgstr "Cancelled"
 
-msgid "Chart"
-msgstr "Chart"
-
-msgid "Chart failed to render: {error}"
-msgstr "Chart failed to render: {error}"
-
-msgid "Chart unavailable"
-msgstr "Chart unavailable"
-
 msgid "Chat"
 msgstr "Chat"
 
@@ -449,12 +440,6 @@ msgstr "Click an element to edit it."
 
 msgid "Close"
 msgstr "Close"
-
-msgid "Close chart"
-msgstr "Close chart"
-
-msgid "Close dashboard"
-msgstr "Close dashboard"
 
 msgid "Close image preview"
 msgstr "Close image preview"
@@ -555,9 +540,6 @@ msgstr "Could not publish this."
 
 msgid "Could not remove this key."
 msgstr "Could not remove this key."
-
-msgid "Could not render chart"
-msgstr "Could not render chart"
 
 msgid "Could not revoke"
 msgstr "Could not revoke"
@@ -827,15 +809,9 @@ msgstr "Exit full screen"
 msgid "Exit present mode"
 msgstr "Exit present mode"
 
-msgid "Expand"
-msgstr "Expand"
-
 #. placeholder {0}: data.name
 msgid "Expand {0}"
 msgstr "Expand {0}"
-
-msgid "Expand {title}"
-msgstr "Expand {title}"
 
 msgid "Expand sidebar"
 msgstr "Expand sidebar"
@@ -1370,7 +1346,6 @@ msgid "Open · {0}"
 msgstr "Open · {0}"
 
 #. placeholder {0}: data.name
-#. placeholder {0}: doc.title
 #. placeholder {0}: props.name
 msgid "Open {0}"
 msgstr "Open {0}"
@@ -1496,9 +1471,6 @@ msgstr "Preview isn't available for this file type — download it to view it."
 
 msgid "Preview isn't available for this file type."
 msgstr "Preview isn't available for this file type."
-
-msgid "Preview unavailable"
-msgstr "Preview unavailable"
 
 msgid "Previous look"
 msgstr "Previous look"
@@ -1879,24 +1851,6 @@ msgstr "Source"
 msgid "Source says {0}, you wrote {1}"
 msgstr "Source says {0}, you wrote {1}"
 
-#. placeholder {0}: source.file
-msgid "Source: {0}"
-msgstr "Source: {0}"
-
-#. placeholder {0}: source.file
-#. placeholder {1}: source.rows
-msgid "Source: {0} (first {1} rows)"
-msgstr "Source: {0} (first {1} rows)"
-
-#. placeholder {0}: source.file
-#. placeholder {1}: source.rows
-msgid "Source: {0} (latest {1} rows)"
-msgstr "Source: {0} (latest {1} rows)"
-
-#. placeholder {0}: source.file
-msgid "Source: {0} (long file, only its start was read)"
-msgstr "Source: {0} (long file, only its start was read)"
-
 msgid "Sources"
 msgstr "Sources"
 
@@ -2031,6 +1985,9 @@ msgstr "Things I do for you on a schedule."
 
 msgid "This can't be undone."
 msgstr "This can't be undone."
+
+msgid "This chart was made with an older version"
+msgstr "This chart was made with an older version"
 
 msgid "This conversation is too long for the model."
 msgstr "This conversation is too long for the model."
@@ -2207,10 +2164,6 @@ msgstr "View all"
 
 msgid "View details"
 msgstr "View details"
-
-#. placeholder {0}: change.periodLabel
-msgid "vs. {0}"
-msgstr "vs. {0}"
 
 msgid "Wait for superchat to finish, then clear."
 msgstr "Wait for superchat to finish, then clear."

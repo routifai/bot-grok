@@ -8,7 +8,6 @@
 
 @source "../../packages/ui-web/src/**/*.{ts,tsx}";
 @source "./src/**/*.{ts,tsx}";
-@source "../../../packages/charts/src/**/*.{ts,tsx}";
 
 /* Muse edition type and elevation (docs/muse/DESIGN.md). */
 @theme {

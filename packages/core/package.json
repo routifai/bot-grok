@@ -13,11 +13,6 @@
       "types": "./src/message-quote.ts",
       "development": "./src/message-quote.ts",
       "default": "./src/message-quote.ts"
-    },
-    "./plot": {
-      "types": "./src/plot/plot-spec.ts",
-      "development": "./src/plot/plot-spec.ts",
-      "default": "./src/plot/plot-spec.ts"
     }
   },
   "scripts": {
@@ -25,7 +20,6 @@
     "test": "vitest run --root ../.. packages/core/src"
   },
   "dependencies": {
-    "@observablehq/plot": "0.6.17",
     "@superchat/contracts": "workspace:*",
     "croner": "10.0.1",
     "d3-dsv": "3.0.1",

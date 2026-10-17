@@ -1,2 +1,2 @@
-export { ChartGallery, isChartMessage } from "./ChartResult";
 export { chartsExtension } from "./extension";
+export { LegacyChartNote } from "./LegacyChart";

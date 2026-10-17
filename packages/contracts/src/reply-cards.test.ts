@@ -9,7 +9,6 @@ const valid = {
   ask: { question: "Which?", options: [{ id: "a", label: "A" }] },
   follow_ups: { suggestions: ["Compare with last year", "Show it by region"] },
   quote: { symbol: "ACME", price: 12.5, changePct: -1.2 },
-  chart: { kind: "line", x: ["a"], series: [{ name: "s", values: [1] }] },
   person: { name: "Ada" },
   file: { name: "r.pdf", size: 10 },
   secure_entry: { requestId: "req-1", name: "Bank login", site: "bank.example" },

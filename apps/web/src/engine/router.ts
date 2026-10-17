@@ -4,7 +4,6 @@ import { approvalsRouter } from "./approvals";
 import { appsRouter } from "./apps";
 import { artifactsRouter } from "./artifacts";
 import { automationsRouter } from "./automations";
-import { chartsRouter } from "./charts";
 import { chatsRouter } from "./chats";
 import { computerRouter } from "./computer";
 import { os } from "./context";
@@ -28,7 +27,6 @@ export const router = os.router({
   ...approvalsRouter,
   ...artifactsRouter,
   ...automationsRouter,
-  ...chartsRouter,
   ...chatsRouter,
   ...computerRouter,
   ...dailyNotesRouter,

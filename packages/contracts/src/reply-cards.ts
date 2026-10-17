@@ -60,15 +60,6 @@ export const ReplyCardData = {
     asOf: Text.optional(),
     source: Text.optional(),
   }),
-  chart: z.object({
-    kind: z.enum(["line", "bar"]),
-    x: z.array(Text).min(1).max(120),
-    series: z
-      .array(z.object({ name: Text, values: z.array(z.number()).min(1).max(120) }))
-      .min(1)
-      .max(4),
-    unit: Text.optional(),
-  }),
   person: z.object({
     name: Text,
     role: Text.optional(),
@@ -143,7 +134,7 @@ export const ReplyCardBlock = z.object({
   card: z.string(),
   id: z.string().optional(),
   title: z.string().optional(),
-  // z.any keeps the inferred type JSON-assignable for persistence (like ChartBlock).
+  // z.any keeps the inferred type JSON-assignable for persistence.
   data: z.record(z.string(), z.any()),
   fallback: z.string(),
   pending: z.boolean().optional(),

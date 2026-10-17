@@ -33,7 +33,6 @@ import { MessageHoverActions } from "./MessageHoverActions";
 import { MessageView } from "./MessageView";
 import { hasOpenMuseAsk } from "./messageText";
 import { QuoteSelectionButton } from "./QuoteSelectionButton";
-import { foldGroupRuns, useTranscriptGroup } from "./transcriptGroups";
 import { UserMessageMeta } from "./UserMessageMeta";
 import { WorkingRow } from "./WorkingRow";
 
@@ -141,12 +140,7 @@ const TranscriptView = memo(function Transcript({
     [messages],
   );
   // Muse: failed replies in a row read as one "3 failed attempts" line (failureNotes.ts).
-  // Charts in a row (a dashboard reply) read as one set across the column.
-  const group = useTranscriptGroup();
-  const transcriptRows = useMemo<TranscriptRow[]>(
-    () => foldGroupRuns(foldFailureRuns(messages), group),
-    [messages, group],
-  );
+  const transcriptRows = useMemo<TranscriptRow[]>(() => foldFailureRuns(messages), [messages]);
   const [quoteDraft, setQuoteDraft] = useState<{
     message: ThreadMessage;
     text: string;
@@ -414,13 +408,6 @@ const TranscriptView = memo(function Transcript({
           </button>
         ) : null}
         {transcriptRows.map((row) => {
-          if (row.kind === "group") {
-            return (
-              <div key={row.messages[0]?.id} className="w-full min-w-0 py-1">
-                {group?.render(row.messages)}
-              </div>
-            );
-          }
           if (row.kind === "failures") {
             const last = row.messages.at(-1) as ThreadMessage;
             return (
