@@ -16,7 +16,7 @@ const RETRY_MAX_MS = 15_000;
 type Listener = (event: FamilyEvent) => void;
 
 /**
- * One live stream per Muse for the Conversation, its Side Chats and Helpers (ADR 0009). Events
+ * One live stream per Muse for the Conversation and its Helpers (ADR 0009). Events
  * carry ids only: every listener refetches what it shows. The stream opens with the first
  * listener and closes with the last; it reconnects with backoff and tells listeners `open` each
  * time it is (re)connected, so whatever was missed meanwhile is refetched.

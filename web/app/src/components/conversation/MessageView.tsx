@@ -71,12 +71,7 @@ export const MessageView = memo(function MessageView({
     message.role === "bot" &&
     message.blocks.length > 0 &&
     message.blocks.every(
-      (block) =>
-        block.kind === "text" ||
-        block.kind === "progress" ||
-        block.kind === "steps" ||
-        // An added fork's summary is drawn under the message (forks/ForkUnderMessage.tsx).
-        block.kind === "fork_summary",
+      (block) => block.kind === "text" || block.kind === "progress" || block.kind === "steps",
     );
   const quoteMessageId = message.id.includes(":") ? undefined : message.id;
   if (isNarration) {

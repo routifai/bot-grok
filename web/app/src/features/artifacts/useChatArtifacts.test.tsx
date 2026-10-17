@@ -50,11 +50,11 @@ it("opens an artifact in the shared panel and closes it", async () => {
   expect(s.get().isOpen).toBe(false);
 });
 
-it("closes when the chat changes (Conversation to a Side Chat)", async () => {
-  const s = setup("bot:a:");
+it("closes when the chat changes", async () => {
+  const s = setup("bot:a");
   await act(async () => s.get().api.open("art-1"));
   expect(s.get().isOpen).toBe(true);
-  s.rerender("bot:a:side-1");
+  s.rerender("bot:b");
   expect(s.get().isOpen).toBe(false);
 });
 

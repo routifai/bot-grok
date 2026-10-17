@@ -34,13 +34,11 @@ export function useReplyAlerts({
       void alertForReply(event, {
         botId: bot.id,
         botName: bot.name,
+        conversationId,
         enabled: true,
         focused: () => document.visibilityState === "visible" && document.hasFocus(),
-        readText: async (chatId, itemId) => {
-          const page = await rpc.chats.transcript({
-            botId: bot.id,
-            ...(chatId === conversationId ? {} : { chatId }),
-          });
+        readText: async (itemId) => {
+          const page = await rpc.chats.transcript({ botId: bot.id });
           const reply = page.messages.find((message) => message.id === itemId);
           return (reply?.blocks ?? [])
             .map((block) => (block.kind === "text" ? block.text : ""))

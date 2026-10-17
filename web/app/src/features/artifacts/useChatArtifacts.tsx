@@ -6,8 +6,7 @@ const ArtifactPanel = lazy(() =>
   import("./ArtifactPanel").then((m) => ({ default: m.ArtifactPanel })),
 );
 
-/** The artifact side panel every chat surface shares (the Conversation and Side Chats): which
- * deliverable is open, the api cards use to open it (`ArtifactPanelProvider`), and the panel
+/** The artifact side panel beside the Conversation: which deliverable is open, the api cards use to open it (`ArtifactPanelProvider`), and the panel
  * itself to render beside the chat. `resetKey` closes it when the chat changes. */
 export function useChatArtifacts(resetKey: string | undefined): {
   api: ArtifactPanelApi;

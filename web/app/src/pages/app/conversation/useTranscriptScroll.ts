@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 
 /** The transcript's scroll element and the one-shot request to bring a message into view (a
- * search hit, a fork's anchor). */
+ * search hit). */
 export function useTranscriptScroll() {
   const messageScroll = useRef<HTMLDivElement>(null);
   const jumpGeneration = useRef(0);

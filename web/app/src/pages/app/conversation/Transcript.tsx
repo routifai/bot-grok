@@ -24,7 +24,6 @@ import { hiddenFollowUpMessageIds } from "../../../components/cards/thread";
 import { FailureRun } from "../../../components/conversation/FailureNote";
 import { MessageHoverActions } from "../../../components/conversation/MessageHoverActions";
 import { MessageView } from "../../../components/conversation/MessageView";
-import { forkAnchorFor } from "../../../features/side-chats/forkModel";
 import type { ArtifactTarget } from "../../../lib/artifact-open";
 import { quoteDraftForSelection } from "../../../lib/quote-selection";
 import { transcriptIsNearEnd, transcriptMovedDown } from "../../../lib/transcript-scroll";
@@ -85,9 +84,6 @@ const TranscriptView = memo(function Transcript({
   onAnswer,
   onReply,
   onQuote,
-  onFork,
-  renderUnder,
-  aside,
 }: {
   /** The face shown beside the Muse's replies. */
   museFace: { color: string; identity: string };
@@ -113,15 +109,9 @@ const TranscriptView = memo(function Transcript({
   /** The Conversation was cleared and its earlier history can be shown (the Muse only). */
   onShowEarlier?: () => void | Promise<void>;
   onAnswer: (message: ThreadMessage, text: string, username?: string) => Promise<void>;
-  /** Without reply/quote handlers (a Side Chat has no reply threads) those actions are hidden. */
+  /** Without reply/quote handlers those actions are hidden. */
   onReply?: (message: ThreadMessage) => void;
   onQuote?: (message: ThreadMessage, quote: string) => void;
-  /** Fork a message (ADR 0010): offered on the messages the engine can anchor a fork to. */
-  onFork?: (message: ThreadMessage) => void;
-  /** Rendered under a message (its forks); return null for nothing. */
-  renderUnder?: (message: ThreadMessage) => ReactNode;
-  /** A strip beside the scrolling column, on the panel's end edge (the fork gutter). */
-  aside?: ReactNode;
 }) {
   const { t } = useLingui();
   const { label: museLiveLabel, runStartedAt } = useMuseLiveState({
@@ -436,15 +426,7 @@ const TranscriptView = memo(function Transcript({
                     message={message}
                     side={message.role === "user" ? "start" : "end"}
                     onReply={onReply}
-                    onFork={
-                      onFork && message.forks !== undefined && forkAnchorFor(message, messages)
-                        ? (clicked) => {
-                            const anchor = forkAnchorFor(clicked, messages);
-                            if (anchor) onFork(anchor);
-                          }
-                        : undefined
-                    }
-                    above={Boolean(onFork)}
+                    above
                   />
                   <MessageView
                     botDisplayName={botDisplayName}
@@ -458,7 +440,6 @@ const TranscriptView = memo(function Transcript({
                   ) : null}
                 </div>
               </div>
-              {renderUnder?.(message)}
             </div>
           );
         })}
@@ -477,7 +458,6 @@ const TranscriptView = memo(function Transcript({
         ) : null}
         {trailing}
       </div>
-      {aside}
       {quoteDraft && onQuote ? (
         <QuoteSelectionButton
           range={quoteDraft.range}

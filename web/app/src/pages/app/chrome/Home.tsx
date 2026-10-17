@@ -7,7 +7,7 @@ import { SettingsButton } from "./Dock";
 /**
  * The home screen: the mark and wordmark top-left, the dock on the left, the greeting over the
  * composer in the middle, recent chats bottom-right and Settings bottom-left. It sits over the
- * Conversation shell until something opens (a send, a chat, a fork).
+ * Conversation shell until something opens (a send, a chat).
  */
 export function Home({
   personName,

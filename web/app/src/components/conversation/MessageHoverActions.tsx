@@ -9,7 +9,6 @@ import {
 } from "@superchat/ui-web";
 import { Check, Copy, MoreHorizontal, Reply } from "lucide-react";
 import { useState } from "react";
-import { BranchIcon } from "../../features/side-chats/forkParts";
 import { copyableMessageText } from "../../lib/message-text";
 import { MessageHoverMetadata } from "../MessageHoverMetadata";
 
@@ -17,15 +16,12 @@ export function MessageHoverActions({
   message,
   side,
   onReply,
-  onFork,
-  above = Boolean(onFork),
+  above = false,
 }: {
   message: ThreadMessage;
   side: "start" | "end";
   onReply?: (message: ThreadMessage) => void;
-  /** Fork this message (ADR 0010); the actions then float above the bubble as a toolbar. */
-  onFork?: (message: ThreadMessage) => void;
-  /** Float above the bubble even without Fork, to match the messages around it that have it. */
+  /** Float above the bubble as a toolbar instead of the rail beside it. */
   above?: boolean;
 }) {
   const { t } = useLingui();
@@ -64,20 +60,6 @@ export function MessageHoverActions({
         >
           {copied ? <Check size={15} strokeWidth={1.7} /> : <Copy size={14} strokeWidth={1.7} />}
         </button>
-        {onFork ? (
-          <button
-            type="button"
-            title={t`Fork`}
-            aria-label={t`Fork`}
-            onClick={() => onFork(message)}
-            className={cn(
-              iconButtonClass,
-              "h-11 w-11 [@media(hover:hover)_and_(pointer:fine)]:h-7 [@media(hover:hover)_and_(pointer:fine)]:w-7",
-            )}
-          >
-            <BranchIcon size={15} />
-          </button>
-        ) : null}
         {onReply ? (
           <DropdownMenu open={moreOpen} onOpenChange={setMoreOpen}>
             <DropdownMenuTrigger

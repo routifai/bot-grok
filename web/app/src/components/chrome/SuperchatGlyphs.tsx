@@ -64,22 +64,6 @@ export function WaitingGlyph(props: GlyphProps) {
   );
 }
 
-/** A stem with a branch curving off to the right: a fork. */
-export function ForkGlyph(props: GlyphProps) {
-  return (
-    <Glyph {...props}>
-      <path
-        d="M6.2 3.2v13.6M6.2 10.4c0-3.4 2.5-4.9 5.8-4.9h2.4M12.4 3.2l2.4 2.3-2.4 2.3"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </Glyph>
-  );
-}
-
 /** A small gear. */
 export function SettingsGlyph(props: GlyphProps) {
   return (

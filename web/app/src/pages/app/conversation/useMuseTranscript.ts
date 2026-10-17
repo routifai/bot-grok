@@ -33,8 +33,9 @@ type Loaded = {
 /**
  * The Muse's Conversation, read from the engine's transcript (ADR 0009) and refreshed on its
  * family stream: when a reply lands (`messageDone` for this Conversation), when the person's message
- * sent mid-turn is steered in or queued (`messageDelivery`), when a Side Chat or
- * Helper starts (`chatsChanged`), when it is cleared (`chatReset`), and after a reconnect. `refresh()` is for the caller's own
+ * sent mid-turn is steered in or queued (`messageDelivery`), when a Helper starts
+ * (`chatsChanged`), when it is cleared (`chatReset`), and after a reconnect. `refresh()` is for
+ * the caller's own
  * moments the stream has no event for (the person's send being recorded).
  *
  * It also owns what a send needs to look instant: `beginSend` shows the person's message at once

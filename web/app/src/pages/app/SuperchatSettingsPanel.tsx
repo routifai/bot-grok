@@ -7,7 +7,6 @@ import { SuperchatOrb } from "../../components/ai/orb";
 import { resetFirstRun } from "../../components/intro";
 import { MUSE_INSET_GROUP } from "../../components/ui";
 import { ApprovalsSettings } from "../../features/approvals";
-import { SideChatArchiving } from "../../features/side-chats/SideChatArchiving";
 import { VaultSettings } from "../../features/vault";
 
 /**
@@ -25,8 +24,6 @@ export function SuperchatSettingsPanel({ bot, userId }: { bot: Bot; userId: stri
           {bot.name}
         </h3>
       </div>
-
-      <SideChatArchiving botId={bot.id} />
 
       <ApprovalsSettings botId={bot.id} />
 

@@ -151,7 +151,6 @@ vi.mock("./app/sheets/DockSheets", () => ({ DockSheets: Stub }));
 vi.mock("../features/projects/WorkIn", () => ({
   useChatPlace: () => ({ place: null, reload: () => undefined }),
   WorkInChip: Stub,
-  WorkInPill: Stub,
 }));
 vi.mock("./SettingsOverlay", () => ({ SettingsOverlay: Stub }));
 vi.mock("./shell/dialogs", () => ({ ClearConversationDialog: Stub }));
@@ -234,7 +233,7 @@ beforeEach(() => {
   engine.interrupt.mockReset().mockResolvedValue({ ok: true });
 });
 
-it("shows the conversation chrome: the dock, Chats instead of a sidebar, no Goals, Feed or Ideas", async () => {
+it("shows the conversation chrome: the dock, no sidebar or chat list, no Goals, Feed or Ideas", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const page = await renderShell(bootstrap({ me: me() }));
   try {
@@ -246,7 +245,7 @@ it("shows the conversation chrome: the dock, Chats instead of a sidebar, no Goal
       el.getAttribute("aria-label"),
     );
     expect(dockLabels).toEqual(["Inbox", "Library", "Automations", "Files"]);
-    expect(page.container.querySelector('[data-testid="chats-trigger"]')).toBeTruthy();
+    expect(page.container.querySelector('[data-testid="chats-trigger"]')).toBeNull();
     expect(page.container.querySelector('[data-testid="app-rail"]')).toBeNull();
     const text = page.container.textContent ?? "";
     for (const gone of ["Goals", "Feed", "Ideas", "Superchat"]) expect(text).not.toContain(gone);

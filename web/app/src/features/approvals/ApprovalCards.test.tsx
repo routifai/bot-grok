@@ -36,7 +36,7 @@ vi.mock("@superchat/ui-web", () => ({
 
 import { ApprovalCards } from "./ApprovalCards";
 
-function approval(id: string, chatId: string | null, text: string): Ask {
+function approval(id: string, text: string): Ask {
   return {
     id,
     runId: "sess-1",
@@ -52,16 +52,16 @@ function approval(id: string, chatId: string | null, text: string): Ask {
     ],
     input: null,
     createdAt: new Date("2026-01-01T00:00:00Z").toISOString(),
-    approval: { chatId },
+    approval: {},
   };
 }
 
-async function mount(chatId: string | null) {
+async function mount() {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
   await act(async () => {
-    root.render(<ApprovalCards botId="bot-1" chatId={chatId} />);
+    root.render(<ApprovalCards botId="bot-1" />);
   });
   return {
     container,
@@ -72,14 +72,14 @@ async function mount(chatId: string | null) {
   };
 }
 
-it("shows only this chat's approvals and locks the card with the choice", async () => {
+it("shows only approvals and locks the card with the choice", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   api.list.mockResolvedValue([
-    approval("elicit_1", null, "Send an email to bob@acme.test"),
-    approval("elicit_2", "side-1", "Delete old notes"),
+    approval("elicit_1", "Send an email to bob@acme.test"),
+    { ...approval("task_1", "Delete old notes"), kind: "blocked_task", approval: undefined },
   ]);
   api.answer.mockResolvedValue({ ok: true });
-  const page = await mount(null);
+  const page = await mount();
   try {
     await act(async () => {
       await vi.waitFor(() =>
@@ -107,8 +107,10 @@ it("shows only this chat's approvals and locks the card with the choice", async 
 
 it("renders nothing when no approval is waiting here", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  api.list.mockResolvedValue([approval("elicit_2", "side-1", "Delete old notes")]);
-  const page = await mount(null);
+  api.list.mockResolvedValue([
+    { ...approval("task_1", "Delete old notes"), kind: "blocked_task", approval: undefined },
+  ]);
+  const page = await mount();
   try {
     await act(async () => {
       await vi.waitFor(() => expect(api.list).toHaveBeenCalled());
@@ -125,11 +127,11 @@ it("keeps the call's arguments behind Details and lists the other asks one Allow
   const args = '{"command": "rm notes.txt # Rename notes.txt"}';
   api.list.mockResolvedValue([
     {
-      ...approval("elicit_3", null, "Over budget. Continue? (sys_os_shell)"),
-      approval: { chatId: null, arguments: args, alsoAsks: ["Pushes need a look."] },
+      ...approval("elicit_3", "Over budget. Continue? (sys_os_shell)"),
+      approval: { arguments: args, alsoAsks: ["Pushes need a look."] },
     },
   ]);
-  const view = await mount(null);
+  const view = await mount();
 
   expect(view.container.querySelector("h3")?.textContent).toBe(
     "Over budget. Continue? (sys_os_shell)",

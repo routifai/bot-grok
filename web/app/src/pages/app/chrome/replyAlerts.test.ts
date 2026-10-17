@@ -5,6 +5,7 @@ function deps(overrides: Partial<ReplyAlertDeps> = {}): ReplyAlertDeps {
   return {
     botId: "bot-1",
     botName: "Superchat",
+    conversationId: "conv-1",
     enabled: true,
     focused: () => false,
     readText: vi.fn(async () => "All done."),
@@ -29,10 +30,10 @@ describe("alertForReply", () => {
     );
   });
 
-  it("notifies for a reply in a Side Chat", async () => {
+  it("ignores a reply in any other chat of the family", async () => {
     const d = deps();
-    await alertForReply({ type: "messageDone", chatId: "side-1", itemId: "i2" }, d);
-    expect(d.notify).toHaveBeenCalledTimes(1);
+    await alertForReply({ type: "messageDone", chatId: "helper-1", itemId: "i2" }, d);
+    expect(d.notify).not.toHaveBeenCalled();
   });
 
   it("does nothing while the person is looking at the app", async () => {

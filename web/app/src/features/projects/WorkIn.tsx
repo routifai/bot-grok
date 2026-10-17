@@ -362,45 +362,6 @@ export function WorkInPicker({
   );
 }
 
-const PILL =
-  "inline-flex h-8 max-w-[min(320px,70vw)] items-center gap-2 rounded-full border border-border bg-card px-3 text-[13.5px] text-foreground transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring data-[popup-open]:bg-accent";
-
-/** A new side chat's "Work in" pill, beside "Knows our conversation". */
-export function WorkInPill({
-  list,
-  folder,
-  onPick,
-}: {
-  list: ListFolder;
-  folder: string | null;
-  onPick: (folder: string | null) => void;
-}) {
-  const shown = folder ? lastSegment(folder) : null;
-  return (
-    <WorkInPicker
-      list={list}
-      current={folder}
-      testId="side-chat-folder"
-      side="top"
-      align="center"
-      className={PILL}
-      onPick={(next) => {
-        onPick(next);
-        return undefined;
-      }}
-      label={
-        <>
-          <Folder size={15} strokeWidth={1.7} aria-hidden className="shrink-0 text-ink-2" />
-          <span className="truncate" dir="auto">
-            {shown ? <Trans>Work in: {shown}</Trans> : <Trans>Work in: Whole workspace</Trans>}
-          </span>
-          <ChevronDown size={13} strokeWidth={1.8} aria-hidden className="shrink-0 text-ink-3" />
-        </>
-      }
-    />
-  );
-}
-
 const CHIP =
   "app-no-drag pointer-events-auto inline-flex h-7 max-w-[min(280px,50vw)] items-center gap-1.5 rounded-full border px-2.5 text-[12.5px] shadow-sm backdrop-blur-md transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring data-[popup-open]:bg-accent data-[popup-open]:text-foreground";
 

@@ -13,7 +13,7 @@ const isEmptyBackend = (error: unknown) =>
 
 /** The Memory tab's wire: `rpc.memory.profile`, kept explicit (not the `rpc` client)
  * so the dev fixture page can supply a fake — same convention as `ActivityWire`
- * (ActivityRunDialog.tsx) and `SideChatWire` (SideChatSession.tsx). */
+ * (ActivityRunDialog.tsx). */
 export type MemoryWire = {
   profile: (input: { botId: string }) => Promise<{ profile: string | null }>;
 } & Partial<ClaimsWire>;

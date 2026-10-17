@@ -9,18 +9,15 @@ import { useAsks } from "./useAsks";
 const APPROVAL_POLL_MS = 4_000;
 
 /**
- * The approvals waiting in one chat, as cards at the end of its transcript: the Conversation
- * (`chatId` null, with its Helpers) or one Side Chat. Answering locks the card with the choice;
- * the same approval is also in Waiting on you and closes there too.
+ * The approvals waiting in the Conversation (with its Helpers), as cards at the end of its
+ * transcript. Answering locks the card with the choice; the same approval is also in Waiting on
+ * you and closes there too.
  */
-export function ApprovalCards({ botId, chatId }: { botId: string; chatId: string | null }) {
+export function ApprovalCards({ botId }: { botId: string }) {
   const { asks, answer } = useAsks(botId, { pollMs: APPROVAL_POLL_MS });
   const [locked, setLocked] = useState<{ ask: Ask; label: string }[]>([]);
   const open = asks.filter(
-    (ask) =>
-      ask.approval &&
-      ask.approval.chatId === chatId &&
-      !locked.some((entry) => entry.ask.id === ask.id),
+    (ask) => ask.approval && !locked.some((entry) => entry.ask.id === ask.id),
   );
   if (open.length === 0 && locked.length === 0) return null;
 

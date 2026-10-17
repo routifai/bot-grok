@@ -1,5 +1,5 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import { MessageSquare, Plus, Upload } from "lucide-react";
+import { Plus, Upload } from "lucide-react";
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { DockSheet, DockSheetHeader } from "../../../components/chrome/DockSheet";
 import { QUIET_BUTTON } from "../../../components/ui";
@@ -97,19 +97,14 @@ function FilesSheet({
   onClose,
   refreshKey,
   reveal,
-  onChatWithFolder,
 }: {
   botId: string;
   open: boolean;
   onClose: () => void;
   refreshKey: number;
   reveal: { path: string; nonce: number } | null;
-  /** Opens a side chat working in `folder` (workspace-relative; `""` is the whole workspace). */
-  onChatWithFolder: (folder: string) => void;
 }) {
   const { t } = useLingui();
-  // The folder "Chat with" uses; none picked is the whole workspace.
-  const [folder, setFolder] = useState<string | null>(null);
   const [uploads, setUploads] = useState(0);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -160,30 +155,12 @@ function FilesSheet({
               <Upload size={15} aria-hidden="true" className="me-1.5" />
               {busy ? t`Uploading…` : t`Upload`}
             </button>
-            <button
-              type="button"
-              className={QUIET_BUTTON}
-              onClick={() => onChatWithFolder(folder ?? "")}
-            >
-              <MessageSquare size={15} aria-hidden="true" className="me-1.5" />
-              {folder ? (
-                <Trans>Chat with {folder.split("/").pop()}</Trans>
-              ) : (
-                <Trans>Chat with the workspace</Trans>
-              )}
-            </button>
             {uploadError ? (
               <span className="text-[13px] text-destructive">{uploadError}</span>
             ) : null}
           </div>
           <div className="sc-scroll min-h-0 flex-1 overflow-y-auto">
-            <FilesTab
-              botId={botId}
-              refreshKey={refreshKey + uploads}
-              reveal={reveal}
-              selectedFolder={folder}
-              onSelectFolder={(path) => setFolder((current) => (current === path ? null : path))}
-            />
+            <FilesTab botId={botId} refreshKey={refreshKey + uploads} reveal={reveal} />
           </div>
         </div>
       ) : null}
@@ -202,7 +179,6 @@ export function DockSheets({
   filesRefreshKey,
   filesReveal,
   onStartChat,
-  onOpenFolderChat,
 }: {
   botId: string;
   sheet: DockKey | null;
@@ -211,8 +187,6 @@ export function DockSheets({
   filesReveal: { path: string; nonce: number } | null;
   /** Opens the Conversation; with `send` the text goes at once, with `seed` it waits in the composer. */
   onStartChat: (input: { send?: string; seed?: string }) => void;
-  /** Opens a new side chat that works in this workspace folder. */
-  onOpenFolderChat: (folder: string) => void;
 }) {
   const sendAndClose = (text: string) => {
     onClose();
@@ -249,10 +223,6 @@ export function DockSheets({
         onClose={onClose}
         refreshKey={filesRefreshKey}
         reveal={filesReveal}
-        onChatWithFolder={(folder) => {
-          onClose();
-          onOpenFolderChat(folder);
-        }}
       />
     </>
   );

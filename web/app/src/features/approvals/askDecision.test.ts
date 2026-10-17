@@ -72,7 +72,7 @@ describe("askDecision", () => {
         kind: "approval",
         text: "Run the deploy script?",
         detail: "It touches production.",
-        approval: { chatId: null },
+        approval: {},
       }),
       APPROVAL,
     );

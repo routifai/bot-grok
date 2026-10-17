@@ -99,7 +99,7 @@ export const Composer = memo(function Composer({
   failure?: { id: string; code: string } | null;
   onDismissError?: () => void;
   sending: boolean;
-  /** Without an attachment handler (a Side Chat sends text only) there is no attach control. */
+  /** Without an attachment handler there is no attach control. */
   fileInputRef?: RefObject<HTMLInputElement | null>;
   onAttachmentPick?: (files: FileList | null) => void | Promise<void>;
   onRemoveAttachment?: (attachment: PendingAttachment) => void;

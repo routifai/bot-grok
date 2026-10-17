@@ -13,7 +13,6 @@ vi.mock("react-dom/client", async (orig) =>
 vi.mock("../../lib/use-user-id", () => ({ useUserId: () => "user-1" }));
 vi.mock("../../features/approvals", () => ({ ApprovalsSettings: () => null }));
 vi.mock("../../features/vault", () => ({ VaultSettings: () => null }));
-vi.mock("../../features/side-chats/SideChatArchiving", () => ({ SideChatArchiving: () => null }));
 
 vi.mock("@lingui/react/macro", () => {
   const t = (parts: TemplateStringsArray) => parts.join("");

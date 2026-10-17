@@ -17,8 +17,7 @@ export function MessageHoverMetadata({
 }: {
   side: "start" | "end";
   pinned?: boolean;
-  /** A small floating toolbar above the bubble (where a message has more actions, e.g. Fork),
-   * instead of the rail beside it. */
+  /** A small floating toolbar above the bubble instead of the rail beside it. */
   above?: boolean;
   children: ReactNode;
 }) {

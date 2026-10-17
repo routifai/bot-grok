@@ -1,8 +1,8 @@
 import type { ThreadMessage } from "@superchat/contracts";
 import { parseAttachmentReferences } from "@superchat/core";
 
-/** What a person's own text shows as outside the Conversation view (a side chat, the Activity
- * panel, a copy): their words, with the attachment reference lines as one "Attached: ..." line.
+/** What a person's own text shows as outside the Conversation view (the Activity panel, a
+ * copy): their words, with the attachment reference lines as one "Attached: ..." line.
  * A block of document text an older gateway stored with the message is never part of it. */
 export function personText(text: string): string {
   const { attachments, caption } = parseAttachmentReferences(text);

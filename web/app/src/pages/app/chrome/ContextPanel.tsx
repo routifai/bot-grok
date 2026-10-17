@@ -13,7 +13,6 @@ import {
 import { AskDecisionCard, useAsks } from "../../../features/approvals";
 import { DaysSection, type DaysWire } from "../../../features/daily-notes";
 import { MemoryTab, type MemoryWire } from "../../../features/memory";
-import type { ChatListState } from "../../../features/side-chats/useChatList";
 import { rpc } from "../../../lib/rpc";
 import {
   type ConnectionLatch,
@@ -97,8 +96,7 @@ function PanelTabBar({ tab, onChange }: { tab: PanelTab; onChange: (tab: PanelTa
   );
 }
 
-/** The panel's one compact identity line: the Muse's name and a small Connection Status pill
- * (the sidebar no longer repeats it, MuseSidebar.tsx). */
+/** The panel's one compact identity line: the Muse's name and a small Connection Status pill. */
 function IdentityHeader({
   museName,
   connection,
@@ -146,7 +144,6 @@ export function ContextPanel({
   botId,
   museName,
   collapsed,
-  chatListState,
   activitiesOverride,
   memoryWire,
   daysWire,
@@ -156,9 +153,6 @@ export function ContextPanel({
   /** The Muse's own name, for the panel's identity header. */
   museName: string;
   collapsed: boolean;
-  /** The sidebar's Chat List poll (Shell.tsx's `chatList.state`), folded into the
-   * Connection Status line alongside the Activity poll — either one landing counts. */
-  chatListState?: ChatListState;
   /** Dev-preview seam only (ActivityPreviewPage.tsx): fixture Activity data + wire instead
    * of the real poll. Production never passes this. */
   activitiesOverride?: {
@@ -201,12 +195,12 @@ export function ContextPanel({
   };
   const memoryWireToUse = memoryWire ?? liveMemoryWire;
   const [connectionLatch, setConnectionLatch] = useState<ConnectionLatch>(INITIAL_CONNECTION_LATCH);
-  // `activitiesData.state`/`chatListState` change identity on every poll round (success or
-  // failure alike, useActivities.ts / useChatList.ts) — exactly the "once per observed
-  // round" cadence the latch wants (connectionStatus.ts's `nextConnectionLatch`).
+  // `activitiesData.state` changes identity on every poll round (success or failure alike,
+  // useActivities.ts) — exactly the "once per observed round" cadence the latch wants
+  // (connectionStatus.ts's `nextConnectionLatch`).
   useEffect(() => {
-    setConnectionLatch((prev) => nextConnectionLatch(prev, activitiesData.state, chatListState));
-  }, [activitiesData.state, chatListState]);
+    setConnectionLatch((prev) => nextConnectionLatch(prev, activitiesData.state));
+  }, [activitiesData.state]);
   const connection = connectionLatch.status;
 
   const topAsks = asks.slice(0, ASKS_LIMIT);

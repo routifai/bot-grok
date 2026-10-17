@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/react/macro";
-import type { Bot, ChatSummary, ThreadMessage } from "@superchat/contracts";
+import type { Bot, ThreadMessage } from "@superchat/contracts";
 import { AvatarStyleProvider } from "@superchat/ui-web";
 import type { ReactNode } from "react";
 import {
@@ -37,24 +37,10 @@ import { liveExtension } from "../features/live";
 import { ConversationModelPicker } from "../features/models";
 import { useChatPlace, WorkInChip } from "../features/projects/WorkIn";
 import { sheetsExtension } from "../features/sheets";
-import { AllForks } from "../features/side-chats/AllForks";
-import { ForkAsk } from "../features/side-chats/ForkAsk";
-import { ForkGutter } from "../features/side-chats/ForkGutter";
-import type { ForkWire } from "../features/side-chats/ForkOverlay";
-import { ForkThread, type ForkThreadTarget } from "../features/side-chats/ForkThread";
-import {
-  SideChatSession,
-  type SideChatView,
-  type SideChatWire,
-} from "../features/side-chats/SideChatSession";
-import { useChatList } from "../features/side-chats/useChatList";
-import { forkChatSummary, useForkView } from "../features/side-chats/useForkView";
 import type { ArtifactTarget } from "../lib/artifact-open";
-import { watchFamily } from "../lib/family-stream";
 import { markAfterPaint, markOnce } from "../lib/performance";
 import { rpc } from "../lib/rpc";
 import { type MuseLiveRun, useTurnRuns } from "../lib/useMuseLiveState";
-import { ChatsPopover } from "./app/chrome/ChatsPopover";
 import { ContourGround } from "./app/chrome/ContourGround";
 import { ConversationActivity } from "./app/chrome/ConversationActivity";
 import { conversationLayout } from "./app/chrome/conversationLayout";
@@ -73,7 +59,6 @@ import { useBrowserNotifications } from "./app/chrome/useBrowserNotifications";
 import { useReplyAlerts } from "./app/chrome/useReplyAlerts";
 import { ClearConversationHost } from "./app/conversation/ClearConversationHost";
 import { Composer } from "./app/conversation/Composer";
-import { sideChatView } from "./app/conversation/sideChatView";
 import { Transcript } from "./app/conversation/Transcript";
 import { useComposerSend } from "./app/conversation/useComposerSend";
 import { useDockTransition } from "./app/conversation/useDockTransition";
@@ -87,8 +72,6 @@ import { DockSheets } from "./app/sheets/DockSheets";
  * sit flat on the rounded content window; only the sidebar, the inspector and side panels
  * float as glass inside it. */
 /** Every orb brightens while Superchat works (useSuperchatWork). */
-const sideChatViewWithApprovals: SideChatView = { ...sideChatView, Approvals: ApprovalCards };
-
 function SuperchatPresence({
   botId,
   runs,
@@ -142,57 +125,7 @@ export function ShellPage() {
   // The dock place open as a sheet, if any.
   const [dockSheet, setDockSheet] = useState<DockKey | null>(null);
   const [folderPickerOpen, setFolderPickerOpen] = useState(false);
-  // A new side chat opened from Files works in this folder; any other draft has none.
-  const [draftFolder, setDraftFolder] = useState<string | null>(null);
-  // The open Side Chat, shown as a full-size session replacing the Conversation
-  // (agreed behavior #2); "draft" is an unsent one. Cleared by navigating anywhere else.
-  const [activeChat, setActiveChat] = useState<ChatSummary | "draft" | null>(null);
-  useEffect(() => {
-    if (activeChat !== "draft") setDraftFolder(null);
-  }, [activeChat]);
-  const chatList = useChatList(active?.id ?? "");
-  // A search hit inside a side chat (`?chat=…&m=…`): the message to scroll to once it is open.
-  const [chatFocus, setChatFocus] = useState<{ chatId: string; messageId: string } | null>(null);
-  const sideChatWire = useMemo<SideChatWire>(
-    () => ({
-      summaryPreview: (input) => rpc.chats.summaryPreview(input),
-      createSide: (input) => chatList.createSide(input.start, input.text, input.folder),
-      transcript: (input) => rpc.chats.transcript(input),
-      watch: (botId, listener) => watchFamily(botId, listener),
-      send: (input) => rpc.chats.send(input),
-      markRead: (input) => rpc.chats.markRead(input),
-      project: (input) => rpc.chats.project(input),
-      listFolder: (input) => rpc.files.list(input),
-      setFolder: (input) => rpc.chats.setFolder(input),
-      unarchive: (input) =>
-        rpc.chats.unarchive(input).then((result) => {
-          chatList.refresh();
-          return result;
-        }),
-    }),
-    [chatList.createSide, chatList.refresh],
-  );
-  const refreshChatList = chatList.refresh;
-  const forkWire = useMemo<ForkWire>(
-    () => ({
-      ...sideChatWire,
-      createFork: (input) =>
-        rpc.chats.createFork(input).then((chat) => {
-          refreshChatList();
-          return chat;
-        }),
-      addToConversation: (input) => rpc.chats.addToConversation(input),
-      archive: (input) =>
-        rpc.chats.archive(input).then((result) => {
-          refreshChatList();
-          return result;
-        }),
-    }),
-    [sideChatWire, refreshChatList],
-  );
-  const chatArtifacts = useChatArtifacts(
-    `${active?.id ?? ""}:${activeChat === "draft" ? "draft" : (activeChat?.id ?? "")}`,
-  );
+  const chatArtifacts = useChatArtifacts(active?.id ?? "");
   /** Below `md` the Muse sidebar is an off-canvas drawer opened from the main header. */
   const [_navOpen, _setNavOpen] = useState(false);
   const activeBotId = useRef<string | undefined>(active?.id);
@@ -205,37 +138,6 @@ export function ShellPage() {
   useEffect(() => {
     const messageId = searchParams.get("m");
     if (!active) return;
-    const chatParam = searchParams.get("chat");
-    if (chatParam) {
-      // A hit in a side chat: open it (waiting for the list), then drop the jump URL.
-      if (chatList.state.status === "loading") return;
-      const chat =
-        chatList.state.status === "ready"
-          ? chatList.state.chats.find((item) => item.id === chatParam)
-          : undefined;
-      if (chat?.anchorItemId) {
-        // A hit in a fork: it opens over its message, like any other way into a fork.
-        setActiveChat(null);
-        openForkRef.current({
-          chat: {
-            id: chat.id,
-            title: chat.title,
-            live: chat.live,
-            unread: Boolean(chat.unread),
-            archived: chat.archived,
-          },
-          anchor: null,
-        });
-      } else if (chat) {
-        setActiveChat(chat);
-        if (messageId) setChatFocus({ chatId: chat.id, messageId });
-      }
-      const next = new URLSearchParams(searchParams);
-      next.delete("chat");
-      next.delete("m");
-      setSearchParams(next, { replace: true });
-      return;
-    }
     if (messageId) {
       // The Muse's Conversation is the engine's transcript: page back to the hit, then scroll.
       void revealMessageRef
@@ -249,9 +151,8 @@ export function ShellPage() {
           setSearchParams(next, { replace: true });
         });
     }
-  }, [active?.id, searchParams, setSearchParams, chatList.state]);
+  }, [active?.id, searchParams, setSearchParams]);
   const revealMessageRef = useRef<(messageId: string) => Promise<boolean>>(async () => false);
-  const openForkRef = useRef<(target: ForkThreadTarget) => void>(() => undefined);
   // Bumps each time a turn finishes, so the Files view follows the Muse's work.
   const [filesRefreshKey, setFilesRefreshKey] = useState(0);
   // The folder to show in the Files tab, set by the "Working in" chip.
@@ -288,25 +189,6 @@ export function ShellPage() {
   });
   const readTranscript = museTranscript.refresh;
   revealMessageRef.current = museTranscript.reveal;
-  const forks = useForkView({
-    chatList: chatList.state,
-    messages: museTranscript.messages,
-    scrollRef: messageScroll,
-    reveal: museTranscript.reveal,
-    scrollToMessage,
-  });
-  const resetForks = forks.reset;
-  openForkRef.current = forks.openFork;
-  // The fork views belong to the Conversation: leaving it (another section, a full-size side
-  // chat, another Muse) closes them.
-  useEffect(() => {
-    if (activeChat) resetForks();
-  }, [activeChat, resetForks]);
-  useEffect(() => {
-    resetForks();
-  }, [active?.id, resetForks]);
-  const forksView = forks.view === "forks";
-  const forkOverlayOpen = Boolean(forks.thread || forks.ask);
   const transcriptMessages = useMemo(
     () =>
       museTranscript.pendingMessage
@@ -317,7 +199,6 @@ export function ShellPage() {
   // An empty Conversation is a start page: the greeting, the composer centered under it, and
   // a few suggestions; the composer glides down to its dock once the first message lands.
   const startPage =
-    !forksView &&
     conversationLayout({
       hasMuse: Boolean(active),
       loaded: museTranscript.messages !== null,
@@ -348,7 +229,7 @@ export function ShellPage() {
     });
   }, [startPage, shownStart]);
   // The greeting landing shows only while the Conversation has never had a message.
-  const showHome = Boolean(active && shownStart && !activeChat && !forks.thread && !forks.ask);
+  const showHome = Boolean(active && shownStart);
   const composerDock = useRef<HTMLDivElement>(null);
   // A View Transition already glides the composer (`superchat-composer`); the FLIP is the fallback.
   useDockTransition(composerDock, shownStart, () => orbFlight.current === "view-transition");
@@ -422,7 +303,6 @@ export function ShellPage() {
     : undefined;
   const startChat = useCallback(
     (input: { send?: string; seed?: string }) => {
-      setActiveChat(null);
       if (input.seed) setComposerSeed(input.seed);
       if (input.send) void sendMessage(input.send);
     },
@@ -472,51 +352,24 @@ export function ShellPage() {
     />
   );
 
-  // The superchat top bar: the Project, the fork switch, the model and Chats.
+  // The superchat top bar: the Project and the model.
   const superchatTopBar = active ? (
     <div className="app-drag relative z-10 flex h-[84px] min-w-0 shrink-0 items-center gap-3 ps-4 pe-4 md:ps-0 md:pe-6">
       <SuperchatLogo className="md:hidden" />
       <span className="min-w-0 flex-1" />
       <div className="app-no-drag flex shrink-0 items-center gap-2">
-        {activeChat ? null : (
-          <span className="app-no-drag hidden md:inline-flex">
-            <WorkInChip
-              align="end"
-              place={conversationPlace}
-              list={listWorkspaceFolder}
-              onShow={showFolderInFiles}
-              onPick={(folder) =>
-                rpc.chats.setFolder({ botId: active.id, folder }).then(reloadConversationPlace)
-              }
-            />
-          </span>
-        )}
+        <span className="app-no-drag hidden md:inline-flex">
+          <WorkInChip
+            align="end"
+            place={conversationPlace}
+            list={listWorkspaceFolder}
+            onShow={showFolderInFiles}
+            onPick={(folder) =>
+              rpc.chats.setFolder({ botId: active.id, folder }).then(reloadConversationPlace)
+            }
+          />
+        </span>
         <ConversationModelPicker botId={active.id} />
-        <ChatsPopover
-          botId={active.id}
-          state={chatList.state}
-          forks={forks.rows}
-          current={!activeChat && !forks.thread}
-          activeChatId={activeChat && activeChat !== "draft" ? activeChat.id : null}
-          onOpenConversation={() => {
-            forks.reset();
-            setActiveChat(null);
-          }}
-          onOpenChat={setActiveChat}
-          onNewDraft={() => setActiveChat("draft")}
-          onOpenFork={(row) => {
-            setActiveChat(null);
-            forks.openRow(row);
-          }}
-          onShowForks={(filter) => {
-            setActiveChat(null);
-            forks.showForks(filter);
-          }}
-          onChanged={() => {
-            chatList.refresh();
-            readTranscript();
-          }}
-        />
       </div>
     </div>
   ) : null;
@@ -549,166 +402,59 @@ export function ShellPage() {
       ) : null}
 
       <main className="relative z-10 flex min-w-0 flex-1 flex-col">
-        {activeChat ? superchatTopBar : null}
-        {active && activeChat ? (
-          <div className="flex min-h-0 flex-1">
-            <div className={MUSE_CONTENT_PANE}>
-              <SideChatSession
-                chat={activeChat}
-                folder={activeChat === "draft" ? draftFolder : null}
-                bot={{ id: active.id, name: active.name, color: active.color }}
-                view={sideChatViewWithApprovals}
-                wire={sideChatWire}
-                onCreated={setActiveChat}
-                onReplied={chatList.refresh}
-                onClose={() => setActiveChat(null)}
-                onShowFolder={showFolderInFiles}
-                onShowAsFork={(chat) => {
-                  setActiveChat(null);
-                  forks.openChat(chat);
+        <div className={active ? "flex min-h-0 flex-1" : "contents"}>
+          <div className={active ? MUSE_CONTENT_PANE : "contents"}>
+            {superchatTopBar}
+            {shownStart ? (
+              <EmptyConversationLead personName={bootstrapMe?.name ?? ""} />
+            ) : active ? (
+              <Transcript
+                key={museTranscript.threadId ?? active.id}
+                botDisplayName={active.name}
+                followSignal={followSignal}
+                museFace={{ color: active.color, identity: active.id }}
+                museRuns={turnRuns}
+                scrollRef={messageScroll}
+                scrollRequest={scrollRequest}
+                onScrollRequestHandled={clearScrollRequest}
+                artifactTarget={transcriptArtifactTarget}
+                messages={transcriptMessages}
+                olderCursor={museTranscript.olderCursor}
+                loadingOlder={museTranscript.loadingOlder}
+                running={running}
+                onLoadOlder={museTranscript.loadOlder}
+                onShowEarlier={
+                  museTranscript.canShowEarlier ? museTranscript.showEarlier : undefined
+                }
+                onAnswer={answerMessage}
+                onSendCard={sendCardReply}
+                onReply={(message) => {
+                  setReplyTarget(message);
+                  setReplyQuote(null);
                 }}
-                onRestored={() =>
-                  setActiveChat((current) =>
-                    current && current !== "draft" ? { ...current, archived: false } : current,
-                  )
-                }
-                focusMessageId={
-                  activeChat !== "draft" && chatFocus?.chatId === activeChat.id
-                    ? chatFocus.messageId
-                    : undefined
-                }
+                onQuote={(message, quote) => {
+                  setReplyTarget(message);
+                  setReplyQuote(quote);
+                }}
+                trailing={<ApprovalCards botId={active.id} />}
               />
-            </div>
-            {chatArtifacts.panel}
-          </div>
-        ) : (
-          <div className={active ? "flex min-h-0 flex-1" : "contents"}>
-            <div className={active ? MUSE_CONTENT_PANE : "contents"}>
-              {/* Behind a fork's thread view or "lift and ask", the Conversation is out of reach. */}
-              <div className="contents" inert={forkOverlayOpen || undefined}>
-                {superchatTopBar}
-                {forksView ? (
-                  <AllForks
-                    rows={forks.rows}
-                    filter={forks.filter}
-                    onFilter={forks.setFilter}
-                    onOpen={forks.openRow}
-                    onRestore={
-                      active
-                        ? async (row) => {
-                            await forkWire.unarchive?.({ botId: active.id, chatId: row.chatId });
-                            readTranscript();
-                          }
-                        : undefined
-                    }
-                  />
-                ) : shownStart ? (
-                  <EmptyConversationLead personName={bootstrapMe?.name ?? ""} />
-                ) : active ? (
-                  <Transcript
-                    key={museTranscript.threadId ?? active.id}
-                    botDisplayName={active.name}
-                    followSignal={followSignal}
-                    museFace={{ color: active.color, identity: active.id }}
-                    museRuns={turnRuns}
-                    scrollRef={messageScroll}
-                    scrollRequest={scrollRequest}
-                    onScrollRequestHandled={clearScrollRequest}
-                    artifactTarget={transcriptArtifactTarget}
-                    messages={transcriptMessages}
-                    olderCursor={museTranscript.olderCursor}
-                    loadingOlder={museTranscript.loadingOlder}
-                    running={running}
-                    onLoadOlder={museTranscript.loadOlder}
-                    onShowEarlier={
-                      museTranscript.canShowEarlier ? museTranscript.showEarlier : undefined
-                    }
-                    onAnswer={answerMessage}
-                    onSendCard={sendCardReply}
-                    onReply={(message) => {
-                      setReplyTarget(message);
-                      setReplyQuote(null);
-                    }}
-                    onQuote={(message, quote) => {
-                      setReplyTarget(message);
-                      setReplyQuote(quote);
-                    }}
-                    trailing={<ApprovalCards botId={active.id} chatId={null} />}
-                    onFork={forks.startAsk}
-                    renderUnder={forks.renderUnder}
-                    aside={
-                      <ForkGutter
-                        scrollRef={messageScroll}
-                        messages={transcriptMessages}
-                        forks={forks.rows}
-                        onJump={forks.jump}
-                      />
-                    }
-                  />
-                ) : null}
-                {active ? (
-                  // Kept mounted under the Forks list so a half-written message survives.
-                  <div
-                    ref={composerDock}
-                    hidden={forksView || undefined}
-                    style={{ viewTransitionName: "superchat-composer" }}
-                  >
-                    {showHome ? null : composerEl}
-                  </div>
-                ) : null}
-                {shownStart ? (
-                  <EmptyConversationSuggestions onSend={(text) => void sendMessage(text)} />
-                ) : null}
-              </div>
-              {active && forks.ask ? (
-                <ForkAsk
-                  botId={active.id}
-                  wire={forkWire}
-                  anchor={forks.ask.anchor}
-                  chatId={forks.ask.chatId}
-                  onClose={() => forks.setAsk(null)}
-                  onCreated={forks.created}
-                  onOpenSideChat={(chat) => {
-                    chatList.refresh();
-                    setActiveChat(chat);
-                  }}
-                />
-              ) : null}
-              {active && forks.thread && !forks.ask ? (
-                <ForkThread
-                  key={forks.thread.chat.id}
-                  bot={{ id: active.id, name: active.name, color: active.color }}
-                  wire={forkWire}
-                  target={forks.thread}
-                  conversationId={museTranscript.threadId}
-                  conversationMessages={transcriptMessages}
-                  onClose={forks.closeThread}
-                  onOpenFork={forks.openFork}
-                  onAsk={forks.startAsk}
-                  onOpenSideChat={(chat) => setActiveChat(forkChatSummary(chat, chatList.state))}
-                  onAdded={(anchorItemId) => {
-                    readTranscript();
-                    forks.closeThread();
-                    if (anchorItemId) forks.jump(anchorItemId);
-                  }}
-                  onArchived={forks.closeThread}
-                  onRestored={() => {
-                    if (forks.thread) forks.markRestored(forks.thread.chat.id);
-                    readTranscript();
-                  }}
-                  onReplied={chatList.refresh}
-                  onMissingAnchor={forks.revealAnchor}
-                />
-              ) : null}
-            </div>
-            {active ? chatArtifacts.panel : null}
-            {active && !chatArtifacts.isOpen ? (
-              <div className="pointer-events-none absolute end-5 bottom-24 z-20 hidden md:block xl:bottom-6 [&>*]:pointer-events-auto">
-                <ConversationActivity botId={active.id} />
+            ) : null}
+            {active ? (
+              <div ref={composerDock} style={{ viewTransitionName: "superchat-composer" }}>
+                {showHome ? null : composerEl}
               </div>
             ) : null}
+            {shownStart ? (
+              <EmptyConversationSuggestions onSend={(text) => void sendMessage(text)} />
+            ) : null}
           </div>
-        )}
+          {active ? chatArtifacts.panel : null}
+          {active && !chatArtifacts.isOpen ? (
+            <div className="pointer-events-none absolute end-5 bottom-24 z-20 hidden md:block xl:bottom-6 [&>*]:pointer-events-auto">
+              <ConversationActivity botId={active.id} />
+            </div>
+          ) : null}
+        </div>
       </main>
 
       {active ? (
@@ -727,11 +473,6 @@ export function ShellPage() {
           filesRefreshKey={filesRefreshKey}
           filesReveal={filesReveal}
           onStartChat={startChat}
-          onOpenFolderChat={(folder) => {
-            forks.reset();
-            setDraftFolder(folder);
-            setActiveChat("draft");
-          }}
         />
       ) : null}
 
