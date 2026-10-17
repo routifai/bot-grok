@@ -29,6 +29,7 @@ from omnigent.superchat.artifact_kinds import (
     is_deck_name,
     kind_for_name,
 )
+from omnigent.superchat.artifacts.links import conversation_item
 from omnigent.superchat.artifacts.patches import name_elements
 from omnigent.superchat.artifacts.store import (
     WRITEBACK_ORIGINS,
@@ -253,6 +254,9 @@ def create_artifacts_router(
         saver, turn_item_id = await asyncio.to_thread(
             producing_turn, conversation_store, parent_session_id, chat_id
         )
+        item_id = await asyncio.to_thread(
+            conversation_item, conversation_store, parent_session_id, saver, turn_item_id
+        )
         item = await asyncio.to_thread(
             store.create,
             user_id=owner,
@@ -265,6 +269,7 @@ def create_artifacts_router(
             source_path=source_path,
             turn_item_id=turn_item_id,
             chat_id=saver,
+            item_id=item_id,
         )
         return artifact_to_response(item, versions=item.version)
 
@@ -389,6 +394,7 @@ def create_artifacts_router(
                     "edit_summary": v.edit_summary,
                     "turn_item_id": v.turn_item_id,
                     "chat_id": v.chat_id,
+                    "item_id": v.item_id,
                 }
                 for v in versions
             ],

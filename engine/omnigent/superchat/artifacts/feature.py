@@ -45,7 +45,9 @@ def _tools(labels: Mapping[str, str] | None, _ctx: ToolManagerCtx) -> list[Tool]
 
 def _install(app: FastAPI, deps: InstallDeps) -> None:
     from omnigent.runtime import get_artifact_store
+    from omnigent.server.routes._sessions.orchestration import ON_MESSAGE_CONTEXT
     from omnigent.superchat.artifacts.edit_routes import create_html_edit_router
+    from omnigent.superchat.artifacts.links import record_open_artifact
     from omnigent.superchat.artifacts.routes import create_artifacts_router
     from omnigent.superchat.artifacts.store import SqlAlchemyArtifactStore
 
@@ -58,6 +60,12 @@ def _install(app: FastAPI, deps: InstallDeps) -> None:
         return (item.title or item.name) if item is not None else None
 
     register_target_namer("artifact", _name)
+
+    def _open_artifact(session_id: str, item_id: str, context: dict[str, Any]) -> None:
+        record_open_artifact(store, session_id, item_id, context)
+
+    # Before the message reaches the runner, so the turn's hint already names it as open.
+    ON_MESSAGE_CONTEXT["artifacts"] = _open_artifact
     app.include_router(
         create_artifacts_router(
             store,

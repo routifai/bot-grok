@@ -22,6 +22,7 @@ from omnigent.db.db_models import (
     SqlArtifact,
     SqlArtifactPublication,
     SqlArtifactView,
+    SqlMessageArtifact,
     current_workspace_id,
 )
 from omnigent.db.utils import (
@@ -145,6 +146,7 @@ class Artifact:
     :param delivered_at: When a manual version was written back and announced, else ``None``.
     :param turn_item_id: The person's message item of the turn that saved it, if known.
     :param chat_id: The chat that saved it (a Helper or update run for their saves), if known.
+    :param item_id: The person's message in the Conversation that led to it, if known.
     """
 
     id: str
@@ -167,6 +169,42 @@ class Artifact:
     delivered_at: int | None = None
     turn_item_id: str | None = None
     chat_id: str | None = None
+    item_id: str | None = None
+
+
+#: How a message came to be linked to an artifact (docs/conversation.md "Contract").
+LINK_OPEN, LINK_EDITED, LINK_CHOSEN = "open", "edited", "chosen"
+
+
+@dataclass(frozen=True)
+class MessageLink:
+    """Which artifact a person's message is about.
+
+    :param artifact_id: The linked version's id; ``None`` when the person said "none".
+    :param name: The artifact's file name when it was linked.
+    :param version: The version the message produced, once there is one.
+    :param how: :data:`LINK_OPEN`, :data:`LINK_EDITED` or :data:`LINK_CHOSEN`.
+    """
+
+    artifact_id: str | None
+    name: str | None
+    version: int | None
+    how: str
+
+    def to_wire(self) -> dict[str, object] | None:
+        """:returns: The message's ``artifact`` field: the link, or ``None`` for "none"."""
+        if self.artifact_id is None:
+            return None
+        return {
+            "artifact_id": self.artifact_id,
+            "name": self.name or "",
+            "version": self.version,
+            "how": self.how,
+        }
+
+
+def _to_link(row: SqlMessageArtifact) -> MessageLink:
+    return MessageLink(row.artifact_id, row.name, row.version, row.how)
 
 
 def _to_entity(row: SqlArtifact) -> Artifact:
@@ -191,6 +229,7 @@ def _to_entity(row: SqlArtifact) -> Artifact:
         delivered_at=row.delivered_at,
         turn_item_id=row.turn_item_id,
         chat_id=row.chat_id,
+        item_id=row.item_id,
     )
 
 
@@ -244,6 +283,7 @@ class SqlAlchemyArtifactStore:
         base_version: int | None = None,
         turn_item_id: str | None = None,
         chat_id: str | None = None,
+        item_id: str | None = None,
     ) -> Artifact:
         """Store ``data`` as the next version of ``name`` in the session.
 
@@ -254,6 +294,7 @@ class SqlAlchemyArtifactStore:
             version of the group; otherwise :class:`VersionConflictError` is raised.
         :param turn_item_id: The person's message item of the turn that saved it.
         :param chat_id: The chat that saved it.
+        :param item_id: The person's message in the Conversation that led to it.
         """
         blobs = self._blob_store()
         artifact_id = uuid.uuid4().hex
@@ -292,6 +333,7 @@ class SqlAlchemyArtifactStore:
                 delivered_at=None,
                 turn_item_id=turn_item_id,
                 chat_id=chat_id,
+                item_id=item_id,
             )
             session.add(row)
             session.flush()
@@ -357,6 +399,14 @@ class SqlAlchemyArtifactStore:
                 return None
             return _to_entity(row)
 
+    def get_in_session(self, artifact_id: str, session_id: str) -> Artifact | None:
+        """The version ``artifact_id`` when it belongs to the Conversation ``session_id``."""
+        with self._session("select_artifact_in_session") as session:
+            row = session.get(SqlArtifact, (current_workspace_id(), artifact_id))
+            if row is None or row.parent_session_id != session_id:
+                return None
+            return _to_entity(row)
+
     def versions(self, item: Artifact) -> list[Artifact]:
         """Every version of ``item``'s group, newest first."""
         with self._session("list_artifact_versions") as session:
@@ -414,6 +464,43 @@ class SqlAlchemyArtifactStore:
                 else:
                     groups[key] = (_to_entity(row), 1)
             return list(groups.values())[:limit]
+
+    # ------------------------------------------------------------------ message links
+
+    def message_links(self, session_id: str, item_ids: list[str]) -> dict[str, MessageLink]:
+        """The links of the given messages of ``session_id`` that have one, by item id."""
+        if not item_ids:
+            return {}
+        with self._session("list_message_artifacts") as session:
+            rows = session.execute(
+                select(SqlMessageArtifact).where(
+                    SqlMessageArtifact.workspace_id == current_workspace_id(),
+                    SqlMessageArtifact.session_id == session_id,
+                    SqlMessageArtifact.item_id.in_(item_ids),
+                )
+            ).scalars()
+            return {row.item_id: _to_link(row) for row in rows}
+
+    def message_link(self, session_id: str, item_id: str) -> MessageLink | None:
+        """The link of one message, or ``None`` when it has none yet."""
+        return self.message_links(session_id, [item_id]).get(item_id)
+
+    def set_message_link(self, session_id: str, item_id: str, link: MessageLink) -> None:
+        """Record (or replace) the link of one message."""
+        now = now_epoch()
+
+        def write(session: Session) -> None:
+            row = session.get(SqlMessageArtifact, (current_workspace_id(), session_id, item_id))
+            if row is None:
+                row = SqlMessageArtifact(session_id=session_id, item_id=item_id)
+                session.add(row)
+            row.artifact_id = link.artifact_id
+            row.name = (link.name or None) and link.name[:512]
+            row.version = link.version
+            row.how = link.how
+            row.updated_at = now
+
+        run_write_transaction(self._session_immediate, "set_message_artifact", write)
 
     def read(self, item: Artifact) -> bytes:
         """The bytes of one version."""
@@ -617,6 +704,14 @@ class SqlAlchemyArtifactStore:
                 row = session.get(SqlArtifact, (current_workspace_id(), version.id))
                 if row is not None:
                     session.delete(row)
+            # A message about a deleted file is about nothing any more.
+            session.execute(
+                delete(SqlMessageArtifact).where(
+                    SqlMessageArtifact.workspace_id == current_workspace_id(),
+                    SqlMessageArtifact.session_id == item.parent_session_id,
+                    SqlMessageArtifact.artifact_id.in_([v.id for v in group]),
+                )
+            )
 
         run_write_transaction(self._session_immediate, "delete_artifact", write)
         blobs = self._blob_store()

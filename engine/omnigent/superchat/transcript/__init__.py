@@ -17,17 +17,28 @@ if TYPE_CHECKING:
 def _install(app: FastAPI, deps: InstallDeps) -> None:
     from fastapi import APIRouter
 
+    from omnigent.runtime import get_artifact_store
+    from omnigent.superchat.artifacts.store import SqlAlchemyArtifactStore
     from omnigent.superchat.transcript.reset import register_reset_routes
     from omnigent.superchat.transcript.routes import register_transcript_routes
 
     router = APIRouter()
-    for register in (register_transcript_routes, register_reset_routes):
-        register(
-            router,
-            conversation_store=deps.conversation_store,
-            auth_provider=deps.auth_provider,
-            permission_store=deps.permission_store,
+    common = {
+        "conversation_store": deps.conversation_store,
+        "auth_provider": deps.auth_provider,
+        "permission_store": deps.permission_store,
+    }
+    register_transcript_routes(
+        router,
+        **common,
+        # The person's messages carry the artifact they are about (docs/conversation.md).
+        artifact_store=SqlAlchemyArtifactStore(
+            deps.scheduled_task_store.storage_location, get_artifact_store
         )
+        if deps.scheduled_task_store is not None
+        else None,
+    )
+    register_reset_routes(router, **common)
     app.include_router(router, prefix="/v1", tags=["transcript"])
 
 

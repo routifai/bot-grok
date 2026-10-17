@@ -1763,6 +1763,9 @@ class SqlArtifact(OmnigentBase):
         and announced to the Muse; ``None`` while still pending.
     :param turn_item_id: The person's message item that opened the turn that saved it, if known.
     :param chat_id: The chat (Conversation, Helper or update run) that saved it.
+    :param item_id: The person's message in the Conversation that led to it: the turn item of
+        the Conversation's own save, or for a Helper's save the Conversation message the Helper
+        was started from. ``None`` for hand edits, restores and unknown turns.
     """
 
     __tablename__ = "artifacts"
@@ -1794,6 +1797,7 @@ class SqlArtifact(OmnigentBase):
     delivered_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
     turn_item_id: Mapped[str | None] = mapped_column(Uuid16, nullable=True)
     chat_id: Mapped[str | None] = mapped_column(Uuid16, nullable=True)
+    item_id: Mapped[str | None] = mapped_column(Uuid16, nullable=True)
 
     __table_args__ = (
         Index(
@@ -1861,6 +1865,40 @@ class SqlArtifactPublication(OmnigentBase):
         ),
         Index("ix_artifact_publications_owner", "workspace_id", "user_id"),
     )
+
+
+class SqlMessageArtifact(OmnigentBase):
+    """
+    SQLAlchemy model for the ``message_artifacts`` table: which artifact a person's message is
+    about (docs/conversation.md). One row per linked message; no row means no link yet.
+
+    :param session_id: The Conversation the message is in.
+    :param item_id: The person's message item.
+    :param artifact_id: The linked version's id, or ``None`` when the person said the message is
+        about no artifact.
+    :param name: The artifact's file name when it was linked.
+    :param version: The version the message produced, once there is one.
+    :param how: ``"open"`` (open beside the chat when sent), ``"edited"`` (a save during its
+        turn) or ``"chosen"`` (picked on the chip).
+    :param updated_at: Epoch seconds of the last change.
+    """
+
+    __tablename__ = "message_artifacts"
+
+    workspace_id: Mapped[int] = mapped_column(
+        BigInteger,
+        primary_key=True,
+        nullable=False,
+        server_default="0",
+        default=current_workspace_id,
+    )
+    session_id: Mapped[str] = mapped_column(Uuid16, primary_key=True)
+    item_id: Mapped[str] = mapped_column(Uuid16, primary_key=True)
+    artifact_id: Mapped[str | None] = mapped_column(Uuid16, nullable=True)
+    name: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    how: Mapped[str] = mapped_column(String(8), nullable=False)
+    updated_at: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
 class SqlArtifactLive(OmnigentBase):
