@@ -150,12 +150,8 @@ _ALT_COVERED: frozenset[str] = frozenset(
         "async-tools",
         "tool-call-policy",
         # Skills-filter test fixtures under tests/resources/agents/.
-        # Loaded by tests/e2e/test_codex_skills_filter_e2e.py,
-        # test_pi_skills_filter_e2e.py, and
+        # Loaded by test_pi_skills_filter_e2e.py and
         # test_claude_coder_skills.py.
-        "codex_skills_all",
-        "codex_skills_list",
-        "codex_skills_none",
         "pi_skills_all",
         "pi_skills_list",
         "pi_skills_none",
