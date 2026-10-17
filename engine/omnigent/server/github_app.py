@@ -3,7 +3,7 @@
 Implements the config half of the *GitHub App* (not classic OAuth App)
 integration that lets a user connect their GitHub account from the web
 UI and have their managed sandboxes authenticate ``gh`` / git as them.
-See ``docs/GITHUB_APP_SETUP.md``.
+See ``docs/setup.md``.
 
 This module deliberately owns everything that *touches the App's
 secrets* — reading them from env, minting the app JWT, and building the
