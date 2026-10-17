@@ -102,3 +102,14 @@ don't use, so it can be removed before production.
 | Omnigent's web app, deploy recipes, docs, designs, feature map, editors, Slack integration, dev tools, example agents other than `super-chat`, release scripts, pnpm workspace | 2026-10-16 | engine-only: groups A and B of `engine-axe-list.md` |
 | `infra/` and `scripts/` (moved into `deployment/`; old Dockerfiles, compose overlay and Railway config deleted) | 2026-10-16 | same |
 | `web_search` and its Tavily backend (no bundle enabled it and no deployment passed the key) | 2026-10-16 | web search returns later as its own capability |
+| Databricks: gateway, credential helper, executor, app, identity, model discovery, volumes store, login and configure branches; with them `onboarding/setup.py`, `ucode_setup.py`, `ucode_cleanup.py`, `runtime/credentials`, `inner/claude_gateway_shim.py` (28,711 lines) | 2026-10-16 | `dcc017c00`, ADR 0020 |
+| CockroachDB dialect branches, `db/cockroachdb.py`, the CRDB DDL lock in `tests/db/conftest.py` (1,218 lines) | 2026-10-16 | `5a850efda`, ADR 0020 |
+| macOS seatbelt and Windows job-object sandboxes, `sandbox/bwrap.py` (unreachable); `_default_sandbox_for_platform()` is always `linux_bwrap` (5,972 lines) | 2026-10-16 | `c7a18240d`, ADR 0020 |
+| Dead harness and provider strings (OpenAI agents, ACP, OpenCode, Cursor, Goose, Kiro, Hermes, Qwen, Antigravity, `GEMINI_API_KEY` forwarding; Gemini stays as a model vendor a gateway can serve) and the `uv.toml` exemptions (245 lines) | 2026-10-16 | `13fa2cf9a`, ADR 0020 |
+
+## Follow-ups from the Databricks cut
+
+- Still reference Databricks and are on the legacy-CLI cut list: `cli_auth.py`, the fronted-server detection in `cli.py`, `server/smart_routing.py` (`databricks_profile`, ambient SDK auth), `inner/credential_proxy.py`, `runner/uc_function.py`, `tools/mcp.py` `databricks_profile`, Lakebase token refresh in `db/utils.py`, the routing tables in `models/model_fallbacks.py`, `pi_model_compatibility.py`, `model_override.py`, `ucode_state.py`, the `kind: databricks` schema in `spec/types.py`, `spec/parser.py` and `provider_config.py`.
+- `sandbox/copy_on_write.py` only ever accepted the removed OpenAI-agents harness; its gate now rejects every harness. Delete the feature whole with its `inner/os_env.py` import.
+- The executors' `gateway=True` path (`claude_sdk_harness.py` reading a gateway host from the environment) was the Databricks gateway. Superchat routes LiteLLM through `superchat/models/upstreams.py` and the `kind: gateway` provider; the executor path can go.
+- `databricks-sdk` stays in the `all` extra until the references above are gone; `uv.lock` was already stale before the cut.
