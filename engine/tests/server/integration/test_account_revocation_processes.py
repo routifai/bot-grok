@@ -11,8 +11,13 @@ from contextlib import ExitStack
 from pathlib import Path
 
 import httpx
+import pytest
 
 from tests.server.helpers import build_agent_bundle
+
+# Spawns `python -m omnigent server`, removed with the legacy CLI (ADR 0020, 34183c66b..4c3719384);
+# the maintainer decides whether the file goes with it.
+pytestmark = pytest.mark.skip(reason="the omnigent server CLI was removed (ADR 0020)")
 
 
 def test_delete_revokes_cookie_and_refresh_on_another_server(tmp_path: Path) -> None:

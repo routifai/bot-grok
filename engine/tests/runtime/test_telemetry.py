@@ -9,6 +9,7 @@ and deterministic. Integration with the full workflow lives in
 
 from __future__ import annotations
 
+import importlib.util
 import os
 from collections.abc import Iterator
 
@@ -25,6 +26,27 @@ from opentelemetry.trace import (
 )
 
 from omnigent.runtime import telemetry
+
+
+def _has_module(name: str) -> bool:
+    try:
+        return importlib.util.find_spec(name) is not None
+    except ModuleNotFoundError:
+        return False
+
+
+# The OTLP exporters and instrumentors ship in the ``all`` extra, not the ``test`` group.
+_needs_otel_extras = pytest.mark.skipif(
+    not all(
+        _has_module(m)
+        for m in (
+            "opentelemetry.exporter.otlp.proto.http",
+            "opentelemetry.instrumentation.fastapi",
+            "opentelemetry.instrumentation.httpx",
+        )
+    ),
+    reason="needs the OpenTelemetry exporters and instrumentors from the `all` extra",
+)
 
 _RESP_HEX = "d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3"
 _RESP_ID = f"resp_{_RESP_HEX}"
@@ -697,6 +719,7 @@ def test_init_no_endpoint_does_not_install_otlp_provider(
     assert otel_trace.get_tracer_provider() is before
 
 
+@_needs_otel_extras
 def test_init_with_endpoint_installs_sdk_provider(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -952,6 +975,7 @@ def _stub_fastapi_instrumentor(monkeypatch: pytest.MonkeyPatch) -> list[FastAPI]
     return calls
 
 
+@_needs_otel_extras
 def test_instrument_fastapi_app_disabled_without_backend(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -968,6 +992,7 @@ def test_instrument_fastapi_app_disabled_without_backend(
     assert calls == []
 
 
+@_needs_otel_extras
 def test_instrument_fastapi_app_default_on_with_backend(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -986,6 +1011,7 @@ def test_instrument_fastapi_app_default_on_with_backend(
     assert calls == [app]
 
 
+@_needs_otel_extras
 def test_instrument_fastapi_app_explicit_false_overrides_backend(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1002,6 +1028,7 @@ def test_instrument_fastapi_app_explicit_false_overrides_backend(
     assert calls == []
 
 
+@_needs_otel_extras
 def test_instrument_fastapi_app_calls_instrumentor_when_enabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1019,6 +1046,7 @@ def test_instrument_fastapi_app_calls_instrumentor_when_enabled(
     assert calls == [app]
 
 
+@_needs_otel_extras
 def test_instrument_httpx_wires_global_client() -> None:
     """
     ``_instrument_httpx`` installs the global HTTPX instrumentation so
@@ -1221,6 +1249,7 @@ def test_span_helper_nests_under_active_trace(
     assert format(spans[0].context.trace_id, "032x") == _RESP_HEX
 
 
+@_needs_otel_extras
 def test_httpx_to_fastapi_propagates_trace_across_http_hop(
     in_memory_exporter: InMemorySpanExporter,
     monkeypatch: pytest.MonkeyPatch,
@@ -1282,6 +1311,7 @@ def test_httpx_to_fastapi_propagates_trace_across_http_hop(
     )
 
 
+@_needs_otel_extras
 def test_instrument_httpx_client_injects_over_custom_transport(
     in_memory_exporter: InMemorySpanExporter,
 ) -> None:

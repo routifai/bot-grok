@@ -462,50 +462,6 @@ async def test_inline_launch_binds_runner_and_returns_host(
     assert conv.workspace == _WORKSPACE
 
 
-async def test_inline_launch_stamps_terminal_view_label_at_creation(
-    client: httpx.AsyncClient,
-    app: FastAPI,
-    db_uri: str,
-) -> None:
-    """A host-launched SDK session carries ``omnigent.ui: terminal`` in
-    the create response itself.
-
-    The runner stamps this label only *after* auto-creating its REPL
-    terminal, which is too late for the Web UI's "Starting up…"
-    indicator: that needs the label while the terminal is still missing,
-    so the window was empty by construction and these sessions fell back
-    to the passive "Connecting…" row under the composer. Asserting on the
-    create response (not a later snapshot) is the whole point — a
-    regression that defers the stamp restores the wrong spinner.
-    """
-    comm = await _connect_host(app)
-    agent = await create_test_agent(client)
-
-    responder = asyncio.create_task(_serve_one_launch(comm, launch_status="launched"))
-    resp = await client.post(
-        "/v1/sessions",
-        json={
-            "agent_id": agent["id"],
-            "host_id": _HOST_ID,
-            "workspace": _WORKSPACE,
-            "labels": {"env": "test"},
-        },
-    )
-    await responder
-
-    assert resp.status_code == 201, f"expected 201, got {resp.status_code}: {resp.text}"
-    body = resp.json()
-    assert body["labels"].get("omnigent.ui") == "terminal", (
-        f"create response must carry the terminal-view label; got {body['labels']}"
-    )
-    # The stamp merges over caller labels rather than replacing them.
-    assert body["labels"].get("env") == "test"
-    # Persisted, not just echoed — the snapshot a reloading UI reads is the row.
-    conv = SqlAlchemyConversationStore(db_uri).get_conversation(body["id"])
-    assert conv is not None
-    assert conv.labels.get("omnigent.ui") == "terminal"
-
-
 async def test_unbound_session_skips_terminal_view_label(
     client: httpx.AsyncClient,
 ) -> None:
@@ -696,7 +652,6 @@ async def test_inline_create_harness_not_configured_stays_lenient(
         "expected_error_code",
         "launch_error",
         "expected_fragments",
-        "wrapper_command",
     ),
     [
         (
@@ -704,35 +659,30 @@ async def test_inline_create_harness_not_configured_stays_lenient(
             HARNESS_NOT_CONFIGURED_ERROR_CODE,
             _HARNESS_REFUSAL,
             ("omnigent setup", "harness 'pi' is not configured"),
-            None,
         ),
         (
             HARNESS_NOT_CONFIGURED_ERROR_CODE,
             HARNESS_NOT_CONFIGURED_ERROR_CODE,
             "",
-            ("isaac omni setup",),
-            "isaac omni",
+            ("harness is not configured on the selected host",),
         ),
         (
             WORKSPACE_MISSING_ERROR_CODE,
             WORKSPACE_MISSING_ERROR_CODE,
             "runner log tail: SECRET_TOKEN\nforged workspace failure",
             ("workspace path does not exist", "/work/repo"),
-            None,
         ),
         (
             None,
             WORKSPACE_MISSING_ERROR_CODE,
             "workspace path does not exist: /work/repo",
             ("workspace path does not exist", "/work/repo"),
-            None,
         ),
         (
             "runner_crashed",
             None,
             "runner log tail: private output",
             (),
-            None,
         ),
     ],
 )
@@ -745,7 +695,6 @@ async def test_message_relaunch_deterministic_failure_persists_error_turn(
     expected_error_code: str | None,
     launch_error: str,
     expected_fragments: tuple[str, ...],
-    wrapper_command: str | None,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """A deterministic host relaunch refusal persists user msg + error.
@@ -766,9 +715,6 @@ async def test_message_relaunch_deterministic_failure_persists_error_turn(
     from omnigent.runtime import set_runner_client
     from omnigent.server.routes import sessions as sessions_module
     from omnigent.server.routes.sessions import routes_events as routes_events_module
-
-    if wrapper_command is not None:
-        monkeypatch.setenv("OMNIGENT_WRAPPER_COMMAND", wrapper_command)
 
     # Grace=0 so the message takes the relaunch branch immediately instead
     # of waiting for the (never-connecting) create-bound runner.

@@ -227,7 +227,7 @@ async def test_store_gateway_forwards_base_url(
     app, _reg, received, _replies = cred_setup
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.post(
-            f"/v1/hosts/{_HOST_ID}/harnesses/codex/credential",
+            f"/v1/hosts/{_HOST_ID}/harnesses/pi/credential",
             json={
                 "kind": "gateway",
                 "secret": "gw-TOKEN",
@@ -255,7 +255,7 @@ async def test_adopt_forwards_env_var_without_secret(
     await asyncio.sleep(idle_seconds)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.post(
-            f"/v1/hosts/{_HOST_ID}/harnesses/codex/credential",
+            f"/v1/hosts/{_HOST_ID}/harnesses/pi/credential",
             json={"kind": "adopt", "env_var": "OPENAI_API_KEY"},
         )
     assert resp.status_code == 200
@@ -327,7 +327,7 @@ async def test_concurrent_writes_to_one_host_are_serialized(
             drain_task = tasks.create_task(_drain())
             first = tasks.create_task(
                 client.post(
-                    f"/v1/hosts/{_HOST_ID}/harnesses/codex/credential",
+                    f"/v1/hosts/{_HOST_ID}/harnesses/pi/credential",
                     json={"kind": "key", "secret": "sk-1"},
                 )
             )
@@ -335,7 +335,7 @@ async def test_concurrent_writes_to_one_host_are_serialized(
             assert first_frame.kind == "key"
             second = tasks.create_task(
                 client.post(
-                    f"/v1/hosts/{_HOST_ID}/harnesses/codex/credential",
+                    f"/v1/hosts/{_HOST_ID}/harnesses/pi/credential",
                     json={"kind": "gateway", "secret": "sk-2", "base_url": "https://gw/v1"},
                 )
             )
@@ -429,10 +429,10 @@ async def test_host_side_failure_maps_to_502(
 ) -> None:
     """A host-side write failure surfaces as 502 with the non-secret reason."""
     app, _reg, _received, replies = cred_setup
-    replies["codex"] = {"status": "failed", "error": "a gateway requires a base_url"}
+    replies["pi"] = {"status": "failed", "error": "a gateway requires a base_url"}
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.post(
-            f"/v1/hosts/{_HOST_ID}/harnesses/codex/credential",
+            f"/v1/hosts/{_HOST_ID}/harnesses/pi/credential",
             json={"kind": "gateway", "secret": "x"},
         )
     assert resp.status_code == 502

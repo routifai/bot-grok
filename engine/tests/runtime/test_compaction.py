@@ -1999,14 +1999,11 @@ def test_route_bare_model_prefixes_anthropic_claude() -> None:
     assert parse_model_string(out.model).provider == "anthropic"
 
 
-def test_route_bare_model_preserves_databricks_and_prefixed_ids() -> None:
-    """databricks-* still gets the databricks/ prefix; already-routed ids pass through."""
-    assert (
-        _route_bare_model_for_compaction(LLMConfig(model="databricks-claude-sonnet-4")).model
-        == "databricks/databricks-claude-sonnet-4"
-    )
+def test_route_bare_model_preserves_prefixed_and_openai_ids() -> None:
+    """Already-routed ids and bare OpenAI ids pass through unchanged."""
+    assert _route_bare_model_for_compaction(LLMConfig(model="gpt-5.4")).model == "gpt-5.4"
     # Already provider-prefixed — left untouched (no double prefixing).
-    for prefixed in ("anthropic/claude-haiku-4-5-20251001", "openai/gpt-4o", "databricks/foo"):
+    for prefixed in ("anthropic/claude-haiku-4-5-20251001", "openai/gpt-4o"):
         assert _route_bare_model_for_compaction(LLMConfig(model=prefixed)).model == prefixed
     # Bare gpt-* is correctly OpenAI already — unchanged.
     assert _route_bare_model_for_compaction(LLMConfig(model="gpt-4o")).model == "gpt-4o"

@@ -80,7 +80,6 @@ async def test_info_returns_expected_fields(client: httpx.AsyncClient) -> None:
     assert data["accounts_enabled"] is False
     assert data["login_url"] is None
     assert data["needs_setup"] is False
-    assert isinstance(data["databricks_features"], bool)
     assert isinstance(data["managed_sandboxes_enabled"], bool)
     assert data["features"] == {
         "usage_page": False,

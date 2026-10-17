@@ -10,6 +10,7 @@ bridge is installed.
 from __future__ import annotations
 
 import contextlib
+import importlib.util
 import logging
 from collections.abc import Iterator
 
@@ -24,6 +25,27 @@ from opentelemetry.sdk._logs.export import (
 from opentelemetry.sdk.trace import TracerProvider
 
 from omnigent.runtime import telemetry
+
+
+def _has_module(name: str) -> bool:
+    try:
+        return importlib.util.find_spec(name) is not None
+    except ModuleNotFoundError:
+        return False
+
+
+# The OTLP exporters and instrumentors ship in the ``all`` extra, not the ``test`` group.
+_needs_otel_extras = pytest.mark.skipif(
+    not all(
+        _has_module(m)
+        for m in (
+            "opentelemetry.exporter.otlp.proto.http",
+            "opentelemetry.instrumentation.fastapi",
+            "opentelemetry.instrumentation.httpx",
+        )
+    ),
+    reason="needs the OpenTelemetry exporters and instrumentors from the `all` extra",
+)
 
 _BRIDGE_NAME = "omnigent-otel-log-bridge"
 
@@ -134,6 +156,7 @@ def test_logs_exporter_name_explicit_none_wins(
 # ── _init_otel_logs ─────────────────────────────────────
 
 
+@_needs_otel_extras
 def test_init_otel_logs_attaches_handler_with_endpoint(
     monkeypatch: pytest.MonkeyPatch,
     reset_log_state: None,
@@ -186,6 +209,7 @@ def test_init_otel_logs_noop_without_endpoint(
     )
 
 
+@_needs_otel_extras
 def test_init_otel_logs_idempotent_via_init(
     monkeypatch: pytest.MonkeyPatch,
     reset_log_state: None,

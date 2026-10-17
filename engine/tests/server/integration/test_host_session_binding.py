@@ -1159,11 +1159,19 @@ async def test_message_relaunches_dead_managed_sandbox(
         # generous bound, resolves in ~a second with the fake.
         timeout=30.0,
     )
-    # No real runner ever connects in this harness, so the POST itself
-    # ends 503 after the relaunch settles — the relaunch EFFECTS below
-    # are the assertions that matter (with a real sandbox the runner
-    # connects and the message forwards; covered by live verification).
-    assert message_resp.status_code == 503, message_resp.text
+    # The message is stored and acknowledged; the relaunch and forward run in
+    # the background (deferred dispatch). No real runner ever connects in this
+    # harness, so wait for that dispatch to settle — the relaunch EFFECTS below
+    # are the assertions that matter (with a real sandbox the runner connects
+    # and the message forwards; covered by live verification).
+    assert message_resp.status_code == 202, message_resp.text
+    assert message_resp.json()["queued"] is True
+    from omnigent.server.routes._sessions.orchestration import session_has_deferred_dispatch
+
+    deadline = loop.time() + 30.0
+    while loop.time() < deadline and session_has_deferred_dispatch(session_id):
+        await asyncio.sleep(0.05)
+    assert not session_has_deferred_dispatch(session_id), "deferred relaunch never settled"
 
     # Generation 2 was provisioned and the old generation terminated.
     assert len(fake.provisioned_names) == 2, (
@@ -1632,7 +1640,7 @@ async def test_managed_relaunch_failure_leaves_the_host_identity_alone(
         host_store=_HostStore(),  # type: ignore[arg-type]
         host_registry=_HostRegistry(),  # type: ignore[arg-type]
         tunnel_registry=_TunnelRegistry(),  # type: ignore[arg-type]
-        host_to_relaunch=object(),  # type: ignore[arg-type]
+        host_to_relaunch=SimpleNamespace(sandbox_provider="docker"),  # type: ignore[arg-type]
     )
 
     launch = tracker.get(session_id)

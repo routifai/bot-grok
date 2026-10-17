@@ -318,7 +318,7 @@ async def test_install_harness_rejects_non_allowlisted(
     assert resp.status_code == 400
 
 
-@pytest.mark.parametrize("harness", ["claude", "codex", "pi"])
+@pytest.mark.parametrize("harness", ["claude", "pi"])
 async def test_install_harness_allows_npm_key_auth_harnesses(
     install_setup: tuple[
         FastAPI,
@@ -332,7 +332,7 @@ async def test_install_harness_allows_npm_key_auth_harnesses(
     """
     Every M1 allowlisted harness is accepted and installs.
 
-    Pins the exact allowlist (claude, codex, pi) so a
+    Pins the exact allowlist (claude, pi) so a
     future edit that drops one is caught.
     """
     app, _reg, _comm, _replies, _drain = install_setup
@@ -362,10 +362,10 @@ async def test_install_harness_failed_status_returns_502(
     failed rather than a silent no-op.
     """
     app, _reg, _comm, replies, _drain = install_setup
-    replies["codex"] = {"status": "failed", "error": "npm registry unreachable"}
+    replies["claude"] = {"status": "failed", "error": "npm registry unreachable"}
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        resp = await client.post(f"/v1/hosts/{_HOST_ID}/harnesses/codex/install")
+        resp = await client.post(f"/v1/hosts/{_HOST_ID}/harnesses/claude/install")
 
     assert resp.status_code == 502
     assert "npm registry unreachable" in resp.json()["detail"]
