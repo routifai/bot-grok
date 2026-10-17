@@ -11,6 +11,7 @@ import uuid
 from collections.abc import Callable
 from typing import Any
 
+from omnigent.context.rollover import _MID_TURN_LIVE_STATUSES
 from omnigent.db.db_models import current_workspace_id
 from omnigent.db.utils import now_epoch
 from omnigent.errors import ErrorCode, OmnigentError
@@ -23,12 +24,15 @@ from omnigent.superchat.artifacts.store import (
     SqlAlchemyArtifactStore,
     VersionConflictError,
 )
+from omnigent.superchat.artifacts.studio import group_of, is_studio_of, studio_of
 from omnigent.superchat.live.logic import Plan, plan_changes, room_for
 from omnigent.superchat.live.store import Live, SqlAlchemyLiveStore, new_state
 
 LIVE_TASK_KIND = "live_artifact"
 #: A hand edit this recent holds the next run back: the person is still working on the page.
 DEFER_SECONDS = 600
+#: While the file's studio has a turn running (ADR 0024), the run looks again this much later.
+STUDIO_RECHECK_SECONDS = 60
 #: Runs in a row with changes they cannot place before the schedule pauses.
 MAX_MISSES = 2
 #: Failed runs in a row before the schedule pauses.
@@ -239,15 +243,27 @@ class LiveService:
             self.arm(key)
 
     def defer_until(self, task: Any) -> float | None:
-        """The fire path's hook: a recent hand edit holds the run back until it is old enough."""
+        """The fire path's hook: a recent hand edit holds the run back until it is old enough,
+        and a running studio turn on the file (ADR 0024) until it has ended."""
         live = self.live.by_task(task.id)
         if live is None:
             return None
         group = self.artifacts.versions_of(
             user_id=live.user_id, parent_session_id=live.parent_session_id, name=live.name
         )
+        if group and self._studio_running(group[0]):
+            return time.time() + STUDIO_RECHECK_SECONDS
         hand = group and group[0].origin in HAND_ORIGINS
         return group[0].created_at + DEFER_SECONDS if hand else None
+
+    def _studio_running(self, item: Artifact) -> bool:
+        """Whether the file's studio has a turn running now."""
+        studio = self.conversations.get_conversation(studio_of(item))
+        return (
+            is_studio_of(studio, group_of(item))
+            and studio is not None
+            and studio.live_status in _MID_TURN_LIVE_STATUSES
+        )
 
     def on_run_outcome(self, task: Any, failure: str | None) -> str | None:
         """The fire path's hook: count failed runs in a row, reset on success. The third pauses the

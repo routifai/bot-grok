@@ -85,6 +85,8 @@ export type StudioSlot = {
   versionOrigin?: (version: ArtifactVersion) => string;
   /** Typed in the panel before the studio opened. */
   draft?: AskDraft;
+  /** Why the studio's request waits (a runtime note): the ask box's status line meanwhile. */
+  waiting?: string | null;
 };
 
 /** Focus is where the person types: keyboard shortcuts leave the key to it. */
@@ -522,13 +524,14 @@ function LoadedEditor({
       canUndo={history?.canUndo}
       onStartTyping={props.onAskStart}
       initialDraft={studio?.draft}
+      note={studio?.waiting}
     />
   ) : null;
 
   const body = (
-    <div className="@container relative flex min-h-0 flex-1">
+    <div data-slot="editor-body" className="@container relative flex min-h-0 flex-1">
       {parts.navigator}
-      <div className="relative flex min-w-0 flex-1 flex-col">
+      <div data-slot="editor-stage" className="relative flex min-w-0 flex-1 flex-col">
         {toolbar}
         <div className="relative min-h-0 flex-1">
           {parts.stage}
@@ -555,6 +558,7 @@ function LoadedEditor({
       {editing && parts.inspector && !locked ? (
         <div
           data-testid="editor-inspector"
+          data-slot="editor-inspector"
           className={cn(
             "absolute inset-x-2 bottom-2 z-20 flex max-h-[60%] justify-end",
             "@[900px]:static @[900px]:inset-auto @[900px]:block @[900px]:max-h-none @[900px]:w-[300px] @[900px]:shrink-0 @[900px]:overflow-hidden",
@@ -640,9 +644,15 @@ function EditorFrame({
   const { t } = useLingui();
   return (
     <div data-testid="artifact-editor" className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <header className="flex min-w-0 shrink-0 items-center gap-1.5 border-b border-border px-4 py-2.5">
+      <header
+        data-slot="editor-header"
+        className="flex min-w-0 shrink-0 items-center gap-1.5 border-b border-border px-4 py-2.5"
+      >
         {leading}
-        <div className="@container flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+        <div
+          data-slot="editor-heading"
+          className="@container flex min-w-0 flex-1 items-center gap-2 overflow-hidden"
+        >
           <h2
             data-testid="artifact-editor-title"
             title={fileName}

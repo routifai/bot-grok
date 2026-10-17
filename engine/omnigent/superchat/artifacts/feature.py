@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
-from omnigent.context.labels import is_superside_chat
+from omnigent.context.labels import is_artifact_chat, is_superside_chat
 from omnigent.superchat.artifacts.handlers import handle_artifact_tool
 from omnigent.superchat.artifacts.hint import fetch_artifact_hint
 from omnigent.superchat.artifacts.tools import ARTIFACT_TOOL_NAMES
@@ -34,16 +34,23 @@ register_classifier(_classify_delete)
 
 
 def _tools(labels: Mapping[str, str] | None, _ctx: ToolManagerCtx) -> list[Tool]:
-    """Offered to the Super Chat and to Helpers alike (a Helper saves under its parent)."""
+    """Offered to the Super Chat and to Helpers alike (a Helper saves under its parent).
+
+    ``artifact_patch`` only in a file's studio (ADR 0024): it edits that one file.
+    """
     from omnigent.superchat.artifacts.tools import (
         ArtifactDeleteTool,
         ArtifactListTool,
+        ArtifactPatchTool,
         ArtifactSaveTool,
     )
 
     if not is_superside_chat(labels):
         return []
-    return [ArtifactSaveTool(), ArtifactListTool(), ArtifactDeleteTool()]
+    tools: list[Tool] = [ArtifactSaveTool(), ArtifactListTool(), ArtifactDeleteTool()]
+    if is_artifact_chat(labels):
+        tools.append(ArtifactPatchTool())
+    return tools
 
 
 async def _turn_prefix(server_client: httpx.AsyncClient | None, conversation_id: str) -> list[str]:
@@ -59,6 +66,7 @@ _STUDIO_NOTICES: list[Any] = []
 def _install(app: FastAPI, deps: InstallDeps) -> None:
     from omnigent.runtime import get_artifact_store
     from omnigent.server.routes._sessions.orchestration import ON_MESSAGE_CONTEXT
+    from omnigent.superchat.activity.derive import FILE_NAMES
     from omnigent.superchat.artifacts import store as store_module
     from omnigent.superchat.artifacts.edit_routes import create_html_edit_router
     from omnigent.superchat.artifacts.links import record_open_artifact
@@ -94,6 +102,8 @@ def _install(app: FastAPI, deps: InstallDeps) -> None:
         return (item.title or item.name) if item is not None else None
 
     register_target_namer("artifact", _name)
+    # A studio turn's Activity names its file (ADR 0024).
+    FILE_NAMES["artifacts"] = store.group_name
 
     def _open_artifact(session_id: str, item_id: str, context: dict[str, Any]) -> None:
         record_open_artifact(store, session_id, item_id, context)
@@ -113,7 +123,12 @@ def _install(app: FastAPI, deps: InstallDeps) -> None:
     )
     # After the artifacts router, as before: hand edits of an HTML file (a deck, a page).
     app.include_router(
-        create_html_edit_router(store, auth_provider=deps.auth_provider),
+        create_html_edit_router(
+            store,
+            auth_provider=deps.auth_provider,
+            conversation_store=deps.conversation_store,
+            permission_store=deps.permission_store,
+        ),
         prefix="/v1",
         tags=["artifacts"],
     )

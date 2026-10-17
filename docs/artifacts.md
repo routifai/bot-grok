@@ -26,7 +26,7 @@ conversation adds a version instead of a new file. Every version records its ori
 
 | Origin | Made by |
 |---|---|
-| `ai` | the assistant or a helper, with `artifact_save` |
+| `ai` | the assistant or a helper, with `artifact_save`; a file's studio also with `artifact_patch` |
 | `manual` | the person, by hand in an editor (`PATCH /v1/artifacts/{id}/edit`, or a sheet's `PATCH /v1/artifacts/{id}/table`) |
 | `restore` | the person, restoring an earlier version (`POST /v1/artifacts/{id}/restore`) |
 | `update` | a live page or sheet update ([Live pages](#live-pages)) |
@@ -52,6 +52,36 @@ computed style, every field sanitized as untrusted data. The transcript shows a 
 block. Only the selected elements change. The patch engine and the ask are ported from Open Design
 (see `NOTICE`).
 
+## The studio's editor
+
+A file's studio ([ADR 0024](adr/0024-the-artifact-studio.md)) is a child session of helper type
+`editor`. Each of its turns starts with the file line (name, group id, newest version, who saved
+it, workspace path) and, for a deck, a slide outline derived by code (`decks/outline.py`): one
+line per slide, `Slide 3: <element id> "<text>" · …`, at most 40 slides and 2,000 characters, the
+footer left out.
+
+The editor prefers `artifact_patch` (`POST /v1/artifacts/{id}/patch`) to a rewrite: the same
+patches as the canvas, addressed by `data-superchat-id`, applied to the newest version when
+`base_version` still names it, saved as an `ai` version linked to the studio turn's message, then
+written to the workspace file. Only the file's own studio may call it; a stale base is an
+`artifact_stale` 409, and a patch that cannot be applied exactly tells the editor to edit the file
+and save it with `artifact_save` instead.
+
+Two writers, one rule each way. A version another session saves while the studio's turn runs (or
+within five minutes of its last turn) is told to the studio as `Super Chat saved v9 while you were
+editing; v10 is based on v8`, steered into the running turn or stored for the next one, and the
+studio's next save is stale. The Conversation's artifact hint marks a file whose studio has a turn
+running ` — being edited in its studio`, and a live update waits until that turn ends.
+
+At most three studio turns run at once on a host; a fourth waits, its session status showing
+`blocked_on: "Finishing another file first"`. A studio's harness stays warm for ten minutes after
+its last turn or its last open signal (`POST /v1/artifacts/{id}/chat/open`, sent when the studio
+opens and while it stays open), then is released; the next request cold-starts it. The open
+signal reaches only a runner that is already up and never wakes the host.
+
+In the activity feed each studio turn is one activity (`kind: "turn"`, `source: "studio"`) with
+`artifact: {group_id, name}`; the studio session itself is never a row or a Helper.
+
 ## Write-back
 
 A hand edit must reach the file in the host before the assistant touches it again. At the start of
@@ -68,7 +98,7 @@ A failed write is not acknowledged, so the next turn retries, and the note tells
 to overwrite the person's edits.
 
 The pending list is scoped by the session id the runner passes, and artifacts are keyed to the
-Conversation, so a child session's turn finds nothing today. A file's studio session
+Conversation, so a Helper's turn finds nothing. A file's studio session
 ([ADR 0024](adr/0024-the-artifact-studio.md)) resolves the Conversation the way saves do and writes
 back only its own file, at the start of each of its turns.
 

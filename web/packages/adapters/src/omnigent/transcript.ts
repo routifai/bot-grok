@@ -10,6 +10,7 @@ import type {
   ThreadMessage,
   ThreadMessagePage,
 } from "@superchat/contracts";
+import type { OmnigentStreamEvent } from "./client/core.js";
 import type {
   OmnigentMessageArtifact,
   OmnigentTranscriptBlock,
@@ -159,12 +160,28 @@ export function mapTranscriptMessage(
     id: message.id,
     threadId: chatId,
     seq,
-    role: message.role === "assistant" ? "bot" : "user",
+    role: message.role === "assistant" ? "bot" : message.role === "system" ? "system" : "user",
     blocks: message.blocks.map(mapBlock),
     createdAt: epochSecondsToIso(message.created_at),
     ...(message.delivered ? { delivered: message.delivered } : {}),
     ...(artifact !== undefined ? { artifact } : {}),
   };
+}
+
+/** A chat's status as its `session.status` frame says it (`/v1/sessions/{id}/stream`):
+ * `blockedOn` is the engine's words while a running turn waits ("Finishing another file first"
+ * for a studio turn queued behind the studio cap, ADR 0024). Null for any other frame. */
+export function mapSessionStatusFrame(
+  frame: OmnigentStreamEvent,
+): { status: string; blockedOn: string | null } | null {
+  if (frame.type !== "session.status") return null;
+  const body = (typeof frame.data === "object" && frame.data !== null ? frame.data : frame) as {
+    status?: unknown;
+    blocked_on?: unknown;
+  };
+  if (typeof body.status !== "string") return null;
+  const blockedOn = typeof body.blocked_on === "string" && body.blocked_on ? body.blocked_on : null;
+  return { status: body.status, blockedOn };
 }
 
 /** One transcript page for chat `chatId`. The engine has already redacted its secrets. */

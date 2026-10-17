@@ -29,9 +29,43 @@ export function activitiesPollIntervalMs(
 }
 
 /** A Helper's whole task (docs/glossary.md "Helper"; engine "sub_agent"), whose run page can show
- * the Helper's own messages, as opposed to a plain Conversation/Side Chat turn ("turn"). */
-export function isHelperActivity(activity: Pick<Activity, "kind">): boolean {
-  return activity.kind === "sub_agent";
+ * the Helper's own messages, as opposed to a plain Conversation/Side Chat turn ("turn"). A turn
+ * in a file's studio is never one, whatever the engine stores it as (ADR 0024). */
+export function isHelperActivity(activity: Pick<Activity, "kind" | "source">): boolean {
+  return activity.kind === "sub_agent" && activity.source !== "studio";
+}
+
+/** One line of a day in the panel: an Activity, or a file's studio turns under its name. */
+export type ActivityEntry =
+  | { kind: "activity"; activity: Activity }
+  | { kind: "file"; groupId: string; name: string; activities: Activity[] };
+
+/** Studio turns (ADR 0024) gather under their file: one entry per file, where its newest turn
+ * is, holding its turns in the order given. A studio turn that names no file stays a row. */
+export function groupStudioTurns(activities: readonly Activity[]): ActivityEntry[] {
+  const entries: ActivityEntry[] = [];
+  const files = new Map<string, Extract<ActivityEntry, { kind: "file" }>>();
+  for (const activity of activities) {
+    const file = activity.source === "studio" ? activity.artifact : undefined;
+    if (!file) {
+      entries.push({ kind: "activity", activity });
+      continue;
+    }
+    const entry = files.get(file.groupId);
+    if (entry) {
+      entry.activities.push(activity);
+      continue;
+    }
+    const created = {
+      kind: "file" as const,
+      groupId: file.groupId,
+      name: file.name,
+      activities: [activity],
+    };
+    files.set(file.groupId, created);
+    entries.push(created);
+  }
+  return entries;
 }
 
 /** The line shown under an Activity's title: its one-line summary (else its outcome) when

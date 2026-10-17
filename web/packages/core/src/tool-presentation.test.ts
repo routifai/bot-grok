@@ -228,6 +228,44 @@ describe("TOOL_PRESENTATION", () => {
     });
     expect(entry.snippet(output)).toBe("Q3 budget check");
   });
+
+  it("sys_os_shell: names what the first command did, never the command", () => {
+    const title = (command: unknown) =>
+      (TOOL_PRESENTATION.sys_os_shell as ToolPresentation).title({ command });
+    expect(title("python3 /work/build_deck.py --out deck.pptx")).toBe("Ran build_deck.py");
+    expect(title("cd /work && python -c 'print(1)'")).toBe("Ran a script");
+    expect(title("cd out; node scripts/render.mjs | tee log")).toBe("Ran render.mjs");
+    expect(title("uv run analyze.py")).toBe("Ran analyze.py");
+    expect(title("npx tsx check.ts")).toBe("Ran check.ts");
+    expect(title("pnpm build")).toBe("Ran a script");
+    expect(title("sudo apt-get install -y poppler-utils")).toBe("Installed packages");
+    expect(title("PIP_QUIET=1 pip install pandas")).toBe("Installed packages");
+    expect(title("python3 -m pip install openpyxl")).toBe("Installed packages");
+    expect(title("uv add httpx")).toBe("Installed packages");
+    expect(title("npm i sharp")).toBe("Installed packages");
+    expect(title("pnpm add zod")).toBe("Installed packages");
+    expect(title("env LC_ALL=C ls -la /secret/path | grep q3")).toBe("Looked at files");
+    expect(title("cat notes.txt")).toBe("Looked at files");
+    expect(title("git status")).toBe("Used git");
+    expect(title("curl -s https://example.com/data.csv -o data.csv")).toBe("Fetched from the web");
+    expect(title("soffice --headless --convert-to pdf deck.pptx")).toBe("Converted a file");
+    expect(title("mkdir -p out && cp a b")).toBe("Arranged files");
+    expect(title("unzip files.zip")).toBe("Unpacked an archive");
+    expect(title("tar -C out -xzf files.tar.gz")).toBe("Unpacked an archive");
+    expect(title("tar czf out.tgz out")).toBe("Packed an archive");
+    expect(title("zip -r out.zip out")).toBe("Packed an archive");
+    expect(title("echo hi > /tmp/x")).toBe("Ran a command on your machine");
+    expect(title(undefined)).toBe("Ran a command on your machine");
+  });
+
+  it("sys_os_shell: reads the command from the call's own arguments", () => {
+    const presented = presentStep({
+      tool: "sys_os_shell",
+      title: "Ran a command",
+      detail: detailFor("sys_os_shell", { command: "python3 make.py" }, "ok"),
+    });
+    expect(presented.title).toBe("Ran make.py");
+  });
 });
 
 describe("ALWAYS_ON_SUPERSIDE_CHAT_TOOLS", () => {
@@ -285,6 +323,61 @@ describe("presentStep", () => {
     expect(save({ path: "out/report.html" })).toBe("Saved “report.html”");
     expect(save({ path: "report.html", title: "Q3 report" })).toBe("Saved “Q3 report”");
     expect(save({})).toBe("Saved a file");
+  });
+
+  it("words artifact_patch from its operations, with the editor's icon", () => {
+    const patch = (args: Record<string, unknown>, output = "{}") =>
+      presentStep({
+        tool: "artifact_patch",
+        title: "Used artifact_patch",
+        detail: detailFor("artifact_patch", args, output),
+      });
+    const base = { artifact_id: "a1", base_version: 3 };
+    const one = patch(
+      { ...base, patches: [{ kind: "set-text", id: "title", text: "Q3" }] },
+      JSON.stringify({
+        id: "a4",
+        version: 4,
+        name: "q3.deck.html",
+        edit_summary: "slide 1 title text",
+      }),
+    );
+    expect(one.icon).toBe("edit");
+    expect(one.title).toBe("Changed the title");
+    expect(one.snippet).toBe("slide 1 title text");
+    expect(
+      patch({ ...base, patches: [{ kind: "set-style", id: "cover-title", style: {} }] }).title,
+    ).toBe("Changed the cover title");
+    expect(patch({ ...base, patches: [{ kind: "remove-element", id: "s3-e12" }] }).title).toBe(
+      "Changed 1 element",
+    );
+    expect(patch({ ...base, patches: [{ kind: "set-theme", theme: "ink" }] }).title).toBe(
+      "Changed the theme",
+    );
+    expect(
+      patch({
+        ...base,
+        patches: [
+          { kind: "set-text", id: "title", text: "Q3" },
+          { kind: "remove-element", id: "lead" },
+        ],
+      }).title,
+    ).toBe("Changed 2 elements");
+    expect(patch({}).title).toBe("Changed the file");
+    expect(
+      patch(base, JSON.stringify({ id: "a4", version: 4, name: "q3.deck.html" })).snippet,
+    ).toBe(null);
+    expect(
+      patch(
+        base,
+        JSON.stringify({
+          error: "artifact_stale",
+          newest_version: 9,
+          message: "The file changed to v9; read it again.",
+        }),
+      ).snippet,
+    ).toBe("The file changed to v9; read it again.");
+    expect(patch(base, JSON.stringify({ error: "artifact_stale" })).snippet).toBe("artifact_stale");
   });
 
   it("falls back to the engine's title when a tool name is null", () => {

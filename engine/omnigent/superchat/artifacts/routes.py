@@ -61,6 +61,7 @@ from omnigent.superchat.artifacts.studio import (
     is_studio_of,
     studio_of,
 )
+from omnigent.superchat.decks.outline import deck_outline
 from omnigent.superchat.family.signals import notify_item_updated
 from omnigent.superchat.transcript.blocks import project_items
 
@@ -68,6 +69,9 @@ from omnigent.superchat.transcript.blocks import project_items
 Steer = Callable[[Request, str, str], Awaitable[bool]]
 #: ``(request, owner, Conversation) -> model`` a new studio session runs on (``None``: inherit).
 StudioModel = Callable[[Request, str | None, Conversation], Awaitable[str | None]]
+#: ``(request, studio session id) -> warm``: tells the studio's runner, when one is up, to keep
+#: its harness warm; never wakes a host.
+KeepWarm = Callable[[Request, str], Awaitable[bool]]
 
 #: The preview is shown in a sandboxed, origin-less iframe; this keeps a page that is opened
 #: directly (or downloaded and served) from reaching anything but public https assets.
@@ -217,6 +221,26 @@ async def steer_session(
     return True
 
 
+async def keep_studio_warm(request: Request, session_id: str) -> bool:
+    """Ask the studio's runner, if it is up, to keep the studio's harness warm (ADR 0024).
+
+    Only a runner already bound and online is told; with none, nothing happens: opening a
+    studio never wakes a sleeping host.
+    """
+    from omnigent.server.routes._sessions.helpers import _get_runner_client
+
+    runner = await _get_runner_client(
+        session_id, getattr(request.app.state, "runner_router", None)
+    )
+    if runner is None:
+        return False
+    try:
+        resp = await runner.post(f"/v1/sessions/{session_id}/studio/keep-warm", timeout=5.0)
+        return resp.status_code == 200 and resp.json().get("warm") is True
+    except (httpx.HTTPError, ValueError, AttributeError):
+        return False
+
+
 class MessageArtifactBody(BaseModel):
     """``POST /sessions/{id}/items/{item_id}/artifact``: the artifact picked, or ``None``."""
 
@@ -301,6 +325,21 @@ def _studio_saving_its_file(
     )
 
 
+def _being_edited(conversations: ConversationStore, items: list[Artifact]) -> set[str]:
+    """Names of the files among *items* whose studio has a turn running (ADR 0024)."""
+    names: set[str] = set()
+    for item in items:
+        studio = conversations.get_conversation(studio_of(item))
+        if (
+            is_studio_of(studio, group_of(item))
+            and studio is not None
+            and not studio.archived
+            and studio.live_status in _MID_TURN_LIVE_STATUSES
+        ):
+            names.add(item.name)
+    return names
+
+
 def create_artifacts_router(
     store: SqlAlchemyArtifactStore,
     *,
@@ -309,11 +348,14 @@ def create_artifacts_router(
     auth_provider: AuthProvider | None = None,
     steer: Steer | None = None,
     studio_model: StudioModel | None = None,
+    keep_warm: KeepWarm | None = None,
 ) -> APIRouter:
     """Build the artifacts router, mounted with ``prefix="/v1"``.
 
     :param steer: Steers a running turn (tests pass a fake); the runner's steer path otherwise.
     :param studio_model: The model a new studio session runs on (``None``: the Conversation's).
+    :param keep_warm: Tells a studio's runner it is open (tests pass a fake); the runner's
+        keep-warm route otherwise (:func:`keep_studio_warm`).
     """
     router = APIRouter()
 
@@ -525,15 +567,19 @@ def create_artifacts_router(
         )
         _, asked = await asyncio.to_thread(producing_turn, conversation_store, session_id, None)
         opened = await asyncio.to_thread(open_artifact, store, session_id, asked)
-        return {"hint": artifact_hint([a for a, _n in rows], opened)}
+        newest = [a for a, _n in rows]
+        editing = await asyncio.to_thread(
+            _being_edited, conversation_store, [*newest, *([opened] if opened else [])]
+        )
+        return {"hint": artifact_hint(newest, opened, editing)}
 
     @router.get("/artifacts/studio-turn")
     async def studio_turn(request: Request, session_id: str = Query()) -> dict[str, Any]:
         """What a file's studio turn starts with (``{"studio": null}`` for any other session).
 
-        The runner calls this at the start of every studio turn: the file line, and the
-        Conversation and group its write-back is scoped to (resolved the way saves are: the
-        studio's parent, ADR 0024).
+        The runner calls this at the start of every studio turn: the file line, a deck's slide
+        outline, and the Conversation and group its write-back is scoped to (resolved the way
+        saves are: the studio's parent, ADR 0024).
         """
         owner = _owner(request)
         check_id(session_id, "session_id")
@@ -547,11 +593,18 @@ def create_artifacts_router(
         newest = await asyncio.to_thread(store.newest_in_group, group, user_id=owner)
         if newest is None or newest.parent_session_id != session.parent_conversation_id:
             return {"studio": None}
+        outline: str | None = None
+        if is_deck_name(newest.name):  # the slides by code, so most turns need not read it
+            try:
+                outline = deck_outline(await asyncio.to_thread(store.read, newest))
+            except Exception:
+                _logger.warning("artifacts: no outline for %s", newest.id, exc_info=True)
         return {
             "studio": {
                 "conversation_id": newest.parent_session_id,
                 "group_id": group,
                 "file_line": file_line(newest, session_id),
+                "outline": outline,
             }
         }
 
@@ -589,6 +642,29 @@ def create_artifacts_router(
                 await asyncio.to_thread(permission_store.ensure_user, RESERVED_USER_LOCAL)
             await asyncio.to_thread(permission_store.grant, owner, session_id, LEVEL_OWNER)
         return {"session_id": session_id, "created": created}
+
+    @router.post("/artifacts/{artifact_id}/chat/open")
+    async def artifact_chat_open(request: Request, artifact_id: str) -> dict[str, Any]:
+        """The file's studio is open (ADR 0024): ``{session_id, warm}``.
+
+        Sent when the studio opens and every few minutes while it stays open; its runner keeps
+        the studio's harness warm for ten minutes from each. Never makes the session (``POST
+        .../chat`` does) and never wakes the host: ``warm`` is ``False`` when no runner is up.
+        """
+        item = await _load(request, artifact_id)
+        await require_access(
+            _caller(request),
+            item.parent_session_id,
+            LEVEL_OWNER,
+            permission_store,
+            conversation_store,
+        )
+        session_id = studio_of(item)
+        studio = await asyncio.to_thread(conversation_store.get_conversation, session_id)
+        if not is_studio_of(studio, group_of(item)) or studio is None or studio.archived:
+            raise OmnigentError("Studio not found", code=ErrorCode.NOT_FOUND)
+        warm = await (keep_warm or keep_studio_warm)(request, session_id)
+        return {"session_id": session_id, "warm": warm}
 
     @router.post("/sessions/{session_id}/items/{item_id}/artifact")
     async def set_message_artifact(

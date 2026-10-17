@@ -57,7 +57,7 @@ vi.mock("../../lib/rpc", () => ({ rpc: { artifacts: { list: rpcMock.list } } }))
 import { notifyArtifactsChanged } from "../artifacts/artifactChanges";
 import { AnsweredWhileWorking, useAnsweredWhileWorking } from "./AnsweredWhileWorking";
 import { settleActivityFocus, useActivityFocus } from "./activityFocus";
-import { helper } from "./activityTestKit";
+import { activity, helper } from "./activityTestKit";
 import { WorkStrip } from "./WorkStrip";
 import type { PlanStep } from "./workPlan";
 import type { StripHelper, StripTurn } from "./workStripState";
@@ -581,4 +581,27 @@ describe("the plan in the strip (ADR 0023)", () => {
     }
     expect(block).toContain("animation: none");
   });
+});
+
+it("takes no draft from a file's studio turn, even one that saved", async () => {
+  rpcMock.list.mockResolvedValue([fileRow("v-deck-4", "q3.deck.html", "studio-1", "ai", 4)]);
+  const studioTurn = activity({
+    id: "turn:studio-1:r1",
+    source: "studio",
+    chatId: "studio-1",
+    artifact: { groupId: "g-deck", name: "q3.deck.html" },
+    status: "in_progress",
+    startedAt: ago(10_000),
+    finishedAt: null,
+    steps: [toolStep("artifact_save", "Saved a file", 1)],
+  });
+  const { container } = await mount(
+    [{ helperId: "studio-1", title: "Studio", status: "done" }],
+    [studioTurn],
+  );
+  await act(async () => undefined);
+  expect(container.querySelector("[data-testid=work-strip-draft]")).toBeNull();
+  expect(container.querySelector("[data-testid=work-strip]")?.getAttribute("data-state")).not.toBe(
+    "working",
+  );
 });

@@ -6,6 +6,7 @@ endpoints (``artifact_save`` first reads the file from the host workspace).
 * ``artifact_save`` — save a finished file from the workspace into the Conversation.
 * ``artifact_list`` — list the Conversation's saved files.
 * ``artifact_delete`` — delete a saved file (the person is asked first).
+* ``artifact_patch`` — change named elements of a file in place (a file's studio only, ADR 0024).
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ from typing import Any
 
 from omnigent.tools.base import Tool
 
-ARTIFACT_TOOL_NAMES = ("artifact_save", "artifact_list", "artifact_delete")
+ARTIFACT_TOOL_NAMES = ("artifact_save", "artifact_list", "artifact_delete", "artifact_patch")
 
 
 class ArtifactTool(Tool):
@@ -98,3 +99,63 @@ class ArtifactDeleteTool(ArtifactTool):
     )
     _PROPERTIES = {"artifact_id": {"type": "string", "description": "The artifact id."}}
     _REQUIRED = ("artifact_id",)
+
+
+class ArtifactPatchTool(ArtifactTool):
+    """Patch a file by element id; dispatched to ``POST /v1/artifacts/{id}/patch``.
+
+    Offered in a file's studio only (ADR 0024): the same deterministic operations as the
+    person's hand edits (``artifacts/patches.py``), saved as the file's next version.
+    """
+
+    _NAME = "artifact_patch"
+    _DESC = (
+        "Change this chat's file in place by element id (data-superchat-id) and save the result "
+        "as its next version; the workspace file is updated to match. Prefer it to rewriting "
+        "the file. Patch kinds: set-text {id, text}; set-style {id, style: {property: value or "
+        "null}}; set-attributes {id, attributes: {href|alt: value or null}}; remove-element "
+        "{id}; duplicate-element {id}; set-theme {theme} (a deck only); set-full-source "
+        "{source, summary} (a whole Markdown or text document). Refused as stale when "
+        "base_version is no longer the newest: read the file again and redo the change."
+    )
+    _PROPERTIES = {
+        "artifact_id": {
+            "type": "string",
+            "description": "The file's group id from the file line (any version id works).",
+        },
+        "base_version": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The version you are changing: the newest one in the file line.",
+        },
+        "patches": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "kind": {
+                        "type": "string",
+                        "enum": [
+                            "set-text",
+                            "set-style",
+                            "set-attributes",
+                            "remove-element",
+                            "duplicate-element",
+                            "set-theme",
+                            "set-full-source",
+                        ],
+                    },
+                    "id": {"type": "string"},
+                    "text": {"type": "string"},
+                    "style": {"type": "object"},
+                    "attributes": {"type": "object"},
+                    "theme": {"type": "string"},
+                    "source": {"type": "string"},
+                    "summary": {"type": "string"},
+                },
+                "required": ["kind"],
+            },
+        },
+    }
+    _REQUIRED = ("artifact_id", "base_version", "patches")

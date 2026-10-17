@@ -14,14 +14,15 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Mapping
-from dataclasses import dataclass, field
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, tzinfo
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from omnigent.context.labels import (
     ADHOC_HELPER_LABEL_KEY,
+    ARTIFACT_CHAT_LABEL_KEY,
     SCHEDULED_HELPER_LABEL_KEY,
     is_artifact_chat,
 )
@@ -72,6 +73,12 @@ SOURCE_SCHEDULED = "scheduled"
 SOURCE_HOUSEKEEPING = "housekeeping"
 HOUSEKEEPING_PREFIX = "housekeeping"
 HOUSEKEEPING_TITLE = "Kept your notes up to date"
+#: A turn in a file's studio (ADR 0024): one row per request, grouped under the file by the web.
+SOURCE_STUDIO = "studio"
+
+#: The file's name for a studio's group id (``None`` when unknown), filled in by the artifacts
+#: capability: the activity read has the conversation store only.
+FILE_NAMES: dict[str, Callable[[str], str | None]] = {}
 #: A conversation turn is shown only when it did real work beyond a quick answer.
 _MIN_TURN_STEPS = 3
 _MIN_TURN_SECONDS = 60
@@ -164,6 +171,8 @@ class Activity:
     :param steps: The Activity's Steps, chronological.
     :param parent_chat_id: For a Sub-agent, the chat that started it (the Super Chat, or
         another Sub-agent when it is a sub-worker); ``None`` for a turn.
+    :param artifact: For a studio turn (:data:`SOURCE_STUDIO`), the file it changed:
+        ``{"group_id": ..., "name": ...}``; ``None`` otherwise.
     """
 
     id: str
@@ -180,6 +189,7 @@ class Activity:
     title_prompt: str | None = None
     stored_summary: str | None = None
     parent_chat_id: str | None = None
+    artifact: dict[str, str] | None = None
 
 
 def step_title_for_call(tool_name: str, raw_arguments: str) -> str:
@@ -222,6 +232,10 @@ def step_title_for_call(tool_name: str, raw_arguments: str) -> str:
         name = str(args.get("path") or "").rstrip("/").rsplit("/", 1)[-1]
         shown = title if isinstance(title, str) and title.strip() else name
         return f"Saved '{shown.strip()}'" if shown.strip() else "Saved a file"
+    if tool_name == "artifact_patch":
+        patches = args.get("patches")
+        count = len(patches) if isinstance(patches, list) else 0
+        return f"Made {count} edits to the file" if count > 1 else "Edited the file"
     words = tool_name.removeprefix("sys_").replace("_", " ").strip()
     return f"Used {words}" if words else "Used a tool"
 
@@ -579,7 +593,8 @@ def _activities_for_conversation(
             ).data
         )
     )
-    if conversation.kind == "sub_agent":
+    studio = is_artifact_chat(conversation.labels)
+    if conversation.kind == "sub_agent" and not studio:
         _title, summary = conv_store.get_activity_labels([conversation.id]).get(
             conversation.id, (None, None)
         )
@@ -600,7 +615,10 @@ def _activities_for_conversation(
     for index, group in enumerate(groups):
         first = _first_user_message(group)
         if first is not None:
-            request = _person_request(first)
+            # A studio's runtime lines (versions saved elsewhere) never start a turn there.
+            asked = _person_request(first)
+            if asked is not None or not studio:
+                request = asked
         activity = _turn_activity(
             conversation,
             group,
@@ -612,7 +630,24 @@ def _activities_for_conversation(
         )
         if activity is not None:
             activities.append(activity)
+    if studio:
+        artifact = _studio_file(conversation)
+        return [replace(a, source=SOURCE_STUDIO, artifact=artifact) for a in activities]
     return activities
+
+
+def _studio_file(conversation: Conversation) -> dict[str, str]:
+    """The file a studio edits: its group id and name (the group id when no name is known)."""
+    group_id = conversation.labels.get(ARTIFACT_CHAT_LABEL_KEY, "")
+    name: str | None = None
+    for namer in FILE_NAMES.values():
+        try:
+            name = namer(group_id)
+        except Exception:  # noqa: BLE001 - a name is a label, never a reason to fail a read
+            name = None
+        if name:
+            break
+    return {"group_id": group_id, "name": name or group_id}
 
 
 def _zone(tz: str | None) -> tzinfo:
@@ -672,7 +707,11 @@ def _feed(activities: list[Activity], tz: str | None) -> list[Activity]:
     for activity in activities:
         if activity.source == SOURCE_HOUSEKEEPING:
             upkeep.setdefault(local_day(activity.started_at, tz), []).append(activity)
-        elif activity.kind != KIND_TURN or _did_real_work(activity):
+        elif (
+            activity.kind != KIND_TURN
+            or activity.source == SOURCE_STUDIO
+            or _did_real_work(activity)
+        ):
             rows.append(activity)
     rows.extend(_housekeeping_row(day, runs) for day, runs in upkeep.items())
     rows.sort(key=lambda activity: activity.started_at, reverse=True)
@@ -702,12 +741,8 @@ def list_activities(
     super_chat_id = resolve_super_chat_id(conv_store, session_id)
     if super_chat_id is None:
         return []
-    # A file's studio (ADR 0024) is never a row, a Helper or work in the strip.
-    chats = [
-        chat
-        for chat in list_chat_family(conv_store, super_chat_id)
-        if not is_artifact_chat(chat.labels)
-    ]
+    # A file's studio (ADR 0024) is never one row or a Helper: each of its turns is a row.
+    chats = list_chat_family(conv_store, super_chat_id)
     activities: list[Activity] = []
     for conversation in chats:
         activities.extend(
@@ -812,7 +847,7 @@ def get_activity(
         return None
     family = {chat.id: chat for chat in list_chat_family(conv_store, super_chat_id)}
     conversation = family.get(chat_id)
-    if conversation is None or is_artifact_chat(conversation.labels):
+    if conversation is None or (kind == KIND_SUB_AGENT and is_artifact_chat(conversation.labels)):
         return None
     for activity in _activities_for_conversation(
         conv_store, conversation, include_step_detail=True
@@ -862,4 +897,6 @@ def activity_to_dict(activity: Activity, tz: str | None = None) -> dict[str, Any
         "date": iso_date(activity.started_at, tz),
         "steps": [step_to_dict(step) for step in activity.steps],
         "parent_chat_id": activity.parent_chat_id,
+        # A studio turn's file (ADR 0024); absent for every other Activity.
+        **({"artifact": activity.artifact} if activity.artifact is not None else {}),
     }

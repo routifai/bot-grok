@@ -130,6 +130,11 @@ export const artifactsContract = {
     chat: oc
       .input(z.object({ artifactId: Id }))
       .output(z.object({ sessionId: Id, created: z.boolean() })),
+    /** The file's studio is open (any version id): keeps its runner warm. Sent on open and
+     * every few minutes while it stays open; never from the panel. */
+    chatOpen: oc
+      .input(z.object({ artifactId: Id }))
+      .output(z.object({ sessionId: Id, warm: z.boolean() })),
     remove: oc.input(z.object({ artifactId: Id })).output(z.object({ ok: z.literal(true) })),
     /** Makes this earlier version (its id) the newest again, as a new `restore` version. */
     restore: oc.input(z.object({ artifactId: Id })).output(ArtifactSchema),

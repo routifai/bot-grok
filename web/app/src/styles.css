@@ -772,6 +772,55 @@ body {
   }
 }
 
+/* A file's studio on a phone (ADR 0024 "Web"; StudioView sets data-layout under 640px): the
+   canvas on top at full width, the slide navigator as a strip under it, then the chat's
+   composer; the chat and the inspector open as sheets over the canvas. Wider, nothing here
+   applies. */
+.sc-studio[data-layout="phone"] [data-slot="editor-header"] {
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+.sc-studio[data-layout="phone"] [data-slot="editor-heading"] {
+  flex-basis: 55%;
+}
+.sc-studio[data-layout="phone"] [data-slot="editor-inspector"] {
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 40;
+  max-height: 70%;
+}
+.sc-studio[data-layout="phone"] [data-slot="editor-inspector"] > * {
+  width: 100%;
+}
+.sc-studio[data-layout="phone"] [data-slot="editor-body"] {
+  flex-direction: column;
+}
+.sc-studio[data-layout="phone"] [data-slot="editor-stage"] {
+  order: 1;
+  min-height: 0;
+}
+.sc-studio[data-layout="phone"] [data-slot="navigator"] {
+  order: 2;
+  width: 100%;
+  flex-direction: row;
+  border-inline-end: 0;
+  border-top: 1px solid var(--border);
+}
+.sc-studio[data-layout="phone"] [data-slot="navigator-toggle"] {
+  display: none;
+}
+.sc-studio[data-layout="phone"] [data-slot="navigator"] [role="listbox"] {
+  flex-direction: row;
+  align-items: center;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 6px 8px;
+}
+.sc-studio[data-layout="phone"] [data-slot="navigator"] [role="listbox"] > * {
+  width: auto;
+  flex-shrink: 0;
+}
+
 /* Running work is lit (ADR 0023): the work strip under a reply (features/activity/WorkStrip.tsx)
    and the "Working" pill in the conversation header. A slow conic edge in the tint family turns
    while the turn or a Helper runs, with a soft blurred glow behind it; settled, the edge is a

@@ -24,6 +24,7 @@ const SOURCE_TONE: Record<ActivitySource, TileTone> = {
   background: "indigo",
   housekeeping: "yellow",
   scheduled: "orange",
+  studio: "teal",
 };
 
 /** The lead of a work row: a small live orb while it works, else a tile for its source (a
@@ -209,7 +210,7 @@ export function ActivityLine({
   );
   if (!onClick)
     return (
-      <div className={className} data-activity-id={activityId}>
+      <div className={className} data-testid={testId} data-activity-id={activityId}>
         {body}
       </div>
     );

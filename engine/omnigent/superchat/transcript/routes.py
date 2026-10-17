@@ -13,6 +13,7 @@ from typing import Any
 
 from fastapi import APIRouter, Query, Request
 
+from omnigent.context.labels import is_artifact_chat
 from omnigent.context.rollover import _MID_TURN_LIVE_STATUSES
 from omnigent.entities import Conversation
 from omnigent.server.auth import LEVEL_READ, AuthProvider
@@ -111,7 +112,12 @@ def read_transcript(
         for helper_id, helper in conv_store.get_conversations(helper_ids).items():
             statuses[helper_id] = sub_agent_status(helper)
     return _page(
-        project_items(items, helper_statuses=statuses),
+        # A file's studio shows its runtime lines (ADR 0024); every other chat hides them.
+        project_items(
+            items,
+            helper_statuses=statuses,
+            keep_notices=is_artifact_chat(conversation.labels),
+        ),
         has_more=has_more,
         older_cursor=newest_first[-1]["id"] if newest_first and has_more else None,
         lineage=lineage,

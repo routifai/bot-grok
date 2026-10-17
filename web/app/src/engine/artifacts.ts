@@ -13,6 +13,7 @@ import {
   OmnigentApiError,
   openOmnigentArtifactChat,
   restoreOmnigentArtifact,
+  signalOmnigentArtifactChatOpen,
   versionMessageId,
 } from "@superchat/adapters/omnigent/browser";
 import type { Artifact } from "@superchat/contracts";
@@ -111,6 +112,14 @@ export const artifactsRouter = {
         input.artifactId,
       ).catch(notFound);
       return { sessionId: opened.session_id, created: opened.created };
+    }),
+    chatOpen: os.artifacts.chatOpen.handler(async ({ input }) => {
+      const opened = await signalOmnigentArtifactChatOpen(
+        engineClient(),
+        NO_EMAIL,
+        input.artifactId,
+      ).catch(notFound);
+      return { sessionId: opened.session_id, warm: opened.warm };
     }),
     restore: os.artifacts.restore.handler(async ({ input }) => {
       const created = await restoreOmnigentArtifact(

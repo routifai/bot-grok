@@ -60,6 +60,30 @@ describe("mapActivity", () => {
     });
   });
 
+  it("maps a studio turn's file (ADR 0024), and none when the engine sends none", () => {
+    const raw = {
+      id: "turn:studio_1:resp_1",
+      kind: "turn" as const,
+      source: "studio" as const,
+      chat_id: "studio_1",
+      title: "Make the chart a bar chart",
+      outcome: null,
+      summary: null,
+      status: "done" as const,
+      started_at: 1000,
+      finished_at: 1010,
+      date: "2026-10-03",
+    };
+    const mapped = mapActivity({
+      ...raw,
+      artifact: { group_id: "group_1", name: "q3_review.deck.html" },
+    });
+    expect(mapped.source).toBe("studio");
+    expect(mapped.artifact).toEqual({ groupId: "group_1", name: "q3_review.deck.html" });
+    expect(mapActivity(raw).artifact).toBeUndefined();
+    expect(mapActivity({ ...raw, artifact: null }).artifact).toBeUndefined();
+  });
+
   it("maps a finished sub_agent Activity with its Steps", () => {
     const mapped = mapActivity({
       id: "sub_agent:conv_child",

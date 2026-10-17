@@ -11,6 +11,7 @@ import {
   formatDayAndTime,
   formatDuration,
   groupActivitiesByDate,
+  groupStudioTurns,
   isHelperActivity,
   mergeNewestPage,
 } from "./activityGrouping";
@@ -70,6 +71,27 @@ it("times a running Activity against now and a settled one by its own finish", (
 it("marks a Helper's whole task as kind sub_agent, and a plain turn as not one", () => {
   expect(isHelperActivity(activity({ kind: "sub_agent" }))).toBe(true);
   expect(isHelperActivity(activity({ kind: "turn" }))).toBe(false);
+  // A studio turn is never a Helper row, however the engine stores it (ADR 0024).
+  expect(isHelperActivity(activity({ kind: "sub_agent", source: "studio" }))).toBe(false);
+});
+
+it("gathers a file's studio turns under its name, where its newest turn is", () => {
+  const deck = { groupId: "g-deck", name: "q3_review.deck.html" };
+  const entries = groupStudioTurns([
+    activity({ id: "s3", source: "studio", artifact: deck, title: "Biggest first" }),
+    activity({ id: "t1", title: "Checked the budget" }),
+    activity({ id: "p1", source: "studio", artifact: { groupId: "g-page", name: "site.html" } }),
+    activity({ id: "s1", source: "studio", artifact: deck, title: "Bar chart" }),
+    // A studio turn that names no file stays a row of its own.
+    activity({ id: "s0", source: "studio" }),
+  ]);
+  expect(
+    entries.map((entry) =>
+      entry.kind === "file"
+        ? `${entry.name}: ${entry.activities.map((a) => a.id).join(",")}`
+        : entry.activity.id,
+    ),
+  ).toEqual(["q3_review.deck.html: s3,s1", "t1", "site.html: p1", "s0"]);
 });
 
 it("shows the summary, else the outcome, when there is one", () => {

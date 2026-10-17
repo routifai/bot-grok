@@ -9,7 +9,12 @@ const STUDIO = "studio-1";
 const CONVERSATION = "conv-1";
 const at = (seconds: number) => new Date(seconds * 1000).toISOString();
 
-const message = (id: string, role: "user" | "bot", text: string, t: number): ThreadMessage => ({
+const message = (
+  id: string,
+  role: ThreadMessage["role"],
+  text: string,
+  t: number,
+): ThreadMessage => ({
   id,
   threadId: STUDIO,
   seq: t,
@@ -101,5 +106,27 @@ describe("studioThread", () => {
     expect(editedElement("slide 2 (cover) font-size 20px→24px")).toBe("slide 2 (cover)");
     expect(editedElement('add-button text "Add" → "Save"')).toBe("add-button");
     expect(editedElement(null)).toBeNull();
+  });
+});
+
+describe("runtime notes", () => {
+  const stale = "Super Chat saved v9 while you were editing; v10 is based on v8";
+
+  it("shows a version saved elsewhere as a quiet note in its place", () => {
+    const rows = studioThread(
+      [
+        message("m1", "user", "Biggest first", 10),
+        message("n1", "system", stale, 12),
+        // The engine's version records: the version list draws these.
+        message("r1", "system", "[you] slide 1 title color #111→#c33 · v8", 13),
+        message("r2", "system", "[Super Chat] saved v9", 13),
+        message("r3", "system", "[live update] refreshed from its sources · v10", 13),
+        message("a1", "bot", "Sorted the bars.", 14),
+      ],
+      [],
+      STUDIO,
+    );
+    expect(rows.map((row) => row.kind)).toEqual(["me", "note", "ai"]);
+    expect(rows[1]).toMatchObject({ kind: "note", text: stale });
   });
 });

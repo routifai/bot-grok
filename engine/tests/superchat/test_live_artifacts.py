@@ -44,7 +44,8 @@ class _Scheduler:
 
 class _Convs:
     def get_conversation(self, _id: str) -> Any:
-        return SimpleNamespace(agent_id=uuid.uuid4().hex)
+        # Every id reads as a plain chat: no file here has a studio.
+        return SimpleNamespace(agent_id=uuid.uuid4().hex, labels={}, sub_agent_name=None)
 
 
 @pytest.fixture()

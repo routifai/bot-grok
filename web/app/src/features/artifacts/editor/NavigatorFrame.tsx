@@ -39,6 +39,7 @@ export function NavigatorFrame({
       role="group"
       aria-label={label}
       data-testid={testId}
+      data-slot="navigator"
       data-collapsed={collapsed ? "true" : undefined}
       className={cn(
         "flex shrink-0 flex-col overflow-hidden border-e border-border",
@@ -46,7 +47,10 @@ export function NavigatorFrame({
         collapsed ? "w-12" : "w-[164px]",
       )}
     >
-      <div className={cn("flex shrink-0 px-2 pt-2", collapsed ? "justify-center" : "justify-end")}>
+      <div
+        data-slot="navigator-toggle"
+        className={cn("flex shrink-0 px-2 pt-2", collapsed ? "justify-center" : "justify-end")}
+      >
         <Button
           variant="ghost"
           size="icon-sm"

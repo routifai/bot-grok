@@ -8,7 +8,9 @@ it is made without a dispatch and without the labels that register a Result for 
 Every version of the group saved by anyone but the studio (a hand edit, Super Chat, a Helper, a
 restore, a live update) is recorded in the studio as one runtime line, so the editor knows what
 changed under it: stored without a runner dispatch (it never starts a turn), or steered into the
-studio's running turn.
+studio's running turn. A version another session saves while the studio's turn runs, or within
+:data:`STALE_WINDOW_SECONDS` of its last turn, is worded as what it is for the editor: its own
+next save is now stale.
 """
 
 from __future__ import annotations
@@ -28,6 +30,7 @@ from omnigent.context.labels import (
 )
 from omnigent.context.rollover import _MID_TURN_LIVE_STATUSES
 from omnigent.entities import Conversation, MessageData, NewConversationItem
+from omnigent.entities.conversation import is_system_notice
 from omnigent.server.auth import RESERVED_USER_LOCAL
 from omnigent.stores import ConversationStore
 from omnigent.stores.conversation_store import (
@@ -193,6 +196,40 @@ def notice_line(saved: Artifact, studio_id: str) -> str | None:
     return f"[Super Chat] saved v{saved.version}"
 
 
+#: A version saved elsewhere this soon after the studio's last turn may be one it worked over.
+STALE_WINDOW_SECONDS = 300
+#: How many of the studio's newest items are searched for its last turn.
+_LAST_TURN_LOOKBACK = 20
+
+
+def stale_line(saved: Artifact, studio_id: str) -> str | None:
+    """The studio's line for a version another session saved while it was editing.
+
+    ``None`` for the studio's own save and for the person's (a hand edit or a restore, which
+    cannot land during a studio turn and are recorded as theirs).
+    """
+    if saved.chat_id == studio_id or saved.origin in ("manual", "restore"):
+        return None
+    who = "A live update" if saved.origin == "update" else "Super Chat"
+    return (
+        f"{who} saved v{saved.version} while you were editing; "
+        f"v{saved.version + 1} is based on v{max(saved.version - 1, 1)}"
+    )
+
+
+def turn_ended_recently(
+    conversations: ConversationStore, session_id: str, *, now: float | None = None
+) -> bool:
+    """Whether the studio's last turn (its newest item that is not a runtime notice) is recent."""
+    page = conversations.list_items(session_id, limit=_LAST_TURN_LOOKBACK, order="desc")
+    for item in page.data:
+        if isinstance(item.data, MessageData) and is_system_notice(item.data):
+            continue
+        current = time.time() if now is None else now
+        return current - item.created_at <= STALE_WINDOW_SECONDS
+    return False
+
+
 def append_notice(conversations: ConversationStore, session_id: str, text: str) -> None:
     """Store one runtime line in *session_id* without dispatching it (no turn starts)."""
     from omnigent.server.routes._sessions.helpers import _publish_external_conversation_item
@@ -230,7 +267,13 @@ async def deliver_studio_notice(
     line = notice_line(saved, studio_id)
     if line is None:
         return None
-    if steer is not None and studio.live_status in _MID_TURN_LIVE_STATUSES:
+    running = studio.live_status in _MID_TURN_LIVE_STATUSES
+    stale = stale_line(saved, studio_id)
+    if stale is not None and (
+        running or await asyncio.to_thread(turn_ended_recently, conversations, studio_id)
+    ):
+        line = stale
+    if steer is not None and running:
         if await steer(studio_id, line):
             return "steered"
     await asyncio.to_thread(append_notice, conversations, studio_id, line)

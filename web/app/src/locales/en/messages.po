@@ -18,17 +18,33 @@ msgstr ""
 msgid "{0, plural, one {# change} other {# changes}}"
 msgstr "{0, plural, one {# change} other {# changes}}"
 
+#. placeholder {0}: tally.commands
+msgid "{0, plural, one {# command} other {# commands}}"
+msgstr "{0, plural, one {# command} other {# commands}}"
+
 #. placeholder {0}: messages.length
 msgid "{0, plural, one {# failed attempt} other {# failed attempts}}"
 msgstr "{0, plural, one {# failed attempt} other {# failed attempts}}"
+
+#. placeholder {0}: tally.files
+msgid "{0, plural, one {# file} other {# files}}"
+msgstr "{0, plural, one {# file} other {# files}}"
 
 #. placeholder {0}: stats.opensTotal
 msgid "{0, plural, one {# open} other {# opens}}"
 msgstr "{0, plural, one {# open} other {# opens}}"
 
+#. placeholder {0}: tally.other
+msgid "{0, plural, one {# step} other {# steps}}"
+msgstr "{0, plural, one {# step} other {# steps}}"
+
 #. placeholder {0}: stats.uniqueViewers
 msgid "{0, plural, one {# viewer} other {# viewers}}"
 msgstr "{0, plural, one {# viewer} other {# viewers}}"
+
+#. placeholder {0}: tally.looked
+msgid "{0, plural, one {looked at # file} other {looked at # files}}"
+msgstr "{0, plural, one {looked at # file} other {looked at # files}}"
 
 #. placeholder {0}: file.name
 msgid "{0} (max {ATTACHMENT_MAX_COUNT} attachments)"
@@ -845,6 +861,9 @@ msgstr "Full screen"
 
 msgid "General"
 msgstr "General"
+
+msgid "Getting started"
+msgstr "Getting started"
 
 msgid "Goes to your vault, not the chat."
 msgstr "Goes to your vault, not the chat."

@@ -10,8 +10,11 @@ before calling in, except where a function takes that fact as an argument.
 
 from __future__ import annotations
 
+import asyncio
 import os
-from collections.abc import Iterable, Mapping
+import time
+from collections.abc import AsyncIterator, Callable, Iterable, Mapping
+from contextlib import asynccontextmanager
 
 from omnigent.context.labels import is_artifact_chat
 from omnigent.util.session_lifecycle import is_session_closed
@@ -125,6 +128,81 @@ def refuse_subagent_concurrency(
             "already running under this chat"
         )
     return None
+
+
+# ── A file's studio (ADR 0024): its own cap and its warm runner ───────────
+
+#: Studio turns that run at once on one host; the next waits for one to finish. Separate from
+#: the helper caps above, which never count a studio.
+STUDIO_TURN_CAP = 3
+#: What a queued studio turn shows while it waits (``session.status`` ``blocked_on``).
+STUDIO_QUEUED_NOTE = "Finishing another file first"
+#: How long a studio's harness stays warm after its last turn or open signal.
+STUDIO_WARM_SECONDS = 600.0
+
+
+class StudioRunners:
+    """The host's studio sessions: the turn cap and when each one's harness goes cold.
+
+    Kept by the runner (one per host). :meth:`turn` admits at most :data:`STUDIO_TURN_CAP`
+    studio turns at once, in arrival order, and calls ``on_queued`` once for a turn that has to
+    wait. :meth:`touch` (a turn starting or ending, the studio being open) keeps a studio warm;
+    :meth:`cold` names those untouched for :data:`STUDIO_WARM_SECONDS` and not running, whose
+    harness the runner then releases (the next request cold-starts it).
+    """
+
+    def __init__(
+        self,
+        cap: int = STUDIO_TURN_CAP,
+        warm_seconds: float = STUDIO_WARM_SECONDS,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self._slots = asyncio.Semaphore(cap)
+        self._warm_seconds = warm_seconds
+        self._clock = clock
+        self._touched: dict[str, float] = {}
+        self._running: dict[str, int] = {}
+
+    def touch(self, session_id: str) -> None:
+        """The studio was used or is open now: keep it warm from here."""
+        self._touched[session_id] = self._clock()
+
+    def is_studio(self, session_id: str) -> bool:
+        """Whether *session_id* is a studio this host is keeping track of."""
+        return session_id in self._touched
+
+    @asynccontextmanager
+    async def turn(self, session_id: str, on_queued: Callable[[], None]) -> AsyncIterator[None]:
+        """Hold one of the cap's slots for a studio turn, waiting for one when all are taken."""
+        self.touch(session_id)
+        if self._slots.locked():
+            on_queued()
+        async with self._slots:
+            self._running[session_id] = self._running.get(session_id, 0) + 1
+            try:
+                yield
+            finally:
+                left = self._running.get(session_id, 1) - 1
+                if left > 0:
+                    self._running[session_id] = left
+                else:
+                    self._running.pop(session_id, None)
+                self.touch(session_id)
+
+    def cold(self) -> list[str]:
+        """Studios to release now: untouched for the warm window and with no turn running.
+
+        They are forgotten here; a later turn or open signal tracks them again.
+        """
+        cutoff = self._clock() - self._warm_seconds
+        out = [
+            session_id
+            for session_id, at in self._touched.items()
+            if at <= cutoff and session_id not in self._running
+        ]
+        for session_id in out:
+            self._touched.pop(session_id, None)
+        return out
 
 
 # ── Nesting cap: chat (depth 0) -> Sub-agent (1) -> coordinator's child (2) ──

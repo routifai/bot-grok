@@ -3,7 +3,7 @@ import type { Activity } from "@superchat/contracts";
 import { presentActivityTitle } from "@superchat/core";
 import { Button } from "@superchat/ui-web";
 import type { RefObject } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { PanelRowSkeletonList } from "../../components/chrome/PanelSkeleton";
 import { useNow } from "../../components/chrome/useNow";
 import { ActivityBranch, ActivityLine } from "./ActivityLine";
@@ -15,6 +15,7 @@ import {
   formatClockTime,
   formatDuration,
   groupActivitiesByDate,
+  groupStudioTurns,
   isRunning,
 } from "./activityGrouping";
 import {
@@ -87,6 +88,53 @@ function ActivityRow({
         </ActivityBranch>
       ) : null}
     </>
+  );
+}
+
+/** The Activities of one stretch of the panel, a file's studio turns under its name (ADR 0024):
+ * the name as a header line, its turns as nested rows titled from each request. */
+function ActivityEntries({
+  activities,
+  nodeByActivityId,
+  now,
+  onOpen,
+}: {
+  activities: readonly Activity[];
+  nodeByActivityId: ReadonlyMap<string, ActivityNode>;
+  now: number;
+  onOpen: (activityId: string) => void;
+}) {
+  const nodeOf = (activity: Activity) =>
+    nodeByActivityId.get(activity.id) ?? { activity, children: [] };
+  return groupStudioTurns(activities).map((entry) =>
+    entry.kind === "activity" ? (
+      <ActivityRow
+        key={entry.activity.id}
+        node={nodeOf(entry.activity)}
+        now={now}
+        onOpen={onOpen}
+      />
+    ) : (
+      <Fragment key={`file:${entry.groupId}`}>
+        <ActivityLine
+          status={entry.activities.some(isRunning) ? "in_progress" : "done"}
+          source="studio"
+          title={entry.name}
+          testId="activity-file"
+        />
+        <ActivityBranch>
+          {entry.activities.map((activity) => (
+            <ActivityRow
+              key={activity.id}
+              node={nodeOf(activity)}
+              depth={1}
+              now={now}
+              onOpen={onOpen}
+            />
+          ))}
+        </ActivityBranch>
+      </Fragment>
+    ),
   );
 }
 
@@ -246,14 +294,12 @@ export function ActivityPanel({
             <span className={GROUP_COUNT}>{working.length}</span>
           </h3>
           <div className="superchat-group">
-            {working.map((node) => (
-              <ActivityRow
-                key={node.activity.id}
-                node={node}
-                now={now}
-                onOpen={setOpenActivityId}
-              />
-            ))}
+            <ActivityEntries
+              activities={working.map((node) => node.activity)}
+              nodeByActivityId={nodeByActivityId}
+              now={now}
+              onOpen={setOpenActivityId}
+            />
           </div>
         </section>
       ) : null}
@@ -267,14 +313,12 @@ export function ActivityPanel({
                 : group.label.text}
           </h3>
           <div className="superchat-group">
-            {group.activities.map((activity) => (
-              <ActivityRow
-                key={activity.id}
-                node={nodeByActivityId.get(activity.id) ?? { activity, children: [] }}
-                now={now}
-                onOpen={setOpenActivityId}
-              />
-            ))}
+            <ActivityEntries
+              activities={group.activities}
+              nodeByActivityId={nodeByActivityId}
+              now={now}
+              onOpen={setOpenActivityId}
+            />
           </div>
         </section>
       ))}

@@ -446,6 +446,19 @@ class SqlAlchemyArtifactStore:
             ).scalar_one_or_none()
             return _to_entity(row) if row is not None else None
 
+    def group_name(self, group_id: str) -> str | None:
+        """The file name of the deliverable ``group_id`` (any owner: the caller scoped it)."""
+        with self._session("select_artifact_group_name") as session:
+            return session.execute(
+                select(SqlArtifact.name)
+                .where(
+                    SqlArtifact.workspace_id == current_workspace_id(),
+                    SqlArtifact.group_id == group_id,
+                )
+                .order_by(desc(SqlArtifact.version))
+                .limit(1)
+            ).scalar_one_or_none()
+
     def get_in_session(self, artifact_id: str, session_id: str) -> Artifact | None:
         """The version ``artifact_id`` when it belongs to the Conversation ``session_id``."""
         with self._session("select_artifact_in_session") as session:

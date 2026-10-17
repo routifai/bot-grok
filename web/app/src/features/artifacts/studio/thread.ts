@@ -2,8 +2,14 @@ import type { ArtifactVersion, ThreadMessage } from "@superchat/contracts";
 import { splitElementAsk } from "../editor/html-ask";
 
 // A file's studio thread (ADR 0024): the studio session's transcript merged with the file's
-// version list by time. No new item kind: requests and replies come from the transcript, hand
+// version list by time. No new item kind: requests, replies and the engine's runtime notes
+// (system messages: "Super Chat saved v9 while you were editing…") come from the transcript, hand
 // edits and version markers from the versions.
+
+/** A runtime line that records a version (`[you] … · v3`, `[Super Chat] saved v9`, `[live
+ * update] …`, engine `studio.notice_line`): the version list already draws it, so the thread
+ * does not repeat it. Other runtime lines (a stale notice) are notes. */
+const VERSION_RECORD = /^\[[^\]\n]+\] /;
 
 /** Who made a version, in the studio's five words. */
 export type VersionOrigin = "chat" | "superchat" | "you" | "restored" | "updated";
@@ -13,6 +19,8 @@ export type StudioRow =
   | { kind: "me"; id: string; text: string; chip: string | null; at: number }
   /** The assistant's reply. */
   | { kind: "ai"; id: string; text: string; at: number }
+  /** A runtime note from the engine: a version saved elsewhere during a turn. */
+  | { kind: "note"; id: string; text: string; at: number }
   /** Edits by hand: one version, or a run of consecutive ones on one element. */
   | {
       kind: "hand";
@@ -87,6 +95,8 @@ export function studioThread(
     } else if (message.role === "bot") {
       rows.push({ kind: "ai", id: message.id, text, at });
       if (lastRequest !== null && !replyAfter.has(lastRequest)) replyAfter.set(lastRequest, at);
+    } else if (!VERSION_RECORD.test(text)) {
+      rows.push({ kind: "note", id: message.id, text, at });
     }
   }
   for (const version of [...versions].reverse()) {

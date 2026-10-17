@@ -150,6 +150,21 @@ export async function openOmnigentArtifactChat(
   return (await response.json()) as { session_id: string; created: boolean };
 }
 
+/** `POST /v1/artifacts/{id}/chat/open` — the file's studio is open (any version id): the engine
+ * keeps its runner warm a while (ADR 0024 "Runner"). */
+export async function signalOmnigentArtifactChatOpen(
+  config: OmnigentClientConfig,
+  email: string,
+  id: string,
+): Promise<{ session_id: string; warm: boolean }> {
+  const response = await fetch(artifactUrl(config, id, "/chat/open"), {
+    method: "POST",
+    headers: omnigentHeaders(config, email),
+  });
+  await throwOnError(response, "signal artifact chat open", config.secrets);
+  return (await response.json()) as { session_id: string; warm: boolean };
+}
+
 /** `DELETE /v1/artifacts/{id}` — the deliverable and all its versions. */
 export async function deleteOmnigentArtifact(
   config: OmnigentClientConfig,

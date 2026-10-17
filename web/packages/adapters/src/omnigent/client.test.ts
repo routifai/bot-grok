@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { signalOmnigentArtifactChatOpen } from "./artifacts.js";
 import {
   adoptOmnigentMuse,
   answerOmnigentAsk,
@@ -205,6 +206,18 @@ describe("omnigent client", () => {
       type: "message",
       data: { role: "user", content: [{ type: "input_text", text: "bigger title" }] },
       context: { open_artifact: { artifact_id: "art_1", version: 3 } },
+    });
+  });
+
+  it("postOmnigentMessage sends an ask card's pick beside the message data", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({}));
+    vi.stubGlobal("fetch", fetchMock);
+    await postOmnigentMessage(CONFIG, "e@x.test", "conv_1", "Nord", undefined, {
+      cardAnswer: { cardId: "m1:0", optionId: "nord", label: "Nord" },
+    });
+    const init = (fetchMock.mock.calls[0] as unknown as [URL, RequestInit])[1];
+    expect(JSON.parse(String(init.body)).context).toEqual({
+      card_answer: { card_id: "m1:0", option_id: "nord", label: "Nord" },
     });
   });
 
@@ -450,5 +463,25 @@ describe("transcript and family stream", () => {
     ]);
     const [url] = fetchMock.mock.calls[0] as unknown as [URL];
     expect(String(url)).toBe("http://omnigent.test/v1/sessions/s1/family/stream");
+  });
+});
+
+describe("a file's studio is open", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("posts to the file's chat/open route and returns the engine's answer", async () => {
+    const calls: Array<[string, string | undefined]> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: URL | string, init?: RequestInit) => {
+        calls.push([new URL(String(url)).pathname, init?.method]);
+        return jsonResponse({ session_id: "studio-1", warm: true });
+      }),
+    );
+    await expect(signalOmnigentArtifactChatOpen(CONFIG, "e@x.test", "art 1")).resolves.toEqual({
+      session_id: "studio-1",
+      warm: true,
+    });
+    expect(calls).toEqual([["/v1/artifacts/art%201/chat/open", "POST"]]);
   });
 });

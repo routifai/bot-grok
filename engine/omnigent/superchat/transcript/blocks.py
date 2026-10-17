@@ -362,12 +362,17 @@ def _final_text_ids(items: list[Item], outputs: Mapping[str, str]) -> set[str]:
 
 
 def project_items(
-    items: list[Item], *, helper_statuses: Mapping[str, str] | None = None
+    items: list[Item],
+    *,
+    helper_statuses: Mapping[str, str] | None = None,
+    keep_notices: bool = False,
 ) -> list[dict[str, Any]]:
     """Turn *items* (oldest first) into transcript messages.
 
     :param items: ``ConversationItem.to_api_dict()`` dicts in ascending order.
     :param helper_statuses: Helper session id -> status, for the ``helper`` blocks.
+    :param keep_notices: Keep runtime notices as ``system`` messages (a file's studio, ADR 0024:
+        its hand-edit, version and stale lines are its thread); dropped everywhere else.
     :returns: ``[{"id", "role", "created_at", "blocks"}, ...]``.
     """
     statuses = helper_statuses or {}
@@ -427,6 +432,8 @@ def project_items(
             if role == "user" and (
                 item.get("is_system_notice") is True or is_system_notice_text(text)
             ):
+                if keep_notices:
+                    messages.append(_message(item, "system", [{"type": "text", "text": text}]))
                 continue
             if role == "assistant" and item.get("id") not in final_text:
                 continue  # interim narration: the turn's last text is its reply

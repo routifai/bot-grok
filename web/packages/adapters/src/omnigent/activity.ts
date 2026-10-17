@@ -20,7 +20,7 @@ export interface OmnigentActivityStep {
 export interface OmnigentActivity {
   id: string;
   kind: "turn" | "sub_agent";
-  source: "turn" | "background" | "housekeeping" | "scheduled";
+  source: "turn" | "background" | "housekeeping" | "scheduled" | "studio";
   chat_id: string;
   title: string;
   outcome: string | null;
@@ -31,6 +31,8 @@ export interface OmnigentActivity {
   date: string;
   steps?: OmnigentActivityStep[];
   parent_chat_id?: string | null;
+  /** A studio turn's file (ADR 0024). */
+  artifact?: { group_id: string; name: string } | null;
 }
 
 /** `GET /v1/sessions/{superId}/activities?before=&limit=` — the Activity Feed, newest first
@@ -146,6 +148,9 @@ export function mapActivity(raw: OmnigentActivity): Activity {
     finishedAt: raw.finished_at === null ? null : epochSecondsToIso(raw.finished_at),
     date: raw.date,
     parentChatId: raw.parent_chat_id ?? null,
+    ...(raw.artifact
+      ? { artifact: { groupId: raw.artifact.group_id, name: raw.artifact.name } }
+      : {}),
     steps: raw.steps?.map(mapActivityStep),
   };
 }

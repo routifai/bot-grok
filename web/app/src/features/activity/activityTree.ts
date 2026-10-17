@@ -1,6 +1,6 @@
 import type { Activity } from "@superchat/contracts";
 import { presentStep } from "@superchat/core";
-import { isRunning } from "./activityGrouping";
+import { isHelperActivity, isRunning } from "./activityGrouping";
 
 // Helpers nest: a Helper that hands part of its task to others (docs/glossary.md "Helper") lists those
 // parts under it. Pure, so the panel row and the chat's tracker share one reading of the feed.
@@ -15,7 +15,7 @@ const forests = new WeakMap<readonly Activity[], ActivityNode[]>();
 const helperIndexes = new WeakMap<readonly ActivityNode[], Map<string, ActivityNode>>();
 
 /** The feed as a forest: a Helper whose `parentChatId` is another listed Helper's chat hangs
- * under it; everything else (turns, Helpers started from the Conversation or a Side Chat, and
+ * under it; everything else (turns, studio turns, Helpers started from the Conversation or a Side Chat, and
  * parts whose parent is not loaded) is a root, in the order given. Built once per feed snapshot
  * (the same array gives the same forest), so every strip reading one snapshot shares it. */
 export function buildActivityForest(activities: readonly Activity[]): ActivityNode[] {
@@ -33,13 +33,13 @@ function growForest(activities: readonly Activity[]): ActivityNode[] {
   for (const activity of activities) {
     const node: ActivityNode = { activity, children: [] };
     nodes.set(activity.id, node);
-    if (activity.kind === "sub_agent") helperByChat.set(activity.chatId, node);
+    if (isHelperActivity(activity)) helperByChat.set(activity.chatId, node);
   }
   const roots: ActivityNode[] = [];
   for (const activity of activities) {
     const node = nodes.get(activity.id) as ActivityNode;
     const parent =
-      activity.kind === "sub_agent" && activity.parentChatId
+      isHelperActivity(activity) && activity.parentChatId
         ? helperByChat.get(activity.parentChatId)
         : undefined;
     if (parent && parent !== node) parent.children.push(node);
@@ -68,7 +68,7 @@ export function findHelperNode(
   if (!index) {
     const byChat = new Map<string, ActivityNode>();
     const visit = (node: ActivityNode) => {
-      if (node.activity.kind === "sub_agent" && !byChat.has(node.activity.chatId)) {
+      if (isHelperActivity(node.activity) && !byChat.has(node.activity.chatId)) {
         byChat.set(node.activity.chatId, node);
       }
       node.children.forEach(visit);

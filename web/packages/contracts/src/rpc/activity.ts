@@ -12,9 +12,15 @@ export const ActivityKindSchema = z.enum(["turn", "sub_agent"]);
 export type ActivityKind = z.infer<typeof ActivityKindSchema>;
 
 /** Where an Activity came from, for the icon beside it: a Conversation turn, background work
- * the Muse started, upkeep, or a scheduled Helper (an automation). Distinct from `kind`,
- * which says how the engine stores it. */
-export const ActivitySourceSchema = z.enum(["turn", "background", "housekeeping", "scheduled"]);
+ * the Muse started, upkeep, a scheduled Helper (an automation), or a turn in a file's studio
+ * (ADR 0024). Distinct from `kind`, which says how the engine stores it. */
+export const ActivitySourceSchema = z.enum([
+  "turn",
+  "background",
+  "housekeeping",
+  "scheduled",
+  "studio",
+]);
 export type ActivitySource = z.infer<typeof ActivitySourceSchema>;
 
 export const ActivityStatusSchema = z.enum(["in_progress", "done", "failed", "cancelled"]);
@@ -54,6 +60,8 @@ export const ActivitySchema = z.object({
   /** For a Helper, the chat that started it: the Conversation, or — for a part of a bigger
    * task — another Helper's chat (its `chatId`), which is how parts nest under it. */
   parentChatId: Id.nullable().optional(),
+  /** A studio turn's file (`source: "studio"`): the panel groups its turns under the name. */
+  artifact: z.object({ groupId: z.string().min(1), name: z.string() }).optional(),
   /** Present (possibly empty) on `activities.get`; omitted on the `activities.list` summary. */
   steps: z.array(ActivityStepSchema).optional(),
 });

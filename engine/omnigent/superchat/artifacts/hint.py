@@ -8,7 +8,7 @@ artifact "it" most likely is before its first word.
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 
 import httpx
 
@@ -19,6 +19,8 @@ _logger = logging.getLogger(__name__)
 
 HEADER = "Artifacts in this conversation (newest first):"
 OPEN_MARK = " — open beside the chat"
+#: A file whose studio (ADR 0024) has a turn running: the person is changing it there now.
+EDITING_MARK = " — being edited in its studio"
 #: Most artifacts the hint names; with the header it stays within ten lines.
 MAX_ARTIFACTS = 8
 
@@ -44,18 +46,23 @@ def kind_word(item: Artifact) -> str:
     return _KIND_WORDS.get(item.kind, item.kind)
 
 
-def _line(item: Artifact, *, is_open: bool) -> str:
+def _line(item: Artifact, *, is_open: bool, editing: bool = False) -> str:
     label = " ".join((item.title or item.name).split())
-    mark = OPEN_MARK if is_open else ""
+    mark = (OPEN_MARK if is_open else "") + (EDITING_MARK if editing else "")
     return f"- {label} ({kind_word(item)}, v{item.version}, {item.id}){mark}"
 
 
-def artifact_hint(newest: Sequence[Artifact], open_artifact: Artifact | None = None) -> str | None:
+def artifact_hint(
+    newest: Sequence[Artifact],
+    open_artifact: Artifact | None = None,
+    editing: Collection[str] = (),
+) -> str | None:
     """The hint block, or ``None`` when the Conversation has no artifacts.
 
     :param newest: The newest version of each artifact, newest first (as the store lists them).
     :param open_artifact: The newest version of the artifact open beside the chat, if any. It is
         marked where it stands, or named first when it is older than the ones listed.
+    :param editing: Names of the files whose studio has a turn running (marked as being edited).
     :returns: The header and at most :data:`MAX_ARTIFACTS` lines.
     """
     items = list(newest)
@@ -69,7 +76,9 @@ def artifact_hint(newest: Sequence[Artifact], open_artifact: Artifact | None = N
     if not items:
         return None
     open_name = open_artifact.name if open_artifact is not None else None
-    lines = [_line(item, is_open=item.name == open_name) for item in items]
+    lines = [
+        _line(item, is_open=item.name == open_name, editing=item.name in editing) for item in items
+    ]
     return "\n".join([HEADER, *lines])
 
 

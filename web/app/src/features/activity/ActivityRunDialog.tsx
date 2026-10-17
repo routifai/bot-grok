@@ -1,3 +1,4 @@
+import { plural } from "@lingui/core/macro";
 import { useLingui } from "@lingui/react/macro";
 import { ChatMarkdown } from "@superchat/chat-ui/web";
 import type {
@@ -8,13 +9,15 @@ import type {
 } from "@superchat/contracts";
 import { presentActivityTitle, presentStep } from "@superchat/core";
 import { Button, cn, Dialog, DialogContent } from "@superchat/ui-web";
-import { ChevronRight } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import { Check, ChevronRight, Circle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { RunStatusDot } from "../../components/chrome/RunStatusDot";
 import { ACTIVITY_SOURCE_ICON, TOOL_ICON_COMPONENT } from "../../components/chrome/toolIcons";
 import { ActivityIconTile } from "./ActivityIconTile";
 import { formatClockTime, formatDayAndTime, isHelperActivity } from "./activityGrouping";
 import { MessageRow } from "./MessageRow";
+import { type StoryItem, stepStory, tallySteps } from "./stepStory";
 
 /** The Activity run page's wire: full detail (Steps) and, for a Helper, its messages —
  * kept explicit (not the `rpc` client) so the dev fixture page can supply fakes. */
@@ -36,8 +39,7 @@ function RunStatusPill({ status, label }: { status: Activity["status"]; label: s
  * docs/helpers.md "The activity panel"), gently pulsing only for the latest
  * step of a run still in progress (the motion is the signal, not a color), respecting
  * reduced motion via `motion-safe:`. */
-function StepIcon({ icon, live }: { icon: keyof typeof TOOL_ICON_COMPONENT; live: boolean }) {
-  const Icon = TOOL_ICON_COMPONENT[icon];
+function StepIcon({ Icon, live }: { Icon: LucideIcon; live: boolean }) {
   return (
     <span
       aria-hidden="true"
@@ -82,7 +84,7 @@ function StepRow({ step, live, isLast }: { step: ActivityStep; live: boolean; is
   if (presented.snippet === null) {
     return (
       <li className={cn("relative flex gap-3", !isLast && "pb-4")}>
-        <StepIcon icon={presented.icon} live={live} />
+        <StepIcon Icon={TOOL_ICON_COMPONENT[presented.icon]} live={live} />
         <div className="flex min-w-0 flex-1 items-start gap-2">
           <span aria-hidden="true" className="w-4 shrink-0" />
           {title}
@@ -93,7 +95,7 @@ function StepRow({ step, live, isLast }: { step: ActivityStep; live: boolean; is
   }
   return (
     <li className={cn("relative flex gap-3", !isLast && "pb-4")}>
-      <StepIcon icon={presented.icon} live={live} />
+      <StepIcon Icon={TOOL_ICON_COMPONENT[presented.icon]} live={live} />
       <details className="group min-w-0 flex-1">
         <summary className="flex cursor-pointer list-none items-start gap-2 [&::-webkit-details-marker]:hidden">
           <span aria-hidden="true" className="flex w-4 shrink-0 items-center justify-center pt-0.5">
@@ -117,10 +119,136 @@ function StepRow({ step, live, isLast }: { step: ActivityStep; live: boolean; is
   );
 }
 
+/** What a progress heading covers, in a few counted words ("3 commands · 1 file"). */
+function TallyLine({ steps }: { steps: ActivityStep[] }) {
+  const tally = tallySteps(steps);
+  const parts = [
+    tally.commands ? plural(tally.commands, { one: "# command", other: "# commands" }) : null,
+    tally.files ? plural(tally.files, { one: "# file", other: "# files" }) : null,
+    tally.looked
+      ? plural(tally.looked, { one: "looked at # file", other: "looked at # files" })
+      : null,
+    tally.other ? plural(tally.other, { one: "# step", other: "# steps" }) : null,
+  ].filter((part) => part !== null);
+  return (
+    <p className="mt-0.5 text-[12px] text-muted-foreground first-letter:uppercase">
+      {parts.join(" · ")}
+    </p>
+  );
+}
+
+/** A progress heading: a check once settled, the live mark while it is the run's latest; the
+ * Steps it covers fold under it, collapsed until opened (native `<details>`). */
+function HeadingRow({
+  item,
+  live,
+  lastStepId,
+  running,
+  isLast,
+}: {
+  item: Extract<StoryItem, { kind: "heading" }>;
+  live: boolean;
+  lastStepId: string | undefined;
+  running: boolean;
+  isLast: boolean;
+}) {
+  const { t, i18n } = useLingui();
+  const first = item.heading ?? item.steps[0];
+  const title = (
+    <span
+      className="min-w-0 flex-1 text-[13px] font-medium text-foreground"
+      style={{ overflowWrap: "anywhere" }}
+      dir="auto"
+    >
+      {item.heading ? presentStep(item.heading).title : t`Getting started`}
+    </span>
+  );
+  const time = first ? (
+    <time className="shrink-0 pt-0.5 text-[11.5px] whitespace-nowrap text-muted-foreground">
+      {formatClockTime(first.createdAt, i18n.locale)}
+    </time>
+  ) : null;
+  return (
+    <li className={cn("relative flex gap-3", !isLast && "pb-4")} data-testid="story-heading">
+      <StepIcon Icon={live ? Circle : Check} live={live} />
+      {item.steps.length === 0 ? (
+        <div className="flex min-w-0 flex-1 items-start gap-2">
+          <span aria-hidden="true" className="w-4 shrink-0" />
+          {title}
+          {time}
+        </div>
+      ) : (
+        <details className="group/heading min-w-0 flex-1">
+          <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+            <span className="flex items-start gap-2">
+              <span
+                aria-hidden="true"
+                className="flex w-4 shrink-0 items-center justify-center pt-0.5"
+              >
+                <ChevronRight
+                  size={12}
+                  strokeWidth={2}
+                  className="text-muted-foreground transition-transform group-open/heading:rotate-90"
+                />
+              </span>
+              {title}
+              {time}
+            </span>
+            <span className="ml-6 block">
+              <TallyLine steps={item.steps} />
+            </span>
+          </summary>
+          <ol className="relative mt-3 ml-6">
+            <div aria-hidden="true" className="absolute top-2 bottom-2 left-2 w-px bg-border" />
+            {item.steps.map((step, index) => (
+              <StepRow
+                key={step.itemId}
+                step={step}
+                live={running && step.itemId === lastStepId}
+                isLast={index === item.steps.length - 1}
+              />
+            ))}
+          </ol>
+        </details>
+      )}
+    </li>
+  );
+}
+
 /** The Steps timeline: one thin vertical rule behind every dot (same proportion as the
  * Goal plan timeline's — PlanTimeline.tsx), newest-last in the order the engine gives
  * them. */
 function StepsTimeline({ steps, running }: { steps: ActivityStep[]; running: boolean }) {
+  const story = stepStory(steps);
+  if (story) {
+    const lastHeading = story.findLastIndex((item) => item.kind === "heading");
+    const lastStepId = steps.at(-1)?.itemId;
+    return (
+      <ol className="relative mt-2" data-testid="activity-steps">
+        <div aria-hidden="true" className="absolute top-2 bottom-2 left-2 w-px bg-border" />
+        {story.map((item, index) => {
+          const isLast = index === story.length - 1;
+          return item.kind === "heading" ? (
+            <HeadingRow
+              key={item.heading?.itemId ?? "getting-started"}
+              item={item}
+              live={running && index === lastHeading}
+              lastStepId={lastStepId}
+              running={running}
+              isLast={isLast}
+            />
+          ) : (
+            <StepRow
+              key={item.step.itemId}
+              step={item.step}
+              live={running && item.step.itemId === lastStepId}
+              isLast={isLast}
+            />
+          );
+        })}
+      </ol>
+    );
+  }
   return (
     <ol className="relative mt-2" data-testid="activity-steps">
       <div aria-hidden="true" className="absolute top-2 bottom-2 left-2 w-px bg-border" />

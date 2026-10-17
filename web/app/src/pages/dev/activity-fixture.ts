@@ -211,6 +211,21 @@ export const INITIAL_ACTIVITIES: Activity[] = [
     date: dateOf(minutesAgo(40)),
   },
   {
+    // A turn in a file's studio (ADR 0024): listed under the file's name, never as a Helper.
+    id: "turn:dev-studio:resp_bar",
+    kind: "turn",
+    source: "studio",
+    chatId: "dev-studio",
+    artifact: { groupId: "dev-q3-review", name: "q3_review.deck.html" },
+    title: "Make the regions a bar chart, biggest first",
+    outcome: "Slide 3 is a bar chart, largest region first.",
+    summary: "Slide 3 is a bar chart, largest region first.",
+    status: "done",
+    startedAt: minutesAgo(50),
+    finishedAt: minutesAgo(49),
+    date: dateOf(minutesAgo(50)),
+  },
+  {
     id: "act-turn-failed",
     kind: "turn",
     source: "turn",
@@ -282,7 +297,47 @@ export const EARLIER_ACTIVITIES: Activity[] = [
   },
 ];
 
+/** The deck Helper's full detail: its progress lines head the tool steps after them, so the run
+ * page reads as a story (ActivityRunDialog.tsx `StepsTimeline`). */
+function deckStep(
+  n: number,
+  minutes: number,
+  tool: string,
+  args: Record<string, unknown>,
+  title = "",
+) {
+  return {
+    itemId: `deck-story-${n}`,
+    title,
+    createdAt: minutesAgo(minutes),
+    tool,
+    detail: toolDetail(tool, args, "ok"),
+  };
+}
+
+const DECK_STORY_STEPS: ActivityStep[] = [
+  deckStep(1, 1.2, "sys_os_shell", { command: "ls -la /work/inputs" }),
+  deckStep(2, 1.15, "sys_os_shell", { command: "pip install python-pptx" }),
+  deckStep(3, 1, "report_progress", {}, "Read the Q2 review for its structure"),
+  deckStep(4, 0.95, "sys_os_read", { path: "/work/inputs/q2-review.pptx" }),
+  deckStep(5, 0.9, "sys_os_shell", { command: "python3 /work/extract_outline.py q2-review.pptx" }),
+  deckStep(
+    6,
+    0.8,
+    "raise_flag",
+    {},
+    "Flagged: Ledger says 6.1% loan growth, the memo says 5.4%; using the ledger",
+  ),
+  deckStep(7, 0.6, "sys_os_write", { path: "/work/build_deck.py" }),
+  deckStep(8, 0.5, "sys_os_shell", { command: "cd /work && python3 build_deck.py --slides 1-6" }),
+  deckStep(9, 0.45, "artifact_save", { title: "Q3 lending deck", path: "/work/q3.pptx" }),
+  deckStep(10, 0.2, "report_progress", {}, "Slide 6 of 10 written"),
+  deckStep(11, 0.15, "sys_os_edit", { path: "/work/build_deck.py" }),
+  deckStep(12, 0.1, "sys_os_shell", { command: "soffice --headless --convert-to pdf q3.pptx" }),
+];
+
 const DETAIL_BY_ID: Record<string, ActivityStep[]> = {
+  "act-helper-deck": DECK_STORY_STEPS,
   "act-helper-running": HELPER_STEPS,
   "act-turn-drafted": DONE_TURN_STEPS,
 };

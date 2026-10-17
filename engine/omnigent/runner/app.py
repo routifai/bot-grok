@@ -138,6 +138,7 @@ from omnigent.runtime.runner_wire import (
 )
 from omnigent.spec.skill_sources import resolve_session_skills
 from omnigent.spec.types import AgentSpec, LocalToolInfo, SkillSpec
+from omnigent.superchat.artifacts.studio import STUDIO_TYPE
 from omnigent.superchat.feature import is_helper, is_super_chat
 from omnigent.superchat.helpers.notices import take_waiting_progress
 from omnigent.superchat.helpers.saved_files import (
@@ -147,8 +148,12 @@ from omnigent.superchat.helpers.saved_files import (
 )
 from omnigent.superchat.prompt_prefix import message_needs_own_turn, turn_prefix_blocks
 from omnigent.superchat.subagents import (
+    STUDIO_QUEUED_NOTE,
+    STUDIO_WARM_SECONDS,
+    StudioRunners,
     format_subagent_wake_notice_with_result,
 )
+from omnigent.superchat.tasks.runtime import turn_ended as _task_turn_ended
 from omnigent.terminals.control_bridge import bridge_tmux_control_to_websocket
 from omnigent.terminals.ws_common import WS_CLOSE_TERMINAL_NOT_FOUND
 from omnigent.tools.browser_backend import local_browser_backend_enabled
@@ -2964,6 +2969,11 @@ def create_runner_app(
     # turn in flight carries, kept once the turn completes (see _apply_turn_prefix_blocks).
     _superside_chat_prefix_sent: dict[str, dict[str, str]] = {}
     _superside_chat_prefix_pending: dict[str, dict[str, str]] = {}
+    # A file's studio sessions on this host (ADR 0024): the turn cap, and when each harness goes
+    # cold (released by the sweeper below once untouched for ten minutes).
+    _studio_runners = StudioRunners()
+    _studio_sweeper: list[asyncio.Task[None]] = []
+    app.state.studio_runners = _studio_runners
     app.state.superside_chat_pending_refresh = _superside_chat_pending_refresh
     app.state.superside_chat_rollover_tasks = _superside_chat_rollover_tasks
     _last_server_item_id: dict[str, str] = {}
@@ -6621,7 +6631,10 @@ def create_runner_app(
         # context carries it for its lifetime). Coded errors keep their own phase.
         with phase_scope(ErrorPhase.TURN):
             try:
-                await _run_turn_bg_setup_and_stream(msg_body, conv)
+                if await _is_studio(conv):
+                    await _run_studio_turn(msg_body, conv)
+                else:
+                    await _run_turn_bg_setup_and_stream(msg_body, conv)
             except _ContextWindowOverflow:
                 # Re-raise so the streaming-phase handler (which publishes the
                 # error event) is never shadowed by the generic except below.
@@ -6661,6 +6674,49 @@ def create_runner_app(
                 # different task, this turn is already accounted for — skip.
                 if _active_turns.get(conv) is _own_task and _own_task is not None:
                     _on_proxy_stream_end(conv)
+
+    async def _is_studio(conv: str) -> bool:
+        """Whether *conv* is a file's studio: its helper type first (known for every turn)."""
+        if await _recover_sub_agent_name(conv) != STUDIO_TYPE:
+            return False
+        return ARTIFACT_CHAT_LABEL_KEY in await _rollover_labels_for_session(conv)
+
+    async def _run_studio_turn(msg_body: _JsonObject, conv: str) -> None:
+        """A file's studio turn (ADR 0024): within the host's studio cap, and keeps it warm.
+
+        A turn past the cap waits for a slot; meanwhile the session shows it is queued.
+        """
+        queued: list[bool] = []
+
+        def _on_queued() -> None:
+            queued.append(True)
+            _publish_session_status(conv, "running", blocked_on=STUDIO_QUEUED_NOTE)
+
+        _ensure_studio_sweeper()
+        async with _studio_runners.turn(conv, _on_queued):
+            if queued:
+                _publish_session_status(conv, "running")
+            await _run_turn_bg_setup_and_stream(msg_body, conv)
+
+    def _ensure_studio_sweeper() -> None:
+        """Start the loop that releases a studio's harness once it has gone cold."""
+        if _studio_sweeper and not _studio_sweeper[0].done():
+            return
+        _studio_sweeper[:] = [asyncio.create_task(_release_cold_studios())]
+
+    async def _release_cold_studios() -> None:
+        while True:
+            await asyncio.sleep(60.0)
+            for conv in _studio_runners.cold():
+                if process_manager is None or conv in _active_turns:
+                    continue
+                try:
+                    # Conditional, like the idle reaper: a turn that began meanwhile keeps it.
+                    await process_manager.release(
+                        conv, only_if_idle_cutoff=time.monotonic() - STUDIO_WARM_SECONDS
+                    )
+                except Exception:
+                    _logger.warning("could not release cold studio %s", conv, exc_info=True)
 
     def _turn_reasoning(conv: str, msg_body: _JsonObject) -> _JsonObject | None:
         """Reasoning block to forward on a turn, or ``None`` when unset.
@@ -7524,6 +7580,7 @@ def create_runner_app(
                                         )
                                         _text_acc.clear()
                                     _commit_superside_chat_prefix(conv_id)
+                                    _task_turn_ended(conv_id)  # logs a stall, changes nothing
                                     _schedule_superside_chat_threshold_rollover(
                                         conv_id, event.get("response") or {}
                                     )
@@ -9671,6 +9728,18 @@ def create_runner_app(
                 "reset": True,
             },
         )
+
+    @app.post("/v1/sessions/{session_id}/studio/keep-warm")
+    async def keep_studio_warm(session_id: str) -> JSONResponse:
+        """A file's studio is open (ADR 0024): keep its harness warm for ten more minutes."""
+        if not await _is_studio(session_id):
+            return JSONResponse(status_code=404, content={"warm": False})
+        _studio_runners.touch(session_id)
+        _ensure_studio_sweeper()
+        warm = process_manager is not None and process_manager.has_session(session_id)
+        if warm and process_manager is not None:
+            process_manager.note_activity(session_id)
+        return JSONResponse(status_code=200, content={"warm": warm})
 
     @app.post("/v1/sessions/{session_id}/agent-cache/reset")
     async def reset_session_agent_cache(session_id: str, request: Request) -> JSONResponse:

@@ -28,6 +28,7 @@ export function AskBox({
   className,
   onStartTyping,
   initialDraft,
+  note,
 }: {
   chips: readonly AskChip[];
   onRemoveChip?: (id: string) => void;
@@ -44,6 +45,8 @@ export function AskBox({
   onStartTyping?: (draft: AskDraft) => void;
   /** Words typed before this box opened: kept, focused, with the caret where it was. */
   initialDraft?: AskDraft;
+  /** Why the request waits ("Finishing another file first"): the status line while it does. */
+  note?: string | null;
 }) {
   const { t } = useLingui();
   const [draft, setDraft] = useState(initialDraft?.text ?? "");
@@ -73,7 +76,12 @@ export function AskBox({
 
   return (
     <div className={cn("flex w-full flex-col gap-2", className)} data-testid="ask-box">
-      <AskStatusRow status={status} onStop={onStop} onUndo={canUndo ? onUndo : undefined} />
+      <AskStatusRow
+        status={status}
+        note={note}
+        onStop={onStop}
+        onUndo={canUndo ? onUndo : undefined}
+      />
       <div className="sc-ask" data-state={working ? "editing" : status.kind}>
         <div className="sc-ask-body flex flex-col gap-2.5 py-3 ps-4 pe-3">
           {chips.length ? (
@@ -159,31 +167,36 @@ export function AskBox({
 
 function AskStatusRow({
   status,
+  note,
   onStop,
   onUndo,
 }: {
   status: AskStatus;
+  note?: string | null;
   onStop: () => void;
   onUndo?: () => void;
 }) {
   const { t } = useLingui();
   const row = "flex h-[22px] items-center gap-2 ps-1 text-[12px] text-muted-foreground";
-  if (status.kind === "idle") return <div aria-hidden="true" className="h-[22px]" />;
-  if (status.kind === "sending" || status.kind === "editing") {
+  const working = status.kind === "sending" || status.kind === "editing";
+  if (working || note) {
     return (
       <div role="status" data-testid="ask-status" className={row}>
         <Loader2 size={12} className="animate-spin text-tint motion-reduce:animate-none" />
-        <span className="truncate">{t`superchat is editing…`}</span>
-        <button
-          type="button"
-          onClick={onStop}
-          className="ms-auto rounded-md border border-border px-2 py-0.5 text-foreground hover:bg-accent"
-        >
-          {t`Stop`}
-        </button>
+        <span className="truncate">{note || t`superchat is editing…`}</span>
+        {working ? (
+          <button
+            type="button"
+            onClick={onStop}
+            className="ms-auto rounded-md border border-border px-2 py-0.5 text-foreground hover:bg-accent"
+          >
+            {t`Stop`}
+          </button>
+        ) : null}
       </div>
     );
   }
+  if (status.kind === "idle") return <div aria-hidden="true" className="h-[22px]" />;
   if (status.kind === "updated") {
     return (
       <div role="status" data-testid="ask-status" className={row}>

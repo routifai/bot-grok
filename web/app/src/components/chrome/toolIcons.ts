@@ -10,6 +10,7 @@ import {
   History,
   MessageCircle,
   NotebookPen,
+  Pencil,
   Search,
 } from "lucide-react";
 
@@ -23,15 +24,17 @@ export const TOOL_ICON_COMPONENT: Record<ToolIconKey, LucideIcon> = {
   memory: Fingerprint,
   helper: Bot,
   history: History,
+  edit: Pencil,
   generic: Circle,
 };
 
 /** An Activity's icon by where it came from (web/packages/contracts/src/rpc/activity.ts
  * `ActivitySource`): a Conversation turn, background work, upkeep, a scheduled
- * Helper (standing task, followed topic) or a Goal's cadence. */
+ * Helper (standing task, followed topic), a Goal's cadence, or a file's studio. */
 export const ACTIVITY_SOURCE_ICON: Record<ActivitySource, LucideIcon> = {
   turn: MessageCircle,
   background: Bot,
   housekeeping: NotebookPen,
   scheduled: CalendarClock,
+  studio: Pencil,
 };

@@ -13,11 +13,18 @@ const api = vi.hoisted(() => ({
   listVersions: vi.fn(),
   restore: vi.fn(),
   chat: vi.fn(),
+  chatOpen: vi.fn(async () => ({ sessionId: "studio-1", warm: true })),
 }));
 const chats = vi.hoisted(() => ({
   send: vi.fn(async (_input: { botId: string; text: string }) => ({ ok: true as const })),
   interrupt: vi.fn(),
   transcript: vi.fn(),
+  // The studio's status feed: open, and silent.
+  watchStatus: vi.fn(async () =>
+    (async function* () {
+      await new Promise(() => {});
+    })(),
+  ),
 }));
 vi.mock("../../../lib/rpc", () => ({ rpc: { artifacts: api, chats } }));
 vi.mock("../../../lib/family-stream", () => ({ watchFamily: () => () => {} }));

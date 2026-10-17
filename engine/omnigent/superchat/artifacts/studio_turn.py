@@ -1,8 +1,9 @@
 """What a file's studio turn starts with (ADR 0024), read on the runner.
 
-The engine names the file (``GET /v1/artifacts/studio-turn``): its line, and the Conversation and
-group the write-back is scoped to. The write-back then brings this file's hand edits into the
-workspace and words each once for this studio. No Projects list, no recall hint and no
+The engine names the file (``GET /v1/artifacts/studio-turn``): its line, a deck's slide outline
+(``decks/outline.py``), and the Conversation and group the write-back is scoped to. The
+write-back then brings this file's hand edits into the workspace and words each once for this
+studio. No Projects list, no recall hint and no
 Conversation artifact hint: the studio is about one file.
 """
 
@@ -27,7 +28,7 @@ _NOTED: dict[str, set[str]] = {}
 async def studio_turn_blocks(
     server_client: httpx.AsyncClient | None, session_id: str
 ) -> list[str]:
-    """The file line, then this file's write-back notes; ``[]`` when unknown or on any failure."""
+    """The file line, a deck's outline, then this file's write-back notes; ``[]`` when unknown."""
     if server_client is None or not session_id:
         return []
     try:
@@ -46,4 +47,9 @@ async def studio_turn_blocks(
         group_id=str(studio["group_id"]),
         noted=_NOTED.setdefault(session_id, set()),
     )
-    return [studio["file_line"], *notes]
+    outline = studio.get("outline")
+    return [
+        studio["file_line"],
+        *([outline] if isinstance(outline, str) and outline else []),
+        *notes,
+    ]

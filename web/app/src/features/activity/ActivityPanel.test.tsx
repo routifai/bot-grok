@@ -176,3 +176,39 @@ it("brings the Helper that Show details asked for into view, once", async () => 
     scrollIntoView.mockRestore();
   }
 });
+
+it("lists a file's studio turns under its name, inside the day, never as Helper rows", async () => {
+  const deck = { groupId: "g-deck", name: "q3_review.deck.html" };
+  const container = await mount([
+    activity({
+      id: "turn:studio:r2",
+      kind: "sub_agent",
+      source: "studio",
+      chatId: "studio-1",
+      parentChatId: "conv_muse",
+      artifact: deck,
+      title: "Biggest first",
+    }),
+    activity({ id: "turn:conv:r0", title: "Checked the budget" }),
+    activity({
+      id: "turn:studio:r1",
+      source: "studio",
+      chatId: "studio-1",
+      artifact: deck,
+      title: "Make it a bar chart",
+    }),
+  ]);
+  const files = container.querySelectorAll("[data-testid=activity-file]");
+  expect(files).toHaveLength(1);
+  expect(files[0]?.textContent).toContain("q3_review.deck.html");
+  const rows = [...container.querySelectorAll("[data-testid=activity-row]")].map(
+    (row) => row.textContent ?? "",
+  );
+  expect(rows).toHaveLength(3);
+  expect(rows[0]).toContain("Biggest first");
+  expect(rows[1]).toContain("Make it a bar chart");
+  expect(rows[2]).toContain("Checked the budget");
+  // The file's turns follow its header, nested.
+  expect(files[0]?.nextElementSibling?.getAttribute("data-activity-id")).toBe("turn:studio:r2");
+  expect(files[0]?.nextElementSibling?.className).toContain("ps-6");
+});

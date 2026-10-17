@@ -86,6 +86,8 @@ async def handle_artifact_tool(ctx: HandlerCtx, args: dict[str, Any]) -> str:
             if not isinstance(artifact_id, str) or not HEX_ID_RE.match(artifact_id):
                 return error("artifact_delete requires a valid artifact_id")
             resp = await caller.client.delete(f"/v1/artifacts/{artifact_id}", timeout=30.0)
+        elif tool_name == "artifact_patch":
+            return await _patch(caller.client, caller.conversation_id, args)
         else:
             saver = caller.conversation_id if caller.is_helper else None
             return await _save(caller.client, chat_id, args, saver)
@@ -174,3 +176,59 @@ async def _save(client: Any, chat_id: str, args: dict[str, Any], saver: str | No
     saved = resp.json()
     # source_path lets the file search follow a saved file (knowledge's on_result listener).
     return json.dumps({"type": "artifact", **saved, "source_path": str(file)})
+
+
+async def _patch(client: Any, studio_id: str, args: dict[str, Any]) -> str:
+    """``artifact_patch`` from a file's studio: patch the newest version, mirror it on disk.
+
+    The saved bytes are written to the file's workspace path, so a later read or
+    ``artifact_save`` of the file starts from them. A stale base says which version is newest.
+    """
+    from omnigent.superchat.artifacts.writeback import write_bytes_idempotent
+
+    artifact_id = args.get("artifact_id")
+    base = args.get("base_version")
+    patches = args.get("patches")
+    if not isinstance(artifact_id, str) or not HEX_ID_RE.match(artifact_id):
+        return error("artifact_patch requires the file's artifact_id (its group id)")
+    if not isinstance(base, int) or isinstance(base, bool) or base < 1:
+        return error("artifact_patch requires base_version: the version you are changing")
+    if not isinstance(patches, list) or not patches:
+        return error("artifact_patch requires at least one patch")
+    resp = await client.post(
+        f"/v1/artifacts/{artifact_id}/patch",
+        json={"chat_id": studio_id, "base_version": base, "patches": patches},
+        timeout=60.0,
+    )
+    if resp.status_code == 409 and _error_code(resp) == STALE_CODE:
+        newest: int | None = None
+        try:
+            detail = await client.get(f"/v1/artifacts/{artifact_id}", timeout=30.0)
+            versions = detail.json().get("all_versions") or []
+            newest = versions[0].get("version") if versions else None
+        except Exception:  # noqa: BLE001 - the refusal stands either way
+            newest = None
+        return json.dumps(
+            {
+                "error": STALE_CODE,
+                "newest_version": newest,
+                "message": (
+                    f"The file was saved as v{newest} meanwhile, so nothing was changed. Read it "
+                    f"again and redo the change with base_version {newest}."
+                ),
+            }
+        )
+    if resp.status_code >= 400:
+        return finish(resp)
+    saved = resp.json()
+    source = saved.get("source_path")
+    if isinstance(source, str) and source and saved.get("summary"):
+        file = resolve_workspace_file(source, workspace_roots())
+        if isinstance(file, Path):
+            try:
+                content = await client.get(f"/v1/artifacts/{saved['id']}/content", timeout=60.0)
+                content.raise_for_status()
+                await asyncio.to_thread(write_bytes_idempotent, file, content.content)
+            except Exception:  # noqa: BLE001 - the version is saved; the next read refreshes
+                pass
+    return json.dumps({"type": "artifact", **saved})

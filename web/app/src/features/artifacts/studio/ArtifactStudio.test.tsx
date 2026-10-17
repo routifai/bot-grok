@@ -17,6 +17,7 @@ const api = vi.hoisted(() => ({
   listVersions: vi.fn(),
   restore: vi.fn(),
   chat: vi.fn(),
+  chatOpen: vi.fn(async () => ({ sessionId: "studio-1", warm: true })),
 }));
 const chats = vi.hoisted(() => ({
   send: vi.fn(async (_input: { botId: string; chatId?: string; text: string }) => ({
@@ -24,7 +25,30 @@ const chats = vi.hoisted(() => ({
   })),
   interrupt: vi.fn(async () => ({ ok: true as const })),
   transcript: vi.fn(),
+  watchStatus: vi.fn(
+    async (
+      _input: { botId: string; chatId: string },
+      _options: { signal: AbortSignal },
+    ): Promise<AsyncIterable<{ status: string; blockedOn: string | null }>> => statusFeed(),
+  ),
 }));
+/** The studio session's status frames, pushed by a test. */
+const status = vi.hoisted(() => ({
+  push: (_frame: { status: string; blockedOn: string | null }) => {},
+}));
+async function* statusFeed() {
+  const queue: { status: string; blockedOn: string | null }[] = [];
+  let wake: (() => void) | null = null;
+  status.push = (frame) => {
+    queue.push(frame);
+    wake?.();
+  };
+  while (true) {
+    const next = queue.shift();
+    if (next) yield next;
+    else await new Promise<void>((resolve) => (wake = resolve));
+  }
+}
 const family = vi.hoisted(() => ({ listeners: new Set<(event: FamilyEvent) => void>() }));
 vi.mock("../../../lib/rpc", () => ({ rpc: { artifacts: api, chats } }));
 vi.mock("../../../lib/family-stream", () => ({
@@ -54,6 +78,7 @@ import { ArtifactPanel } from "../ArtifactPanel";
 import { resetEditorState } from "../editor/editor-state";
 import type { ArtifactEditorKind, ArtifactExtension } from "../registry";
 import { ArtifactRegistryProvider } from "../registry";
+import { OPEN_SIGNAL_MS } from "./useStudioChat";
 
 i18n.loadAndActivate({ locale: "en", messages: {} });
 
@@ -102,6 +127,8 @@ beforeEach(() => {
   api.listVersions.mockResolvedValue([]);
   api.chat.mockResolvedValue({ sessionId: "studio-1", created: false });
   chats.transcript.mockResolvedValue({ threadId: "studio-1", messages: [], olderCursor: null });
+  chats.watchStatus.mockImplementation(async () => statusFeed());
+  api.chatOpen.mockResolvedValue({ sessionId: "studio-1", warm: true });
 });
 const roots: Root[] = [];
 afterEach(async () => {
@@ -234,4 +261,131 @@ it.each([
   expect(studio()).toBeNull();
   expect(box.value).toBe("Make it one page");
   expect(api.chat).not.toHaveBeenCalled();
+  expect(api.chatOpen).not.toHaveBeenCalled();
+});
+
+const said = (id: string, role: "user" | "bot" | "system", text: string, minute: number) => ({
+  id,
+  threadId: "studio-1",
+  seq: minute,
+  role,
+  blocks: [{ kind: "text" as const, text }],
+  createdAt: new Date(Date.UTC(2026, 9, 17, 10, minute)).toISOString(),
+});
+
+it("shows a version saved elsewhere as a quiet note", async () => {
+  const stale = "Super Chat saved v9 while you were editing; v10 is based on v8";
+  chats.transcript.mockResolvedValue({
+    threadId: "studio-1",
+    messages: [
+      said("m1", "user", "Biggest first", 1),
+      said("n1", "system", stale, 2),
+      said("a1", "bot", "Sorted the bars.", 3),
+    ],
+    olderCursor: null,
+  });
+  await openDeck();
+  expect(studio()?.querySelector('[data-testid="studio-note"]')?.textContent).toBe(stale);
+});
+
+it("puts the engine's words on the composer's line while a studio turn waits for a slot", async () => {
+  await openDeck();
+  const line = () => studio()?.querySelector('[data-testid="ask-status"]')?.textContent ?? "";
+  expect(chats.watchStatus).toHaveBeenCalledWith(
+    { botId: "bot-1", chatId: "studio-1" },
+    expect.anything(),
+  );
+  await act(async () =>
+    status.push({ status: "running", blockedOn: "Finishing another file first" }),
+  );
+  expect(line()).toContain("Finishing another file first");
+  await act(async () => status.push({ status: "running", blockedOn: null }));
+  expect(line()).not.toContain("Finishing another file first");
+});
+
+it("tells the engine the studio is open, every five minutes while it stays open", async () => {
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  try {
+    const view = await openDeck();
+    expect(api.chatOpen).toHaveBeenCalledTimes(1);
+    expect(api.chatOpen).toHaveBeenCalledWith({ artifactId: "v1" });
+    await act(async () => vi.advanceTimersByTime(OPEN_SIGNAL_MS));
+    expect(api.chatOpen).toHaveBeenCalledTimes(2);
+    await act(async () =>
+      (studio() as HTMLElement).querySelector<HTMLElement>('[data-testid="studio-back"]')?.click(),
+    );
+    expect(view.querySelector('[data-testid="artifact-panel"]')).not.toBeNull();
+    await act(async () => vi.advanceTimersByTime(OPEN_SIGNAL_MS * 2));
+    expect(api.chatOpen).toHaveBeenCalledTimes(2);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("stacks on a phone: the canvas, then the slides, then the composer, which opens the chat as a sheet", async () => {
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches: query === "(max-width: 639px)",
+    media: query,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }));
+  await openDeck();
+  const sheet = studio() as HTMLElement;
+  // styles.css stacks the editor's body under this layout (jsdom applies no stylesheet).
+  expect(sheet.querySelector<HTMLElement>(".sc-studio")?.dataset.layout).toBe("phone");
+  expect(
+    sheet.querySelector('.sc-studio [data-slot="editor-body"] [data-slot="editor-stage"]'),
+  ).not.toBeNull();
+  const chat = sheet.querySelector('[data-testid="studio-chat"]') as HTMLElement;
+  expect(chat.dataset.state).toBe("closed");
+  expect(chat.querySelector('[data-testid="studio-thread"]')).toBeNull();
+  // The composer is there under the canvas; using it opens the chat over the canvas.
+  const box = chat.querySelector('textarea[aria-label="Ask superchat"]') as HTMLTextAreaElement;
+  await act(async () => box.focus());
+  expect(chat.dataset.state).toBe("open");
+  expect(chat.querySelector('[data-testid="studio-thread"]')).not.toBeNull();
+  // The sheet's back control closes it and leaves the studio open; so does Escape.
+  await act(async () => (chat.querySelector('[aria-label="Back"]') as HTMLElement).click());
+  expect(chat.dataset.state).toBe("closed");
+  expect(studio()).not.toBeNull();
+  await act(async () => box.blur());
+  await act(async () => box.focus());
+  expect(chat.dataset.state).toBe("open");
+  await act(async () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
+  expect(chat.dataset.state).toBe("closed");
+  expect(studio()).not.toBeNull();
+});
+
+it("keeps the side-by-side layout wider than a phone", async () => {
+  await openDeck();
+  const sheet = studio() as HTMLElement;
+  expect(sheet.querySelector<HTMLElement>(".sc-studio")?.dataset.layout).toBe("wide");
+  const chat = sheet.querySelector('[data-testid="studio-chat"]') as HTMLElement;
+  expect(chat.dataset.state).toBeUndefined();
+  expect(chat.querySelector('[data-testid="studio-thread"]')).not.toBeNull();
+});
+
+it("Escape leaves an open menu first, then closes the studio and hands focus back to the file card", async () => {
+  const card = document.createElement("div");
+  card.dataset.testid = "media-tile";
+  const open = document.createElement("button");
+  open.textContent = "Open";
+  card.append(open);
+  document.body.append(card);
+  open.focus();
+  await openDeck();
+  const back = studio()?.querySelector('[data-testid="studio-back"]');
+  expect(back?.getAttribute("aria-label")).toBe("Back to Super Chat");
+
+  const menu = document.createElement("div");
+  menu.setAttribute("role", "menu");
+  document.body.append(menu);
+  await act(async () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
+  expect(studio()).not.toBeNull();
+  menu.remove();
+
+  (studio()?.querySelector("textarea") as HTMLTextAreaElement | undefined)?.focus();
+  await act(async () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
+  expect(studio()).toBeNull();
+  expect(document.activeElement).toBe(open);
 });

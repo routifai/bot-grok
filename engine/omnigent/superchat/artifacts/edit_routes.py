@@ -8,6 +8,10 @@ it names and stores the result as a new version tagged ``manual``. A stale ``bas
 ``artifact_stale`` 409 the editor reloads from; a patch that cannot be applied exactly is a
 ``conflict`` 409 whose message says to ask Superchat instead. The write-back to the host and
 the "you changed X" note are the artifacts capability's turn prefix.
+
+``POST /v1/artifacts/{id}/patch`` is the same patches from a file's studio (``artifact_patch``,
+ADR 0024): applied to the newest version when ``base_version`` still names it, saved as an
+``ai`` version of the studio's turn.
 """
 
 from __future__ import annotations
@@ -19,7 +23,9 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
 from omnigent.errors import ErrorCode, OmnigentError
-from omnigent.server.auth import AuthProvider
+from omnigent.server.auth import LEVEL_OWNER, AuthProvider
+from omnigent.server.routes._auth_helpers import require_access, require_user
+from omnigent.stores import ConversationStore, PermissionStore
 from omnigent.superchat.artifact_kinds import MAX_ARTIFACT_BYTES, is_deck_name
 from omnigent.superchat.artifacts.patches import (
     MAX_PATCHES,
@@ -29,8 +35,19 @@ from omnigent.superchat.artifacts.patches import (
     SetFullSource,
     apply_patches,
 )
-from omnigent.superchat.artifacts.routes import artifact_to_response, load_artifact, request_owner
-from omnigent.superchat.artifacts.store import SqlAlchemyArtifactStore, VersionConflictError
+from omnigent.superchat.artifacts.routes import (
+    artifact_to_response,
+    check_id,
+    load_artifact,
+    producing_turn,
+    request_owner,
+)
+from omnigent.superchat.artifacts.store import (
+    Artifact,
+    SqlAlchemyArtifactStore,
+    VersionConflictError,
+)
+from omnigent.superchat.artifacts.studio import group_of, is_studio_of
 
 #: Sent with ``ErrorCode.ARTIFACT_STALE``; the web keys off the code, never this text.
 STALE_MESSAGE = "The file changed since you opened it, so the latest version is showing now."
@@ -56,8 +73,38 @@ class HtmlEditBody(BaseModel):
     patches: list[Patch] = Field(min_length=1, max_length=MAX_PATCHES)
 
 
+class StudioPatchBody(HtmlEditBody):
+    """``POST /artifacts/{id}/patch`` body: the patches and the studio session sending them."""
+
+    chat_id: str
+
+
+def _check_kind(item: Artifact, patches: list[Patch]) -> None:
+    """400 when the file takes no patches, or a patch its kind has no use for."""
+    deck = is_deck_name(item.name)
+    if not deck and item.kind not in TEXT_KINDS and item.kind != "html":
+        raise OmnigentError("That file can't be edited by hand", code=ErrorCode.INVALID_INPUT)
+    if not deck and any(p.kind == "set-theme" for p in patches):
+        raise OmnigentError("Only a deck has a theme", code=ErrorCode.INVALID_INPUT)
+
+
+def _apply(item: Artifact, data: bytes, patches: list[Patch]) -> tuple[bytes, str]:
+    """The patched bytes and their summary (a text document is saved whole)."""
+    if item.kind in TEXT_KINDS:
+        return _apply_text(patches)
+    return apply_patches(data, patches)
+
+
+#: A patch the studio cannot apply exactly: the editor edits the file itself instead.
+_STUDIO_AMBIGUOUS = "Edit the file at its workspace path and save it with artifact_save instead."
+
+
 def create_html_edit_router(
-    store: SqlAlchemyArtifactStore, *, auth_provider: AuthProvider | None = None
+    store: SqlAlchemyArtifactStore,
+    *,
+    auth_provider: AuthProvider | None = None,
+    conversation_store: ConversationStore | None = None,
+    permission_store: PermissionStore | None = None,
 ) -> APIRouter:
     """Build the edit router (decks, pages, text documents), mounted at ``/v1``."""
     router = APIRouter()
@@ -66,22 +113,14 @@ def create_html_edit_router(
     async def edit_html(request: Request, artifact_id: str, body: HtmlEditBody) -> dict[str, Any]:
         """Apply patches as a NEW ``manual`` version; 409 when ``base_version`` is stale."""
         item = await load_artifact(store, request_owner(request, auth_provider), artifact_id)
-        deck = is_deck_name(item.name)
-        text = item.kind in TEXT_KINDS
-        if not deck and not text and item.kind != "html":
-            raise OmnigentError("That file can't be edited by hand", code=ErrorCode.INVALID_INPUT)
-        if not deck and any(p.kind == "set-theme" for p in body.patches):
-            raise OmnigentError("Only a deck has a theme", code=ErrorCode.INVALID_INPUT)
+        _check_kind(item, body.patches)
         newest = await asyncio.to_thread(store.newest, item)
         head = newest.version if newest else item.version
         if body.base_version != head or item.version != head:
             raise OmnigentError(STALE_MESSAGE, code=ErrorCode.ARTIFACT_STALE)
         data = await asyncio.to_thread(store.read, item)
         try:
-            if text:
-                new_data, summary = _apply_text(body.patches)
-            else:
-                new_data, summary = await asyncio.to_thread(apply_patches, data, body.patches)
+            new_data, summary = await asyncio.to_thread(_apply, item, data, body.patches)
         except InvalidPatch as exc:
             raise OmnigentError(str(exc), code=ErrorCode.INVALID_INPUT) from exc
         except AmbiguousEdit as exc:
@@ -109,5 +148,93 @@ def create_html_edit_router(
         except VersionConflictError as exc:
             raise OmnigentError(STALE_MESSAGE, code=ErrorCode.ARTIFACT_STALE) from exc
         return artifact_to_response(created, versions=created.version)
+
+    @router.post("/artifacts/{artifact_id}/patch")
+    async def patch_from_studio(
+        request: Request, artifact_id: str, body: StudioPatchBody
+    ) -> dict[str, Any]:
+        """Apply a studio's patches to the file's newest version as a NEW ``ai`` version.
+
+        Only the file's own studio may (``chat_id``); the version records the studio's turn.
+        A ``base_version`` that is no longer the newest is an ``artifact_stale`` 409 naming the
+        newest; an edit that cannot be done exactly is a ``conflict`` 409.
+        """
+        item = await load_artifact(store, request_owner(request, auth_provider), artifact_id)
+        check_id(body.chat_id, "chat_id")
+        if conversation_store is None:
+            raise OmnigentError("Studio not available", code=ErrorCode.NOT_FOUND)
+        await require_access(
+            require_user(request, auth_provider),
+            item.parent_session_id,
+            LEVEL_OWNER,
+            permission_store,
+            conversation_store,
+        )
+        studio = await asyncio.to_thread(conversation_store.get_conversation, body.chat_id)
+        if (
+            studio is None
+            or studio.parent_conversation_id != item.parent_session_id
+            or not is_studio_of(studio, group_of(item))
+        ):
+            raise OmnigentError(
+                "artifact_patch edits only this chat's own file", code=ErrorCode.INVALID_INPUT
+            )
+        _check_kind(item, body.patches)
+        newest = await asyncio.to_thread(store.newest, item) or item
+        if body.base_version != newest.version:
+            raise OmnigentError(
+                f"{item.name} is at v{newest.version} now, newer than v{body.base_version}; "
+                "read it again and redo your change on top of it.",
+                code=ErrorCode.ARTIFACT_STALE,
+            )
+        data = await asyncio.to_thread(store.read, newest)
+        try:
+            new_data, summary = await asyncio.to_thread(_apply, newest, data, body.patches)
+        except InvalidPatch as exc:
+            raise OmnigentError(str(exc), code=ErrorCode.INVALID_INPUT) from exc
+        except AmbiguousEdit as exc:
+            message = str(exc).replace("ask Superchat instead.", _STUDIO_AMBIGUOUS)
+            raise OmnigentError(message, code=ErrorCode.CONFLICT) from exc
+        if new_data == data:  # nothing changed: no identical version
+            return {
+                **artifact_to_response(newest, versions=newest.version),
+                "source_path": newest.source_path,
+                "summary": "",
+            }
+        if len(new_data) > MAX_ARTIFACT_BYTES:
+            raise OmnigentError("file too large (25 MB max)", code=ErrorCode.INVALID_INPUT)
+        _saver, turn_item_id = await asyncio.to_thread(
+            producing_turn, conversation_store, item.parent_session_id, body.chat_id
+        )
+        try:
+            created = await asyncio.to_thread(
+                store.create,
+                user_id=newest.user_id,
+                parent_session_id=newest.parent_session_id,
+                name=newest.name,
+                title=newest.title,
+                kind=newest.kind,
+                mime=newest.mime,
+                data=new_data,
+                parent_version_id=newest.id,
+                source_path=newest.source_path,
+                edit_summary=summary or None,
+                base_version=body.base_version,
+                turn_item_id=turn_item_id,
+                chat_id=body.chat_id,
+                # The studio turn's own message, as for a studio's artifact_save.
+                item_id=turn_item_id,
+            )
+        except VersionConflictError as exc:
+            raise OmnigentError(
+                f"{item.name} is at v{exc.newest} now, newer than v{body.base_version}; "
+                "read it again and redo your change on top of it.",
+                code=ErrorCode.ARTIFACT_STALE,
+            ) from exc
+        return {
+            **artifact_to_response(created, versions=created.version),
+            "source_path": created.source_path,
+            "summary": summary,
+        }
 
     return router

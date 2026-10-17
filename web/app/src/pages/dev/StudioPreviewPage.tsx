@@ -54,7 +54,12 @@ const VERSIONS: ArtifactVersion[] = [
   { id: "v1", version: 1, name: NAME, createdAt: at(0), origin: "ai", chatId: BOT },
 ];
 
-const said = (id: string, role: "user" | "bot", text: string, minute: number): ThreadMessage => ({
+const said = (
+  id: string,
+  role: ThreadMessage["role"],
+  text: string,
+  minute: number,
+): ThreadMessage => ({
   id,
   threadId: STUDIO,
   seq: minute,
@@ -73,18 +78,23 @@ const MESSAGES: ThreadMessage[] = [
     20,
   ),
   said("a2", "bot", "Shortened the subtitle on slide 1 to one line.", 22),
+  said("n1", "system", "Super Chat saved v6 while you were editing; v7 is based on v5", 41),
 ];
 
-type Scenario = "history" | "running" | "old";
+type Scenario = "history" | "running" | "queued" | "old";
 
 /**
  * Dev-only route (`/dev/studio`, gated by `import.meta.env.DEV` in App.tsx): a file's studio on
  * fixtures, so it can be eyeballed and screenshotted without a session or engine.
- * `?scenario=history|running|old` picks the state, `?theme=light|dark` forces a theme.
+ * `?scenario=history|running|queued|old` picks the state, `?theme=light|dark` forces a theme, and
+ * `?phone=1` shows the page in a phone-sized frame (the toggle at the top), so the stacked
+ * layout is the real one under 640px.
  */
 export function StudioPreviewPage() {
   const params = new URLSearchParams(window.location.search);
   const scenario = (params.get("scenario") ?? "history") as Scenario;
+  const framed = params.get("framed") === "1";
+  const phone = params.get("phone") === "1";
   const [open, setOpen] = useState(true);
   useEffect(() => {
     const theme = params.get("theme");
@@ -117,8 +127,10 @@ export function StudioPreviewPage() {
     showNewest: () => {},
     arrived: null,
   };
+  if (phone) return <PhoneFrame params={params} />;
   return (
     <ArtifactRegistryProvider value={[decksExtension]}>
+      {framed ? null : <PhoneToggle phone={false} />}
       <div className="flex h-dvh items-center justify-center bg-background text-muted-foreground">
         {open ? null : (
           <button type="button" onClick={() => setOpen(true)}>
@@ -132,13 +144,50 @@ export function StudioPreviewPage() {
           chat={{
             sessionId: STUDIO,
             messages: MESSAGES,
-            running: scenario === "running",
+            running: scenario === "running" || scenario === "queued",
             failed: false,
+            blockedOn: scenario === "queued" ? "Finishing another file first" : null,
           }}
           title="Q3 review"
           onClose={() => setOpen(false)}
         />
       ) : null}
     </ArtifactRegistryProvider>
+  );
+}
+
+/** The phone-width toggle, over the studio. */
+function PhoneToggle({ phone }: { phone: boolean }) {
+  const toggle = () => {
+    const url = new URL(window.location.href);
+    if (phone) url.searchParams.delete("phone");
+    else url.searchParams.set("phone", "1");
+    window.location.assign(url);
+  };
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      className="fixed top-3 start-1/2 z-70 -translate-x-1/2 rounded-full bg-foreground px-3 py-1.5 text-[12px] text-background shadow-float"
+    >
+      {phone ? "Full width" : "Phone width"}
+    </button>
+  );
+}
+
+/** This page again in a 390 × 844 frame, where the studio's phone layout applies for real. */
+function PhoneFrame({ params }: { params: URLSearchParams }) {
+  const inner = new URLSearchParams(params);
+  inner.delete("phone");
+  inner.set("framed", "1");
+  return (
+    <div className="flex h-dvh items-center justify-center bg-muted">
+      <iframe
+        title="Studio at phone width"
+        src={`${window.location.pathname}?${inner.toString()}`}
+        className="h-[844px] max-h-full w-[390px] rounded-[28px] border border-border bg-background"
+      />
+      <PhoneToggle phone />
+    </div>
   );
 }

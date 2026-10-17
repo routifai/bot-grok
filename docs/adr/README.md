@@ -10,11 +10,11 @@ One file per decision, numbered in order. A superseded record keeps its file wit
 | [0004](0004-engine-owns-the-host.md) | The engine owns the host | Current |
 | [0005](0005-proactive-work-is-scheduled-helper-runs.md) | Proactive work is scheduled helper runs | Current |
 | [0006](0006-omnigent-owns-everything.md) | Omnigent owns everything; the engine only runs the model loop | Current; moved from the engine's own records 2026-10-17, side chats gone after 0021 |
-| [0007](0007-the-muse-delegates-multi-step-work.md) | The Muse delegates multi-step work | Current; narration added by 0022 |
+| [0007](0007-the-muse-delegates-multi-step-work.md) | The Muse delegates multi-step work | Current; narration added by 0022; the step limit's ending rule amended by 0025 |
 | [0008](0008-projects-are-folders-the-muse-opens.md) | Projects are folders the Muse opens | Current |
 | [0009](0009-the-engine-is-the-whole-backend.md) | The engine is the whole backend | Current |
 | [0010](0010-a-fork-is-a-side-chat-with-an-anchor.md) | A fork is a side chat with an anchor | Superseded by 0021 |
-| [0011](0011-a-deck-is-an-html-file-exported-in-the-host.md) | A deck is an HTML file exported in the host | Current |
+| [0011](0011-a-deck-is-an-html-file-exported-in-the-host.md) | A deck is an HTML file exported in the host | Current; the look gate amended by 0025 (a new deck is built in a chosen look, not asked) |
 | [0012](0012-native-powerpoint-is-a-second-deck-path.md) | Native PowerPoint is a second deck path | Current |
 | [0013](0013-deck-charts-are-chartjs-exported-as-native-charts.md) | Deck charts are Chart.js exported as native charts | Current |
 | [0014](0014-files-live-in-the-host.md) | Files live in the host | Current; uploads go through the engine, not a Superchat API |
@@ -27,6 +27,7 @@ One file per decision, numbered in order. A superseded record keeps its file wit
 | [0021](0021-one-conversation-messages-link-to-artifacts.md) | One conversation: messages link to artifacts | Done 2026-10-17; amended by 0024 (both halves; contract in [`docs/conversation.md`](../conversation.md)) |
 | [0022](0022-the-orchestrator-narrates-while-helpers-work.md) | The orchestrator narrates while helpers work | Done 2026-10-17 (engine notices, bundle rules, web work strip); updated after review the same day: progress wakes an idle parent, helpers save drafts |
 | [0023](0023-the-plan-is-visible-and-the-work-is-alive.md) | The plan is visible and the work is alive | Done 2026-10-17 (plan in the work strip, lit state, header pill; merge `d18372e18`); updated after review the same day: plan id across wake turns, outcome on the strip, one clock |
-| [0024](0024-the-artifact-studio.md) | The artifact studio | Accepted 2026-10-17, refined after review; slice 1 built 2026-10-17, slice 2 pending; amends 0021 |
+| [0024](0024-the-artifact-studio.md) | The artifact studio | Accepted 2026-10-17, refined after review; slices 1 and 2 built 2026-10-17 (both halves); amends 0021 |
+| [0025](0025-act-by-default-tasks-have-state.md) | Act by default, tasks have state, a pick resumes the work | Built 2026-10-17, not yet watched in use; amends the look gate of 0011 and the step limit's ending rule of 0007 |
 
 The pages that explain the current system are listed in [../README.md](../README.md).

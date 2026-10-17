@@ -1,6 +1,6 @@
 import type { MessageBlock, ThreadMessage } from "@superchat/contracts";
 import { afterEach, expect, it, vi } from "vitest";
-import { helper } from "./activityTestKit";
+import { activity, helper } from "./activityTestKit";
 import { noteServerClock, resetServerClock, serverNow } from "./superchatWork";
 import type { PlanStep, TurnOutcome } from "./workPlan";
 import {
@@ -8,6 +8,7 @@ import {
   composeStrip,
   deriveWorkStrip,
   formatClock,
+  helperActivities,
   UNLISTED_GRACE_MS,
 } from "./workStripState";
 
@@ -232,4 +233,26 @@ it("counts the live clock on the engine's clock, so settling does not jump", () 
   const settled = composeStrip(deriveWorkStrip([], [], 0), [], { ...turn, live: false }, clientNow);
   expect(live.clockMs).toBe(120_000);
   expect(settled.clockMs).toBe(120_000);
+});
+
+it("never takes a file's studio turn for a Helper: no lit strip, no listing, no answer window", () => {
+  const studioTurn = activity({
+    id: "turn:studio-1:r1",
+    source: "studio",
+    chatId: "studio-1",
+    artifact: { groupId: "g-deck", name: "q3.deck.html" },
+    status: "in_progress",
+    startedAt: at(1),
+    finishedAt: null,
+  });
+  const studio = { helperId: "studio-1", title: "Studio", status: "done" };
+  expect(deriveWorkStrip([studio], [studioTurn], Date.parse(at(5))).kind).toBe("settled");
+  expect(helperActivities([studio], [studioTurn])).toEqual([]);
+  const messages = [
+    message("ask-1", "user", 0),
+    message("reply-1", "bot", 1, [{ kind: "helper", ...studio }]),
+    message("ask-2", "user", 3),
+    message("reply-2", "bot", 4),
+  ];
+  expect(answeredWhileWorking(messages, [studioTurn]).size).toBe(0);
 });

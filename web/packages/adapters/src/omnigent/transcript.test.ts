@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { versionMessageId } from "./artifacts.js";
 import type { OmnigentTranscriptPage } from "./client/transcript.js";
-import { mapTranscriptMessage, mapTranscriptPage } from "./transcript.js";
+import { mapSessionStatusFrame, mapTranscriptMessage, mapTranscriptPage } from "./transcript.js";
 
 const page = (data: OmnigentTranscriptPage["data"], hasMore = false): OmnigentTranscriptPage => ({
   data,
@@ -213,6 +213,49 @@ describe("mapTranscriptPage", () => {
       );
       expect(result.messages.map((m) => m.id)).toEqual(["u", "m2", "u2", "m3"]);
     });
+  });
+});
+
+describe("a file's studio chat (ADR 0024)", () => {
+  it("keeps the engine's runtime notes as system messages, and every other role as before", () => {
+    const result = mapTranscriptPage(
+      "studio-1",
+      page([
+        {
+          id: "m1",
+          role: "user",
+          created_at: 100,
+          blocks: [{ type: "text", text: "Biggest first" }],
+        },
+        {
+          id: "n1",
+          role: "system",
+          created_at: 101,
+          blocks: [{ type: "text", text: "Super Chat saved v9 while you were editing" }],
+        },
+        { id: "a1", role: "assistant", created_at: 102, blocks: [{ type: "text", text: "Done." }] },
+      ]),
+    );
+    expect(result.messages.map((message) => message.role)).toEqual(["user", "system", "bot"]);
+  });
+
+  it("reads a session.status frame's wait reason, flat or wrapped, and nothing from others", () => {
+    expect(
+      mapSessionStatusFrame({
+        type: "session.status",
+        conversation_id: "studio-1",
+        status: "running",
+        blocked_on: "Finishing another file first",
+      }),
+    ).toEqual({ status: "running", blockedOn: "Finishing another file first" });
+    expect(mapSessionStatusFrame({ type: "session.status", data: { status: "running" } })).toEqual({
+      status: "running",
+      blockedOn: null,
+    });
+    expect(
+      mapSessionStatusFrame({ type: "session.status", status: "idle", blocked_on: "" }),
+    ).toEqual({ status: "idle", blockedOn: null });
+    expect(mapSessionStatusFrame({ type: "response.completed" })).toBeNull();
   });
 });
 

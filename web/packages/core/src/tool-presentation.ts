@@ -12,7 +12,7 @@ import type { ActivityStep } from "@superchat/contracts";
 
 /** A small, closed set of line icons a tool can present as — never the tool's own name.
  * web/app/src/components/chrome/toolIcons.ts maps each to a lucide icon. */
-export type ToolIconKey = "search" | "web" | "memory" | "helper" | "history" | "generic";
+export type ToolIconKey = "search" | "web" | "memory" | "helper" | "history" | "edit" | "generic";
 
 /** One tool's presentation: an icon, a plain-language title derived from its call
  * arguments, and a short snippet of its result — never the tool's own name, never the
@@ -289,6 +289,106 @@ function fileTitle(verb: string, args: Record<string, unknown>): string {
   return name ? `${verb} “${name}”` : `${verb} a file`;
 }
 
+// ── sys_os_shell ─────────────────────────────────────────────────────────
+
+const SCRIPT_FILE = /\.(?:py|js|ts|mjs)$/;
+const LOOK_COMMANDS = new Set([
+  "ls",
+  "cat",
+  "head",
+  "tail",
+  "find",
+  "grep",
+  "rg",
+  "wc",
+  "file",
+  "stat",
+  "tree",
+]);
+const CONVERT_COMMANDS = new Set([
+  "soffice",
+  "libreoffice",
+  "pandoc",
+  "ffmpeg",
+  "convert",
+  "magick",
+]);
+const ARRANGE_COMMANDS = new Set(["mkdir", "cp", "mv", "rm", "touch"]);
+const INSTALL_COMMANDS = new Set(["pip", "pip3", "apt-get", "apt"]);
+const SCRIPT_RUNNERS = new Set(["node", "npx", "pnpm", "npm", "uv"]);
+
+/** The first command's words: a pipeline or chain reads by its first command, after any
+ * `cd … &&` and `env`/`sudo`/`VAR=x` prefixes. Quotes are dropped from each word. */
+function firstCommandWords(command: string): string[] {
+  let rest = command.trim();
+  for (;;) {
+    const cd = /^cd\s+(?:"[^"]*"|'[^']*'|\S+)\s*(?:&&|;)\s*/.exec(rest);
+    if (!cd) break;
+    rest = rest.slice(cd[0].length);
+  }
+  const first = rest.split(/\|\||&&|[|;\n]/)[0] ?? "";
+  const words = (first.match(/"[^"]*"|'[^']*'|\S+/g) ?? []).map((word) =>
+    word.replace(/^(["'])(.*)\1$/, "$2"),
+  );
+  while (words.length > 0) {
+    const word = words[0] as string;
+    if (word === "env" || word === "sudo" || /^[A-Za-z_][A-Za-z0-9_]*=/.test(word)) words.shift();
+    else break;
+  }
+  return words;
+}
+
+/** "Ran <script>" for the first argument that is a script file (its own name only), else
+ * "Ran a script". */
+function ranScript(args: string[]): string {
+  const script = args
+    .find((word) => SCRIPT_FILE.test(word))
+    ?.split("/")
+    .pop();
+  return script ? `Ran ${script}` : "Ran a script";
+}
+
+/** A shell call's title from its first word alone — never the command itself; the only
+ * argument it may name is one script's file name. */
+function shellTitle(args: Record<string, unknown>): string {
+  const fallback = "Ran a command on your machine";
+  if (!isNonEmptyString(args.command)) return fallback;
+  const [head, ...rest] = firstCommandWords(args.command);
+  const program = head?.split("/").pop() ?? "";
+  const sub = rest[0] ?? "";
+  if (/^python(?:\d+(?:\.\d+)?)?$/.test(program)) {
+    return rest[0] === "-m" && /^pip\d?$/.test(rest[1] ?? "")
+      ? "Installed packages"
+      : ranScript(rest);
+  }
+  if (INSTALL_COMMANDS.has(program)) return "Installed packages";
+  if (program === "uv") {
+    if (sub === "add" || sub === "pip") return "Installed packages";
+    return sub === "run" ? ranScript(rest.slice(1)) : fallback;
+  }
+  if (program === "npm" && (sub === "i" || sub === "install" || sub === "ci")) {
+    return "Installed packages";
+  }
+  if (program === "pnpm" && (sub === "add" || sub === "i" || sub === "install")) {
+    return "Installed packages";
+  }
+  if (SCRIPT_RUNNERS.has(program)) return ranScript(rest);
+  if (LOOK_COMMANDS.has(program)) return "Looked at files";
+  if (program === "git") return "Used git";
+  if (program === "curl" || program === "wget") return "Fetched from the web";
+  if (CONVERT_COMMANDS.has(program)) return "Converted a file";
+  if (ARRANGE_COMMANDS.has(program)) return "Arranged files";
+  if (program === "unzip") return "Unpacked an archive";
+  if (program === "zip") return "Packed an archive";
+  if (program === "tar") {
+    const extracts =
+      /^[A-Za-z]*x[A-Za-z]*$/.test(sub) ||
+      rest.some((word) => word === "--extract" || /^-[A-Za-z]*x[A-Za-z]*$/.test(word));
+    return extracts ? "Unpacked an archive" : "Packed an archive";
+  }
+  return fallback;
+}
+
 // ── the registry ────────────────────────────────────────────────────────
 
 export const TOOL_PRESENTATION: Record<string, ToolPresentation> = {
@@ -520,7 +620,7 @@ export const TOOL_PRESENTATION: Record<string, ToolPresentation> = {
   // Step reads in plain words. Titles never echo a command; a path is the file's own name.
   sys_os_shell: {
     icon: "generic",
-    title: () => "Ran a command on your machine",
+    title: shellTitle,
     snippet: (output) => genericSnippet(output),
   },
 
@@ -547,6 +647,22 @@ export const TOOL_PRESENTATION: Record<string, ToolPresentation> = {
     title: (args) =>
       isNonEmptyString(args.title) ? `Saved “${args.title.trim()}”` : fileTitle("Saved", args),
     snippet: () => null,
+  },
+
+  artifact_patch: {
+    icon: "edit",
+    title: patchTitle,
+    // Success answers the saved artifact (what changed is its `edit_summary`); a stale base
+    // answers `{ error: "artifact_stale", message }`, worded by its message.
+    snippet: (output) => {
+      const parsed = tryParseJson(output);
+      if (parsed === undefined) return genericSnippet(output);
+      const error = errorMessage(parsed);
+      const message = field(parsed, "message");
+      if (error) return clip(isNonEmptyString(message) ? message : error);
+      const said = field(parsed, "edit_summary") ?? field(parsed, "summary");
+      return isNonEmptyString(said) ? clip(said) : null;
+    },
   },
 
   artifact_list: {
@@ -627,6 +743,22 @@ export const TOOL_PRESENTATION: Record<string, ToolPresentation> = {
     snippet: () => null,
   },
 };
+
+/** `artifact_patch` (ADR 0024): the inspector's operations on a file's elements. One operation
+ * on an element named in words reads "Changed the cover title"; otherwise a count. */
+function patchTitle(args: Record<string, unknown>): string {
+  const patches = Array.isArray(args.patches) ? args.patches : [];
+  if (patches.length === 1) {
+    const only = patches[0];
+    if (field(only, "kind") === "set-theme") return "Changed the theme";
+    const id = field(only, "id");
+    if (isNonEmptyString(id) && /^[a-z]+(?:[-_][a-z]+)*$/i.test(id.trim())) {
+      return `Changed the ${id.trim().replace(/[-_]/g, " ").toLowerCase()}`;
+    }
+    return "Changed 1 element";
+  }
+  return patches.length > 1 ? `Changed ${patches.length} elements` : "Changed the file";
+}
 
 function callArgsOf(detail: ActivityStep["detail"]): Record<string, unknown> {
   const raw = field(field(detail, "call"), "args") ?? field(field(detail, "call"), "arguments");
