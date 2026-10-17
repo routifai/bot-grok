@@ -1,4 +1,4 @@
-"""References written by code: the files, artifacts, Project, Helpers and chats a window touched.
+"""References written by code: the files, artifacts, Project and Helpers a window touched.
 
 A journal line is prose the summarizer writes; whether it names the file it is about depends on
 the model that day. :func:`refs_from_items` reads the window's tool calls instead and returns the
@@ -7,8 +7,7 @@ objects they name exactly, in a fixed vocabulary:
 * ``files``: workspace-relative paths written, read or saved (``projects/q3/budget.xlsx``);
 * ``artifacts``: saved versions as ``<id>@v<version>``;
 * ``project``: Project slugs (from ``open_project`` or a ``projects/<slug>/`` path);
-* ``helpers``: Helper session ids (from ``start_helper`` and ``message_helper``);
-* ``chats``: side chat ids (from ``side_chat_open``).
+* ``helpers``: Helper session ids (from ``start_helper`` and ``message_helper``).
 
 :func:`format_refs` renders them as ``files:a,b artifacts:x@v2`` for a journal line's trailing
 comment. A value never holds a space, a comma or ``<``/``>``: those (and ``%``) are
@@ -27,11 +26,11 @@ from typing import Any
 from omnigent.context.tool_digest import _short_name
 
 #: The keys, in the order they are written.
-REF_KEYS = ("files", "artifacts", "project", "helpers", "chats")
+REF_KEYS = ("files", "artifacts", "project", "helpers")
 #: Most values one line carries, all keys together.
 MAX_REFS = 12
 #: Which keys keep their values first when a window names more than :data:`MAX_REFS`.
-_PRIORITY = ("project", "artifacts", "helpers", "chats", "files")
+_PRIORITY = ("project", "artifacts", "helpers", "files")
 
 _WRITE_TOOLS = frozenset({"sys_os_write", "sys_os_edit", "deck_new", "deck_theme_set"})
 _READ_TOOLS = frozenset({"sys_os_read", "files_get", "files_read_page", "deck_check"})
@@ -146,8 +145,6 @@ def refs_from_items(items: Iterable[Mapping[str, Any]]) -> dict[str, list[str]]:
             slug = args.get("project")
             if isinstance(slug, str) and _SLUG.match(slug):
                 _add(found["project"], slug)
-        elif name == "side_chat_open":
-            _add(found["chats"], result.get("conversation_id"))
         # Any save that answers with an artifact version (artifact_save, deck_export).
         version = result.get("version")
         if result.get("type") == "artifact" and isinstance(version, int) and result.get("id"):

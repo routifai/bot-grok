@@ -93,14 +93,13 @@ def test_open_project_names_the_project_and_roots_later_relative_paths() -> None
     }
 
 
-def test_helpers_and_side_chats() -> None:
+def test_helpers() -> None:
     items = [
         *_call("start_helper", {"task": "count"}, {"started": True, "helper_id": "h1"}),
         *_call("message_helper", {"message": "also", "helper_id": "h1"}, {"ok": True}),
-        *_call("side_chat_open", {"title": "Deck"}, {"conversation_id": "c7"}),
     ]
 
-    assert refs_from_items(items) == {"helpers": ["h1"], "chats": ["c7"]}
+    assert refs_from_items(items) == {"helpers": ["h1"]}
 
 
 def test_an_mcp_prefix_and_text_block_results_are_read() -> None:
@@ -139,7 +138,7 @@ def test_values_never_hold_a_space_or_a_comma() -> None:
 
 
 def test_format_keeps_the_key_order_and_skips_empty_keys() -> None:
-    refs = {"chats": ["c1"], "files": ["a.md", "b.md"], "helpers": []}
+    refs = {"helpers": ["h1"], "files": ["a.md", "b.md"], "project": []}
 
-    assert format_refs(refs) == "files:a.md,b.md chats:c1"
+    assert format_refs(refs) == "files:a.md,b.md helpers:h1"
     assert format_refs(None) == ""

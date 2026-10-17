@@ -6,7 +6,7 @@
 # engine/omnigent/examples/super-chat/ for Superchat. Runs on the Claude Agent SDK harness, with
 # Sub-agent Types worker under agents/<type>/ — a Muse launches one by its
 # declared name, never by naming a model. The prompt (AGENTS.md) carries the Superchat/Muse voice;
-# per-turn Memory, Rollover, Side Chats and the Activity Feed all come from Omnigent itself
+# per-turn Memory, Rollover and the Activity Feed all come from Omnigent itself
 # (ADR 0001, engine/omnigent/rollover/adr/0001-omnigent-owns-everything.md) — Superchat no longer
 # injects anything through a context-provider hook.
 spec_version: 1
@@ -51,7 +51,6 @@ tools:
     - "memory_*"
     - session_history
     - state_close
-    - side_chat_open
     - open_project
     - start_helper
     - message_helper

@@ -134,7 +134,7 @@ async def recall_search(
         an item that starts or ends no stored turn leaves the chat whole.
     :param project: Only what belongs to this Project (folder slug).
     :param file: Only this file, and the journal lines and turns that touched it (newest first).
-    :param chat: Only this chat's turns and the journal lines that name it.
+    :param chat: Only this chat's turns.
     :param since: Only hits dated on or after this ISO date.
     :param until: Only hits dated on or before this ISO date.
     :param indexer: The Computer's indexer (default: the runner's service).
@@ -330,8 +330,7 @@ def _allowed(
     if filters.file:
         wanted.append(db.chunks_with_ref("files", _file_path(indexer, filters.file)))
     if filters.chat:
-        chat_turns = {c.id for c in db.chunks_for(file_id_for(turn_path(filters.chat)))}
-        wanted.append(chat_turns | db.chunks_with_ref("chats", filters.chat))
+        wanted.append({c.id for c in db.chunks_for(file_id_for(turn_path(filters.chat)))})
     by_refs = set.intersection(*wanted)
     turns = db.turn_meta(sorted(by_refs))
     journals = {r.file_id for r in rows if _is_journal(r)}
