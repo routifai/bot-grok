@@ -1,5 +1,7 @@
 # A fork is a side chat with an anchor
 
+> **Status:** Superseded by [ADR 0021](0021-one-conversation-messages-link-to-artifacts.md). Side chats and forks are removed; a message links to the artifact it is about.
+
 People want to ask about one message without derailing the Conversation, the way a reply works in iMessage. We could build this as a new kind of chat or as a reply thread stored inside the Conversation. Instead, a Fork is a Side chat that records its anchor: the Conversation message it started from.
 
 The engine owns the whole behaviour, so any client gets it (ADR 0009):
