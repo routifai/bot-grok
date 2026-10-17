@@ -37,10 +37,6 @@ export type ProductEventType = z.infer<typeof ProductEventType>;
 
 export const MessageRole = z.enum(["user", "bot", "system"]);
 
-/** Superchat Canvas tree (packages/contracts/src/canvas.ts has the strict `CanvasNodeSchema`
-    catalog); z.any here keeps the inferred type JSON-assignable for persistence — the tree is validated and repaired before publish. */
-const CanvasTree = z.record(z.string(), z.any());
-
 export const SecretAskPurpose = z.enum(["otp", "password", "api_key"]);
 export type SecretAskPurpose = z.infer<typeof SecretAskPurpose>;
 
@@ -182,13 +178,6 @@ export const MessageBlock = z.discriminatedUnion("kind", [
   }),
   /** The Muse's `render_card` result (packages/contracts/src/reply-cards.ts). */
   ReplyCardBlock,
-  z.object({
-    /** Superchat Canvas (show_canvas). `tree` is a CanvasNode (packages/contracts/src/canvas.ts)
-        already validated and repaired before publish, so renderers can trust its shape. */
-    kind: z.literal("canvas"),
-    title: z.string().optional(),
-    tree: CanvasTree,
-  }),
   z.object({
     kind: z.literal("image"),
     artifactId: Id,

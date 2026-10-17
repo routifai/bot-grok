@@ -17,7 +17,6 @@ export {
   resolvePersonaShape,
   Wordmark,
 } from "./bot-avatar.js";
-export * from "./canvas/index.js";
 export * from "./components/ui/alert-dialog.js";
 export * from "./components/ui/badge.js";
 export * from "./components/ui/button.js";

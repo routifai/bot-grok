@@ -18,7 +18,7 @@ import { AskCard } from "../../../features/approvals";
 import { ArtifactFileCard } from "../../../features/artifacts";
 import type { ArtifactTarget } from "../../../lib/artifact-open";
 import { splitComposerAttachments } from "../../../lib/composer-attachments";
-import { ArtifactImage, CanvasBlockView } from "../../shell/message-cards";
+import { ArtifactImage } from "../../shell/message-cards";
 import { FirstRunHint } from "../intro";
 import {
   FailureNote,
@@ -179,17 +179,6 @@ export const MessageView = memo(function MessageView({
                   </ChatMarkdown>
                 </div>
               ) : null}
-            </div>
-          );
-        }
-        if (block.kind === "canvas") {
-          return (
-            <div key={i} className="flex justify-start">
-              <CanvasBlockView
-                block={block}
-                disabled={!canAnswer}
-                onAnswer={(value) => onAnswer(message, value)}
-              />
             </div>
           );
         }

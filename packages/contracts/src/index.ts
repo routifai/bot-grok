@@ -1,6 +1,5 @@
 export * from "./attachments.js";
 export * from "./bot-secrets.js";
-export * from "./canvas.js";
 export * from "./domain.js";
 export * from "./events.js";
 export * from "./ids.js";

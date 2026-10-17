@@ -32,7 +32,6 @@ vi.mock("../../../components/CloudAgentCard", () => ({ CloudAgentCard: () => nul
 vi.mock("../../../components/cards/ReplyCard", () => ({ ReplyCardBlockView: () => null }));
 vi.mock("../../shell/message-cards", () => ({
   ArtifactImage: () => null,
-  CanvasBlockView: () => null,
 }));
 vi.mock("../intro", () => ({ FirstRunHint: () => null }));
 vi.mock("./HelperTracker", () => ({ HelperTracker: () => null }));

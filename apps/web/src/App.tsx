@@ -8,7 +8,6 @@ import { loadMe, resetMe } from "./lib/bootstrap";
 import { markAfterPaint, markOnce } from "./lib/performance";
 import { ActivityPreviewPage } from "./pages/dev/ActivityPreviewPage";
 import { AutomationsPreviewPage } from "./pages/dev/AutomationsPreviewPage";
-import { CanvasPreviewPage } from "./pages/dev/CanvasPreviewPage";
 import { CardsPreviewPage } from "./pages/dev/CardsPreviewPage";
 import { DeckPreviewPage } from "./pages/dev/DeckPreviewPage";
 import { ForksPreviewPage } from "./pages/dev/ForksPreviewPage";
@@ -18,13 +17,8 @@ import { SideChatsPreviewPage } from "./pages/dev/SideChatsPreviewPage";
 import { ShellPage } from "./pages/Shell";
 
 export function App() {
-  // Dev-only fixture route: no session needed, so screenshots and eyeballing don't
-  // require a signed-in account or a live agent run.
-  if (import.meta.env.DEV && window.location.pathname === "/dev/canvas") {
-    return <CanvasPreviewPage />;
-  }
-  // Dev-only fixture route for the Side Chats sidebar + session (SideChatsPreviewPage.tsx),
-  // same reasoning as /dev/canvas: no session or backend chats wire needed.
+  // Dev-only fixture routes: no session needed, so screenshots and eyeballing don't require a
+  // signed-in account or a live agent run. The Side Chats sidebar + session (SideChatsPreviewPage.tsx).
   if (import.meta.env.DEV && window.location.pathname === "/dev/side-chats") {
     return <SideChatsPreviewPage />;
   }
