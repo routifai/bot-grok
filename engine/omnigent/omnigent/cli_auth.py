@@ -228,8 +228,7 @@ def store_databricks_auth(
     Unlike :func:`store_token` this stores no bearer: Databricks OAuth
     access tokens expire after ~1 hour, so the record only names the
     workspace host whose ``databricks auth login --host <ws>`` OAuth
-    cache the auth chain should mint fresh tokens from (see
-    ``omnigent.inner.databricks_executor._resolve_databricks_auth``).
+    cache the Databricks SDK auth chain should mint fresh tokens from.
 
     :param server_url: The Databricks Apps server URL, e.g.
         ``"https://myapp-123.aws.databricksapps.com"``.

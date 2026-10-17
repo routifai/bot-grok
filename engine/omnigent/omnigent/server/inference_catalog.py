@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import copy
 import dataclasses
-import shlex
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -39,7 +38,6 @@ from omnigent.onboarding.provider_config import (
     resolve_secret,
 )
 from omnigent.server.auth import RESERVED_USER_LOCAL
-from omnigent.server.databricks_identity import resolve_databricks_token
 from omnigent.superchat.models.listing import upstream_models_with_info
 from omnigent.superchat.models.proxy import KEY_REQUIRED_MESSAGE
 from omnigent.superchat.models.store import resolve_model_connection
@@ -198,13 +196,6 @@ class SandboxInferenceService:
         self._state = app_state
         self._transport = transport
 
-    async def _connection(self, owner: str) -> tuple[str, str] | None:
-        store = getattr(self._state, "databricks_store", None)
-        client = getattr(self._state, "databricks_client", None)
-        if store is None or client is None:
-            return None
-        return await resolve_databricks_token(owner, store=store, client=client)
-
     async def prepare(
         self,
         provider: str | None,
@@ -245,21 +236,6 @@ class SandboxInferenceService:
             "providers": copy.deepcopy(raw.get("providers", {})),
             "inference": copy.deepcopy(raw.get("inference", {})),
         }
-        connections: dict[str, str] = {}
-        connected_names = [
-            name
-            for name, entry in load_providers(raw).items()
-            if entry.kind == "databricks" and entry.connection == "databricks"
-        ]
-        connection = None
-        if connected_names:
-            try:
-                connection = await self._connection(owner)
-            except Exception:  # noqa: BLE001 - an unrelated connection must not block the chosen gateway
-                if bound is not None and bound.name in connected_names:
-                    raise _invalid(
-                        "Databricks connection is unavailable. Reconnect your account."
-                    ) from None
         # ``connection: model`` gateways: the owner's saved key stays in the engine; the Computer
         # is pointed at the engine's model proxy and authenticates with its own launch token.
         model_names = [
@@ -326,50 +302,9 @@ class SandboxInferenceService:
                             for family_name, extra in families.items()
                         },
                     }
-        if bound is not None and bound.kind == "databricks" and bound.connection != "databricks":
-            raise _invalid("Sandbox Databricks inference requires connection: databricks.")
-        if bound is not None and bound.name in connected_names and connection is None:
-            raise _invalid(
-                "Connect Databricks before using this harness's Unity Gateway provider."
-            )
-        if connection is not None:
-            _, workspace = connection
-            workspace = _endpoint(workspace)
-            command = (
-                "python3 -m omnigent.host.databricks_credential token --workspace "
-                + shlex.quote(workspace)
-            )
-            for name in connected_names:
-                connections[name] = workspace
-                runtime["providers"][name] = {
-                    "kind": "gateway",
-                    "default": raw["providers"][name].get("default", False),
-                    "display_name": raw["providers"][name].get("display_name"),
-                    "anthropic": {
-                        **{
-                            key: value
-                            for key, value in raw["providers"][name].get("anthropic", {}).items()
-                            if key in {"models", "pricing", "context_window", "max_output_tokens"}
-                        },
-                        "base_url": f"{workspace}/ai-gateway/anthropic",
-                        "auth_command": command,
-                    },
-                    "openai": {
-                        **{
-                            key: value
-                            for key, value in raw["providers"][name].get("openai", {}).items()
-                            if key in {"models", "pricing", "context_window", "max_output_tokens"}
-                        },
-                        "base_url": f"{workspace}/ai-gateway/codex/v1",
-                        "auth_command": command,
-                        "wire_api": "responses",
-                    },
-                }
         providers = load_providers(runtime)
         if bound is not None and providers[bound.name].kind not in {"gateway", "key", "local"}:
-            raise _invalid(
-                "Managed inference requires a gateway, API key, or connected Unity provider."
-            )
+            raise _invalid("Managed inference requires a gateway, API key, or local provider.")
         for name in providers:
             for family_name in ("anthropic", "openai"):
                 original_family = raw["providers"][name].get(family_name, {})
@@ -381,7 +316,6 @@ class SandboxInferenceService:
                 _endpoint(family.base_url)
         for saved_harness, saved in runtime["inference"]["harnesses"].items():
             entry = providers[saved["provider"]]
-            # An unconnected Unity reference remains unusable, never late-bound.
             if not entry.families:
                 continue
             if saved.get("model_allowlist") is not None:
@@ -403,7 +337,6 @@ class SandboxInferenceService:
                 raw,
                 {
                     "model_discovery": discovery,
-                    "connections": connections,
                     "model_providers": model_providers,
                     "target_id": target_id,
                     "harness": harness,
@@ -413,7 +346,6 @@ class SandboxInferenceService:
             "owner_id": owner,
             "runtime_config": runtime,
             "model_discovery": discovery,
-            "connections": connections,
         }
         preview = await self.catalog(snapshot)
         snapshot["catalog"] = preview
@@ -546,37 +478,19 @@ class SandboxInferenceService:
                 result.update(configured=False, status="unconfigured")
                 return result
             provider = load_providers(config)[binding.provider]
-            workspace = snapshot.get("connections", {}).get(provider.name)
-            result["provider_label"] = config["providers"][provider.name].get("display_name") or (
-                "Unity Gateway" if workspace else provider.display_name or provider.name
+            result["provider_label"] = (
+                config["providers"][provider.name].get("display_name")
+                or provider.display_name
+                or provider.name
             )
             result["default_model"] = binding.default_model
             _wire(provider, harness)
             connection = _is_model_connection(config["providers"][provider.name])
-            if not workspace and not isinstance(
-                snapshot.get("model_discovery", {}).get(provider.name), dict
-            ):
+            if not isinstance(snapshot.get("model_discovery", {}).get(provider.name), dict):
                 return self._static_catalog(
                     result, binding, provider, harness, connection=connection
                 )
-            if workspace:
-                connection = await self._connection(snapshot["owner_id"])
-                if connection is None:
-                    raise _invalid("The session owner's Databricks connection is unavailable.")
-                token, current_workspace = connection
-                if _endpoint(current_workspace) != workspace:
-                    raise _invalid(
-                        "The Databricks workspace changed. "
-                        "Restore the session's original connection."
-                    )
-                entries = await asyncio.to_thread(
-                    model_catalog.fetch_databricks_model_service_entries,
-                    workspace,
-                    token,
-                    transport=self._transport,
-                )
-            else:
-                entries = await asyncio.to_thread(self._gateway_models, snapshot, provider)
+            entries = await asyncio.to_thread(self._gateway_models, snapshot, provider)
             available = {
                 entry.id: entry
                 for entry in entries
@@ -608,7 +522,7 @@ class SandboxInferenceService:
                 )
                 default = candidate if candidate in ids else ids[0]
             source = {
-                "kind": "databricks" if workspace else provider.kind,
+                "kind": provider.kind,
                 "label": result["provider_label"],
                 "name": provider.name,
             }

@@ -43,7 +43,6 @@ from typing import TYPE_CHECKING, Any  # noqa: E402
 if TYPE_CHECKING:
     from omnigent.inner.claude_sdk_executor import ClaudeSDKExecutor as ClaudeSDKExecutor
     from omnigent.inner.codex_executor import CodexExecutor as CodexExecutor
-    from omnigent.inner.databricks_executor import DatabricksExecutor as DatabricksExecutor
     from omnigent.inner.datamodel import (
         AgentDef as AgentDef,
     )
@@ -188,10 +187,8 @@ _LAZY_EXPORTS = {
 }
 
 # Optional executors resolve to ``None`` when their extra's dependencies are
-# absent, matching the former eager try/except imports. Databricks also
-# tolerates ``OSError``: its SDK can raise one probing credentials at import.
+# absent, matching the former eager try/except imports.
 _OPTIONAL_EXPORTS = {
-    "DatabricksExecutor": ("omnigent.inner.databricks_executor", (OSError, ImportError)),
     "ClaudeSDKExecutor": ("omnigent.inner.claude_sdk_executor", (ImportError,)),
     "CodexExecutor": ("omnigent.inner.codex_executor", (ImportError,)),
 }
@@ -237,7 +234,6 @@ __all__ = [
     "CodexExecutor",
     "Connection",
     "Credentials",
-    "DatabricksExecutor",
     "Executor",
     "ExecutorConfig",
     "ExecutorError",

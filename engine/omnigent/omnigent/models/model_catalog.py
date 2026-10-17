@@ -12,8 +12,6 @@ canonical→gateway-local model-id normalization
 
 Enumeration is deterministic per provider kind:
 
-- ``databricks`` → ``GET <workspace>/api/2.0/serving-endpoints`` with a
-  token minted from the profile (source ``"gateway"``).
 - ``key`` with the ``anthropic`` family → ``GET <base_url>/v1/models``
   with ``x-api-key`` headers (source ``"anthropic-api"``).
 - ``key`` (openai family) / ``gateway`` / ``local`` →
@@ -33,7 +31,6 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import os
 import re
 import subprocess
 import threading
@@ -53,7 +50,6 @@ from omnigent.models.model_metadata import (
     ModelCostTier,
     ModelIntent,
     ModelMetadata,
-    ModelWireAPI,
 )
 from omnigent.models.model_override import is_codex_compatible_model, model_family_mismatch
 from omnigent.models.model_resolver import (
@@ -62,18 +58,15 @@ from omnigent.models.model_resolver import (
     ModelResolutionRequest,
     resolve_model,
 )
-from omnigent.models.pi_model_compatibility import unsupported_in_pi
 from omnigent.onboarding.provider_config import (
     ANTHROPIC_FAMILY,
     BEDROCK_KIND,
     CLI_CONFIG_KIND,
-    DATABRICKS_KIND,
     KEY_KIND,
     OPENAI_FAMILY,
     SUBSCRIPTION_KIND,
     ProviderEntry,
 )
-from omnigent.runtime.credentials.databricks import resolve_databricks_workspace
 from omnigent.util.json_types import JsonObject as _JsonObject
 
 if TYPE_CHECKING:
@@ -94,22 +87,6 @@ _AUTH_COMMAND_TIMEOUT_S = 15.0
 # Header version the Anthropic models API requires (same value as
 # ``omnigent/llms/adapters/anthropic.py``).
 _ANTHROPIC_API_VERSION = "2023-06-01"
-
-# Name tokens that mark a Databricks serving endpoint as an LLM when the
-# endpoint carries no usable ``task`` field.
-_LLM_NAME_TOKENS = ("claude", "gpt", "codex", "gemini", "llama", "qwen", "kimi")
-
-# Chat-capable endpoint tasks ("llm/v1/chat"); embeddings/rerankers don't match.
-_LLM_TASK_TOKENS = ("chat", "completion")
-
-# DATABRICKS-PATCH(model-services-scoped-listing): scope + page the Unity
-# Catalog model-services listing. Mirrors
-# ``databricks_model_discovery._MODEL_SERVICES_PARENT`` /
-# ``_MODEL_SERVICES_MAX_RESULTS`` — including the parameter *name*, so both
-# callers of this endpoint ask for a page size the API actually honors.
-_MODEL_SERVICES_PARENT = "schemas/system.ai"
-_MODEL_SERVICES_MAX_RESULTS = 100
-_MODEL_SERVICES_MAX_PAGES = 100
 
 _ProviderHarness: TypeAlias = Literal["claude-sdk", "codex", "pi"]
 
@@ -144,7 +121,7 @@ class ModelEntry:
     """One model a worker can run.
 
     :param id: Provider-local model id, e.g.
-        ``"databricks-claude-sonnet-4-6"`` or ``"gpt-5.4-mini"``.
+        ``"claude-sonnet-4-6"`` or ``"gpt-5.4-mini"``.
     :param family: Vendor family token — ``"claude"``, ``"openai"``, or
         ``"other"``.
     :param metadata: Provider-neutral capabilities and limits. Metadata fields
@@ -171,7 +148,7 @@ class ModelListing:
     :param verified: ``True`` when the list was fetched live from the
         provider; ``False`` for static/curated or empty listings.
     :param models: The enumerated models, e.g.
-        ``(ModelEntry(id="databricks-gpt-5-4", family="openai"),)``.
+        ``(ModelEntry(id="gpt-5.4", family="openai"),)``.
     :param note: Human-readable provenance / failure explanation.
     """
 
@@ -186,13 +163,11 @@ class ResolvedModelProvider:
     """The model provider a worker's spawn/launch path would route through.
 
     :param kind: Provider kind — ``"key"`` / ``"gateway"`` / ``"local"``
-        / ``"subscription"`` / ``"databricks"`` / ``"cli-config"`` from
+        / ``"subscription"`` / ``"cli-config"`` from
         the provider config layer, or ``"none"`` when no usable provider
         resolved.
     :param family: ``"anthropic"`` / ``"openai"`` for inline-family
         kinds, else ``None``.
-    :param profile: Databricks profile for ``kind="databricks"``, e.g.
-        ``"my-profile"``; ``None`` falls back to the ``[DEFAULT]`` section.
     :param base_url: Endpoint base URL for inline-family kinds, e.g.
         ``"https://openrouter.ai/api/v1"``.
     :param api_key: Resolved static credential for inline-family kinds.
@@ -207,7 +182,6 @@ class ResolvedModelProvider:
 
     kind: str
     family: str | None = None
-    profile: str | None = None
     base_url: str | None = None
     api_key: str | None = None
     auth_command: str | None = None
@@ -247,8 +221,6 @@ def model_configuration_source(
     source: dict[str, str] = {"kind": provider.kind}
     if provider.kind == SUBSCRIPTION_KIND:
         source.update(label="Subscription", name=provider.cli or "CLI login")
-    elif provider.kind == DATABRICKS_KIND:
-        source.update(label="Workspace", name=provider.profile or "DEFAULT")
     elif provider.kind in {"gateway", "local"}:
         source["label"] = "AI Gateway" if provider.kind == "gateway" else "Local"
         name = provider.detail.removeprefix("provider '").removesuffix("'")
@@ -312,7 +284,7 @@ def _credential_fingerprint(provider: ResolvedModelProvider) -> str:
 def _listing_cache_key(provider: ResolvedModelProvider) -> tuple[str, ...]:
     """Cache identity for one provider's unfiltered listing.
 
-    Carries the full provider coordinates — kind, family, profile,
+    Carries the full provider coordinates — kind, family,
     base URL, CLI, the non-secret ``detail`` (provider name), and a
     credential fingerprint — so distinct providers never replay each
     other's listings.
@@ -323,7 +295,6 @@ def _listing_cache_key(provider: ResolvedModelProvider) -> tuple[str, ...]:
     return (
         provider.kind,
         provider.family or "",
-        provider.profile or "",
         provider.base_url or "",
         provider.cli or "",
         provider.detail,
@@ -351,7 +322,7 @@ def model_family_token(model_id: str) -> str:
     codex-compatible id (gpt/codex plus the GLM and Kimi families, which
     serve on the same Responses wire).
 
-    :param model_id: Model id, e.g. ``"databricks-claude-opus-4-8"``.
+    :param model_id: Model id, e.g. ``"claude-opus-4-8"``.
     :returns: ``"claude"``, ``"openai"``, or ``"other"``.
     """
     if "claude" in model_id.lower():
@@ -384,7 +355,7 @@ def catalog_model_entries(provider_name: str) -> tuple[ModelEntry, ...]:
     as the resolver's deterministic tie-breaker.
 
     :param provider_name: MLflow catalog provider, e.g. ``"openai"`` or
-        ``"databricks"``.
+        ``"anthropic"``.
     :returns: Normalized model entries, newest/preferred catalog entries first.
     """
     from omnigent.onboarding.providers import get_chat_models
@@ -447,8 +418,6 @@ def resolve_catalog_model(
     from omnigent.onboarding.providers import default_chat_model
 
     models = list(catalog_model_entries(provider_name))
-    if provider_name.lower() == "databricks":
-        models = [model for model in models if model.id.lower().startswith("databricks-")]
 
     if configured_default is None and intent == ModelIntent.DEFAULT:
         compatible_ids = {model.id for model in models if family is None or model.family == family}
@@ -600,11 +569,9 @@ def _provider_from_legacy_auth(
 ) -> ResolvedModelProvider:
     """Mirror the per-harness legacy fallthrough of ``_build_*_spawn_env``.
 
-    The builders diverge: claude-sdk consumes spec/global ``auth:``
-    blocks AND legacy profiles; codex and pi consume ONLY
-    ``config["profile"]`` plus the ``databricks-*`` model prefix — their
-    builders never read ``auth:`` blocks, so reporting one as usable
-    would list models the spawned child cannot actually reach.
+    Only the claude-sdk builder consumes spec/global ``api_key`` ``auth:``
+    blocks; the codex and pi builders never read them, so reporting one as
+    usable would list models the spawned child cannot actually reach.
 
     :param spec: The worker's (sub-)agent spec.
     :param harness_type: The workflow harness type, e.g. ``"codex"``.
@@ -612,53 +579,34 @@ def _provider_from_legacy_auth(
     """
     if harness_type == "claude-sdk":
         return _legacy_claude_sdk_provider(spec)
-    return _legacy_profile_only_provider(spec, harness_type)
-
-
-def _databricks_prefix_provider(spec: AgentSpec) -> ResolvedModelProvider | None:
-    """Map a ``databricks-*`` spec model to the runner-env-profile gateway.
-
-    Mirrors the builders' shared model-prefix heuristic; the native
-    launch paths read the same ``DATABRICKS_CONFIG_PROFILE`` fallback.
-
-    :param spec: The worker's (sub-)agent spec.
-    :returns: A databricks provider, or ``None`` when the model carries
-        no ``databricks-`` / ``databricks/`` prefix.
-    """
-    model = spec.executor.model
-    if isinstance(model, str) and model.startswith(("databricks-", "databricks/")):
+    if spec.executor.auth is not None:
         return ResolvedModelProvider(
-            kind=DATABRICKS_KIND,
-            profile=os.environ.get("DATABRICKS_CONFIG_PROFILE"),
-            detail="databricks-* model prefix",
+            kind=NONE_KIND,
+            detail=(
+                f"the {harness_type} spawn path does not consume legacy auth: "
+                "fields; configure a 'providers:' entry instead"
+            ),
         )
-    return None
+    return ResolvedModelProvider(kind=NONE_KIND, detail="no model provider configured")
 
 
 def _legacy_claude_sdk_provider(spec: AgentSpec) -> ResolvedModelProvider:
     """Mirror ``_build_claude_sdk_spawn_env``'s legacy auth branch.
 
-    Spec ``auth:`` (databricks / api_key) → legacy profile
-    (``config["profile"]`` first, matching the builder's read order) →
-    global ``auth:`` → ``databricks-*`` model prefix → none. The
-    api_key path routes via ``apiKeyHelper`` to the vendor API, so
-    ``auth.base_url`` is NOT consumed — listings use the vendor default.
+    Spec ``auth:`` (api_key) → global ``auth:`` → none. The api_key path
+    routes via ``apiKeyHelper`` to the vendor API, so ``auth.base_url`` is
+    NOT consumed — listings use the vendor default.
 
     :param spec: The worker's (sub-)agent spec.
     :returns: A :class:`ResolvedModelProvider`.
     """
     from omnigent.onboarding.configure_models import default_base_url_for_family
     from omnigent.runtime.workflow import _load_global_auth
-    from omnigent.spec.types import ApiKeyAuth, DatabricksAuth
+    from omnigent.spec.types import ApiKeyAuth
 
     auth = spec.executor.auth
-    legacy_profile = spec.executor.config.get("profile") or spec.executor.profile
-    if auth is None and not legacy_profile:
+    if auth is None:
         auth = _load_global_auth()
-    if isinstance(auth, DatabricksAuth):
-        return ResolvedModelProvider(
-            kind=DATABRICKS_KIND, profile=auth.profile or None, detail="databricks auth"
-        )
     if isinstance(auth, ApiKeyAuth) and auth.api_key:
         return ResolvedModelProvider(
             kind=KEY_KIND,
@@ -666,45 +614,6 @@ def _legacy_claude_sdk_provider(spec: AgentSpec) -> ResolvedModelProvider:
             base_url=default_base_url_for_family(ANTHROPIC_FAMILY),
             api_key=auth.api_key,
             detail="api_key auth",
-        )
-    if legacy_profile:
-        return ResolvedModelProvider(
-            kind=DATABRICKS_KIND, profile=str(legacy_profile), detail="spec profile"
-        )
-    prefix = _databricks_prefix_provider(spec)
-    if prefix is not None:
-        return prefix
-    return ResolvedModelProvider(kind=NONE_KIND, detail="no model provider configured")
-
-
-def _legacy_profile_only_provider(
-    spec: AgentSpec, harness_type: _ProviderHarness
-) -> ResolvedModelProvider:
-    """Mirror the codex / pi builders' legacy branch (profile + prefix only).
-
-    ``_build_codex_spawn_env`` / ``_build_pi_spawn_env`` never read
-    ``auth:`` blocks or ``executor.profile`` — only ``config["profile"]``
-    and the ``databricks-*`` model prefix route anywhere.
-
-    :param spec: The worker's (sub-)agent spec.
-    :param harness_type: The workflow harness type, e.g. ``"codex"``.
-    :returns: A :class:`ResolvedModelProvider`.
-    """
-    profile = spec.executor.config.get("profile")
-    if profile:
-        return ResolvedModelProvider(
-            kind=DATABRICKS_KIND, profile=str(profile), detail="spec profile"
-        )
-    prefix = _databricks_prefix_provider(spec)
-    if prefix is not None:
-        return prefix
-    if spec.executor.auth is not None or spec.executor.profile:
-        return ResolvedModelProvider(
-            kind=NONE_KIND,
-            detail=(
-                f"the {harness_type} spawn path does not consume legacy auth:/profile "
-                "fields; configure a 'providers:' entry instead"
-            ),
         )
     return ResolvedModelProvider(kind=NONE_KIND, detail="no model provider configured")
 
@@ -719,10 +628,6 @@ def _provider_from_entry(entry: ProviderEntry, harness_type: str) -> ResolvedMod
     """
     from omnigent.errors import OmnigentError
 
-    if entry.kind == DATABRICKS_KIND:
-        return ResolvedModelProvider(
-            kind=DATABRICKS_KIND, profile=entry.profile, detail=f"provider {entry.name!r}"
-        )
     if entry.kind == SUBSCRIPTION_KIND:
         return ResolvedModelProvider(
             kind=SUBSCRIPTION_KIND, cli=entry.cli, detail=f"provider {entry.name!r}"
@@ -791,30 +696,7 @@ def list_models_for_worker(
     :returns: The worker's :class:`ModelListing`.
     """
     provider = resolve_model_provider(spec, harness)
-    # Pi harnesses use system.ai.* ids (via the Unity Catalog model-services API)
-    # so supervisors see the ids Pi can actually route. Other harnesses use the
-    # serving-endpoints listing which returns databricks-* ids.
-    _pi_harnesses = frozenset({"pi", "pi-native", "native-pi"})
-    canonical = (harness or "").lower().replace("-", "").replace("_", "")
-    use_uc = canonical in {h.replace("-", "").replace("_", "") for h in _pi_harnesses}
-    if use_uc and provider.kind == DATABRICKS_KIND:
-        uc_key = ("uc", *_listing_cache_key(provider))
-        with _listing_cache_lock:
-            cached = cast(ModelListing | None, _listing_cache.get(uc_key))
-        if cached is not None:
-            listing = cached
-        else:
-            try:
-                listing = _fetch_databricks_uc_listing(provider, transport=transport)
-                with _listing_cache_lock:
-                    _listing_cache[uc_key] = listing
-            except (httpx.HTTPError, OSError):
-                _logger.debug(
-                    "UC model listing failed for pi harness, falling back", exc_info=True
-                )
-                listing = _listing_for_provider(provider, transport=transport)
-    else:
-        listing = _listing_for_provider(provider, transport=transport)
+    listing = _listing_for_provider(provider, transport=transport)
     if harness is None:
         return listing
     from omnigent.inference_config import binding_for_harness, load_runtime_inference_config
@@ -1012,9 +894,7 @@ def _listing_for_provider(
     if cached is not None:
         return cached
     try:
-        if provider.kind == DATABRICKS_KIND:
-            listing = _fetch_databricks_listing(provider, transport=transport)
-        elif provider.kind == KEY_KIND and provider.family == ANTHROPIC_FAMILY:
+        if provider.kind == KEY_KIND and provider.family == ANTHROPIC_FAMILY:
             listing = _fetch_anthropic_listing(provider, transport=transport)
         else:
             listing = _fetch_openai_compatible_listing(provider, transport=transport)
@@ -1087,228 +967,11 @@ def _static_cli_config_listing(provider: ResolvedModelProvider) -> ModelListing:
     )
 
 
-def _is_llm_endpoint(name: str, task: str) -> bool:
-    """Decide whether a serving endpoint is a chat-capable LLM.
-
-    :param name: Endpoint name, e.g. ``"databricks-claude-opus-4-8"``.
-    :param task: Endpoint ``task`` field, e.g. ``"llm/v1/chat"`` —
-        empty when the API omits it.
-    :returns: ``True`` for chat-capable LLM endpoints; embeddings and
-        other non-chat tasks are excluded.
-    """
-    task_lower = task.lower()
-    if task_lower:
-        # An explicit task is authoritative: only chat/completions
-        # endpoints qualify (embeddings carry "llm/v1/embeddings").
-        return any(token in task_lower for token in _LLM_TASK_TOKENS)
-    name_lower = name.lower()
-    return any(token in name_lower for token in _LLM_NAME_TOKENS)
-
-
-def _fetch_databricks_listing(
-    provider: ResolvedModelProvider,
-    *,
-    transport: httpx.BaseTransport | None,
-) -> ModelListing:
-    """List LLM serving endpoints on the provider's Databricks workspace.
-
-    :param provider: A ``kind="databricks"`` provider descriptor.
-    :param transport: Optional httpx transport override for tests.
-    :returns: A ``source="gateway"`` listing of LLM endpoint names.
-    :raises httpx.HTTPError: On transport/HTTP failures.
-    :raises OSError: When the profile resolves no credentials.
-    """
-    creds = resolve_databricks_workspace(provider.profile)
-    with httpx.Client(transport=transport, timeout=_HTTP_TIMEOUT_S) as client:
-        resp = client.get(
-            f"{creds.host}/api/2.0/serving-endpoints",
-            headers={"Authorization": f"Bearer {creds.token}"},
-        )
-        resp.raise_for_status()
-        payload = resp.json()
-    endpoints = payload.get("endpoints") if isinstance(payload, dict) else None
-    models: list[ModelEntry] = []
-    for endpoint in endpoints if isinstance(endpoints, list) else []:
-        if not isinstance(endpoint, dict):
-            continue
-        name = endpoint.get("name")
-        if not isinstance(name, str) or not name:
-            continue
-        task = endpoint.get("task")
-        if not _is_llm_endpoint(name, task if isinstance(task, str) else ""):
-            continue
-        state = endpoint.get("state")
-        ready = state.get("ready") if isinstance(state, dict) else None
-        # Only an explicitly non-READY endpoint is skipped; an absent
-        # state field stays included (the API may omit it).
-        if isinstance(ready, str) and ready and ready.upper() != "READY":
-            continue
-        models.append(ModelEntry(id=name, family=model_family_token(name)))
-    return ModelListing(
-        source="gateway",
-        verified=True,
-        models=tuple(models),
-        note=(
-            "LLM serving endpoints on the Databricks workspace gateway "
-            f"(profile {provider.profile or 'DEFAULT'!r})"
-        ),
-    )
-
-
-def _fetch_databricks_uc_listing(
-    provider: ResolvedModelProvider,
-    *,
-    transport: httpx.BaseTransport | None,
-) -> ModelListing:
-    """List LLM model services via the Unity Catalog model-services API.
-
-    Returns ``system.ai.*`` model ids directly — the ids that work with the
-    AI Gateway — avoiding the ``databricks-*`` → ``system.ai.*`` translation.
-
-    :param provider: A ``kind="databricks"`` provider descriptor.
-    :param transport: Optional httpx transport override for tests.
-    :returns: A ``source="gateway"`` listing of model service names.
-    :raises httpx.HTTPError: On transport/HTTP failures.
-    :raises OSError: When the profile resolves no credentials.
-    """
-    creds = resolve_databricks_workspace(provider.profile)
-    models = tuple(
-        model
-        for model in fetch_databricks_model_service_entries(
-            creds.host,
-            creds.token,
-            transport=transport,
-        )
-        if not unsupported_in_pi(model.id.lower())
-    )
-    return ModelListing(
-        source="gateway",
-        verified=True,
-        models=models,
-        note=(
-            "LLM model services on the Databricks workspace "
-            f"(profile {provider.profile or 'DEFAULT'!r})"
-        ),
-    )
-
-
-def fetch_databricks_model_service_entries(
-    workspace_url: str,
-    token: str,
-    *,
-    transport: httpx.BaseTransport | None = None,
-) -> tuple[ModelEntry, ...]:
-    """Fetch normalized Unity Catalog model-service metadata.
-
-    This is the shared parser for worker model enumeration and Pi gateway
-    configuration. It reports provider wire surfaces without deciding which
-    one a harness should prefer.
-
-    :param workspace_url: Databricks workspace base URL.
-    :param token: Workspace bearer token.
-    :param transport: Optional httpx transport override for tests.
-    :returns: LLM model-service entries with normalized wire metadata.
-    :raises httpx.HTTPError: On transport or HTTP failures.
-    """
-    # DATABRICKS-PATCH(model-services-scoped-listing)
-    # The listing must be scoped to the `system.ai` schema and paged. Unscoped,
-    # the endpoint walks the WHOLE metastore and returns one page of whatever
-    # schemas sort first — on a busy workspace that is a slice of unrelated user
-    # schemas with a `next_page_token` this call never followed, so a workspace
-    # serving 53 Databricks models reported 2 and zero Claude entries. Same
-    # scoping `databricks_model_discovery._list_model_service_ids` already uses.
-    services: list[object] = []
-    page_token: str | None = None
-    seen_tokens: set[str] = set()
-    with httpx.Client(transport=transport, timeout=_HTTP_TIMEOUT_S) as client:
-        for _ in range(_MODEL_SERVICES_MAX_PAGES):
-            params = {
-                "parent": _MODEL_SERVICES_PARENT,
-                "max_results": str(_MODEL_SERVICES_MAX_RESULTS),
-            }
-            if page_token is not None:
-                params["page_token"] = page_token
-            resp = client.get(
-                f"{workspace_url.rstrip('/')}/api/2.1/unity-catalog/model-services",
-                headers={"Authorization": f"Bearer {token}"},
-                params=params,
-            )
-            resp.raise_for_status()
-            payload = resp.json()
-            page = payload.get("model_services") if isinstance(payload, dict) else None
-            if isinstance(page, list):
-                services.extend(page)
-            raw_next = payload.get("next_page_token") if isinstance(payload, dict) else None
-            if not isinstance(raw_next, str) or not raw_next:
-                break
-            if raw_next in seen_tokens:
-                # A repeated token means the endpoint is looping. Keep the pages
-                # already collected instead of raising (which is what the
-                # sibling ``_list_model_service_ids`` does): every caller here
-                # treats an exception as "no listing" and falls back to the
-                # bundled catalog's retired ``databricks-`` ids, so failing loud
-                # would reintroduce the 501 this patch exists to remove. A
-                # partial ``system.ai`` list still launches.
-                _logger.warning(
-                    "Databricks model-services pagination repeated a page token; "
-                    "returning the %d entries collected so far",
-                    len(services),
-                )
-                break
-            seen_tokens.add(raw_next)
-            page_token = raw_next
-        else:
-            _logger.warning(
-                "Databricks model-services listing truncated after %d pages; "
-                "the model list may be incomplete",
-                _MODEL_SERVICES_MAX_PAGES,
-            )
-    models: list[ModelEntry] = []
-    for service in services:
-        if not isinstance(service, dict):
-            continue
-        raw_name = service.get("name")
-        if not isinstance(raw_name, str):
-            continue
-        name = (
-            raw_name.replace("model-services/", "")
-            if raw_name.startswith("model-services/")
-            else raw_name
-        )
-        if not name:
-            continue
-        api_types = service.get("supported_api_types")
-        normalized_api_types = {
-            api_type.lower()
-            for api_type in (api_types if isinstance(api_types, list) else [])
-            if isinstance(api_type, str)
-        }
-        wire_apis: set[ModelWireAPI] = set()
-        if any("chat/completions" in api_type for api_type in normalized_api_types):
-            wire_apis.add(ModelWireAPI.OPENAI_CHAT)
-        if "openai/v1/responses" in normalized_api_types:
-            wire_apis.add(ModelWireAPI.OPENAI_RESPONSES)
-        if any(
-            "anthropic" in api_type and "messages" in api_type for api_type in normalized_api_types
-        ):
-            wire_apis.add(ModelWireAPI.ANTHROPIC_MESSAGES)
-        if not wire_apis:
-            continue
-        models.append(
-            ModelEntry(
-                id=name,
-                family=model_family_token(name),
-                metadata=ModelMetadata(wire_apis=frozenset(wire_apis)),
-            )
-        )
-    return tuple(models)
-
-
 # A value no endpoint will honor, so the request trips the output-token
 # validator before the model generates anything.
 _PROBE_OUTPUT_TOKENS = 100_000_000
 
-# Databricks serving endpoints report an exceeded output limit in one of two
+# Serving endpoints report an exceeded output limit in one of two
 # shapes: "max_tokens (N) cannot exceed CAP" or "max_new_tokens N cannot be
 # greater than max_output_tokens CAP". Capture CAP from either.
 _OUTPUT_CAP_RE = re.compile(r"cannot exceed (\d+)|max_output_tokens\D*?(\d+)")
@@ -1326,7 +989,7 @@ def probe_output_token_cap(
 
     The Unity Catalog model-services listing carries no token limits, and a
     model's native ceiling (its catalog ``max_output_tokens``) can exceed what
-    the Databricks serving endpoint accepts — requesting the native value then
+    the serving endpoint accepts — requesting the native value then
     fails at runtime. Sending an oversized request trips the endpoint's
     validator, which names the real cap in its 400 body. The model never
     generates, so this is a single cheap round-trip that also tracks any future

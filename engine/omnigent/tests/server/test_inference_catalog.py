@@ -5,7 +5,6 @@ from __future__ import annotations
 import copy
 import json
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
 
 import httpx
 import pytest
@@ -67,8 +66,6 @@ def _state(
     )
     return SimpleNamespace(
         sandbox_config=ManagedSandboxDeployment.single(target),
-        databricks_store=None,
-        databricks_client=None,
     )
 
 
@@ -96,10 +93,8 @@ async def test_unconfigured_sandboxes_preserve_legacy_credentials(provider, infe
         {"provider": provider, "server_url": "https://server.example", "host_config": config}
     )
     service = SandboxInferenceService(SimpleNamespace(sandbox_config=deployment))
-    service._connection = AsyncMock(side_effect=AssertionError("Unexpected OAuth lookup"))
     assert await service.prepare(provider, "codex-native", "alice") is None
     assert deployment.default.host_config == config
-    service._connection.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -478,73 +473,6 @@ async def test_metadata_filters_wrong_wire_but_preserves_unknown_private_aliases
     ]
 
 
-def _unity_state():
-    state = _state(
-        allowed=("system.ai.private",), default="system.ai.private", harness="claude-native"
-    )
-    config = state.sandbox_config.default.host_config
-    config["providers"]["unity"] = {"kind": "databricks", "connection": "databricks"}
-    config["inference"]["harnesses"]["claude-native"]["provider"] = "unity"
-    state.databricks_store = object()
-    state.databricks_client = object()
-    return state
-
-
-@pytest.mark.asyncio
-async def test_unity_uses_owner_connection_and_pins_workspace_without_token(monkeypatch):
-    resolver = AsyncMock(return_value=("owner-token", "https://workspace.example"))
-    monkeypatch.setattr("omnigent.server.inference_catalog.resolve_databricks_token", resolver)
-    requests = []
-
-    def respond(request):
-        requests.append(request)
-        return httpx.Response(
-            200,
-            json={
-                "model_services": [
-                    {"name": "system.ai.private", "supported_api_types": ["anthropic/v1/messages"]}
-                ]
-            },
-        )
-
-    service = SandboxInferenceService(_unity_state(), transport=httpx.MockTransport(respond))
-    snapshot = await service.prepare("computer", "claude-native", "alice")
-    assert snapshot is not None
-    assert snapshot["catalog"]["status"] == "ready"
-    assert all(call.args[0] == "alice" for call in resolver.call_args_list)
-    assert requests[0].headers["authorization"] == "Bearer owner-token"
-    assert snapshot["connections"] == {"unity": "https://workspace.example"}
-    assert "owner-token" not in json.dumps(snapshot)
-    command = snapshot["runtime_config"]["providers"]["unity"]["anthropic"]["auth_command"]
-    assert "--workspace https://workspace.example" in command
-    resolver.return_value = ("new-token", "https://other.example")
-    preview = await service.catalog(snapshot)
-    assert preview["status"] == "unavailable"
-    assert "workspace changed" in preview["error"]
-    assert len(requests) == 1
-    resolver.return_value = None
-    assert (await service.catalog(snapshot))["status"] == "unavailable"
-
-
-@pytest.mark.asyncio
-async def test_bifrost_does_not_require_unrelated_unity_connection(monkeypatch):
-    state = _state()
-    state.sandbox_config.default.host_config["providers"]["unity"] = {
-        "kind": "databricks",
-        "connection": "databricks",
-    }
-    state.databricks_store = object()
-    state.databricks_client = object()
-    resolver = AsyncMock(return_value=None)
-    monkeypatch.setattr("omnigent.server.inference_catalog.resolve_databricks_token", resolver)
-    snapshot = await SandboxInferenceService(state, transport=_transport()).prepare(
-        "computer", "codex-native", "alice"
-    )
-    assert snapshot is not None
-    assert snapshot["catalog"]["status"] == "ready"
-    assert snapshot["connections"] == {}
-
-
 @pytest.mark.asyncio
 async def test_unbound_harness_keeps_its_baseline_when_a_binding_is_added_later():
     from omnigent.inference_config import binding_for_harness
@@ -606,38 +534,6 @@ async def test_all_child_bindings_are_normalized_in_saved_profile():
 
 
 @pytest.mark.asyncio
-async def test_unity_materialization_retains_operator_models_and_label(monkeypatch):
-    state = _unity_state()
-    unity = state.sandbox_config.default.host_config["providers"]["unity"]
-    unity.update(
-        display_name="Caffeine Unity",
-        default="anthropic",
-        anthropic={"models": {"default": "system.ai.private", "fast": "system.ai.fast"}},
-    )
-    monkeypatch.setattr(
-        "omnigent.server.inference_catalog.resolve_databricks_token",
-        AsyncMock(return_value=("owner-token", "https://workspace.example")),
-    )
-    monkeypatch.setattr(
-        model_catalog,
-        "fetch_databricks_model_service_entries",
-        lambda *_args, **_kwargs: (
-            ModelEntry(
-                "system.ai.private",
-                "other",
-                ModelMetadata(wire_apis=frozenset({ModelWireAPI.ANTHROPIC_MESSAGES})),
-            ),
-        ),
-    )
-    snapshot = await SandboxInferenceService(state).prepare("computer", "claude-native", "alice")
-    assert snapshot is not None
-    saved = snapshot["runtime_config"]["providers"]["unity"]
-    assert saved["default"] == "anthropic"
-    assert saved["anthropic"]["models"] == unity["anthropic"]["models"]
-    assert snapshot["catalog"]["provider_label"] == "Caffeine Unity"
-
-
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "field,value",
     [("api_key", "inline-test-secret"), ("base_url", "https://user:secret@private.example/v1")],
@@ -693,8 +589,6 @@ def _byok_state(key_by_owner):
 
     return SimpleNamespace(
         sandbox_config=ManagedSandboxDeployment.single(target),
-        databricks_store=None,
-        databricks_client=None,
         model_connection_store=_Store(),
     )
 

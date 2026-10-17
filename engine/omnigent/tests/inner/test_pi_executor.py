@@ -11,14 +11,12 @@ import textwrap
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import urlparse
 
 import pytest
 
 from omnigent.context.labels import SUPERSIDE_CHAT_MODE_VALUE
-from omnigent.inner.databricks_executor import DatabricksCredentials
 from omnigent.inner.executor import (
     ExecutorConfig,
     ExecutorError,
@@ -34,7 +32,6 @@ from omnigent.inner.pi_executor import (
     PiExecutor,
     PiSubprocessConfig,
     _build_models_json,
-    _databricks_model_wire_catalog,
     _generate_extension_js,
     _only_configured_family,
     _pi_provider_for_model,
@@ -46,8 +43,7 @@ from omnigent.inner.pi_executor import (
     _split_pi_prompt,
     _ToolServer,
 )
-from omnigent.models.model_catalog import ModelEntry
-from omnigent.models.model_metadata import ModelMetadata, ModelWireAPI
+from omnigent.models.model_metadata import ModelWireAPI
 from omnigent.runtime.harnesses._scaffold import PolicyVerdictPayload
 
 
@@ -535,28 +531,6 @@ class TestBuildModelsJson(unittest.TestCase):
         entry = next(e for e in provider["models"] if e["id"] == model)
         self.assertNotIn("reasoning", entry)
 
-    def test_catalog_model_declared_image_capable(self):
-        # A pre-registered catalog model must advertise image input. The
-        # selected-model append is skipped when the id is already listed.
-        for model, wire_api in (
-            ("databricks-gpt-catalog", ModelWireAPI.OPENAI_RESPONSES),
-            ("databricks-claude-catalog", ModelWireAPI.ANTHROPIC_MESSAGES),
-        ):
-            catalog_model = ModelEntry(
-                id=model,
-                family="openai",
-                metadata=ModelMetadata(wire_apis=frozenset({wire_api})),
-            )
-            result = _build_models_json(
-                "https://host.example.com",
-                "tok",
-                model=model,
-                catalog_models=(catalog_model,),
-            )
-            provider = result["providers"][_pi_provider_for_model(model)]
-            entry = next(e for e in provider["models"] if e["id"] == model)
-            self.assertEqual(entry.get("input"), ["text", "image"], model)
-
     def test_base_urls_use_host(self):
         result = _build_models_json("https://host.example.com/", "tok")
         p = result["providers"]
@@ -564,44 +538,6 @@ class TestBuildModelsJson(unittest.TestCase):
             p["databricks"]["baseUrl"].startswith("https://host.example.com/serving-endpoints")
         )
         self.assertIn("/anthropic", p["databricks-anthropic"]["baseUrl"])
-
-    def test_base_urls_can_come_from_ucode_state(self):
-        result = _build_models_json(
-            "https://host.example.com",
-            "tok",
-            {
-                "claude": "https://host.example.com/ai-gateway/anthropic",
-                "openai": "https://host.example.com/ai-gateway/codex/v1",
-            },
-        )
-        p = result["providers"]
-        # The ucode ``openai`` value is the Codex Responses gateway; GPT and the
-        # catch-all re-route to serving-endpoints, claude keeps its gateway.
-        self.assertEqual(
-            p["databricks"]["baseUrl"],
-            "https://host.example.com/serving-endpoints",
-        )
-        self.assertEqual(
-            p["databricks-anthropic"]["baseUrl"],
-            "https://host.example.com/ai-gateway/anthropic",
-        )
-        self.assertEqual(
-            p["databricks-completions"]["baseUrl"],
-            "https://host.example.com/serving-endpoints",
-        )
-
-    def test_ucode_codex_gateway_rerouted_off_responses_path(self):
-        # The codex gateway 404s /chat/completions, so it must not survive onto
-        # a completions provider (#241 GPT 404).
-        result = _build_models_json(
-            "https://host.example.com",
-            "tok",
-            {"openai": "https://host.example.com/ai-gateway/codex/v1"},
-        )
-        for name in ("databricks", "databricks-completions"):
-            base_url = result["providers"][name]["baseUrl"]
-            self.assertNotIn("/ai-gateway/codex", base_url)
-            self.assertEqual(base_url, "https://host.example.com/serving-endpoints")
 
     def test_gemini_model_routed_to_mlflow_gateway(self):
         # Gemini uses /ai-gateway/mlflow/v1 — system.ai.* ids 404 at serving-endpoints
@@ -671,31 +607,6 @@ class TestBuildModelsJson(unittest.TestCase):
         self.assertEqual(responses["baseUrl"], "https://gateway.example.com/v1")
         self.assertIn("vendor/model-next", [entry["id"] for entry in responses["models"]])
 
-    def test_dedicated_gateway_uses_catalog_wire_and_workspace_chat_url(self):
-        result = _build_models_json(
-            "https://workspace.cloud.databricks.com",
-            "tok",
-            {
-                "openai": "https://123.ai-gateway.cloud.databricks.com/codex/v1",
-            },
-            model="databricks-gpt-next",
-            model_wire_apis={
-                "databricks-gpt-next": frozenset({ModelWireAPI.OPENAI_CHAT}),
-            },
-            openai_wire_api="responses",
-        )
-
-        chat = result["providers"]["databricks"]
-        self.assertEqual(
-            chat["baseUrl"],
-            "https://workspace.cloud.databricks.com/serving-endpoints",
-        )
-        self.assertIn("databricks-gpt-next", [entry["id"] for entry in chat["models"]])
-        self.assertEqual(
-            result["providers"]["databricks-openai"]["baseUrl"],
-            "https://123.ai-gateway.cloud.databricks.com/codex/v1",
-        )
-
     def test_api_key_set(self):
         result = _build_models_json("https://host.example.com", "mytoken")
         for prov in result["providers"].values():
@@ -754,34 +665,6 @@ def test_openai_only_family_routes_claude_named_model_to_openai_surface():
     assert "claude-k2.7" not in anthropic_ids
 
 
-def test_databricks_claude_only_gateway_keeps_gpt_on_responses_surface():
-    # The cli-config Databricks path serializes only the gateway's Anthropic
-    # surface (workflow._apply_cli_config_databricks_to_pi), yet the same
-    # workspace serves GPT on the derived /ai-gateway/codex/v1 Responses
-    # surface. One *serialized* family is not one *served* surface there, so
-    # a lone Databricks URL must not pin an explicit GPT override onto the
-    # Anthropic Messages endpoint.
-    result = _build_models_json(
-        "https://ws.cloud.databricks.com",
-        "tok",
-        {"claude": "https://ws.cloud.databricks.com/ai-gateway/anthropic"},
-        model="databricks-gpt-5-5",
-    )
-    p = result["providers"]
-    responses_ids = [e.get("id") for e in p["databricks-openai"]["models"]]
-    assert "databricks-gpt-5-5" in responses_ids
-    assert (
-        p["databricks-openai"]["baseUrl"] == "https://ws.cloud.databricks.com/ai-gateway/codex/v1"
-    )
-    anthropic_ids = [e.get("id") for e in p["databricks-anthropic"]["models"]]
-    assert "databricks-gpt-5-5" not in anthropic_ids
-    # Claude keeps the configured gateway surface.
-    assert (
-        p["databricks-anthropic"]["baseUrl"]
-        == "https://ws.cloud.databricks.com/ai-gateway/anthropic"
-    )
-
-
 @pytest.mark.parametrize(
     ("base_urls", "expected"),
     [
@@ -793,11 +676,6 @@ def test_databricks_claude_only_gateway_keeps_gpt_on_responses_surface():
         ({"claude": ""}, None),
         ({}, None),
         (None, None),
-        # A lone Databricks gateway URL never pins: workspace-hosted path form
-        # and dedicated ai-gateway host form.
-        ({"claude": "https://ws.cloud.databricks.com/ai-gateway/anthropic"}, None),
-        ({"openai": "https://ws.cloud.databricks.com/ai-gateway/codex/v1"}, None),
-        ({"claude": "https://ws.ai-gateway.cloud.databricks.com/anthropic"}, None),
     ],
 )
 def test_only_configured_family_pins_generic_vendors_only(base_urls, expected):
@@ -815,13 +693,6 @@ def test_only_configured_family_pins_generic_vendors_only(base_urls, expected):
         ),
         # Generic openai-only passthrough serving a Claude-named id.
         ({"openai": "https://gw.example.com/v1"}, "claude-k2.7", "databricks-completions"),
-        # Databricks cli-config shape: lone claude URL, explicit GPT override
-        # stays on the Responses surface.
-        (
-            {"claude": "https://ws.cloud.databricks.com/ai-gateway/anthropic"},
-            "databricks-gpt-5-5",
-            "databricks-openai",
-        ),
     ],
 )
 def test_ensure_rpc_launch_selector_matches_registration(base_urls, model, expected_provider):
@@ -861,7 +732,6 @@ def test_ensure_rpc_launch_selector_matches_registration(base_urls, model, expec
     async def _test():
         with (
             patch.object(_PiRpcSession, "start", fake_start),
-            patch.object(executor, "_load_gateway_model_wire_apis", AsyncMock(return_value={})),
             patch.object(
                 executor,
                 "_build_env_and_dir",
@@ -1726,37 +1596,9 @@ class TestPiExecutorConstructor(unittest.TestCase):
             with self.assertRaises(ImportError):
                 PiExecutor()
 
-    def test_constructor_databricks_with_env(self):
+    def test_constructor_gateway_with_auth_command(self):
         with (
             patch("omnigent.inner.pi_executor._find_pi_cli", return_value="/usr/bin/pi"),
-            patch(
-                "omnigent.inner.pi_executor._read_databrickscfg",
-                return_value=DatabricksCredentials(host="https://h.example.com", token="tok"),
-            ),
-        ):
-            executor = PiExecutor(gateway=True)
-        self.assertTrue(executor._gateway)
-        self.assertEqual(executor._databricks_host, "https://h.example.com")
-        self.assertEqual(executor._databricks_token, "tok")
-
-    def test_constructor_databricks_with_host_override_requires_auth_command(self):
-        with (
-            patch("omnigent.inner.pi_executor._find_pi_cli", return_value="/usr/bin/pi"),
-            patch("omnigent.inner.pi_executor._read_databrickscfg") as read_cfg,
-        ):
-            with self.assertRaisesRegex(OSError, "requires a gateway auth command"):
-                PiExecutor(
-                    gateway=True,
-                    databricks_profile="missing-profile",
-                    gateway_host="https://example.databricks.com/",
-                )
-
-        read_cfg.assert_not_called()
-
-    def test_constructor_databricks_with_auth_command(self):
-        with (
-            patch("omnigent.inner.pi_executor._find_pi_cli", return_value="/usr/bin/pi"),
-            patch("omnigent.inner.pi_executor._read_databrickscfg") as read_cfg,
             patch(
                 "omnigent.inner.pi_executor._fetch_shell_command_token",
                 return_value="command-token",
@@ -1764,7 +1606,6 @@ class TestPiExecutorConstructor(unittest.TestCase):
         ):
             executor = PiExecutor(
                 gateway=True,
-                databricks_profile="missing-profile",
                 gateway_host="https://example.databricks.com/",
                 base_urls_override={
                     "claude": "https://example.databricks.com/ai-gateway/anthropic"
@@ -1772,23 +1613,35 @@ class TestPiExecutorConstructor(unittest.TestCase):
                 gateway_auth_command="printf token",
             )
 
-        read_cfg.assert_not_called()
         fetch_command_token.assert_called_once_with("printf token")
-        self.assertEqual(executor._databricks_host, "https://example.databricks.com")
-        self.assertEqual(executor._databricks_token, "command-token")
+        self.assertTrue(executor._gateway)
+        self.assertEqual(executor._gateway_host, "https://example.databricks.com")
+        self.assertEqual(executor._gateway_token, "command-token")
         self.assertEqual(
             executor._base_urls_override,
             {"claude": "https://example.databricks.com/ai-gateway/anthropic"},
         )
 
-    def test_constructor_databricks_no_creds_raises(self):
+    def test_constructor_gateway_requires_host_and_auth_command(self):
+        with patch("omnigent.inner.pi_executor._find_pi_cli", return_value="/usr/bin/pi"):
+            with self.assertRaisesRegex(OSError, "requires a gateway host"):
+                PiExecutor(gateway=True)
+            with self.assertRaisesRegex(OSError, "requires a gateway host"):
+                PiExecutor(gateway=True, gateway_host="https://example.databricks.com/")
+            with self.assertRaisesRegex(OSError, "requires a gateway host"):
+                PiExecutor(gateway=True, gateway_auth_command="printf token")
+
+    def test_constructor_gateway_token_mint_failure_raises(self):
         with (
             patch("omnigent.inner.pi_executor._find_pi_cli", return_value="/usr/bin/pi"),
-            patch.dict("os.environ", {}, clear=True),
-            patch("omnigent.inner.pi_executor._read_databrickscfg", return_value=None),
+            patch("omnigent.inner.pi_executor._fetch_shell_command_token", return_value=None),
         ):
-            with self.assertRaises(EnvironmentError):
-                PiExecutor(gateway=True)
+            with self.assertRaisesRegex(OSError, "could not fetch a gateway token"):
+                PiExecutor(
+                    gateway=True,
+                    gateway_host="https://example.databricks.com/",
+                    gateway_auth_command="printf token",
+                )
 
     def test_constructor_with_model_override(self):
         with patch("omnigent.inner.pi_executor._find_pi_cli", return_value="/usr/bin/pi"):
@@ -1952,12 +1805,13 @@ class TestBuildEnvAndDir(unittest.TestCase):
     def test_databricks_creates_models_json(self):
         with (
             patch("omnigent.inner.pi_executor._find_pi_cli", return_value="/usr/bin/pi"),
-            patch(
-                "omnigent.inner.pi_executor._read_databrickscfg",
-                return_value=DatabricksCredentials(host="https://h.example.com", token="tok"),
-            ),
+            patch("omnigent.inner.pi_executor._fetch_shell_command_token", return_value="tok"),
         ):
-            executor = PiExecutor(gateway=True)
+            executor = PiExecutor(
+                gateway=True,
+                gateway_host="https://h.example.com",
+                gateway_auth_command="printf tok",
+            )
 
         config = executor._build_env_and_dir([], None, None, None)
         try:
@@ -1981,12 +1835,13 @@ class TestBuildEnvAndDir(unittest.TestCase):
     def test_superside_chat_disables_pi_auto_compaction_gateway(self):
         with (
             patch("omnigent.inner.pi_executor._find_pi_cli", return_value="/usr/bin/pi"),
-            patch(
-                "omnigent.inner.pi_executor._read_databrickscfg",
-                return_value=DatabricksCredentials(host="https://h.example.com", token="tok"),
-            ),
+            patch("omnigent.inner.pi_executor._fetch_shell_command_token", return_value="tok"),
         ):
-            executor = PiExecutor(gateway=True)
+            executor = PiExecutor(
+                gateway=True,
+                gateway_host="https://h.example.com",
+                gateway_auth_command="printf tok",
+            )
 
         on = executor._build_env_and_dir([], None, None, None, disable_auto_compaction=True)
         off = executor._build_env_and_dir([], None, None, None)
@@ -2088,12 +1943,11 @@ def test_gateway_seeds_managed_settings_from_global_agent(
     )
     with (
         patch("omnigent.inner.pi_executor._find_pi_cli", return_value="/usr/bin/pi"),
-        patch(
-            "omnigent.inner.pi_executor._read_databrickscfg",
-            return_value=DatabricksCredentials(host="https://h.example.com", token="tok"),
-        ),
+        patch("omnigent.inner.pi_executor._fetch_shell_command_token", return_value="tok"),
     ):
-        executor = PiExecutor(gateway=True)
+        executor = PiExecutor(
+            gateway=True, gateway_host="https://h.example.com", gateway_auth_command="printf tok"
+        )
 
     config = executor._build_env_and_dir([], None, None, None)
     try:
@@ -3681,280 +3535,35 @@ def test_resolve_pi_skill_args_no_bundle() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Databricks gateway default-model + models.json parity tests — the pi
-# mirror of the claude-sdk default plumbing. The ucode-cached
-# path gets its default from the producer (workflow.py); these cover the
-# executor's own profile-derived path and the models.json invariants.
+# Gateway default-model + models.json invariants. The producer
+# (workflow.py) supplies the gateway default; the executor never invents one.
 # ---------------------------------------------------------------------------
 
 
-def test_profile_gateway_resolves_databricks_default_model() -> None:
+def test_gateway_default_does_not_clobber_explicit_model() -> None:
     """
-    On the profile-derived gateway path (no gateway host / base URL — the
-    producer's ucode lookup early-returned), a missing model resolves to
-    the shared Databricks default instead of ``None``.
+    An explicit constructor model (``HARNESS_PI_MODEL``) is used as-is.
 
-    Failure means pi falls back to its own host default — an
-    Anthropic-direct id the Databricks AI gateway rejects, surfacing as a
-    model error on the agent's first turn.
-
-    Live discovery is stubbed unavailable so the resolver drops to the bundled
-    catalog (its documented last resort); the discovery-first path is covered
-    by ``test_profile_gateway_uses_discovered_model``.
+    Failure means a fallback overrides a model the spec pinned deliberately.
     """
     with (
         patch("omnigent.inner.pi_executor._find_pi_cli", return_value="/usr/bin/pi"),
-        patch(
-            "omnigent.inner.pi_executor._read_databrickscfg",
-            return_value=DatabricksCredentials(host="https://h.example.com", token="tok"),
-        ),
-    ):
-        executor = PiExecutor(gateway=True)
-    with patch(
-        "omnigent.models.databricks_model_discovery.discover_databricks_claude_catalog",
-        side_effect=RuntimeError("live listing unavailable"),
-    ):
-        assert _run(executor._resolve_model(ExecutorConfig(model=None))) == (
-            "catalog-databricks-claude-default"
-        )
-
-
-def test_profile_gateway_uses_discovered_model() -> None:
-    """Unset model resolves to the workspace's live Claude model, not the catalog.
-
-    ``_resolve_model`` prefers the live Unity Catalog listing (via the shared
-    claude-sdk resolver, walking ``opus > sonnet > haiku > fable``) over the
-    bundled ``databricks-*`` catalog default.
-    """
-    with (
-        patch("omnigent.inner.pi_executor._find_pi_cli", return_value="/usr/bin/pi"),
-        patch(
-            "omnigent.inner.pi_executor._read_databrickscfg",
-            return_value=DatabricksCredentials(host="https://h.example.com", token="tok"),
-        ),
-    ):
-        executor = PiExecutor(gateway=True)
-    with (
-        patch(
-            "omnigent.runtime.credentials.databricks.resolve_databricks_workspace",
-            return_value=SimpleNamespace(host="https://h.example.com", token="tok"),
-        ),
-        patch(
-            "omnigent.models.databricks_model_discovery.discover_databricks_claude_catalog",
-            return_value=SimpleNamespace(families={"opus": "system.ai.claude-opus-5"}),
-        ),
-    ):
-        resolved = _run(executor._resolve_model(ExecutorConfig(model=None)))
-    assert resolved == "system.ai.claude-opus-5"
-
-
-def test_catalog_default_is_registered_in_models_json() -> None:
-    """Pi registers a catalog-selected gateway default before launch."""
-    catalog_default = "databricks-claude-catalog-default"
-    with (
-        patch("omnigent.inner.pi_executor._find_pi_cli", return_value="/usr/bin/pi"),
-        patch(
-            "omnigent.inner.pi_executor._read_databrickscfg",
-            return_value=DatabricksCredentials(host="https://h.example.com", token="tok"),
-        ),
-        # Live discovery unavailable → the bundled catalog default is used.
-        patch(
-            "omnigent.models.databricks_model_discovery.discover_databricks_claude_catalog",
-            side_effect=RuntimeError("live listing unavailable"),
-        ),
-        patch(
-            "omnigent.models.model_catalog.resolve_catalog_model",
-            return_value=SimpleNamespace(model_id=catalog_default),
-        ),
-    ):
-        executor = PiExecutor(gateway=True)
-        resolved = _run(executor._resolve_model(ExecutorConfig(model=None)))
-
-    models = _build_models_json("https://h.example.com", "tok", model=resolved)
-    anthropic_ids = {
-        entry["id"] for entry in models["providers"]["databricks-anthropic"]["models"]
-    }
-
-    assert resolved == catalog_default
-    assert catalog_default in anthropic_ids
-
-
-def test_profile_gateway_default_does_not_clobber_explicit_model() -> None:
-    """
-    The profile-path default only fills a gap — an explicit constructor
-    model (``HARNESS_PI_MODEL``) is used as-is.
-
-    Failure means the fallback overrides a model the spec or ucode
-    state pinned deliberately.
-    """
-    with (
-        patch("omnigent.inner.pi_executor._find_pi_cli", return_value="/usr/bin/pi"),
-        patch(
-            "omnigent.inner.pi_executor._read_databrickscfg",
-            return_value=DatabricksCredentials(host="https://h.example.com", token="tok"),
-        ),
-    ):
-        executor = PiExecutor(gateway=True, model="databricks-gpt-5-4")
-    assert _run(executor._resolve_model(ExecutorConfig(model=None))) == "databricks-gpt-5-4"
-
-
-def test_gateway_wire_catalog_fetches_once_and_indexes_aliases() -> None:
-    """Pi reuses UC availability and enriches aliases with MLflow limits."""
-    responses = frozenset({ModelWireAPI.OPENAI_RESPONSES})
-    entries = (
-        ModelEntry(
-            id="system.ai.gpt-next",
-            family="openai",
-            metadata=ModelMetadata(wire_apis=responses),
-        ),
-    )
-    with (
-        patch("omnigent.inner.pi_executor._find_pi_cli", return_value="/usr/bin/pi"),
-        patch(
-            "omnigent.inner.pi_executor._read_databrickscfg",
-            return_value=DatabricksCredentials(host="https://h.example.com", token="tok"),
-        ),
-        patch(
-            "omnigent.models.model_catalog.fetch_databricks_model_service_entries",
-            return_value=entries,
-        ) as fetch,
-        patch(
-            "omnigent.models.model_catalog.catalog_model_entries",
-            return_value=(
-                ModelEntry(
-                    id="databricks-gpt-next",
-                    family="openai",
-                    metadata=ModelMetadata(
-                        context_window=400_000,
-                        max_output_tokens=128_000,
-                    ),
-                ),
-            ),
-        ) as enrich,
-    ):
-        executor = PiExecutor(gateway=True)
-        first = _run(executor._load_gateway_model_wire_apis())
-        second = _run(executor._load_gateway_model_wire_apis())
-
-    assert first["databricks-gpt-next"] == responses
-    assert second is first
-    assert executor._gateway_model_entries is not None
-    assert executor._gateway_model_entries[0].metadata.context_window == 400_000
-    assert executor._gateway_model_entries[0].metadata.max_output_tokens == 128_000
-    fetch.assert_called_once_with("https://h.example.com", "tok")
-    enrich.assert_called_once_with("databricks")
-
-
-def test_gateway_wire_catalog_failure_is_cached() -> None:
-    """A catalog outage does not delay every later Pi subprocess startup."""
-    with (
-        patch("omnigent.inner.pi_executor._find_pi_cli", return_value="/usr/bin/pi"),
-        patch(
-            "omnigent.inner.pi_executor._read_databrickscfg",
-            return_value=DatabricksCredentials(host="https://h.example.com", token="tok"),
-        ),
-        patch(
-            "omnigent.models.model_catalog.fetch_databricks_model_service_entries",
-            side_effect=OSError("offline"),
-        ) as fetch,
-    ):
-        executor = PiExecutor(gateway=True)
-        assert _run(executor._load_gateway_model_wire_apis()) == {}
-        assert _run(executor._load_gateway_model_wire_apis()) == {}
-
-    fetch.assert_called_once_with("https://h.example.com", "tok")
-
-
-def test_gateway_catalog_keeps_live_models_when_mlflow_enrichment_fails() -> None:
-    """MLflow downtime does not erase workspace-discovered picker models."""
-    entries = (
-        ModelEntry(
-            id="system.ai.gpt-live",
-            family="openai",
-            metadata=ModelMetadata(wire_apis=frozenset({ModelWireAPI.OPENAI_RESPONSES})),
-        ),
-    )
-    with (
-        patch("omnigent.inner.pi_executor._find_pi_cli", return_value="/usr/bin/pi"),
-        patch(
-            "omnigent.inner.pi_executor._read_databrickscfg",
-            return_value=DatabricksCredentials(host="https://h.example.com", token="tok"),
-        ),
-        patch(
-            "omnigent.models.model_catalog.fetch_databricks_model_service_entries",
-            return_value=entries,
-        ),
-        patch(
-            "omnigent.models.model_catalog.catalog_model_entries",
-            side_effect=OSError("offline"),
-        ),
-    ):
-        executor = PiExecutor(gateway=True)
-        wire_catalog = _run(executor._load_gateway_model_wire_apis())
-
-    assert wire_catalog["system.ai.gpt-live"] == frozenset({ModelWireAPI.OPENAI_RESPONSES})
-    assert executor._gateway_model_entries == entries
-
-
-def test_dedicated_gateway_fetches_wire_catalog_from_workspace_host() -> None:
-    """Dedicated gateway hosts resolve their workspace before UC discovery."""
-    with (
-        patch("omnigent.inner.pi_executor._find_pi_cli", return_value="/usr/bin/pi"),
-        patch(
-            "omnigent.inner.pi_executor._fetch_shell_command_token",
-            return_value="gateway-token",
-        ),
-        patch(
-            "omnigent.harnesses.pi_native.credentials.resolve_databricks_workspace",
-            return_value=SimpleNamespace(host="https://workspace.cloud.databricks.com"),
-        ),
-        patch(
-            "omnigent.models.model_catalog.fetch_databricks_model_service_entries",
-            return_value=(),
-        ) as fetch,
-        patch("omnigent.models.model_catalog.catalog_model_entries", return_value=()),
+        patch("omnigent.inner.pi_executor._fetch_shell_command_token", return_value="tok"),
     ):
         executor = PiExecutor(
             gateway=True,
-            gateway_host="https://123.ai-gateway.cloud.databricks.com",
-            base_urls_override={"claude": "https://123.ai-gateway.cloud.databricks.com/anthropic"},
-            gateway_auth_command="printf token",
+            gateway_host="https://h.example.com",
+            gateway_auth_command="printf tok",
+            model="gpt-5-4",
         )
-        _run(executor._load_gateway_model_wire_apis())
-
-    fetch.assert_called_once_with(
-        "https://workspace.cloud.databricks.com",
-        "gateway-token",
-    )
+    assert _run(executor._resolve_model(ExecutorConfig(model=None))) == "gpt-5-4"
 
 
-def test_generic_anthropic_gateway_skips_databricks_wire_catalog() -> None:
-    """A generic provider must not receive Databricks workspace API requests."""
-    with (
-        patch("omnigent.inner.pi_executor._find_pi_cli", return_value="/usr/bin/pi"),
-        patch(
-            "omnigent.inner.pi_executor._fetch_shell_command_token",
-            return_value="provider-key",
-        ),
-        patch("omnigent.models.model_catalog.fetch_databricks_model_service_entries") as fetch,
-    ):
-        executor = PiExecutor(
-            gateway=True,
-            gateway_host="https://anthropic.example.com",
-            base_urls_override={"claude": "https://anthropic.example.com/v1"},
-            gateway_auth_command="printf token",
-        )
-        assert _run(executor._load_gateway_model_wire_apis()) == {}
-
-    fetch.assert_not_called()
-
-
-def test_ucode_gateway_host_path_does_not_inject_default_model() -> None:
+def test_gateway_host_path_does_not_inject_default_model() -> None:
     """
-    On the ucode-cached gateway path (gateway host + auth command supplied
-    by the producer) the executor must NOT invent a model: the producer
-    already applied the default via ``UcodeHarnessConfig`` — mirrors
-    claude-sdk's gating, so the two layers can't fight over precedence.
+    On the gateway path (gateway host + auth command supplied by the
+    producer) the executor must NOT invent a model: the producer already
+    applied the default, so the two layers can't fight over precedence.
 
     Failure (a non-None resolve here) means the executor would mask
     producer-side model resolution bugs instead of failing visibly.
@@ -3985,47 +3594,6 @@ def test_non_gateway_path_does_not_inject_default_model() -> None:
     assert _run(executor._resolve_model(ExecutorConfig(model=None))) is None
 
 
-def test_models_json_lists_only_live_gateway_models() -> None:
-    """Pi's picker mirrors live workspace models and their wire surfaces."""
-    catalog_models = (
-        ModelEntry(
-            id="system.ai.claude-catalog",
-            family="claude",
-            metadata=ModelMetadata(wire_apis=frozenset({ModelWireAPI.ANTHROPIC_MESSAGES})),
-        ),
-        ModelEntry(
-            id="databricks-gpt-chat-catalog",
-            family="openai",
-            metadata=ModelMetadata(wire_apis=frozenset({ModelWireAPI.OPENAI_CHAT})),
-        ),
-        ModelEntry(
-            id="system.ai.gpt-responses-catalog",
-            family="openai",
-            metadata=ModelMetadata(wire_apis=frozenset({ModelWireAPI.OPENAI_RESPONSES})),
-        ),
-        ModelEntry(
-            id="system.ai.llama-catalog",
-            family="other",
-            metadata=ModelMetadata(wire_apis=frozenset({ModelWireAPI.OPENAI_CHAT})),
-        ),
-    )
-    models = _build_models_json(
-        "https://host.example.com",
-        "tok",
-        catalog_models=catalog_models,
-    )
-    providers = models["providers"]
-    anthropic_ids = [m["id"] for m in providers["databricks-anthropic"]["models"]]
-    assert anthropic_ids == ["system.ai.claude-catalog"]
-    openai_completions_ids = [m["id"] for m in providers["databricks"]["models"]]
-    assert openai_completions_ids == ["databricks-gpt-chat-catalog"]
-    openai_responses_ids = [m["id"] for m in providers["databricks-openai"]["models"]]
-    assert openai_responses_ids == ["system.ai.gpt-responses-catalog"]
-    assert [m["id"] for m in providers["databricks-mlflow"]["models"]] == [
-        "system.ai.llama-catalog"
-    ]
-
-
 def test_models_json_unknown_gpt_metadata_fails_toward_responses() -> None:
     """An offline catalog never sends a newly released GPT to Chat by guess."""
     models = _build_models_json(
@@ -4038,44 +3606,6 @@ def test_models_json_unknown_gpt_metadata_fails_toward_responses() -> None:
     assert [model["id"] for model in models["providers"]["databricks-openai"]["models"]] == [
         "databricks-gpt-uncatalogued",
     ]
-
-
-def test_databricks_wire_catalog_indexes_system_and_endpoint_aliases() -> None:
-    """UC system ids supply wire metadata for serving-endpoint aliases."""
-    wire_apis = frozenset({ModelWireAPI.OPENAI_RESPONSES})
-    catalog = _databricks_model_wire_catalog(
-        [
-            ModelEntry(
-                id="system.ai.gpt-next",
-                family="openai",
-                metadata=ModelMetadata(wire_apis=wire_apis),
-            )
-        ]
-    )
-
-    assert catalog["system.ai.gpt-next"] == wire_apis
-    assert catalog["databricks-gpt-next"] == wire_apis
-
-
-def test_models_json_uses_catalog_token_limits() -> None:
-    """MLflow-enriched token limits are rendered into Pi's schema."""
-    catalog_model = ModelEntry(
-        id="databricks-gpt-catalog",
-        family="openai",
-        metadata=ModelMetadata(
-            context_window=400_000,
-            max_output_tokens=128_000,
-            wire_apis=frozenset({ModelWireAPI.OPENAI_RESPONSES}),
-        ),
-    )
-    models = _build_models_json(
-        "https://host.example.com",
-        "tok",
-        catalog_models=(catalog_model,),
-    )
-    by_id = {m["id"]: m for m in models["providers"]["databricks-openai"]["models"]}
-    assert by_id["databricks-gpt-catalog"]["contextWindow"] == 400_000
-    assert by_id["databricks-gpt-catalog"]["maxTokens"] == 128_000
 
 
 if __name__ == "__main__":
@@ -4120,58 +3650,6 @@ def test_build_models_json_registers_unknown_model_with_routed_provider() -> Non
         for name in ("databricks", "databricks-anthropic")
         for m in result["providers"][name]["models"]
     )
-
-
-def test_build_models_json_known_catalog_model_not_duplicated() -> None:
-    """The selected model is not appended when live discovery listed it."""
-    model_id = "databricks-claude-catalog"
-    catalog_models = (
-        ModelEntry(
-            id=model_id,
-            family="claude",
-            metadata=ModelMetadata(wire_apis=frozenset({ModelWireAPI.ANTHROPIC_MESSAGES})),
-        ),
-    )
-    result = _build_models_json(
-        "https://host.example.com",
-        "tok",
-        model=model_id,
-        catalog_models=catalog_models,
-    )
-    anthropic_ids = [m["id"] for m in result["providers"]["databricks-anthropic"]["models"]]
-    assert anthropic_ids.count(model_id) == 1
-
-
-def test_build_models_json_registers_selected_catalog_alias_once() -> None:
-    """An equivalent live alias is rewritten to the exact launch selector."""
-    selected_model = "databricks-claude-catalog"
-    catalog_models = (
-        ModelEntry(
-            id="system.ai.claude-catalog",
-            family="claude",
-            metadata=ModelMetadata(
-                context_window=200_000,
-                wire_apis=frozenset({ModelWireAPI.ANTHROPIC_MESSAGES}),
-            ),
-        ),
-    )
-
-    result = _build_models_json(
-        "https://host.example.com",
-        "tok",
-        model=selected_model,
-        catalog_models=catalog_models,
-    )
-
-    anthropic_models = result["providers"]["databricks-anthropic"]["models"]
-    assert anthropic_models == [
-        {
-            "id": selected_model,
-            "input": ["text", "image"],
-            "contextWindow": 200_000,
-            "reasoning": True,
-        }
-    ]
 
 
 def test_build_models_json_does_not_leak_selected_model_between_builds() -> None:

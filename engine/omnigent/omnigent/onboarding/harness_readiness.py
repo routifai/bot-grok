@@ -18,7 +18,7 @@ invisible here, so a hard gate would break launches that actually work. The **pi
 however, checks the credential sources the daemon *can* see locally —
 locally resolvable provider entries (including ambient-detected local
 providers such as a reachable Ollama), ambient env API keys, Claude Code's
-own login / managed settings, an ambient Databricks workspace — and reports
+own login / managed settings — and reports
 ``"needs-auth"`` when none is visible, so a credential-less host warns
 before the first turn dies instead of after. Unknown harnesses fail
 open on both axes.
@@ -27,7 +27,6 @@ open on both axes.
 from __future__ import annotations
 
 import logging
-import os
 from concurrent.futures import ThreadPoolExecutor
 
 from omnigent._platform import IS_WINDOWS, resolve_cli_binary
@@ -414,133 +413,13 @@ def _claude_code_login_configured() -> bool:
         return False
 
 
-def _databricks_file_has_credentialed_profile(path: str) -> bool:
-    """Whether a Databricks config file declares a locally usable profile.
-
-    Checks the locally required configuration fields rather than section or
-    file existence: a profile counts only when it names a workspace ``host``
-    AND its authentication method's locally stored material is present — a
-    ``token`` PAT, an OAuth ``client_id``/``client_secret`` pair, or a legacy
-    ``username``/``password`` pair. An explicit ``auth_type`` selects one
-    method: a material-bearing method (``pat`` / ``basic`` / ``oauth-m2m`` /
-    ``azure-client-secret``) counts only when its fields are actually
-    present, while an externally resolved method (``databricks-cli``,
-    ``external-browser``, ``metadata-service``, …) keeps its material outside
-    this file and counts on declaration. A file that merely exists, or a
-    section that carries neither a workspace nor authentication (``[work]``
-    alone, or ``auth_type = pat`` with no token), proves nothing. Applied to
-    both the default ``~/.databrickscfg`` and a ``DATABRICKS_CONFIG_FILE``
-    override. Local file read only, no network requests; never raises.
-
-    :param path: The config file path to inspect.
-    :returns: ``True`` when the file parses and declares at least one profile
-        carrying a workspace host plus authentication material.
-    """
-    import configparser
-
-    try:
-        if not os.path.exists(path):
-            return False
-        parser = configparser.ConfigParser()
-        parser.read(path)
-        section_names = list(parser.sections())
-        if parser.defaults():
-            section_names.append(parser.default_section)
-        for name in section_names:
-            section = parser[name]
-            if not section.get("host", "").strip():
-                continue
-            has_pat = bool(section.get("token", "").strip())
-            has_oauth = bool(
-                section.get("client_id", "").strip() and section.get("client_secret", "").strip()
-            )
-            has_basic = bool(
-                section.get("username", "").strip() and section.get("password", "").strip()
-            )
-            auth_type = section.get("auth_type", "").strip().lower()
-            if not auth_type:
-                if has_pat or has_oauth or has_basic:
-                    return True
-                continue
-            # An explicit auth_type selects ONE method; require that method's
-            # locally stored material rather than trusting the declaration.
-            if auth_type == "pat":
-                if has_pat:
-                    return True
-                continue
-            if auth_type == "basic":
-                if has_basic:
-                    return True
-                continue
-            if auth_type in ("oauth-m2m", "oauth"):
-                if has_oauth:
-                    return True
-                continue
-            if auth_type == "azure-client-secret":
-                if (
-                    section.get("azure_client_id", "").strip()
-                    and section.get("azure_client_secret", "").strip()
-                    and section.get("azure_tenant_id", "").strip()
-                ):
-                    return True
-                continue
-            # Externally resolved methods (databricks-cli, external-browser,
-            # metadata-service, github-oidc, azure-cli, …) keep their material
-            # outside this file; the declaration is the local signal.
-            return True
-        return False
-    except Exception as exc:
-        # Log only the exception class: configparser errors can embed the
-        # offending file's contents, which may include credential material.
-        _logger.debug("readiness: databricks config parse failed (%s)", type(exc).__name__)
-        return False
-
-
-def _databricks_workspace_configured() -> bool:
-    """Whether an ambient Databricks credential source is resolvable here.
-
-    The SDK executors mint a gateway bearer from ambient Databricks
-    credentials for ``databricks-*`` models even with no ``providers:``
-    entry, so a resolvable credential source counts. A workspace URL alone
-    is **not** a credential: env-based readiness requires ``DATABRICKS_HOST``
-    plus authentication material (a ``DATABRICKS_TOKEN`` PAT, or an OAuth
-    service-principal ``DATABRICKS_CLIENT_ID``/``DATABRICKS_CLIENT_SECRET``
-    pair), and a config file counts only when it declares a profile carrying
-    a workspace host plus authentication material
-    (:func:`_databricks_file_has_credentialed_profile`). Local file/env reads
-    only; never raises.
-
-    :returns: ``True`` when an ambient Databricks credential source is
-        resolvable.
-    """
-    if os.environ.get("DATABRICKS_HOST", "").strip():
-        if os.environ.get("DATABRICKS_TOKEN", "").strip():
-            return True
-        if (
-            os.environ.get("DATABRICKS_CLIENT_ID", "").strip()
-            and os.environ.get("DATABRICKS_CLIENT_SECRET", "").strip()
-        ):
-            return True
-    config_override = os.environ.get("DATABRICKS_CONFIG_FILE", "").strip()
-    if config_override and _databricks_file_has_credentialed_profile(config_override):
-        return True
-    try:
-        from omnigent.onboarding.databricks_config import _DATABRICKSCFG_PATH
-
-        return _databricks_file_has_credentialed_profile(str(_DATABRICKSCFG_PATH))
-    except Exception as exc:
-        # Class-only: the config path/parse error may embed credential material.
-        _logger.debug("readiness: databricks profile check failed (%s)", type(exc).__name__)
-        return False
-
-
 def _global_auth_configured() -> bool:
     """Whether the user-level global ``auth:`` block can serve the SDK builders.
 
     Both SDK executors inherit the ``auth:`` mapping from the user's global
     ``config.yaml`` (``_load_global_auth`` in :mod:`omnigent.runtime.workflow`)
     when the agent spec declares no ``executor.auth``, so a parsed global
-    api-key / Databricks auth block is a complete credential source. Local
+    api-key auth block is a complete credential source. Local
     file read only; never raises.
 
     :returns: ``True`` when the global ``auth:`` block parses into a usable
@@ -585,8 +464,6 @@ def _sdk_harness_availability(canonical: str) -> HarnessAvailability:
         or _claude_managed_gateway_configured()
         or _claude_code_login_configured()
     ):
-        return True
-    if _databricks_workspace_configured():
         return True
     return HARNESS_NEEDS_AUTH
 

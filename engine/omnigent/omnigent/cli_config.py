@@ -419,7 +419,7 @@ def _configure_harness_add(family: str | None = None) -> str | None:
     """Run the interactive ``add a provider`` flow and persist the entry.
 
     Prompts for the provider kind (key / subscription / gateway /
-    databricks), gathers the kind-specific fields, deep-merges the single
+    bedrock), gathers the kind-specific fields, deep-merges the single
     entry under ``providers:`` (an add never rewrites siblings), and makes
     it the default for any family it serves that has **no** default yet
     (so a first provider just works; an existing default is left for the
@@ -440,7 +440,6 @@ def _configure_harness_add(family: str | None = None) -> str | None:
         add_menu_options_for_family,
         build_bedrock_provider_entry,
         build_cli_config_provider_entry,
-        build_databricks_provider_entry,
         build_gateway_provider_entry,
         build_key_provider_entry,
         build_subscription_provider_entry,
@@ -453,24 +452,15 @@ def _configure_harness_add(family: str | None = None) -> str | None:
     from omnigent.onboarding.interactive import console, prompt_text, select
     from omnigent.onboarding.provider_config import (
         ANTHROPIC_FAMILY,
-        BEDROCK_KIND,
         CHAT_WIRE_API,
         CLI_CONFIG_KIND,
-        DATABRICKS_KIND,
         OPENAI_FAMILY,
-        PI_SURFACE,
         RESPONSES_WIRE_API,
         SUBSCRIPTION_KIND,
         load_providers,
         provider_entry_settings,
         set_default_provider,
     )
-
-    # The ucode agent that backs each harness surface's model serving. When the
-    # user adds Databricks from a specific harness page, we configure ucode for
-    # ONLY that harness (not all of claude/codex/pi) so ucode touches just the
-    # one tool the user is wiring up.
-    _FAMILY_UCODE_AGENT = {ANTHROPIC_FAMILY: "claude", OPENAI_FAMILY: "codex", PI_SURFACE: "pi"}
 
     # A flat, credential-aware menu: the user picks "OpenAI — API key" or
     # "Claude — subscription" directly (rather than a bare kind then
@@ -479,7 +469,7 @@ def _configure_harness_add(family: str | None = None) -> str | None:
     # harness, the menu is scoped to that harness's surface.
     options = add_menu_options_for_family(family) if family is not None else add_menu_options()
     # A custom provider defined by the user's own ~/.codex/config.toml
-    # (e.g. isaac's Databricks AI Gateway) that is not currently configured
+    # (e.g. a company AI gateway) that is not currently configured
     # gets its own add option. This is the only way back after Remove —
     # removal dismisses the detection so it stops auto-adopting, and there
     # is nothing to type/paste here (the credential lives in that file).
@@ -663,7 +653,7 @@ def _configure_harness_add(family: str | None = None) -> str | None:
         if cli_name in _CLI_LOGIN_BRAND:
             from omnigent.onboarding.harness_install import harness_install_spec, harness_login
 
-            login_family = {agent: fam for fam, agent in _FAMILY_UCODE_AGENT.items()}.get(cli_name)
+            login_family = {"claude": ANTHROPIC_FAMILY, "codex": OPENAI_FAMILY}.get(cli_name)
             if login_family is None:
                 raise click.ClickException(f"internal: no login family for cli {cli_name!r}")
             spec = harness_install_spec(login_family)
@@ -758,7 +748,7 @@ def _configure_harness_add(family: str | None = None) -> str | None:
             models=models,
         )
 
-    elif kind == BEDROCK_KIND:
+    else:  # bedrock
         # Bedrock drives the native Claude terminal in AWS Bedrock mode. It
         # authenticates from AWS_BEARER_TOKEN_BEDROCK in the env at launch
         # (Claude Code ignores apiKeyHelper once Bedrock mode is on), so offer
@@ -792,101 +782,6 @@ def _configure_harness_add(family: str | None = None) -> str | None:
             default_model=default_model,
         )
 
-    else:  # databricks
-        # Gate on the `databricks` extra: a `kind: databricks` provider mints
-        # workspace OAuth tokens via databricks-sdk at runtime
-        # (omnigent/runtime/credentials/databricks.py), and the SDK is no
-        # longer a default dependency. Abort before any side effect (the
-        # `databricks auth login` browser flow, `ucode configure`) so the
-        # user isn't signed into a workspace that routing then can't use.
-        from omnigent.onboarding.databricks_config import (
-            DATABRICKS_EXTRA_INSTALL_HINT,
-            databricks_sdk_installed,
-        )
-
-        if not databricks_sdk_installed():
-            from rich.markup import escape as _rich_escape
-
-            # The status renders through Text.from_markup, where the literal
-            # `[databricks]` in the install command would parse as a tag.
-            return (
-                "✗ Databricks routing needs the databricks extra — "
-                f"{_rich_escape(DATABRICKS_EXTRA_INSTALL_HINT)}"
-            )
-
-        # The intro + URL prompt render inline, exactly like every other add
-        # flow (the add-menu picker already erased its own frame on exit via
-        # `clear_on_exit`) — entering the Databricks option should NOT blank the
-        # whole screen. The one clear we keep is *after* the subprocess (below):
-        # `databricks auth login` + `ucode configure` print a lot, and the
-        # in-place menu redraw we return to can only erase its own frame, so we
-        # wipe that leftover output once the login finishes.
-        # Ask only for the workspace URL — never a profile name. The flow
-        # below authenticates that one workspace and runs `ucode configure`
-        # against it, scoped to the harness the user drilled into. This is
-        # the one place Omnigent triggers a Databricks CLI / ucode login;
-        # it never happens on a bare `run`, so a user who only wants their
-        # own provider is never routed through Databricks unexpectedly.
-        from omnigent.onboarding.configure_models import family_label
-        from omnigent.onboarding.databricks_config import normalize_workspace_url
-        from omnigent.onboarding.interactive import clear_screen
-        from omnigent.onboarding.setup import login_databricks_workspace
-        from omnigent.onboarding.ucode_setup import (
-            configure_ucode_for_workspace,
-            ucode_workspace_exists,
-        )
-
-        _routed = f"{family_label(family)}'s" if family is not None else "your harnesses'"
-        console.print(
-            f"  [dim]Routes {_routed} model calls through this workspace's "
-            "Databricks Unity AI Gateway (via ucode), so usage is governed and "
-            "billed there. This signs you into the workspace and runs "
-            "`ucode configure` for it.[/dim]"
-        )
-        workspace_url = prompt_text(
-            "Databricks workspace URL (e.g. https://example.cloud.databricks.com)"
-        ).strip()
-        if not workspace_url:  # blank — abort the add
-            return None
-        if not workspace_url.startswith(("http://", "https://")):
-            workspace_url = f"https://{workspace_url}"
-        # Reduce to scheme://host. Users paste the URL from a browser address
-        # bar, whose `/browse?o=...` path breaks both the saved profile host
-        # and `ucode configure` (the Databricks CLI keys OAuth tokens by host,
-        # so a path-laden value yields "no access token").
-        normalized_workspace_url = normalize_workspace_url(workspace_url)
-        if normalized_workspace_url != workspace_url.rstrip("/"):
-            console.print(
-                f"  [dim]Using {normalized_workspace_url} — ignored the extra "
-                "path from the pasted URL.[/dim]"
-            )
-        workspace_url = normalized_workspace_url
-
-        # 1. Authenticate the workspace (returns the ~/.databrickscfg profile
-        #    name) and 2. run `ucode configure` against it for model serving —
-        #    scoped to the harness the user drilled into (or both when added
-        #    from the un-scoped menu), so ucode configures only what's needed.
-        if family is not None:
-            ucode_agents = [_FAMILY_UCODE_AGENT[family]]
-        else:
-            ucode_agents = sorted(_FAMILY_UCODE_AGENT.values())
-        profile = login_databricks_workspace(workspace_url, console=console)
-        configure_ucode_for_workspace(workspace_url, agents=ucode_agents)
-        # Fail loud if ucode didn't actually record state for the workspace —
-        # otherwise routing would silently fall back and confuse the user.
-        if not ucode_workspace_exists(workspace_url):
-            raise click.ClickException(
-                f"`ucode configure` finished but recorded no state for {workspace_url}. "
-                "Re-run and check the ucode output above."
-            )
-        # Wipe the verbose login + ucode output so the menu we return to (with a
-        # "✓ Added databricks" status) renders on a clean screen.
-        clear_screen()
-        # Databricks name is fixed — no prompt. The provider keys on the
-        # profile; runtime resolves profile → workspace URL → ucode state.
-        name = "databricks"
-        entry = build_databricks_provider_entry(profile)
-
     from omnigent.onboarding.configure_models import family_label
     from omnigent.onboarding.provider_config import (
         provider_families,
@@ -906,16 +801,7 @@ def _configure_harness_add(family: str | None = None) -> str | None:
     # drives pi via the fallback, so claiming the explicit pi scope then
     # would silently re-route pi away from it.
     parsed = load_providers({"providers": {name: entry}})[name]
-    # Databricks routing is configured in ucode PER HARNESS (we only ran
-    # `ucode configure` for the surface the user drilled into), so it must only
-    # become the default for THAT surface — defaulting the other harnesses too
-    # would route them through a workspace ucode never configured for them.
-    # Other kinds (a gateway serving both families with one base_url + key)
-    # still default every surface they serve.
-    if entry["kind"] == DATABRICKS_KIND and family is not None:
-        default_families = [family]
-    else:
-        default_families = sorted(provider_families(parsed))
+    default_families = sorted(provider_families(parsed))
     became_default: list[str] = []
     for fam in default_families:
         cfg = _load_global_config()
@@ -956,67 +842,6 @@ def _adopt_detected_providers() -> list[str]:
     merged = effective_config_with_detected(config)
     _save_global_config({"providers": merged["providers"]})  # wholesale replace
     return list(to_adopt)
-
-
-def _promote_global_auth_to_provider() -> str | None:
-    """Backfill a databricks providers entry from an existing global ``auth:`` block.
-
-    Older ``omnigent setup`` runs configured Databricks only via the top-level
-    ``auth: {type: databricks}`` block — which ``configure harnesses`` does not
-    read — so the readout showed no Databricks provider (and an ambient CLI
-    login as the default) even though routing used Databricks. This promotes
-    that block into a first-class ``kind: databricks`` providers entry the next
-    time ``configure harnesses`` opens, so existing configs self-heal without
-    re-running ``omnigent setup``.
-
-    Becomes the default only for families with no existing **provider** default —
-    mirroring routing precedence (explicit provider default > ``auth:`` block),
-    so an explicitly-chosen default is left untouched while a config that only
-    ever had the ``auth:`` block gets Databricks as its default (matching what
-    routing already does at runtime). Must run BEFORE
-    :func:`_adopt_detected_providers` so Databricks claims the default ahead of
-    an ambient CLI login (``auth:`` outranks ambient detection in routing too).
-
-    :returns: ``"databricks"`` if a provider was backfilled, else ``None`` (no
-        databricks ``auth:`` block, or a databricks provider already exists).
-    """
-    from omnigent.onboarding.configure_models import build_databricks_provider_entry
-    from omnigent.onboarding.provider_config import (
-        load_providers,
-        provider_entry_settings,
-        provider_families,
-        set_default_provider,
-        surface_default_provider,
-    )
-
-    config = _load_global_config()
-    auth = config.get("auth")
-    if not isinstance(auth, dict) or auth.get("type") != "databricks":
-        return None
-    profile = auth.get("profile")
-    if not isinstance(profile, str) or not profile:
-        return None
-    name = "databricks"
-    if name in load_providers(config):
-        return None  # already a first-class provider — nothing to backfill
-
-    entry = build_databricks_provider_entry(profile)
-    _save_global_config(
-        provider_entry_settings(name, entry, make_default=False),
-        deep_merge_keys=("providers",),
-    )
-    parsed = load_providers({"providers": {name: entry}})[name]
-    for fam in sorted(provider_families(parsed)):
-        cfg = _load_global_config()
-        # Effective check (matters for the pi surface): a default that
-        # already drives the surface — explicitly or via pi's fallback —
-        # outranks the legacy auth: block, exactly like routing does.
-        if surface_default_provider(cfg, fam) is not None:
-            continue  # respect an existing provider default (it outranks auth:)
-        block = cfg.get("providers")
-        if isinstance(block, dict):
-            _save_global_config({"providers": set_default_provider(block, name, fam)})
-    return name
 
 
 def _claude_managed_gateway_label() -> str | None:
@@ -1108,17 +933,12 @@ def _adopt_ambient_credentials(progress: RunnerStartupProgress | None = None) ->
 
     The shared front half of both a bare ``omnigent run``'s first-run path
     (:func:`_resolve_first_run_plan`) and the ``configure harnesses`` picker
-    (:func:`_run_configure_harnesses_interactive`): it (1) backfills a legacy
-    databricks ``auth:`` block into a real provider, (2) adopts any
+    (:func:`_run_configure_harnesses_interactive`): it (1) adopts any
     ambient-detected credential (env API key, logged-in ``claude`` / ``codex``
     CLI, local Ollama) not already configured as an ordinary provider entry,
-    and (3) prints a callout naming exactly the credentials it just
+    and (2) prints a callout naming exactly the credentials it just
     auto-configured. Idempotent: a second open adopts nothing, so no callout
     prints.
-
-    The callout is scoped to *machine* credentials — the ambient detections —
-    not the databricks ``auth:`` backfill, which promotes an existing config
-    block rather than something newly "found on your machine".
 
     :param progress: Optional spinner handle (from
         :func:`omnigent._runner_startup.runner_startup_progress`) covering the
@@ -1131,7 +951,6 @@ def _adopt_ambient_credentials(progress: RunnerStartupProgress | None = None) ->
     :returns: The provider names adopted this call, e.g. ``["anthropic"]``;
         empty when every detection was already configured.
     """
-    _promote_global_auth_to_provider()
     adopted = _adopt_detected_providers()
     # Clear the search spinner (if any) before printing — the callout writes to
     # stdout while the spinner animates on stderr, and on a shared TTY the two
@@ -1359,7 +1178,6 @@ def _manage_credential(provider: str, family: str) -> str | None:
     from omnigent.onboarding.configure_models import family_label
     from omnigent.onboarding.interactive import select
     from omnigent.onboarding.provider_config import (
-        DATABRICKS_KIND,
         SUBSCRIPTION_KIND,
         load_providers,
         surface_default_provider,
@@ -1398,12 +1216,6 @@ def _manage_credential(provider: str, family: str) -> str | None:
     # login persists and ambient detection re-adopts it on the next open).
     if entry.kind == SUBSCRIPTION_KIND:
         return _remove_subscription(provider, family)
-    # A databricks provider was wired by `ucode configure`, which edits
-    # harness configs outside ~/.omnigent/config.yaml — so removing it
-    # also cleans those edits up (otherwise codex keeps routing through
-    # the workspace gateway).
-    if entry.kind == DATABRICKS_KIND:
-        return _remove_databricks_provider(provider)
     return _remove_credential(provider)
 
 
@@ -1461,54 +1273,6 @@ def _remove_subscription(provider: str, family: str) -> str | None:
         f"✓ Removed {disp} subscription — note: `{logout_cmd}` did not complete, "
         f"so you may still be signed in to the {disp} CLI"
     )
-
-
-def _remove_databricks_provider(provider: str) -> str:
-    """Remove a databricks provider and clean up ucode's harness wiring.
-
-    A ``kind: databricks`` provider was wired by running ``ucode configure``
-    (the add flow), which writes harness configs *outside*
-    ``~/.omnigent/config.yaml`` — most damagingly, for Codex < 0.134.0 it
-    rewrites the user's real ``~/.codex/config.toml`` (top-level
-    ``profile = "ucode"``) so even the bare ``codex`` CLI routes through the
-    workspace gateway, and ``ucode revert`` does not undo that edit. Removing
-    the provider therefore undoes that wiring as part of the removal — no
-    extra confirm, matching how a key provider's ``Remove`` acts immediately.
-    The cleanup only ever touches ucode-namespaced artifacts (the ``profile``
-    selector only when it equals ``"ucode"``; see
-    :mod:`omnigent.onboarding.ucode_cleanup`), so the user's own settings
-    are never at risk. Removal applies to every harness the provider
-    serves — a databricks entry routes both Claude and Codex.
-
-    :param provider: The databricks provider id, e.g. ``"databricks"``.
-    :returns: A confirmation message for the level-2 status line reporting
-        the removal and what wiring was cleaned (nothing extra is appended
-        when no ucode wiring existed). Side effects: may edit
-        ``~/.codex/config.toml``, delete ucode sidecar files, run
-        ``claude mcp remove``, and write ``~/.omnigent/config.yaml``.
-    """
-    from omnigent.errors import OmnigentError
-    from omnigent.onboarding.ucode_cleanup import remove_ucode_wiring
-
-    cleanup_note = ""
-    try:
-        removal = remove_ucode_wiring()
-    except (OmnigentError, OSError) as exc:
-        # The entry removal below still proceeds — the user asked for it —
-        # but say exactly what was left behind instead of failing silently.
-        cleanup_note = f" — ucode cleanup incomplete: {exc}"
-    else:
-        cleaned: list[str] = []
-        if removal.codex_config_stripped:
-            cleaned.append("cleaned ~/.codex/config.toml")
-        if removal.removed_sidecars:
-            cleaned.append(f"deleted {len(removal.removed_sidecars)} ucode sidecar file(s)")
-        if removal.web_search_mcp_removed:
-            cleaned.append("unregistered ucode's web_search MCP")
-        if cleaned:
-            cleanup_note = f" — {', '.join(cleaned)}"
-    removed_msg = _remove_credential(provider) or f"✓ Removed {provider}"
-    return f"{removed_msg}{cleanup_note}"
 
 
 def _set_harness_default(provider: str, family: str) -> str | None:
@@ -1610,8 +1374,7 @@ def _run_configure_harnesses_interactive() -> None:
 
     Invoked by ``omnigent setup`` and the bare-``run``
     first-run path, so both drive the identical flow.
-    Opening it backfills a legacy databricks ``auth:`` block into a real
-    provider and adopts any ambient-detected credential — announcing the
+    Opening it adopts any ambient-detected credential — announcing the
     newly auto-configured machine credentials in a callout — then loops on
     the level-1 harness overview. Every harness is shown on a single compact
     row — the harness name on the left, then an aligned ``✓``/``✗`` status
@@ -1647,11 +1410,8 @@ def _run_configure_harnesses_interactive() -> None:
     # failure when the harness later can't launch.
     _warn_missing_harness_dependencies()
 
-    # Backfill a databricks provider from a legacy global auth: block FIRST (it
-    # outranks ambient detection in routing), then adopt ambient detections.
-    # The databricks backfill is silent (it just shows up in the harness status
-    # line); newly-adopted machine credentials get a one-time callout naming
-    # what was auto-configured and from where. No progress spinner here: a
+    # Adopt ambient detections: newly-adopted machine credentials get a
+    # one-time callout naming what was auto-configured and from where. No progress spinner here: a
     # transient spinner over the (fast) detection left a cleared-region gap and
     # a residual line directly above the menu on first paint.
     _adopt_ambient_credentials()

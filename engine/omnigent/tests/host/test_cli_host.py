@@ -902,9 +902,6 @@ def test_host_background_fails_when_daemon_never_registers(
         ),
     )
     monkeypatch.setattr("omnigent.cli._BACKGROUND_HOST_REGISTRATION_GRACE_S", 0.0)
-    monkeypatch.setattr(
-        "omnigent.cli._ensure_databricks_server_auth", lambda *args, **kwargs: None
-    )
     terminated: list[int] = []
     monkeypatch.setattr(
         "omnigent.cli._terminate_daemon",
@@ -1238,37 +1235,20 @@ def test_host_status_reports_recycled_pid_daemon_offline(
     assert _base_daemon_status_payload(record)["process"] == "offline"
 
 
-def test_host_background_signs_in_before_spawning(
+def test_host_background_remote_server_spawns_daemon(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Sign-in for a remote server happens in the foreground, before the spawn.
-
-    The detached daemon has no terminal to run the browser login on, so an
-    un-authed Databricks-fronted target must be authenticated by this
-    invocation first — and ``--non-interactive`` must still reach that check.
+    A remote ``--server`` target is passed through to the spawned daemon.
     """
     spawned_args, _ = _patch_background_host_spawn(monkeypatch, tmp_path)
-    auth_calls: list[tuple[str, bool]] = []
-
-    def _fake_auth(server: str, *, non_interactive: bool = False) -> None:
-        """Record the sign-in pre-flight.
-
-        :param server: Server URL being authenticated.
-        :param non_interactive: Whether prompting is suppressed.
-        """
-        assert spawned_args == [], "sign-in must precede the daemon spawn"
-        auth_calls.append((server, non_interactive))
-
-    monkeypatch.setattr("omnigent.cli._ensure_databricks_server_auth", _fake_auth)
 
     result = CliRunner().invoke(
         cli, ["host", "--background", "--server", "https://example.databricksapps.com"]
     )
 
     assert result.exit_code == 0, result.output
-    assert auth_calls == [("https://example.databricksapps.com", False)]
     assert spawned_args and "--server" in spawned_args[0]
     # Remote target: reported as-is (a server we don't own isn't discovered),
     # and named in the stop hint because a bare stop would resolve the
@@ -1314,30 +1294,17 @@ def test_start_hosts_on_explicit_server(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    ``start --server <url>`` hosts on that server, signing in first.
+    ``start --server <url>`` hosts on that server.
 
-    The alias must not quietly drop the target or the foreground sign-in
-    pre-flight that a detached daemon cannot perform itself.
+    The alias must not quietly drop the target.
     """
     spawned_args, _ = _patch_background_host_spawn(monkeypatch, tmp_path)
-    auth_calls: list[tuple[str, bool]] = []
-
-    def _fake_auth(server: str, *, non_interactive: bool = False) -> None:
-        """Record the sign-in pre-flight.
-
-        :param server: Server URL being authenticated.
-        :param non_interactive: Whether prompting is suppressed.
-        """
-        auth_calls.append((server, non_interactive))
-
-    monkeypatch.setattr("omnigent.cli._ensure_databricks_server_auth", _fake_auth)
 
     result = CliRunner().invoke(
         cli, ["start", "--server", "https://example.databricksapps.com", "--non-interactive"]
     )
 
     assert result.exit_code == 0, result.output
-    assert auth_calls == [("https://example.databricksapps.com", True)]
     assert "server: https://example.databricksapps.com" in result.output
     assert spawned_args == [
         [
@@ -1418,14 +1385,13 @@ def test_host_remote_web_ui_open_preference(
     monkeypatch: pytest.MonkeyPatch,
     no_open: bool,
 ) -> None:
-    """Honor the browser preference on remote hosts while preserving sign-in."""
+    """Honor the browser preference on remote hosts."""
     monkeypatch.setenv("OMNIGENT_CONFIG_HOME", str(tmp_path))
     monkeypatch.setattr("omnigent.cli._HOST_PID_PATH", tmp_path / "host.pid")
     monkeypatch.setattr("omnigent.cli._stdin_is_tty", lambda: True)
     opened: list[str] = []
 
     with (
-        patch("omnigent.cli._ensure_databricks_server_auth") as auth,
         patch("omnigent.host.connect.run_host_process", lambda server_url, **kwargs: None),
         patch(
             "omnigent.conversation_browser.open_conversation_url",
@@ -1444,9 +1410,6 @@ def test_host_remote_web_ui_open_preference(
 
     assert result.exit_code == 0, result.output
     assert opened == ([] if no_open else ["https://example.databricks.com/omnigent"])
-    auth.assert_called_once_with(
-        "https://example.databricks.com/api/2.0/omnigent", non_interactive=False
-    )
 
 
 @pytest.mark.parametrize("command", [["start"], ["host", "--background"]])

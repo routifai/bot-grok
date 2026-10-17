@@ -13690,7 +13690,7 @@ def create_runner_app(
         session_id: str,
         model: str,
     ) -> dict[str, str] | None:
-        from omnigent.spec.types import ApiKeyAuth, DatabricksAuth, ProviderAuth
+        from omnigent.spec.types import ApiKeyAuth, ProviderAuth
 
         spec_entry = _session_spec_cache.get(session_id)
         if spec_entry is None:
@@ -13704,37 +13704,23 @@ def create_runner_app(
         if isinstance(auth, ProviderAuth):
             return _resolve_provider_connection(auth.name, model)
 
-        if isinstance(auth, DatabricksAuth):
-            return _resolve_databricks_connection(auth.profile, session_id)
-
         if isinstance(auth, ApiKeyAuth):
             conn: dict[str, str] = {"api_key": auth.api_key}
             if auth.base_url:
                 conn["base_url"] = auth.base_url
             return conn
 
-        _spec_has_legacy_profile = bool(
-            spec.executor.profile or (spec.executor.config or {}).get("profile")
-        )
-        if auth is None and not _spec_has_legacy_profile:
+        if auth is None:
             from omnigent.runtime.workflow import _load_global_auth
 
             global_auth = _load_global_auth()
-            if isinstance(global_auth, DatabricksAuth):
-                return _resolve_databricks_connection(global_auth.profile, session_id)
             if isinstance(global_auth, ApiKeyAuth):
                 conn = {"api_key": global_auth.api_key}
                 if global_auth.base_url:
                     conn["base_url"] = global_auth.base_url
                 return conn
 
-        if model.startswith(("databricks/", "databricks-")):
-            _db_profile = (
-                spec.executor.profile or (spec.executor.config or {}).get("profile") or "DEFAULT"
-            )
-            return _resolve_databricks_connection(_db_profile, session_id)
-
-        # No spec-level auth, legacy profile, or global auth resolved: fall
+        # No spec-level auth or global auth resolved: fall
         # back to the runner's own local provider config (the ``providers:``
         # block in ~/.omnigent/config.yaml — the credentials the native CLIs
         # themselves launch with). Without this, a plain local/self-hosted
@@ -13817,8 +13803,6 @@ def create_runner_app(
             entry = providers.get(provider_name)
             if entry is None:
                 return None
-            if entry.kind == "databricks" and entry.profile:
-                return _resolve_databricks_connection(entry.profile, provider_name)
             _preferred_name = resolve_model_provider_family(model) if model else None
             if model and _preferred_name is None:
                 _logger.warning(
@@ -13863,30 +13847,6 @@ def create_runner_app(
                 extra={"session_id": runner_primary_session_id()},
             )
             return None
-
-    def _resolve_databricks_connection(
-        profile: str,
-        context: str,
-    ) -> dict[str, str] | None:
-        from omnigent.runtime.credentials.databricks import (
-            resolve_databricks_workspace,
-        )
-
-        try:
-            creds = resolve_databricks_workspace(profile)
-        except OSError:
-            _logger.warning(
-                "/v1/summarize: failed to resolve Databricks profile %r (context=%s)",
-                profile,
-                context,
-                exc_info=True,
-                extra={"session_id": runner_primary_session_id()},
-            )
-            return None
-        return {
-            "base_url": creds.host.rstrip("/") + "/serving-endpoints",
-            "api_key": creds.token,
-        }
 
     @app.post("/v1/summarize")
     async def summarize(request: Request) -> JSONResponse:
@@ -14531,21 +14491,18 @@ def _build_spawn_env_from_spec(
 
     # Routing visibility: log the resolved gateway target so operators can
     # confirm which provider a turn actually hits (api.anthropic.com /
-    # api.openai.com for a key, vs a Databricks profile). Logged here in the
+    # api.openai.com for a key, vs a gateway). Logged here in the
     # runner process (INFO is emitted) rather than the harness subprocess
-    # (which suppresses inner.* INFO). ``base_url`` is empty for the legacy
-    # ``profile:`` path (resolved downstream by ucode); the profile still
-    # identifies the Databricks target.
+    # (which suppresses inner.* INFO).
     if env is not None:
         prefix = f"HARNESS_{harness.upper().replace('-', '_')}"
         _logger.info(
-            "%s gateway routing: gateway=%s base_url=%s profile=%s model=%s",
+            "%s gateway routing: gateway=%s base_url=%s model=%s",
             harness,
             env.get(f"{prefix}_GATEWAY"),
             # A harness that carries per-family URLs (pi) sets only the plural
             # ``_BASE_URLS`` JSON; without the fallback it logs base_url=None.
             env.get(f"{prefix}_GATEWAY_BASE_URL") or env.get(f"{prefix}_GATEWAY_BASE_URLS"),
-            env.get(f"{prefix}_DATABRICKS_PROFILE"),
             env.get(_HARNESS_MODEL_ENV_KEY.get(harness, f"{prefix}_MODEL")),
             extra={"session_id": session_id},
         )

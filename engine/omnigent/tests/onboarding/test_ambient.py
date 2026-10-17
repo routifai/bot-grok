@@ -946,7 +946,7 @@ def test_claude_managed_gateway_synthesizes_a_subscription_entry(clean_env, monk
 @pytest.mark.parametrize(
     "payload,expected",
     [
-        (_ISAAC_CLAUDE_SETTINGS, "Databricks AI Gateway"),
+        (_ISAAC_CLAUDE_SETTINGS, "dbc-test.cloud.databricks.com"),
         (
             {
                 "env": {"ANTHROPIC_BASE_URL": "https://llm.corp.example.com/v1"},

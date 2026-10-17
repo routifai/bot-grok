@@ -1,7 +1,6 @@
 """OSS Docker entrypoint for the Omnigent server.
 
-Mirrors ``deploy/databricks/src/app.py`` (the Databricks Apps entrypoint) but
-configured for a plain Postgres database and a local-filesystem
+Configured for a plain Postgres database and a local-filesystem
 artifact store. Intended to run inside the image built by
 ``deploy/docker/Dockerfile``.
 
@@ -480,24 +479,6 @@ def build_app(resolved_config: _ResolvedConfig | None = None) -> _BuiltApp:
 
             github_store = GithubConnectionStore(database_url, cipher)
 
-    from omnigent.server.databricks_app import DatabricksConfig
-
-    databricks_config = DatabricksConfig.from_env()
-    databricks_store = None
-    if databricks_config is not None:
-        from omnigent.stores.credential_store import build_secret_cipher
-
-        dbx_cipher = build_secret_cipher()
-        if dbx_cipher is None:
-            logger.error(
-                "Databricks Connect is configured but disabled: set the credential "
-                "store's KMS key (OMNIGENT_CREDENTIAL_KMS_KEY_ID) to enable it."
-            )
-        else:
-            from omnigent.connections.databricks import DatabricksConnectionStore
-
-            databricks_store = DatabricksConnectionStore(database_url, dbx_cipher)
-
     app = create_app(
         agent_store=agent_store,
         file_store=file_store,
@@ -524,8 +505,6 @@ def build_app(resolved_config: _ResolvedConfig | None = None) -> _BuiltApp:
         server_config=cfg,
         github_config=github_config,
         github_store=github_store,
-        databricks_config=databricks_config,
-        databricks_store=databricks_store,
     )
 
     log_capabilities(sandbox_config, github_config, github_store)

@@ -28,9 +28,9 @@ def _isolate_cli_credentials(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) ->
     """
     monkeypatch.setenv("OMNIGENT_CONFIG_HOME", str(tmp_path))
     # SDK-harness readiness checks ambient credential sources (env API keys,
-    # Claude Code's login / managed settings, a Databricks workspace, GCP ADC).
-    # Isolate every one of them — a developer's or CI runner's real key,
-    # ~/.databrickscfg, or gcloud ADC would otherwise flip these verdicts.
+    # Claude Code's login / managed settings, GCP ADC).
+    # Isolate every one of them — a developer's or CI runner's real key or
+    # gcloud ADC would otherwise flip these verdicts.
     for var in (
         "ANTHROPIC_API_KEY",
         "ANTHROPIC_AUTH_TOKEN",
@@ -38,28 +38,16 @@ def _isolate_cli_credentials(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) ->
         "OPENAI_API_KEY",
         "OPENROUTER_API_KEY",
         "GOOGLE_APPLICATION_CREDENTIALS",
-        "DATABRICKS_HOST",
-        "DATABRICKS_TOKEN",
-        "DATABRICKS_CLIENT_ID",
-        "DATABRICKS_CLIENT_SECRET",
-        "DATABRICKS_CONFIG_FILE",
     ):
         monkeypatch.delenv(var, raising=False)
         monkeypatch.delenv(f"OMNIGENT_{var}", raising=False)
-    monkeypatch.setenv("HOME", str(tmp_path))  # ~/.databrickscfg, gcloud ADC, …
-    import omnigent.onboarding.databricks_config as _dbc
+    monkeypatch.setenv("HOME", str(tmp_path))  # gcloud ADC, …
     from omnigent.onboarding import ambient as _ambient
 
     monkeypatch.setattr(_ambient, "_claude_login_detected", lambda: False)
     monkeypatch.setattr(
         _ambient, "CLAUDE_CODE_MANAGED_SETTINGS_PATHS", (tmp_path / "managed-absent.json",)
     )
-    monkeypatch.setattr(_dbc, "list_databricks_profiles", list)
-    # The default-path Databricks check reads ``_DATABRICKSCFG_PATH`` directly
-    # (field-aware), and that constant captured the real home at import time —
-    # point it at an absent tmp file so a developer's real ~/.databrickscfg
-    # can't flip these verdicts.
-    monkeypatch.setattr(_dbc, "_DATABRICKSCFG_PATH", tmp_path / "databrickscfg-absent")
     # The provider fallback check merges ambient detections the way runtime
     # resolution does (``effective_config_with_detected``); stub the live
     # detector so a developer's real env keys / CLI logins / local Ollama
@@ -130,7 +118,7 @@ def test_sdk_and_unknown_harnesses_are_never_gated(
     They run in-process (or are unknown to the daemon) and resolve any
     credential at runtime, so the daemon must not block them. A ``False``
     here is a false negative that would break a launch authenticating via
-    an env key, a Databricks profile, or the spec's ``executor.auth`` —
+    an env key, a provider profile, or the spec's ``executor.auth`` —
     none of which the daemon can see.
     """
     _no_clis_installed(monkeypatch)
@@ -318,7 +306,7 @@ def test_configured_harness_map_gates_only_cli_harnesses(
     result = configured_harness_map()
     # SDK / alias spellings — no binary axis; with nothing configured they
     # read the credential axis. (An SDK agent authenticating via a visible
-    # source — an env key, a Databricks profile — reads True; covered below.)
+    # source — an env key — reads True; covered below.)
     for sdk in (
         "claude-sdk",
         "claude_sdk",
@@ -600,68 +588,6 @@ def test_claude_sdk_ready_via_managed_gateway(
     assert configured_harness_map()["claude-sdk"] is True
 
 
-def test_sdk_harness_ready_via_databricks_workspace(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """An ambient Databricks *credential* counts as an SDK credential source.
-
-    The SDK executors mint a gateway bearer from ``~/.databrickscfg`` / the
-    Databricks env for ``databricks-*`` models even with no provider entry, so
-    a host configured with a credentialed profile, ``DATABRICKS_HOST`` plus
-    auth material, or a credentialed-profile ``DATABRICKS_CONFIG_FILE`` must
-    not read ``needs-auth``.
-    """
-    import omnigent.onboarding.databricks_config as dbc
-
-    _no_clis_installed(monkeypatch)
-    default_cfg = tmp_path / "databrickscfg-default"
-    default_cfg.write_text(
-        "[DEFAULT]\nhost = https://example.cloud.databricks.com\ntoken = dapi-test\n"
-    )
-    monkeypatch.setattr(dbc, "_DATABRICKSCFG_PATH", default_cfg)
-    result = configured_harness_map()
-    assert result["claude-sdk"] is True
-    monkeypatch.setattr(dbc, "_DATABRICKSCFG_PATH", tmp_path / "databrickscfg-absent")
-
-    monkeypatch.setenv("DATABRICKS_HOST", "https://example.cloud.databricks.com")
-    monkeypatch.setenv("DATABRICKS_TOKEN", "dapi-test-token")
-    result = configured_harness_map()
-    assert result["claude-sdk"] is True
-
-    monkeypatch.delenv("DATABRICKS_HOST")
-    monkeypatch.delenv("DATABRICKS_TOKEN")
-    config_file = tmp_path / "databrickscfg-override"
-    config_file.write_text("[work]\nhost = https://example.cloud.databricks.com\ntoken = t\n")
-    monkeypatch.setenv("DATABRICKS_CONFIG_FILE", str(config_file))
-    result = configured_harness_map()
-    assert result["claude-sdk"] is True
-
-    # An externally resolved method (its material lives in the databricks
-    # CLI's own OAuth token cache, not this file) counts on declaration.
-    config_file.write_text(
-        "[work]\nhost = https://example.cloud.databricks.com\nauth_type = databricks-cli\n"
-    )
-    result = configured_harness_map()
-    assert result["claude-sdk"] is True
-
-
-def test_databricks_workspace_url_alone_is_not_a_credential(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """``DATABRICKS_HOST`` without auth material must read ``needs-auth``.
-
-    A workspace URL names where to authenticate, not a way to authenticate:
-    with no token, OAuth pair, profile, or other local source, the executors
-    cannot mint a gateway bearer, so readiness must not report the SDK
-    harnesses ready off the URL alone.
-    """
-    _no_clis_installed(monkeypatch)
-    monkeypatch.setenv("DATABRICKS_HOST", "https://example.cloud.databricks.com")
-    result = configured_harness_map()
-    assert result["claude-sdk"] == "needs-auth"
-
-
 def test_sdk_harness_ready_via_global_auth_block(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -800,134 +726,3 @@ def test_claude_native_unresolved_provider_reference_reports_needs_auth(
         )
     )
     assert configured_harness_map()["claude-native"] == "needs-auth"
-
-
-def test_malformed_databricks_config_contents_never_reach_logs(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """Parser errors for Databricks config files must not log file contents.
-
-    ``configparser`` errors embed the offending line, which in a credentials
-    file may be a token, so both the default ``~/.databrickscfg`` reader and
-    the ``DATABRICKS_CONFIG_FILE`` override parser must log only the exception
-    class when a file is malformed.
-    """
-    import importlib
-    import logging
-
-    import omnigent.onboarding.databricks_config as dbc
-
-    _no_clis_installed(monkeypatch)
-    secret = "dapi-super-secret-value"
-    # A token line before any section header makes configparser raise a
-    # MissingSectionHeaderError whose message embeds the line itself.
-    malformed = f"token = {secret}\n[DEFAULT]\nhost = https://example\n"
-    default_cfg = tmp_path / "databrickscfg-default"
-    default_cfg.write_text(malformed)
-    override_cfg = tmp_path / "databrickscfg-override"
-    override_cfg.write_text(malformed)
-    # The autouse fixture stubs list_databricks_profiles; reload to exercise
-    # the real parser, then pin its path at this test's malformed file.
-    importlib.reload(dbc)
-    monkeypatch.setattr(dbc, "_DATABRICKSCFG_PATH", default_cfg)
-    monkeypatch.setenv("DATABRICKS_CONFIG_FILE", str(override_cfg))
-    with caplog.at_level(logging.DEBUG):
-        result = configured_harness_map()
-    assert result["claude-sdk"] == "needs-auth"
-    assert secret not in caplog.text
-
-
-def test_list_databricks_profiles_malformed_contents_never_reach_logs(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """``list_databricks_profiles`` itself logs only the exception class.
-
-    Direct coverage for the function's redaction behavior (the readiness test
-    above exercises readiness's own parser): a malformed ``~/.databrickscfg``
-    whose offending line embeds a token must produce an empty profile list and
-    a log record that never carries the file's contents.
-    """
-    import importlib
-    import logging
-
-    import omnigent.onboarding.databricks_config as dbc
-
-    secret = "dapi-super-secret-value"
-    # A token line before any section header makes configparser raise a
-    # MissingSectionHeaderError whose message embeds the line itself.
-    cfg = tmp_path / "databrickscfg-malformed-direct"
-    cfg.write_text(f"token = {secret}\n[DEFAULT]\nhost = https://example\n")
-    # The autouse fixture stubs list_databricks_profiles; reload to exercise
-    # the real parser, then pin its path at this test's malformed file.
-    importlib.reload(dbc)
-    monkeypatch.setattr(dbc, "_DATABRICKSCFG_PATH", cfg)
-    with caplog.at_level(logging.DEBUG):
-        assert dbc.list_databricks_profiles() == []
-    assert secret not in caplog.text
-
-
-def test_databricks_profileless_config_override_is_not_a_credential(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A ``DATABRICKS_CONFIG_FILE`` that declares no profile is not a credential.
-
-    Mere existence of the override file (including an empty one) proves no
-    authentication source, so readiness must still read ``needs-auth``.
-    """
-    _no_clis_installed(monkeypatch)
-    empty_config = tmp_path / "databrickscfg-empty"
-    empty_config.write_text("")
-    monkeypatch.setenv("DATABRICKS_CONFIG_FILE", str(empty_config))
-    result = configured_harness_map()
-    assert result["claude-sdk"] == "needs-auth"
-
-
-@pytest.mark.parametrize(
-    "contents",
-    [
-        # A bare section supplies neither a workspace nor authentication.
-        "[work]\n",
-        # A workspace host alone names where to authenticate, not how.
-        "[work]\nhost = https://example.cloud.databricks.com\n",
-        # Auth material without a workspace cannot mint a gateway bearer.
-        "[work]\ntoken = dapi-test\n",
-        # An explicit method declaration without that method's material: PAT
-        # authentication requires the (missing) token.
-        "[work]\nhost = https://example.cloud.databricks.com\nauth_type = pat\n",
-        # Same for an OAuth service-principal declaration without its pair.
-        "[work]\nhost = https://example.cloud.databricks.com\nauth_type = oauth-m2m\n",
-    ],
-)
-def test_databricks_uncredentialed_profile_is_not_a_credential(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    contents: str,
-) -> None:
-    """A Databricks profile without host + auth fields is not a credential.
-
-    Readiness checks the locally required configuration fields, not section
-    existence: a ``[work]`` section that carries no workspace host plus
-    authentication material (token / OAuth pair / auth_type) supplies nothing
-    an executor could mint a gateway bearer from, so the SDK harnesses must
-    still read ``needs-auth``. Applies to both the ``DATABRICKS_CONFIG_FILE``
-    override and the default ``~/.databrickscfg``.
-    """
-    import omnigent.onboarding.databricks_config as dbc
-
-    _no_clis_installed(monkeypatch)
-    config_file = tmp_path / "databrickscfg-uncredentialed"
-    config_file.write_text(contents)
-
-    monkeypatch.setenv("DATABRICKS_CONFIG_FILE", str(config_file))
-    result = configured_harness_map()
-    assert result["claude-sdk"] == "needs-auth"
-
-    monkeypatch.delenv("DATABRICKS_CONFIG_FILE")
-    monkeypatch.setattr(dbc, "_DATABRICKSCFG_PATH", config_file)
-    result = configured_harness_map()
-    assert result["claude-sdk"] == "needs-auth"

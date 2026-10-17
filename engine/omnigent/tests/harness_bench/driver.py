@@ -226,13 +226,11 @@ class SdkInprocDriver:
         self._pm = HarnessProcessManager(tmp_parent=self._tmp_parent)
         await self._pm.start()
         p = self._profile
-        resolved = resolve_bench_env(self._databricks_profile)
+        resolve_bench_env(self._databricks_profile)
         wrap_env = {
             f"{p.env_prefix}GATEWAY": "true",
             f"{p.env_prefix}MODEL": p.model,
         }
-        if resolved.db_profile:
-            wrap_env[f"{p.env_prefix}DATABRICKS_PROFILE"] = resolved.db_profile
         self._client = await self._pm.get_client(_CONV_ID, p.harness, env=wrap_env)
         return self
 

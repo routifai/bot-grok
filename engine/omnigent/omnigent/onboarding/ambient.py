@@ -567,14 +567,13 @@ def claude_managed_gateway_display_name(paths: tuple[Path, ...] | None = None) -
     """A human label for the managed-settings credential, when one is delivered.
 
     Used by the setup / ``/model`` display layer to show the Claude credential
-    as its actual backing (e.g. ``"Databricks AI Gateway"``) rather than the
+    as its actual backing (e.g. ``"gateway.example.com"``) rather than the
     generic ``"Subscription"``. Purely a display derivation from live managed
     settings — nothing is persisted.
 
     :param paths: Settings files to read; defaults to
         :data:`CLAUDE_CODE_MANAGED_SETTINGS_PATHS`.
-    :returns: ``"Databricks AI Gateway"`` for a recognized Databricks gateway,
-        the gateway host for another gateway, ``"Claude Code gateway"`` for a
+    :returns: The gateway host, ``"Claude Code gateway"`` for a
         credential with no pinned base URL, or ``None`` when no credential is
         delivered.
     """
@@ -583,12 +582,6 @@ def claude_managed_gateway_display_name(paths: tuple[Path, ...] | None = None) -
         return None
     if base_url is None:
         return "Claude Code gateway"
-    # Lazy: the gateway-URL allowlist lives in its own module and is only
-    # needed once a base URL is actually present.
-    from omnigent.databricks_ai_gateway import is_databricks_ai_gateway_url
-
-    if is_databricks_ai_gateway_url(base_url):
-        return "Databricks AI Gateway"
     return urlsplit(base_url).hostname or "Claude Code gateway"
 
 

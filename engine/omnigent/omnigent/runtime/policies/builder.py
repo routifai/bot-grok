@@ -36,7 +36,6 @@ from omnigent.policies.schema import (
     SESSION_COST_UNPRICED_APPROVED_KEY,
 )
 from omnigent.policies.types import PolicyLLMClient
-from omnigent.runtime.credentials.databricks import resolve_databricks_workspace
 from omnigent.runtime.policies.engine import PolicyEngine
 from omnigent.spec.types import (
     DEFAULT_ASK_TIMEOUT,
@@ -492,7 +491,7 @@ def build_policy_engine(
         dict resolved from the caller's auth token (e.g. via
         :attr:`RuntimeCaps.policy_llm_connection_factory`). When
         provided, takes precedence over any connection derived from
-        ``server_llm.connection`` / ``server_llm.profile``, so LLM
+        ``server_llm.connection``, so LLM
         calls are billed to the request caller rather than a static
         service credential. ``None`` falls back to the server-level
         connection.
@@ -815,23 +814,16 @@ def _resolve_server_llm_connection(
     """
     Resolve the server-level LLM connection dict.
 
-    Returns ``server_llm.connection`` directly when present;
-    otherwise resolves ``server_llm.profile`` to a Databricks
-    workspace connection. ``None`` when no server LLM is
-    configured or it declares neither a connection nor a profile.
+    Returns ``server_llm.connection``; ``None`` when no server LLM is
+    configured or it declares no connection.
 
     :param server_llm: The server-level :class:`LLMConfig` from
         ``RuntimeCaps.llm``, or ``None``.
     :returns: A ``{"base_url", "api_key"}`` dict, or ``None``.
-    :raises OSError: When ``profile`` is set but cannot be resolved.
     """
     if server_llm is None:
         return None
-    if server_llm.connection is not None:
-        return server_llm.connection
-    if server_llm.profile is not None:
-        return _resolve_databricks_connection(server_llm.profile)
-    return None
+    return server_llm.connection
 
 
 def _build_policy_llm_client(
@@ -859,8 +851,8 @@ def _build_policy_llm_client(
         return None
     from omnigent.llms.client import Client
 
-    primary = _normalize_policy_model(server_llm.model)
-    fallbacks = [_normalize_policy_model(m) for m in server_llm.fallback_models]
+    primary = server_llm.model
+    fallbacks = list(server_llm.fallback_models)
 
     # The resolved ``connection`` (api_key / profile creds) is shared
     # across the primary and every fallback. It is provider-specific,
@@ -890,64 +882,16 @@ def _build_policy_llm_client(
     )
 
 
-def _normalize_policy_model(model: str) -> str:
-    """
-    Apply the ``databricks-`` → ``databricks/`` provider-prefix fixup.
-
-    Models prefixed with ``databricks-`` (e.g.
-    ``databricks-claude-sonnet-4-6``) need the ``databricks/``
-    provider prefix so the LLM adapter routes through
-    ``DatabricksAdapter`` (Chat Completions) rather than
-    ``OpenAIAdapter`` (Responses API). Without this, the request
-    hits ``/responses`` on the Databricks gateway → 400. Applied
-    uniformly to the primary model and every fallback so the
-    fallback path routes the same way as the primary.
-
-    :param model: A model id from the server ``llm:`` config,
-        possibly a bare ``databricks-`` name.
-    :returns: The model id with the ``databricks/`` prefix applied
-        when needed; otherwise unchanged.
-    """
-    if "/" not in model and model.startswith("databricks-"):
-        return f"databricks/{model}"
-    return model
-
-
 def _model_provider(model: str) -> str:
     """
     Extract the provider prefix from a normalized model id.
 
     :param model: A provider-prefixed model id, e.g.
-        ``"databricks/claude-sonnet-4"`` or ``"openai/gpt-4o-mini"``.
+        ``"anthropic/claude-sonnet-4"`` or ``"openai/gpt-4o-mini"``.
     :returns: The provider segment before the first ``/`` (e.g.
         ``"openai"``), or the whole string when unprefixed.
     """
     return model.split("/", 1)[0] if "/" in model else model
-
-
-def _resolve_databricks_connection(profile: str) -> dict[str, str]:
-    """
-    Resolve a Databricks CLI profile to a connection dict.
-
-    Uses
-    :func:`~omnigent.runtime.credentials.databricks.resolve_databricks_workspace`
-    to resolve the profile to workspace host + bearer token, then
-    builds the ``{"base_url": ..., "api_key": ...}`` dict that the
-    LLM adapter expects.
-
-    :param profile: The Databricks CLI profile name,
-        e.g. ``"my-workspace"``.
-    :returns: A connection dict with ``base_url`` (workspace host
-        + ``/serving-endpoints``) and ``api_key`` (bearer token),
-        e.g. ``{"base_url": "https://host/serving-endpoints",
-        "api_key": "dapi..."}``.
-    :raises OSError: When the profile cannot be resolved.
-    """
-    creds = resolve_databricks_workspace(profile)
-    return {
-        "base_url": creds.host + "/serving-endpoints",
-        "api_key": creds.token,
-    }
 
 
 def _instantiate_policy(

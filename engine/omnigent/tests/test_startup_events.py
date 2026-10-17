@@ -127,7 +127,6 @@ def test_remote_backend_preserves_startup_context_in_host_thread(
         "_resolve_server_url",
         lambda server: SimpleNamespace(api_base=server.rstrip("/")),
     )
-    monkeypatch.setattr(cli, "_ensure_databricks_server_auth", lambda _server: None)
     monkeypatch.setattr(
         _runner_startup,
         "runner_startup_progress",

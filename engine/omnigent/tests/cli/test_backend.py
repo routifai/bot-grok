@@ -1271,7 +1271,6 @@ def test_foreground_connect_registers_status_record(
     monkeypatch.setattr(cli, "_HOST_PID_PATH", tmp_path / "host.pid")
     monkeypatch.setattr(cli, "_load_effective_config", dict)
     monkeypatch.setattr(cli, "_load_or_create_host_id", lambda: "host_abc")
-    monkeypatch.setattr(cli, "_ensure_databricks_server_auth", lambda server, **kw: None)
     observed: list[cli._HostDaemonRecord] = []
 
     def _fake_run_host_process(server_url: str, **_kw: object) -> None:
@@ -1660,7 +1659,6 @@ def test_foreground_connect_remote_omits_local_server_prompt(
     monkeypatch.setattr(cli, "_HOST_PID_PATH", tmp_path / "host.pid")
     monkeypatch.setattr(cli, "_load_effective_config", dict)
     monkeypatch.setattr(cli, "_load_or_create_host_id", lambda: "host_abc")
-    monkeypatch.setattr(cli, "_ensure_databricks_server_auth", lambda server, **kw: None)
     monkeypatch.setattr(
         cli,
         "local_server_url_if_healthy",
@@ -2629,7 +2627,6 @@ def test_ensure_backend_remote_passthrough(monkeypatch: pytest.MonkeyPatch) -> N
     # Identity normalization: the workspace-URL expansion probes the
     # network and has dedicated tests.
     monkeypatch.setattr(cli, "_workspace_api_server_url", lambda server: server.rstrip("/"))
-    monkeypatch.setattr(cli, "_ensure_databricks_server_auth", lambda server: None)
 
     result = _ensure_backend("https://example.databricksapps.com/")
 
@@ -2664,7 +2661,6 @@ def test_ensure_backend_defaults_scheme_https(monkeypatch: pytest.MonkeyPatch) -
     seen: list[str] = []
     monkeypatch.setattr(cli, "_ensure_host_daemon", lambda s: False)
     monkeypatch.setattr(cli, "_workspace_api_server_url", _recording_expander(seen))
-    monkeypatch.setattr(cli, "_ensure_databricks_server_auth", lambda server: None)
 
     result = _ensure_backend("dbc-x.cloud.databricks.com/omnigent")
 
@@ -2790,552 +2786,6 @@ def test_run_explicit_server_overrides_config(monkeypatch: pytest.MonkeyPatch) -
     assert captured["server_url"] == "https://explicit.example.com"
 
 
-# ── Databricks-fronted server auth pre-flight ───────────────────────
-
-
-def _databricks_probe_response(status_code: int) -> object:
-    """Build a real httpx.Response shaped like the Apps edge answer.
-
-    :param status_code: ``200`` for an authenticated probe, ``302`` for
-        the edge's OAuth redirect.
-    :returns: A real :class:`httpx.Response` so the production header
-        and redirect parsing run for real.
-    """
-    import httpx
-
-    headers = (
-        {"location": ("https://example.databricks.com/oidc/oauth2/v2.0/authorize?client_id=x")}
-        if status_code == 302
-        else {}
-    )
-    return httpx.Response(
-        status_code,
-        headers=headers,
-        request=httpx.Request("GET", "https://myapp-1234.aws.databricksapps.com/v1/me"),
-    )
-
-
-def _patch_auth_preflight(
-    monkeypatch: pytest.MonkeyPatch,
-    *,
-    probe_status: int,
-    tty: bool,
-) -> list[str]:
-    """Wire the pre-flight's collaborators for one scripted run.
-
-    :param monkeypatch: Pytest monkeypatch fixture.
-    :param probe_status: Status the ``/v1/me`` probe answers with.
-    :param tty: What ``sys.stdin.isatty()`` reports.
-    :returns: Capture list of ``_databricks_login`` invocations
-        (``"<server> <workspace>"`` strings).
-    """
-    import httpx
-
-    monkeypatch.setattr(
-        "omnigent.chat._remote_headers",
-        lambda server_url=None, *, host_id=None: {},
-    )
-    monkeypatch.setattr(httpx, "get", lambda url, **kw: _databricks_probe_response(probe_status))
-    monkeypatch.setattr(cli, "_workspace_api_server_url", lambda server: server.rstrip("/"))
-    monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: tty)
-    login_calls: list[str] = []
-
-    def _capture_login(server: str, workspace_host: str, org_id: str | None = None) -> None:
-        login_calls.append(f"{server} {workspace_host}")
-
-    monkeypatch.setattr(cli, "_databricks_login", _capture_login)
-    return login_calls
-
-
-def test_ensure_backend_databricks_preflight_runs_login_on_tty(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """An unauthenticated Databricks-fronted server triggers the login flow.
-
-    Without this, the run continues and dies much later in session-create
-    with an opaque "non-JSON response (status=302)" traceback.
-    """
-    login_calls = _patch_auth_preflight(monkeypatch, probe_status=302, tty=True)
-    monkeypatch.setattr(cli, "_ensure_host_daemon", lambda server: False)
-
-    result = _ensure_backend("https://myapp-1234.aws.databricksapps.com/")
-
-    # The login flow ran for the probed server + parsed workspace, then
-    # the run continued normally with the normalized URL.
-    assert login_calls == [
-        "https://myapp-1234.aws.databricksapps.com https://example.databricks.com"
-    ]
-    assert result == "https://myapp-1234.aws.databricksapps.com"
-
-
-def test_ensure_backend_databricks_preflight_hints_headless(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Headless invocations get the exact login command, not a browser."""
-    login_calls = _patch_auth_preflight(monkeypatch, probe_status=302, tty=False)
-    monkeypatch.setattr(cli, "_ensure_host_daemon", lambda server: False)
-
-    with pytest.raises(click.ClickException) as exc:
-        _ensure_backend("https://myapp-1234.aws.databricksapps.com")
-
-    assert "omnigent login https://myapp-1234.aws.databricksapps.com" in str(exc.value)
-    # No browser flow attempted off-TTY.
-    assert login_calls == []
-
-
-def test_ensure_backend_databricks_preflight_skips_when_authenticated(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A 200 probe (valid creds / header mode) never invokes login."""
-    login_calls = _patch_auth_preflight(monkeypatch, probe_status=200, tty=True)
-    monkeypatch.setattr(cli, "_ensure_host_daemon", lambda server: False)
-
-    result = _ensure_backend("https://myapp-1234.aws.databricksapps.com")
-
-    assert login_calls == []
-    assert result == "https://myapp-1234.aws.databricksapps.com"
-
-
-def test_databricks_preflight_silent_sdk_refresh_skips_login(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A fresh SDK token recovers an expired Databricks Apps session silently."""
-    import httpx
-
-    responses = iter([_databricks_probe_response(302), _databricks_probe_response(200)])
-    requests: list[dict[str, object]] = []
-    stored: list[tuple[str, str, str | None]] = []
-    monkeypatch.setattr(
-        "omnigent.chat._remote_headers",
-        lambda server_url=None, *, host_id=None: {"Authorization": "Bearer expired"},
-    )
-
-    def _get(url: str, **kwargs: object) -> object:
-        requests.append(kwargs)
-        return next(responses)
-
-    monkeypatch.setattr(httpx, "get", _get)
-    monkeypatch.setattr(
-        cli,
-        "_databricks_workspace_auth_info",
-        lambda workspace: cli._DatabricksWorkspaceAuthInfo(token="fresh-token", profile_name=None),
-    )
-    monkeypatch.setattr(cli, "_databricks_login", lambda *args, **kwargs: pytest.fail("login"))
-    monkeypatch.setattr("omnigent.cli_auth.load_databricks_org_id", lambda server: "123")
-
-    def _store(
-        server: str,
-        workspace: str,
-        user_id: str | None = None,
-        org_id: str | None = None,
-    ) -> None:
-        stored.append((server, workspace, org_id))
-
-    monkeypatch.setattr("omnigent.cli_auth.store_databricks_auth", _store)
-
-    cli._ensure_databricks_server_auth(_HOST_DATABRICKS_SERVER, non_interactive=True)
-
-    assert requests[1]["headers"] == {"Authorization": "Bearer fresh-token"}
-    assert requests[1]["params"] == {"o": "123"}
-    assert stored == [(_HOST_DATABRICKS_SERVER, "https://example.databricks.com", "123")]
-
-
-def test_databricks_preflight_uses_cli_workspace_id_for_workspace_mount(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """``omni host`` routes workspace-hosted auth with the CLI profile workspace id."""
-    import httpx
-
-    server = "https://example.databricks.com/api/2.0/omnigent"
-    requests: list[dict[str, object]] = []
-    stored: list[tuple[str, str, str | None]] = []
-    cfg_path = tmp_path / "databrickscfg"
-    cfg_path.write_text(
-        "[expired]\n"
-        "host = https://example.databricks.com\n"
-        "workspace_id = 111\n"
-        "auth_type = databricks-cli\n"
-        "[fresh]\n"
-        "host = https://example.databricks.com\n"
-        "workspace_id = 1965859176160743\n"
-        "auth_type = databricks-cli\n"
-    )
-    monkeypatch.setenv("DATABRICKS_CONFIG_FILE", str(cfg_path))
-
-    monkeypatch.setattr(
-        "omnigent.chat._remote_headers",
-        lambda server_url=None, *, host_id=None: {},
-    )
-    monkeypatch.setattr("omnigent.cli_auth.load_databricks_org_id", lambda server: None)
-    monkeypatch.setattr(
-        cli,
-        "_databricks_workspace_auth_info",
-        lambda workspace: cli._DatabricksWorkspaceAuthInfo(
-            token="fresh-token", profile_name="fresh"
-        ),
-    )
-    monkeypatch.setattr(cli, "_databricks_login", lambda *args, **kwargs: pytest.fail("login"))
-
-    def _get(url: str, **kwargs: object) -> httpx.Response:
-        requests.append(kwargs)
-        if len(requests) == 1:
-            return httpx.Response(
-                401,
-                headers={"www-authenticate": 'Bearer realm="DatabricksRealm"'},
-                request=httpx.Request("GET", url),
-            )
-        return httpx.Response(
-            200,
-            content=json.dumps({"user_id": "alice@example.com"}).encode(),
-            request=httpx.Request("GET", url),
-        )
-
-    def _store(
-        server: str,
-        workspace: str,
-        user_id: str | None = None,
-        org_id: str | None = None,
-    ) -> None:
-        stored.append((server, workspace, org_id))
-
-    monkeypatch.setattr(httpx, "get", _get)
-    monkeypatch.setattr("omnigent.cli_auth.store_databricks_auth", _store)
-
-    cli._ensure_databricks_server_auth(server, non_interactive=True)
-
-    assert requests[1]["headers"] == {"Authorization": "Bearer fresh-token"}
-    assert requests[1]["params"] == {"o": "1965859176160743"}
-    assert stored == [(server, "https://example.databricks.com", "1965859176160743")]
-
-
-def test_databricks_preflight_refresh_handles_duplicate_workspace_profiles(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """``omnigent host`` preflight avoids ambiguous host-keyed token lookup.
-
-    When two ``~/.databrickscfg`` profiles point at the same workspace, the
-    Databricks SDK's ``Config(profile=...)`` path can still shell out to
-    ``databricks auth token --host ...``. The preflight refresh must recover by
-    pinning the CLI token call to ``--profile``.
-    """
-    import httpx
-
-    from omnigent.inner import databricks_executor
-
-    cfg_path = tmp_path / "databrickscfg"
-    cfg_path.write_text(
-        "[expired]\n"
-        "host = https://example.databricks.com\n"
-        "auth_type = databricks-cli\n"
-        "[fresh]\n"
-        "host = https://example.databricks.com\n"
-        "auth_type = databricks-cli\n"
-    )
-    monkeypatch.setenv("DATABRICKS_CONFIG_FILE", str(cfg_path))
-    monkeypatch.setattr(
-        "omnigent.chat._remote_headers",
-        lambda server_url=None, *, host_id=None: {"Authorization": "Bearer expired-token"},
-    )
-    monkeypatch.setattr("omnigent.cli_auth.load_databricks_org_id", lambda server: None)
-
-    attempts: list[tuple[str, object]] = []
-
-    def _ambiguous_sdk_config(**kwargs: str) -> object:
-        attempts.append(("sdk", kwargs))
-        raise ValueError(
-            "databricks-cli: expired and fresh match "
-            "https://example.databricks.com. Use --profile to specify which profile to use"
-        )
-
-    def _run_databricks(args: list[str], **kwargs: object) -> object:
-        attempts.append(("cli", args))
-        assert "--host" not in args
-        profile = args[args.index("--profile") + 1]
-        if profile == "expired":
-            return type("_Result", (), {"returncode": 1, "stdout": "", "stderr": "expired"})()
-        if profile == "fresh":
-            return type(
-                "_Result",
-                (),
-                {
-                    "returncode": 0,
-                    "stdout": json.dumps({"access_token": "fresh-token"}),
-                    "stderr": "",
-                },
-            )()
-        raise AssertionError(f"unexpected Databricks profile lookup: {args!r}")
-
-    def _get(url: str, **kwargs: object) -> httpx.Response:
-        headers = kwargs.get("headers")
-        auth_header = headers.get("Authorization") if isinstance(headers, dict) else None
-        if auth_header == "Bearer fresh-token":
-            return _databricks_probe_response(200)
-        return _databricks_probe_response(302)
-
-    stored: list[tuple[str, str, str | None]] = []
-
-    def _store(
-        server: str,
-        workspace: str,
-        user_id: str | None = None,
-        org_id: str | None = None,
-    ) -> None:
-        stored.append((server, workspace, org_id))
-
-    monkeypatch.setattr(databricks_executor, "_sdk_config", _ambiguous_sdk_config)
-    monkeypatch.setattr(databricks_executor.shutil, "which", lambda name: "/usr/bin/databricks")
-    monkeypatch.setattr(databricks_executor.subprocess, "run", _run_databricks)
-    monkeypatch.setattr(httpx, "get", _get)
-    monkeypatch.setattr(cli, "_databricks_login", lambda *args, **kwargs: pytest.fail("login"))
-    monkeypatch.setattr("omnigent.cli_auth.store_databricks_auth", _store)
-
-    cli._ensure_databricks_server_auth(_HOST_DATABRICKS_SERVER, non_interactive=True)
-
-    assert attempts == [
-        ("sdk", {"profile": "expired"}),
-        (
-            "cli",
-            [
-                "/usr/bin/databricks",
-                "auth",
-                "token",
-                "--profile",
-                "expired",
-                "--output",
-                "json",
-            ],
-        ),
-        ("sdk", {"profile": "fresh"}),
-        (
-            "cli",
-            [
-                "/usr/bin/databricks",
-                "auth",
-                "token",
-                "--profile",
-                "fresh",
-                "--output",
-                "json",
-            ],
-        ),
-    ]
-    assert stored == [
-        (_HOST_DATABRICKS_SERVER, "https://example.databricks.com", None),
-    ]
-
-
-# ── Foreground ``host`` auth pre-flight ─────────────────────────────
-#
-# ``host`` runs the same Databricks sign-in pre-flight ``run`` does before
-# connecting to a remote server, but exposes ``--non-interactive`` so a
-# scripted invocation keeps the old fail-loud behavior instead of launching
-# the browser login. ``CliRunner`` swaps ``sys.stdin`` for a non-TTY stream,
-# so the auto-login-on-TTY branch is covered by the direct pre-flight test
-# below; the ``host`` wiring is asserted with a capturing pre-flight stub.
-
-_HOST_DATABRICKS_SERVER = "https://myapp-1234.aws.databricksapps.com"
-
-
-def test_databricks_preflight_non_interactive_overrides_tty(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """``non_interactive=True`` fails with the login hint even on a TTY.
-
-    Without the override an un-authed Databricks server would launch the
-    browser login on a TTY (covered by
-    ``test_ensure_backend_databricks_preflight_runs_login_on_tty``); the
-    flag is what lets ``host`` stay scripted.
-    """
-    login_calls = _patch_auth_preflight(monkeypatch, probe_status=302, tty=True)
-
-    with pytest.raises(click.ClickException) as exc:
-        cli._ensure_databricks_server_auth(_HOST_DATABRICKS_SERVER, non_interactive=True)
-
-    assert f"omnigent login {_HOST_DATABRICKS_SERVER}" in str(exc.value)
-    # The browser login never ran despite the TTY.
-    assert login_calls == []
-
-
-def _patch_rejected_credential_preflight(
-    monkeypatch: pytest.MonkeyPatch,
-    *,
-    pointer_workspace: str | None,
-    unauthed_status: int,
-    unauthed_realm: bool,
-) -> list[str]:
-    """Wire the pre-flight for a stale-bearer run the edge rejects with 403.
-
-    The credential chain mints a (stale) bearer, the authed ``/v1/me``
-    probe answers a bare 403 (no edge signature — the shape an expired
-    Databricks OAuth token gets), and the SDK can mint no fresh token.
-
-    :param monkeypatch: Pytest monkeypatch fixture.
-    :param pointer_workspace: Workspace host the stored ``omnigent login``
-        pointer record names, or ``None`` when no record exists.
-    :param unauthed_status: Status the credential-less re-probe answers.
-    :param unauthed_realm: Whether that re-probe carries the
-        DatabricksRealm challenge.
-    :returns: Capture list of the URLs each probe was sent to with
-        ``"authed"``/``"unauthed"`` markers.
-    """
-    import httpx
-
-    probes: list[str] = []
-
-    def _get(url: str, **kwargs: object) -> httpx.Response:
-        headers = kwargs.get("headers")
-        authed = isinstance(headers, dict) and "Authorization" in headers
-        probes.append("authed" if authed else "unauthed")
-        if authed:
-            return httpx.Response(
-                403,
-                json={"error_code": 403, "message": "Invalid access token. [ReqId: x]"},
-                request=httpx.Request("GET", url),
-            )
-        realm_headers = (
-            {"www-authenticate": 'Bearer realm="DatabricksRealm"'} if unauthed_realm else {}
-        )
-        return httpx.Response(
-            unauthed_status, headers=realm_headers, request=httpx.Request("GET", url)
-        )
-
-    monkeypatch.setattr(
-        "omnigent.chat._remote_headers",
-        lambda server_url=None, *, host_id=None: {"Authorization": "Bearer stale"},
-    )
-    monkeypatch.setattr(httpx, "get", _get)
-    monkeypatch.setattr(
-        "omnigent.cli_auth.load_databricks_workspace_host", lambda server: pointer_workspace
-    )
-    monkeypatch.setattr("omnigent.cli_auth.load_databricks_org_id", lambda server: None)
-    monkeypatch.setattr(cli, "_databricks_workspace_auth_info", lambda workspace: None)
-    monkeypatch.setattr(
-        cli, "_databricks_login", lambda *args, **kwargs: pytest.fail("browser login ran")
-    )
-    return probes
-
-
-def test_databricks_preflight_expired_credential_routes_to_reauth_via_pointer_record(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A 403-rejected stale bearer surfaces the re-login hint, not the raw 403.
-
-    The edge rejects an expired bearer with a bare 403 (no OAuth redirect,
-    no DatabricksRealm challenge), so the shape classifier alone can't see
-    Databricks — the stored ``omnigent login`` pointer record names the
-    fronting workspace and must route the run to reauth instead of letting
-    it die at session-create with the raw ``Invalid access token`` error.
-    """
-    probes = _patch_rejected_credential_preflight(
-        monkeypatch,
-        pointer_workspace="https://example.databricks.com",
-        unauthed_status=403,
-        unauthed_realm=False,
-    )
-
-    with pytest.raises(click.ClickException) as exc:
-        cli._ensure_databricks_server_auth(_HOST_DATABRICKS_SERVER, non_interactive=True)
-
-    assert "expired or was revoked" in str(exc.value)
-    assert f"omnigent login {_HOST_DATABRICKS_SERVER}" in str(exc.value)
-    # The pointer record answered; no credential-less re-probe was needed.
-    assert probes == ["authed"]
-
-
-def test_databricks_preflight_expired_credential_routes_to_reauth_via_reprobe(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Without a pointer record, a credential-less re-probe classifies the edge.
-
-    Ambient workspace-CLI profile credentials (no ``omnigent login`` record)
-    can also go stale; the bare re-probe surfaces the DatabricksRealm
-    challenge the stale bearer masked, so the run still routes to reauth.
-    """
-    probes = _patch_rejected_credential_preflight(
-        monkeypatch,
-        pointer_workspace=None,
-        unauthed_status=401,
-        unauthed_realm=True,
-    )
-
-    with pytest.raises(click.ClickException) as exc:
-        cli._ensure_databricks_server_auth(_HOST_DATABRICKS_SERVER, non_interactive=True)
-
-    assert "expired or was revoked" in str(exc.value)
-    assert f"omnigent login {_HOST_DATABRICKS_SERVER}" in str(exc.value)
-    assert probes == ["authed", "unauthed"]
-
-
-def test_databricks_preflight_leaves_non_databricks_403_alone(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A 403 from a non-Databricks server is not misread as an expired login.
-
-    No pointer record and no edge signature on the credential-less
-    re-probe means the rejection is the server's own (e.g. a permission
-    refusal) — suggesting a re-login could not help, so the pre-flight
-    steps aside and lets the connect path report the real error.
-    """
-    probes = _patch_rejected_credential_preflight(
-        monkeypatch,
-        pointer_workspace=None,
-        unauthed_status=403,
-        unauthed_realm=False,
-    )
-
-    cli._ensure_databricks_server_auth(_HOST_DATABRICKS_SERVER, non_interactive=True)
-
-    assert probes == ["authed", "unauthed"]
-
-
-def test_databricks_preflight_rejected_credential_recovers_via_sdk_refresh(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A rejected stale bearer still recovers silently when the SDK can refresh."""
-    import httpx
-
-    stored: list[tuple[str, str]] = []
-
-    def _get(url: str, **kwargs: object) -> httpx.Response:
-        headers = kwargs.get("headers")
-        auth = headers.get("Authorization") if isinstance(headers, dict) else None
-        if auth == "Bearer fresh-token":
-            return httpx.Response(200, request=httpx.Request("GET", url))
-        return httpx.Response(
-            403,
-            json={"error_code": 403, "message": "Invalid access token. [ReqId: x]"},
-            request=httpx.Request("GET", url),
-        )
-
-    monkeypatch.setattr(
-        "omnigent.chat._remote_headers",
-        lambda server_url=None, *, host_id=None: {"Authorization": "Bearer stale"},
-    )
-    monkeypatch.setattr(httpx, "get", _get)
-    monkeypatch.setattr(
-        "omnigent.cli_auth.load_databricks_workspace_host",
-        lambda server: "https://example.databricks.com",
-    )
-    monkeypatch.setattr("omnigent.cli_auth.load_databricks_org_id", lambda server: None)
-    monkeypatch.setattr(
-        cli,
-        "_databricks_workspace_auth_info",
-        lambda workspace: cli._DatabricksWorkspaceAuthInfo(token="fresh-token", profile_name=None),
-    )
-    monkeypatch.setattr(
-        cli, "_databricks_login", lambda *args, **kwargs: pytest.fail("browser login ran")
-    )
-    monkeypatch.setattr(
-        "omnigent.cli_auth.store_databricks_auth",
-        lambda server, workspace, user_id=None, org_id=None: stored.append((server, workspace)),
-    )
-
-    cli._ensure_databricks_server_auth(_HOST_DATABRICKS_SERVER, non_interactive=True)
-
-    assert stored == [(_HOST_DATABRICKS_SERVER, "https://example.databricks.com")]
-
-
 def _patch_foreground_host(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -3367,103 +2817,41 @@ def _patch_foreground_host(
     return connected
 
 
-def _capture_preflight(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, bool]]:
-    """Replace the auth pre-flight with a capturing no-op.
-
-    :param monkeypatch: Pytest monkeypatch fixture.
-    :returns: Capture list of ``(server, non_interactive)`` pre-flight calls.
-    """
-    calls: list[tuple[str, bool]] = []
-
-    def _capture(server: str, *, non_interactive: bool = False) -> None:
-        calls.append((server, non_interactive))
-
-    monkeypatch.setattr(cli, "_ensure_databricks_server_auth", _capture)
-    return calls
+_HOST_REMOTE_SERVER = "https://myapp-1234.aws.databricksapps.com"
 
 
-def test_host_remote_runs_auth_preflight_before_connect(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """Remote ``host`` runs the sign-in pre-flight, then connects."""
-    preflight = _capture_preflight(monkeypatch)
+def test_host_remote_connects(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Remote ``host`` connects straight to the given server."""
     connected = _patch_foreground_host(monkeypatch, tmp_path)
 
-    result = CliRunner().invoke(cli_group, ["host", "--server", _HOST_DATABRICKS_SERVER])
+    result = CliRunner().invoke(cli_group, ["host", "--server", _HOST_REMOTE_SERVER])
 
     assert result.exit_code == 0, result.output
-    assert preflight == [(_HOST_DATABRICKS_SERVER, False)]
-    assert connected == [_HOST_DATABRICKS_SERVER]
-
-
-def test_host_non_interactive_flag_forwarded_to_preflight(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """``--non-interactive`` reaches the pre-flight as ``non_interactive=True``."""
-    preflight = _capture_preflight(monkeypatch)
-    _patch_foreground_host(monkeypatch, tmp_path)
-
-    result = CliRunner().invoke(
-        cli_group, ["host", "--server", _HOST_DATABRICKS_SERVER, "--non-interactive"]
-    )
-
-    assert result.exit_code == 0, result.output
-    assert preflight == [(_HOST_DATABRICKS_SERVER, True)]
+    assert connected == [_HOST_REMOTE_SERVER]
 
 
 def test_host_non_interactive_flag_positional_shorthand(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """``omnigent host <url> --non-interactive`` parses the flag with the shorthand."""
-    preflight = _capture_preflight(monkeypatch)
-    _patch_foreground_host(monkeypatch, tmp_path)
+    connected = _patch_foreground_host(monkeypatch, tmp_path)
 
-    result = CliRunner().invoke(cli_group, ["host", _HOST_DATABRICKS_SERVER, "--non-interactive"])
+    result = CliRunner().invoke(cli_group, ["host", _HOST_REMOTE_SERVER, "--non-interactive"])
 
     assert result.exit_code == 0, result.output
-    assert preflight == [(_HOST_DATABRICKS_SERVER, True)]
+    assert connected == [_HOST_REMOTE_SERVER]
 
 
-def test_host_local_skips_auth_preflight(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Local-mode ``host ""`` never runs the remote sign-in pre-flight."""
-    preflight = _capture_preflight(monkeypatch)
+def test_host_local_connects_to_local_server(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Local-mode ``host ""`` connects to the local server."""
     connected = _patch_foreground_host(monkeypatch, tmp_path)
 
     result = CliRunner().invoke(cli_group, ["host", ""])
 
     assert result.exit_code == 0, result.output
-    assert preflight == []
     assert connected == ["http://127.0.0.1:8000"]
-
-
-def test_host_remote_preflight_hints_headless(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """Un-authed Databricks ``host`` (no TTY) fails with the login hint, never connecting."""
-    login_calls = _patch_auth_preflight(monkeypatch, probe_status=302, tty=False)
-    connected = _patch_foreground_host(monkeypatch, tmp_path)
-
-    result = CliRunner().invoke(cli_group, ["host", "--server", _HOST_DATABRICKS_SERVER])
-
-    assert result.exit_code != 0
-    assert f"omnigent login {_HOST_DATABRICKS_SERVER}" in result.output
-    # Pre-flight bailed: no browser login and no connect.
-    assert login_calls == []
-    assert connected == []
-
-
-def test_host_remote_preflight_skips_when_authenticated(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """A 200 probe (valid creds / header mode) connects without a login flow."""
-    login_calls = _patch_auth_preflight(monkeypatch, probe_status=200, tty=False)
-    connected = _patch_foreground_host(monkeypatch, tmp_path)
-
-    result = CliRunner().invoke(cli_group, ["host", "--server", _HOST_DATABRICKS_SERVER])
-
-    assert result.exit_code == 0, result.output
-    assert login_calls == []
-    assert connected == [_HOST_DATABRICKS_SERVER]
 
 
 # ── Workspace-URL expansion for attach / resume / host ──────────────
@@ -3684,7 +3072,6 @@ def test_host_command_defaults_scheme_and_accepts_omnigent_web_url(
     monkeypatch.setattr(cli, "_HOST_PID_PATH", tmp_path / "host.pid")
     monkeypatch.setattr(cli, "_load_effective_config", dict)
     monkeypatch.setattr(cli, "_load_or_create_host_id", lambda: "host_abc")
-    monkeypatch.setattr(cli, "_ensure_databricks_server_auth", lambda server, **kw: None)
     seen: list[str] = []
     monkeypatch.setattr(cli, "_workspace_api_server_url", _recording_expander(seen))
     observed: list[str] = []

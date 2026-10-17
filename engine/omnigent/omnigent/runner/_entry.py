@@ -590,10 +590,8 @@ def _make_auth_token_factory(
          binding token are present.
       3. Stored OIDC token from ``~/.omnigent/auth_tokens.json``
          (populated by ``omnigent login``), keyed by ``server_url``.
-      4. Databricks OAuth token (refreshed via the SDK) — host-keyed
-         when a Databricks Apps pointer record is stored for
-         ``server_url`` (``omnigent login <apps-url>``), ambient
-         otherwise.
+      4. The managed-sandbox owner JWT minted against the runner's
+         tunnel binding token.
 
     Returns ``None`` when no credentials are available.
 
@@ -602,7 +600,7 @@ def _make_auth_token_factory(
         env var — the runner subprocess always has this set, but
         non-runner callers (e.g. ``omnigent host``) must pass
         it explicitly or the OIDC token won't be discovered and the
-        factory will silently fall through to the Databricks path.
+        factory will silently fall through to the managed-sandbox path.
 
     Used by:
     - :func:`serve_tunnel` for the WebSocket ``Authorization`` header
@@ -655,8 +653,6 @@ def _make_auth_token_factory(
         )
         return _InitialAuthTokenFactory(initial_token, resolved_server_url)
 
-    from omnigent.inner.databricks_executor import _ReusedDatabricksTokenSource
-
     # Prefer the host-launched runner's owner-bound capability so user
     # credentials stay out of the runner and credential discovery is skipped.
     delegated_auth = os.environ.get(RUNNER_DELEGATED_AUTH_ENV_VAR, "").strip() == "1"
@@ -668,15 +664,11 @@ def _make_auth_token_factory(
         if delegated_factory is not None:
             return delegated_factory
 
-    # Reuse the SDK token cache, but re-resolve auth if a mint fails after a
-    # CLI upgrade or other credential change.
-    sdk_token_source = _ReusedDatabricksTokenSource(resolved_server_url)
-
     def _factory() -> str | None:
         """Return a fresh auth token.
 
-        Checks the stored OIDC token first (from ``omnigent login``),
-        then falls back to the reused Databricks SDK auth.
+        Reads the stored OIDC token (from ``omnigent login``), renewing it
+        from the login-issued refresh grant when it is near expiry.
 
         :returns: Bearer token string, or ``None`` if no credentials
             are configured.
@@ -711,7 +703,7 @@ def _make_auth_token_factory(
             still_valid = load_token(resolved_server_url)
             if still_valid:
                 return still_valid
-        return sdk_token_source.current_token()
+        return None
 
     # Probe once to check if a user credential is available.
     try:
@@ -721,7 +713,7 @@ def _make_auth_token_factory(
         pass
 
     # Managed-sandbox fallback: no user credential resolved (no stored
-    # OIDC token, no Databricks config), but a managed runner still holds
+    # OIDC token), but a managed runner still holds
     # its tunnel binding token. Authenticate its HTTP callbacks (and the
     # tunnel bearer) with a short-lived owner JWT the server mints against
     # that binding token — refreshed on demand, so there is no static

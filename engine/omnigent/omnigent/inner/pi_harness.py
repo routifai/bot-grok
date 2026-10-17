@@ -16,23 +16,14 @@ for the v1 config-flow rationale (env vars vs per-request).
 Env vars read at startup:
 
 - ``HARNESS_PI_MODEL``: model identifier, e.g.
-  ``"databricks-claude-sonnet-4-6"``. ``None`` falls back to the
-  Databricks default model on the profile-derived gateway path,
-  else to Pi's own default.
+  ``"claude-sonnet-4-6"``. ``None`` falls back to Pi's own default.
 - ``HARNESS_PI_GATEWAY``: ``"1"`` / ``"true"`` to write a
   ``models.json`` pointing Pi at a vendor-neutral gateway (base
-  URLs + bearer-token command + model). The Databricks AI gateway
-  is one producer of this transport; generic ``key`` / ``gateway``
-  providers are another. Otherwise the executor uses Pi's built-in
-  API path.
-- ``HARNESS_PI_DATABRICKS_PROFILE``: Databricks-specific
-  ``~/.databrickscfg`` profile name, used by the executor for
-  Databricks credential resolution / token refresh when the
-  gateway transport was fed from a Databricks profile, e.g.
-  ``"<your-profile>"``.
+  URLs + bearer-token command + model) fed by a ``key`` / ``gateway``
+  provider. Otherwise the executor uses Pi's built-in API path.
 - ``HARNESS_PI_GATEWAY_BASE_URLS``: JSON object of gateway base
   URLs keyed by model family, e.g.
-  ``{"claude": "https://example.databricks.com/ai-gateway/anthropic"}``.
+  ``{"claude": "https://gateway.example.com/anthropic"}``.
 - ``HARNESS_PI_GATEWAY_OPENAI_WIRE_API``: ``"responses"`` or ``"chat"``
   for a configured generic OpenAI-compatible provider.
 - ``HARNESS_PI_CWD``: working directory the executor launches
@@ -93,7 +84,6 @@ _logger = logging.getLogger(__name__)
 _ENV_MODEL = "HARNESS_PI_MODEL"
 _ENV_PRESERVE_MODEL_IDS = "HARNESS_PI_PRESERVE_MODEL_IDS"
 _ENV_GATEWAY = "HARNESS_PI_GATEWAY"
-_ENV_DATABRICKS_PROFILE = "HARNESS_PI_DATABRICKS_PROFILE"
 _ENV_GATEWAY_HOST = "HARNESS_PI_GATEWAY_HOST"
 _ENV_CWD = "HARNESS_PI_CWD"
 _ENV_PI_PATH = "OMNIGENT_PI_PATH"
@@ -210,8 +200,8 @@ def _build_pi_executor() -> Executor:
     Construct a :class:`PiExecutor` from env-var config.
 
     Called lazily by the :class:`ExecutorAdapter` on the first
-    turn. Heavyweight init (CLI discovery, eager Databricks
-    credential resolution) happens at this point — operators
+    turn. Heavyweight init (CLI discovery, eager gateway
+    token fetch) happens at this point — operators
     see the failure surface as a startup error on the first
     request, not at FastAPI app boot.
 
@@ -234,7 +224,6 @@ def _build_pi_executor() -> Executor:
         model=os.environ.get(_ENV_MODEL),
         pi_path=resolve_harness_path("pi"),
         gateway=_parse_truthy(_ENV_GATEWAY, default=False),
-        databricks_profile=os.environ.get(_ENV_DATABRICKS_PROFILE),
         gateway_host=os.environ.get(_ENV_GATEWAY_HOST) or None,
         base_url_override=os.environ.get(_ENV_GATEWAY_BASE_URL) or None,
         base_urls_override=_resolve_gateway_base_urls(),

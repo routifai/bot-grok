@@ -7,7 +7,6 @@ import logging
 import os
 import sys
 import tempfile
-import threading
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -533,74 +532,6 @@ class TestConstructor(unittest.TestCase):
 
         self.assertTrue(ClaudeSDKExecutor().supports_tool_calling())
 
-    def test_databricks_flag_with_profile(self):
-        from omnigent.inner.claude_sdk_executor import ClaudeSDKExecutor
-        from omnigent.inner.databricks_executor import DatabricksCredentials
-
-        with (
-            patch.dict("os.environ", {}, clear=True),
-            patch(
-                "omnigent.inner.databricks_executor._read_databrickscfg",
-                return_value=DatabricksCredentials(
-                    host="https://example.cloud.databricks.com",
-                    token="dapi_test_token",
-                ),
-            ),
-        ):
-            executor = ClaudeSDKExecutor(gateway=True)
-            self.assertTrue(executor._gateway)
-            self.assertEqual(
-                executor._extra_env["ANTHROPIC_BASE_URL"],
-                "https://example.cloud.databricks.com/ai-gateway/anthropic",
-            )
-            self.assertEqual(executor._extra_env["CLAUDE_CODE_API_KEY_HELPER_TTL_MS"], "900000")
-            self.assertIn(
-                'databricks auth token --host "https://example.cloud.databricks.com"',
-                executor._extra_env["OMNIGENT_CLAUDE_API_KEY_HELPER"],
-            )
-            self.assertNotIn("ANTHROPIC_AUTH_TOKEN", executor._extra_env)
-
-    def test_databricks_explicit_profile_selects_by_profile(self):
-        """An explicit ``databricks_profile`` makes the token helper select
-        the bearer by ``--profile`` (unambiguous), not ``--host``.
-
-        Two ``~/.databrickscfg`` profiles can share one host, which makes
-        ``databricks auth token --host`` fail ("Use --profile to specify
-        which profile") → empty token → a silent ``status=401``. Selecting
-        by ``--profile`` avoids that.
-        """
-        from omnigent.inner.claude_sdk_executor import ClaudeSDKExecutor
-        from omnigent.inner.databricks_executor import DatabricksCredentials
-
-        with (
-            patch.dict("os.environ", {}, clear=True),
-            patch(
-                "omnigent.inner.databricks_executor._read_databrickscfg",
-                return_value=DatabricksCredentials(
-                    host="https://example.cloud.databricks.com",
-                    token="dapi_test_token",
-                ),
-            ),
-        ):
-            executor = ClaudeSDKExecutor(gateway=True, databricks_profile="oss")
-        helper = executor._extra_env["OMNIGENT_CLAUDE_API_KEY_HELPER"]
-        # Proves the selector is --profile, not --host. A regression to --host
-        # makes a two-profiles-one-host workspace yield an empty token → 401.
-        self.assertIn('databricks auth token --profile "oss"', helper)
-        # Scope to the CLI mint: it selects by --profile. The sdk fallback
-        # separately passes --host for its own workspace guard (identity is
-        # still pinned by --profile), so assert on the mint, not the whole helper.
-        self.assertNotIn("databricks auth token --host", helper)
-        # `--force-refresh` only exists in Databricks CLI >= v0.296.0, so it
-        # stays behind a `--help` capability probe — an older CLI rejects the
-        # unknown flag and yields an empty token → silent 401.
-        self.assertIn("databricks auth token --help", helper)
-        # And even where it exists it is only ATTEMPTED: it fails outright on a
-        # stale refresh token, so an empty result must fall back to the cached
-        # token rather than turning a usable credential into an auth failure.
-        self.assertIn("--force-refresh", helper)
-        self.assertIn('if [ -z "$token" ]; then', helper)
-
     def test_databricks_flag_no_creds_raises(self):
         from omnigent.inner.claude_sdk_executor import ClaudeSDKExecutor
 
@@ -611,31 +542,72 @@ class TestConstructor(unittest.TestCase):
             with self.assertRaises(EnvironmentError):
                 ClaudeSDKExecutor(gateway=True)
 
-    def test_databricks_flag_with_host_override(self):
+    def test_gateway_flag_with_host_override(self):
         from omnigent.inner.claude_sdk_executor import ClaudeSDKExecutor
 
-        with (
-            patch.dict("os.environ", {}, clear=True),
-            patch("omnigent.inner.databricks_executor._read_databrickscfg") as read_cfg,
-        ):
+        with patch.dict("os.environ", {}, clear=True):
             executor = ClaudeSDKExecutor(
                 gateway=True,
-                databricks_profile="missing-profile",
-                gateway_host="https://example.databricks.com/",
-                base_url_override="https://example.databricks.com/ai-gateway/anthropic",
+                gateway_host="https://gateway.example.com/",
+                base_url_override="https://gateway.example.com/v1",
                 gateway_auth_command="printf token",
             )
 
-        read_cfg.assert_not_called()
         self.assertEqual(
             executor._extra_env["ANTHROPIC_BASE_URL"],
-            "https://example.databricks.com/ai-gateway/anthropic",
+            "https://gateway.example.com/v1",
         )
         self.assertEqual(
             executor._extra_env["OMNIGENT_CLAUDE_API_KEY_HELPER"],
             "printf token",
         )
         self.assertEqual(executor._extra_env["ENABLE_TOOL_SEARCH"], "true")
+
+    def test_gateway_model_passes_through(self):
+        """Explicit model on the gateway path passes through unchanged."""
+        from omnigent.inner.claude_sdk_executor import ClaudeSDKExecutor
+
+        async def _t():
+            executor = ClaudeSDKExecutor(
+                gateway=True,
+                gateway_host="https://gateway.example.com",
+                base_url_override="https://gateway.example.com/v1",
+                gateway_auth_command="printf token",
+                model="gw-claude-sonnet-4-6",
+            )
+
+            captured: dict[str, str | None] = {}
+
+            async def fake_get_or_create_client(
+                sdk, *, session_key, options, model, rebuild_on_instructions_change=False
+            ):
+                captured["model"] = model
+                raise RuntimeError("stop after model resolution")
+
+            with (
+                patch(
+                    "omnigent.models.model_catalog.subprocess.run",
+                    side_effect=AssertionError("unexpected authentication subprocess"),
+                ) as auth_subprocess,
+                patch(
+                    "omnigent.models.model_catalog.httpx.Client",
+                    side_effect=AssertionError("unexpected model-listing HTTP client"),
+                ) as http_client,
+                patch.object(
+                    executor,
+                    "_get_or_create_client",
+                    side_effect=fake_get_or_create_client,
+                ),
+            ):
+                with self.assertRaises(RuntimeError):
+                    async for _ in executor.run_turn([{"role": "user", "content": "hi"}], [], ""):
+                        pass
+
+            self.assertEqual(captured["model"], "gw-claude-sonnet-4-6")
+            auth_subprocess.assert_not_called()
+            http_client.assert_not_called()
+
+        _run(_t())
 
     def test_databricks_flag_with_host_override_requires_base_url(self):
         from omnigent.inner.claude_sdk_executor import ClaudeSDKExecutor
@@ -676,236 +648,6 @@ class TestConstructor(unittest.TestCase):
                 "ENABLE_TOOL_SEARCH": "true",
                 **RetryPolicy().claude_cli.env(),
             },
-        )
-
-    def test_databricks_profile_default_model_used_when_unset(self):
-        """gateway=True (profile-derived) + no model → Databricks default.
-
-        On the Databricks-profile gateway path (transport derived from
-        ~/.databrickscfg, no gateway base URL supplied directly), a missing
-        model falls back to the Databricks default. The neutral
-        generic-provider gateway path never does this (see
-        ``test_neutral_gateway_no_model_does_not_inject_databricks_default``).
-
-        Live model discovery is stubbed unavailable here so the resolver drops
-        to the bundled catalog — its documented last resort; the discovery-first
-        path is covered by ``test_databricks_profile_uses_discovered_model``.
-        """
-        from omnigent.inner.claude_sdk_executor import ClaudeSDKExecutor
-        from omnigent.inner.databricks_executor import DatabricksCredentials
-
-        async def _t():
-            with patch(
-                "omnigent.inner.databricks_executor._read_databrickscfg",
-                return_value=DatabricksCredentials(
-                    host="https://example.cloud.databricks.com",
-                    token="dapi_test_token",
-                ),
-            ):
-                executor = ClaudeSDKExecutor(gateway=True)
-
-            captured: dict[str, str | None] = {}
-            event_loop_thread = threading.get_ident()
-
-            def _resolve_model(provider_name: str, *, family: str) -> SimpleNamespace:
-                self.assertNotEqual(threading.get_ident(), event_loop_thread)
-                self.assertEqual((provider_name, family), ("databricks", "claude"))
-                return SimpleNamespace(model_id="catalog-databricks-claude-default")
-
-            async def fake_get_or_create_client(
-                sdk, *, session_key, options, model, rebuild_on_instructions_change=False
-            ):
-                captured["model"] = model
-                raise RuntimeError("stop after model resolution")
-
-            with (
-                patch(
-                    "omnigent.models.databricks_model_discovery.discover_databricks_claude_catalog",
-                    side_effect=RuntimeError("live listing unavailable"),
-                ),
-                patch(
-                    "omnigent.models.model_catalog.resolve_catalog_model",
-                    side_effect=_resolve_model,
-                ),
-                patch.object(
-                    executor,
-                    "_get_or_create_client",
-                    side_effect=fake_get_or_create_client,
-                ),
-            ):
-                with self.assertRaises(RuntimeError):
-                    async for _ in executor.run_turn([{"role": "user", "content": "hi"}], [], ""):
-                        pass
-
-            self.assertEqual(captured["model"], "catalog-databricks-claude-default")
-
-        _run(_t())
-
-    def test_databricks_profile_uses_discovered_model(self):
-        """gateway=True (profile-derived) + no model → the workspace's live model.
-
-        The resolver prefers the live Unity Catalog listing over the bundled
-        catalog, walking the ``opus > sonnet > haiku > fable`` precedence
-        claude-native falls back to; the bundled ``databricks-*`` catalog is
-        only the last resort (see ``..._default_model_used_when_unset``).
-        """
-        from omnigent.inner.claude_sdk_executor import ClaudeSDKExecutor
-        from omnigent.inner.databricks_executor import DatabricksCredentials
-
-        async def _t():
-            with patch(
-                "omnigent.inner.databricks_executor._read_databrickscfg",
-                return_value=DatabricksCredentials(
-                    host="https://example.cloud.databricks.com",
-                    token="dapi_test_token",
-                ),
-            ):
-                executor = ClaudeSDKExecutor(gateway=True)
-
-            captured: dict[str, str | None] = {}
-
-            async def fake_get_or_create_client(
-                sdk, *, session_key, options, model, rebuild_on_instructions_change=False
-            ):
-                captured["model"] = model
-                raise RuntimeError("stop after model resolution")
-
-            with (
-                patch(
-                    "omnigent.runtime.credentials.databricks.resolve_databricks_workspace",
-                    return_value=SimpleNamespace(
-                        host="https://example.cloud.databricks.com", token="dapi_test_token"
-                    ),
-                ),
-                patch(
-                    "omnigent.models.databricks_model_discovery.discover_databricks_claude_catalog",
-                    return_value=SimpleNamespace(
-                        families={
-                            "sonnet": "system.ai.claude-sonnet-5",
-                            "opus": "system.ai.claude-opus-5",
-                        }
-                    ),
-                ),
-                patch.object(
-                    executor,
-                    "_get_or_create_client",
-                    side_effect=fake_get_or_create_client,
-                ),
-            ):
-                with self.assertRaises(RuntimeError):
-                    async for _ in executor.run_turn([{"role": "user", "content": "hi"}], [], ""):
-                        pass
-
-            # opus outranks sonnet in the family precedence.
-            self.assertEqual(captured["model"], "system.ai.claude-opus-5")
-
-        _run(_t())
-
-    def test_databricks_profile_model_resolution_cached_across_turns(self):
-        """The unpinned-session catalog resolution runs once per executor."""
-        from omnigent.inner.claude_sdk_executor import ClaudeSDKExecutor
-        from omnigent.inner.databricks_executor import DatabricksCredentials
-
-        async def _t():
-            with patch(
-                "omnigent.inner.databricks_executor._read_databrickscfg",
-                return_value=DatabricksCredentials(
-                    host="https://example.cloud.databricks.com",
-                    token="dapi_test_token",
-                ),
-            ):
-                executor = ClaudeSDKExecutor(gateway=True)
-
-            captured: list[str | None] = []
-            resolve_calls: list[str | None] = []
-
-            def fake_resolver(profile):
-                resolve_calls.append(profile)
-                return "system.ai.claude-opus-5"
-
-            async def fake_get_or_create_client(
-                sdk, *, session_key, options, model, rebuild_on_instructions_change=False
-            ):
-                captured.append(model)
-                raise RuntimeError("stop after model resolution")
-
-            with (
-                patch(
-                    "omnigent.inner.claude_sdk_executor._resolve_databricks_claude_model",
-                    side_effect=fake_resolver,
-                ),
-                patch.object(
-                    executor,
-                    "_get_or_create_client",
-                    side_effect=fake_get_or_create_client,
-                ),
-            ):
-                for _ in range(2):
-                    with self.assertRaises(RuntimeError):
-                        async for _ in executor.run_turn(
-                            [{"role": "user", "content": "hi"}], [], ""
-                        ):
-                            pass
-
-            self.assertEqual(captured, ["system.ai.claude-opus-5"] * 2)
-            self.assertEqual(len(resolve_calls), 1)
-
-        _run(_t())
-
-    def test_databricks_profile_model_substitution_warns(self):
-        """An unpinned session's silent model pick must emit a WARNING."""
-        from omnigent.inner.claude_sdk_executor import _resolve_databricks_claude_model
-
-        with (
-            patch(
-                "omnigent.runtime.credentials.databricks.resolve_databricks_workspace",
-                return_value=SimpleNamespace(
-                    host="https://example.cloud.databricks.com", token="dapi_test_token"
-                ),
-            ),
-            patch(
-                "omnigent.models.databricks_model_discovery.discover_databricks_claude_catalog",
-                return_value=SimpleNamespace(
-                    families={
-                        "sonnet": "system.ai.claude-sonnet-5",
-                        "opus": "system.ai.claude-opus-5",
-                    }
-                ),
-            ),
-            self.assertLogs("omnigent.inner.claude_sdk_executor", level="WARNING") as logs,
-        ):
-            resolved = _resolve_databricks_claude_model("repro")
-
-        self.assertEqual(resolved, "system.ai.claude-opus-5")
-        self.assertTrue(
-            any("system.ai.claude-opus-5" in message for message in logs.output),
-            f"no WARNING names the substituted model: {logs.output}",
-        )
-
-    def test_databricks_catalog_fallback_substitution_warns(self):
-        """The bundled-catalog fallback is also a substitution; it must warn."""
-        from omnigent.inner.claude_sdk_executor import _resolve_databricks_claude_model
-
-        with (
-            patch(
-                "omnigent.models.databricks_model_discovery.discover_databricks_claude_catalog",
-                side_effect=RuntimeError("live listing unavailable"),
-            ),
-            patch(
-                "omnigent.models.model_catalog.resolve_catalog_model",
-                return_value=SimpleNamespace(model_id="databricks-claude-default"),
-            ),
-            self.assertLogs("omnigent.inner.claude_sdk_executor", level="WARNING") as logs,
-        ):
-            resolved = _resolve_databricks_claude_model("repro")
-
-        self.assertEqual(resolved, "databricks-claude-default")
-        self.assertTrue(
-            any(
-                "databricks-claude-default" in message and "bundled catalog" in message
-                for message in logs.output
-            ),
-            f"no WARNING names the catalog-fallback model: {logs.output}",
         )
 
     def test_neutral_gateway_no_model_does_not_inject_databricks_default(self):
@@ -1140,54 +882,6 @@ class TestConstructor(unittest.TestCase):
 
         _run(_t())
 
-    def test_gateway_model_passes_through(self):
-        """Explicit model on the gateway path passes through unchanged."""
-        from omnigent.inner.claude_sdk_executor import ClaudeSDKExecutor
-        from omnigent.inner.databricks_executor import DatabricksCredentials
-
-        async def _t():
-            with patch(
-                "omnigent.inner.databricks_executor._read_databrickscfg",
-                return_value=DatabricksCredentials(
-                    host="https://example.cloud.databricks.com",
-                    token="dapi_test_token",
-                ),
-            ):
-                executor = ClaudeSDKExecutor(gateway=True, model="databricks-claude-sonnet-4-6")
-
-            captured: dict[str, str | None] = {}
-
-            async def fake_get_or_create_client(
-                sdk, *, session_key, options, model, rebuild_on_instructions_change=False
-            ):
-                captured["model"] = model
-                raise RuntimeError("stop after model resolution")
-
-            with (
-                patch(
-                    "omnigent.models.model_catalog.subprocess.run",
-                    side_effect=AssertionError("unexpected authentication subprocess"),
-                ) as auth_subprocess,
-                patch(
-                    "omnigent.models.model_catalog.httpx.Client",
-                    side_effect=AssertionError("unexpected model-listing HTTP client"),
-                ) as http_client,
-                patch.object(
-                    executor,
-                    "_get_or_create_client",
-                    side_effect=fake_get_or_create_client,
-                ),
-            ):
-                with self.assertRaises(RuntimeError):
-                    async for _ in executor.run_turn([{"role": "user", "content": "hi"}], [], ""):
-                        pass
-
-            self.assertEqual(captured["model"], "databricks-claude-sonnet-4-6")
-            auth_subprocess.assert_not_called()
-            http_client.assert_not_called()
-
-        _run(_t())
-
     def test_no_databricks_default_when_databricks_off(self):
         """gateway=False keeps prior behavior: None falls through to the SDK."""
         from omnigent.inner.claude_sdk_executor import ClaudeSDKExecutor
@@ -1212,120 +906,6 @@ class TestConstructor(unittest.TestCase):
                         pass
 
             self.assertIsNone(captured["model"])
-
-        _run(_t())
-
-    def test_databricks_opus_pins_thinking_to_adaptive(self):
-        """gateway=True + opus sets ``thinking={"type": "adaptive", "display": "summarized"}``."""
-        from omnigent.inner.claude_sdk_executor import ClaudeSDKExecutor
-        from omnigent.inner.databricks_executor import DatabricksCredentials
-
-        async def _t():
-            with patch(
-                "omnigent.inner.databricks_executor._read_databrickscfg",
-                return_value=DatabricksCredentials(
-                    host="https://example.cloud.databricks.com",
-                    token="dapi_test_token",
-                ),
-            ):
-                executor = ClaudeSDKExecutor(gateway=True, model="databricks-claude-opus-4-7")
-
-            captured: dict[str, object] = {}
-
-            async def fake_get_or_create_client(
-                sdk, *, session_key, options, model, rebuild_on_instructions_change=False
-            ):
-                captured["thinking"] = getattr(options, "thinking", None)
-                raise RuntimeError("stop after options built")
-
-            with patch.object(
-                executor,
-                "_get_or_create_client",
-                side_effect=fake_get_or_create_client,
-            ):
-                with self.assertRaises(RuntimeError):
-                    async for _ in executor.run_turn([{"role": "user", "content": "hi"}], [], ""):
-                        pass
-
-            self.assertEqual(captured["thinking"], {"type": "adaptive", "display": "summarized"})
-
-        _run(_t())
-
-    def test_databricks_fable_pins_thinking_to_adaptive(self):
-        """gateway=True + fable sets ``thinking={"type": "adaptive", "display": "summarized"}``.
-
-        Fable (claude-fable-5) shares Opus 4.7/4.8's adaptive-only thinking
-        surface, so the Databricks gateway rejects the CLI's default
-        thinking=enabled for it too. If this stays unset, a fable session
-        through the gateway 400s on the first request.
-        """
-        from omnigent.inner.claude_sdk_executor import ClaudeSDKExecutor
-        from omnigent.inner.databricks_executor import DatabricksCredentials
-
-        async def _t():
-            with patch(
-                "omnigent.inner.databricks_executor._read_databrickscfg",
-                return_value=DatabricksCredentials(
-                    host="https://example.databricks.com",
-                    token="dapi_test_token",
-                ),
-            ):
-                executor = ClaudeSDKExecutor(gateway=True, model="databricks-claude-fable-5")
-
-            captured: dict[str, object] = {}
-
-            async def fake_get_or_create_client(
-                sdk, *, session_key, options, model, rebuild_on_instructions_change=False
-            ):
-                captured["thinking"] = getattr(options, "thinking", None)
-                raise RuntimeError("stop after options built")
-
-            with patch.object(
-                executor,
-                "_get_or_create_client",
-                side_effect=fake_get_or_create_client,
-            ):
-                with self.assertRaises(RuntimeError):
-                    async for _ in executor.run_turn([{"role": "user", "content": "hi"}], [], ""):
-                        pass
-
-            self.assertEqual(captured["thinking"], {"type": "adaptive", "display": "summarized"})
-
-        _run(_t())
-
-    def test_databricks_sonnet_leaves_thinking_unset(self):
-        """gateway=True + non-adaptive-tier model preserves CLI default thinking."""
-        from omnigent.inner.claude_sdk_executor import ClaudeSDKExecutor
-        from omnigent.inner.databricks_executor import DatabricksCredentials
-
-        async def _t():
-            with patch(
-                "omnigent.inner.databricks_executor._read_databrickscfg",
-                return_value=DatabricksCredentials(
-                    host="https://example.cloud.databricks.com",
-                    token="dapi_test_token",
-                ),
-            ):
-                executor = ClaudeSDKExecutor(gateway=True, model="databricks-claude-sonnet-4-6")
-
-            captured: dict[str, object] = {}
-
-            async def fake_get_or_create_client(
-                sdk, *, session_key, options, model, rebuild_on_instructions_change=False
-            ):
-                captured["thinking"] = getattr(options, "thinking", None)
-                raise RuntimeError("stop after options built")
-
-            with patch.object(
-                executor,
-                "_get_or_create_client",
-                side_effect=fake_get_or_create_client,
-            ):
-                with self.assertRaises(RuntimeError):
-                    async for _ in executor.run_turn([{"role": "user", "content": "hi"}], [], ""):
-                        pass
-
-            self.assertIsNone(captured["thinking"])
 
         _run(_t())
 
@@ -1585,166 +1165,24 @@ class TestBuildMcpTools(unittest.TestCase):
 
 
 class TestResolveGatewayEnv(unittest.TestCase):
-    def test_from_profile(self):
+    def test_gateway_keeps_beta_disable(self):
+        """A gateway transport disables experimental betas and sets no gateway flag."""
         from omnigent.inner.claude_sdk_executor import _resolve_gateway_env
-        from omnigent.inner.databricks_executor import DatabricksCredentials
 
-        with (
-            patch.dict("os.environ", {}, clear=True),
-            patch(
-                "omnigent.inner.databricks_executor._read_databrickscfg",
-                return_value=DatabricksCredentials(
-                    host="https://example.databricks.com",
-                    token="dapi_abc123",
-                ),
-            ),
-        ):
-            env = _resolve_gateway_env()
-            self.assertEqual(
-                env["ANTHROPIC_BASE_URL"],
-                "https://example.databricks.com/ai-gateway/anthropic",
-            )
-            self.assertEqual(env["CLAUDE_CODE_API_KEY_HELPER_TTL_MS"], "900000")
-            self.assertIn(
-                'databricks auth token --host "https://example.databricks.com"',
-                env["OMNIGENT_CLAUDE_API_KEY_HELPER"],
-            )
-            self.assertEqual(
-                env["ANTHROPIC_CUSTOM_HEADERS"],
-                "x-databricks-use-coding-agent-mode: true",
-            )
-            self.assertNotIn("ANTHROPIC_AUTH_TOKEN", env)
-
-    def test_databricks_gateway_negotiates_betas(self):
-        """A real Databricks AI Gateway base URL negotiates betas, not disables them.
-
-        Blanket-disabling betas makes Claude Code strip ``interleaved-thinking``,
-        which the Databricks gateway then rejects with a thinking-block 400. On a
-        genuine gateway we set ``CLAUDE_CODE_USE_GATEWAY`` and leave the disable
-        flag off (matching claude-native).
-        """
-        from omnigent.inner.claude_sdk_executor import _resolve_gateway_env
-        from omnigent.inner.databricks_executor import DatabricksCredentials
-
-        with (
-            patch.dict("os.environ", {}, clear=True),
-            patch(
-                "omnigent.inner.databricks_executor._read_databrickscfg",
-                return_value=DatabricksCredentials(
-                    host="https://wkspc.cloud.databricks.com",
-                    token="dapi_abc123",
-                ),
-            ),
-        ):
-            env = _resolve_gateway_env()
-        self.assertEqual(env["CLAUDE_CODE_USE_GATEWAY"], "1")
-        self.assertNotIn("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS", env)
-
-    def test_non_databricks_gateway_keeps_beta_disable(self):
-        """A gateway host outside the trusted Databricks domains keeps the workaround.
-
-        A generic gateway (or a mock server) can't negotiate betas, so the
-        original ``CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS`` behavior is preserved.
-        """
-        from omnigent.inner.claude_sdk_executor import _resolve_gateway_env
-        from omnigent.inner.databricks_executor import DatabricksCredentials
-
-        with (
-            patch.dict("os.environ", {}, clear=True),
-            patch(
-                "omnigent.inner.databricks_executor._read_databrickscfg",
-                # Not under a trusted Databricks parent domain.
-                return_value=DatabricksCredentials(
-                    host="https://example.databricks.com", token="t"
-                ),
-            ),
-        ):
-            env = _resolve_gateway_env()
+        env = _resolve_gateway_env(
+            base_url_override="https://gateway.example.com/v1",
+            auth_command_override="printf token",
+        )
+        self.assertEqual(env["ANTHROPIC_BASE_URL"], "https://gateway.example.com/v1")
+        self.assertEqual(env["OMNIGENT_CLAUDE_API_KEY_HELPER"], "printf token")
         self.assertEqual(env["CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS"], "1")
         self.assertNotIn("CLAUDE_CODE_USE_GATEWAY", env)
+        self.assertNotIn("ANTHROPIC_AUTH_TOKEN", env)
 
-    def test_strips_trailing_slash(self):
-        from omnigent.inner.claude_sdk_executor import _resolve_gateway_env
-        from omnigent.inner.databricks_executor import DatabricksCredentials
-
-        with (
-            patch.dict("os.environ", {}, clear=True),
-            patch(
-                "omnigent.inner.databricks_executor._read_databrickscfg",
-                return_value=DatabricksCredentials(host="https://my-workspace.com/", token="tok"),
-            ),
-        ):
-            env = _resolve_gateway_env()
-            self.assertFalse(env["ANTHROPIC_BASE_URL"].endswith("//"))
-            self.assertTrue(env["ANTHROPIC_BASE_URL"].endswith("/ai-gateway/anthropic"))
-
-    def test_no_creds_returns_empty(self):
+    def test_no_transport_returns_empty(self):
         from omnigent.inner.claude_sdk_executor import _resolve_gateway_env
 
-        with (
-            patch.dict("os.environ", {}, clear=True),
-            patch("omnigent.inner.databricks_executor._read_databrickscfg", return_value=None),
-            # Host derivation no longer needs a static token, so "no creds"
-            # must also mean no host is resolvable from ~/.databrickscfg.
-            patch(
-                "omnigent.inner.databricks_executor._read_databrickscfg_host",
-                return_value=None,
-            ),
-        ):
-            env = _resolve_gateway_env()
-            self.assertEqual(env, {})
-
-    def test_oauth_profile_without_token_resolves_from_host(self):
-        """An OAuth U2M profile (host, no static token) must resolve.
-
-        The SDK resolver returns ``None`` when it cannot mint a bearer
-        (e.g. no Databricks CLI OAuth state on this machine), but the
-        profile's ``host`` is always present — and the generated auth
-        command mints the bearer at request time — so the gateway env
-        must still resolve instead of failing with "requires gateway
-        credentials".
-        """
-        from omnigent.inner.claude_sdk_executor import _resolve_gateway_env
-
-        with (
-            patch.dict("os.environ", {}, clear=True),
-            patch("omnigent.inner.databricks_executor._read_databrickscfg", return_value=None),
-            patch(
-                "omnigent.inner.databricks_executor._read_databrickscfg_host",
-                return_value="https://adb-12345.azuredatabricks.net",
-            ),
-        ):
-            env = _resolve_gateway_env("my-oauth-profile")
-        self.assertEqual(
-            env["ANTHROPIC_BASE_URL"],
-            "https://adb-12345.azuredatabricks.net/ai-gateway/anthropic",
-        )
-        self.assertIn(
-            'databricks auth token --profile "my-oauth-profile"',
-            env["OMNIGENT_CLAUDE_API_KEY_HELPER"],
-        )
-
-    def test_host_override_skips_profile_lookup(self):
-        from omnigent.inner.claude_sdk_executor import _resolve_gateway_env
-
-        with patch("omnigent.inner.databricks_executor._read_databrickscfg") as read_cfg:
-            env = _resolve_gateway_env(
-                profile="missing-profile",
-                host_override="https://example.databricks.com/",
-                base_url_override="https://example.databricks.com/ai-gateway/anthropic",
-                auth_command_override="printf token",
-            )
-
-        read_cfg.assert_not_called()
-        self.assertEqual(
-            env["ANTHROPIC_BASE_URL"],
-            "https://example.databricks.com/ai-gateway/anthropic",
-        )
-        self.assertEqual(env["OMNIGENT_CLAUDE_API_KEY_HELPER"], "printf token")
-        self.assertEqual(
-            env["ANTHROPIC_CUSTOM_HEADERS"],
-            "x-databricks-use-coding-agent-mode: true",
-        )
+        self.assertEqual(_resolve_gateway_env(), {})
 
     def test_generic_provider_gateway_omits_databricks_header(self):
         """Non-Databricks gateways must not receive the Databricks mode header."""
@@ -1823,7 +1261,6 @@ class TestGatewayModelVocabulary(unittest.TestCase):
         provider = lister.call_args.args[0]
         self.assertEqual(provider.base_url, "https://gw.example.com/anthropic")
         self.assertEqual(provider.auth_command, "printf tok")
-        self.assertIsNone(provider.profile)
 
     def test_nothing_when_the_listing_has_no_claude_models(self):
         from omnigent.inner.claude_sdk_executor import (
@@ -1933,7 +1370,7 @@ class TestEmptyPrompt(unittest.TestCase):
 
 
 class TestSystemMessages(unittest.TestCase):
-    def test_databricks_auth_uses_api_key_helper_settings(self):
+    def test_gateway_auth_uses_api_key_helper_settings(self):
         from omnigent.inner.claude_sdk_executor import ClaudeSDKExecutor
 
         captured_options = []
@@ -1971,36 +1408,14 @@ class TestSystemMessages(unittest.TestCase):
                 async def disconnect(self):
                     return None
 
-        def _resolve_gateway_env(
-            profile=None,
-            *,
-            host_override=None,
-            base_url_override=None,
-            auth_command_override=None,
-            auth_refresh_interval_ms=None,
-        ):
-            return {
-                "ANTHROPIC_BASE_URL": base_url_override or "https://host/ai-gateway/anthropic",
-                "OMNIGENT_CLAUDE_API_KEY_HELPER": "databricks auth token --host https://host",
-                "CLAUDE_CODE_API_KEY_HELPER_TTL_MS": "900000",
-                "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1",
-            }
-
-        shim_upstream: dict[str, str] = {}
-
         async def _t():
-            with (
-                patch(
-                    "omnigent.inner.claude_sdk_executor._resolve_gateway_env",
-                    _resolve_gateway_env,
-                ),
-                patch("omnigent.inner.claude_sdk_executor._ensure_sdk", return_value=_FakeSDK),
-            ):
+            with patch("omnigent.inner.claude_sdk_executor._ensure_sdk", return_value=_FakeSDK):
                 executor = ClaudeSDKExecutor(
                     gateway=True,
                     gateway_host="https://host",
-                    base_url_override="https://host/ai-gateway/anthropic",
+                    base_url_override="https://host/anthropic",
                     gateway_auth_command="printf token",
+                    gateway_auth_refresh_interval_ms="900000",
                 )
                 events = [
                     e
@@ -2011,31 +1426,16 @@ class TestSystemMessages(unittest.TestCase):
                     )
                 ]
             self.assertEqual(len(events), 1)
-            # The gateway path routes the CLI through the local shim
-            # (which restores thinking.display); record its target and
-            # shut it down inside the loop that started it.
-            self.assertIsNotNone(executor._gateway_shim)
-            shim_upstream["base_url"] = executor._gateway_shim.base_url
-            shim_upstream["upstream"] = executor._gateway_shim._upstream_base_url
-            await executor._gateway_shim.aclose()
 
         _run(_t())
 
         self.assertEqual(len(captured_options), 1)
         settings = json.loads(captured_options[0].settings)
-        self.assertEqual(
-            settings["apiKeyHelper"],
-            "databricks auth token --host https://host",
-        )
-        # The CLI talks to the loopback shim; the shim forwards to the
-        # real gateway. A direct gateway URL here would mean the shim was
-        # bypassed and opus thinking.display stays stripped.
+        self.assertEqual(settings["apiKeyHelper"], "printf token")
         self.assertEqual(
             captured_options[0].env["ANTHROPIC_BASE_URL"],
-            shim_upstream["base_url"],
+            "https://host/anthropic",
         )
-        self.assertTrue(shim_upstream["base_url"].startswith("http://127.0.0.1:"))
-        self.assertEqual(shim_upstream["upstream"], "https://host/ai-gateway/anthropic")
         self.assertEqual(captured_options[0].env["CLAUDE_CODE_API_KEY_HELPER_TTL_MS"], "900000")
         self.assertEqual(captured_options[0].env["ENABLE_TOOL_SEARCH"], "true")
         self.assertNotIn("OMNIGENT_CLAUDE_API_KEY_HELPER", captured_options[0].env)
@@ -2114,93 +1514,6 @@ class TestSystemMessages(unittest.TestCase):
             # Non-gateway executor should suggest checking CLI login, not databrickscfg
             self.assertIn("claude /status", events[0].message)
             self.assertNotIn("databrickscfg", events[0].message)
-
-        _run(_t())
-
-    def test_auth_retry_databricks_gateway_mentions_databrickscfg(self):
-        """Databricks-profile gateway auth errors should mention ~/.databrickscfg."""
-        from claude_agent_sdk.types import (
-            ClaudeAgentOptions as SDKClaudeAgentOptions,
-        )
-        from claude_agent_sdk.types import (
-            StreamEvent as SDKStreamEvent,
-        )
-        from claude_agent_sdk.types import (
-            SystemMessage as SDKSystemMessage,
-        )
-
-        from omnigent.inner.claude_sdk_executor import ClaudeSDKExecutor
-
-        class _Sentinel:
-            pass
-
-        class _FakeSDK:
-            AssistantMessage = _Sentinel
-            ResultMessage = _Sentinel
-            UserMessage = _Sentinel
-            SystemMessage = SDKSystemMessage
-            StreamEvent = SDKStreamEvent
-            ClaudeAgentOptions = SDKClaudeAgentOptions
-            messages = [
-                SDKSystemMessage(
-                    subtype="api_retry",
-                    data={
-                        "type": "system",
-                        "subtype": "api_retry",
-                        "attempt": 1,
-                        "max_retries": 10,
-                        "retry_delay_ms": 500,
-                        "error_status": 401,
-                        "error": "authentication_failed",
-                    },
-                )
-            ]
-
-            class ClaudeSDKClient:
-                def __init__(self, options):
-                    self.options = options
-
-                async def connect(self):
-                    return None
-
-                async def query(self, prompt, session_id="default"):
-                    return None
-
-                async def receive_response(self):
-                    for message in _FakeSDK.messages:
-                        yield message
-
-                async def disconnect(self):
-                    return None
-
-        async def _t():
-            # Create a gateway executor that uses a Databricks profile path.
-            # gateway=True + no host/base_url overrides → _gateway_uses_databricks_profile is True.
-            # Patch _resolve_gateway_env to avoid needing a real ~/.databrickscfg.
-            with patch(
-                "omnigent.inner.claude_sdk_executor._resolve_gateway_env",
-                return_value={
-                    "ANTHROPIC_BASE_URL": "https://host/ai-gateway/anthropic",
-                    "CLAUDE_CODE_API_KEY_HELPER_TTL_MS": "900000",
-                    "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1",
-                    "OMNIGENT_CLAUDE_API_KEY_HELPER": "databricks auth token ...",
-                },
-            ):
-                executor = ClaudeSDKExecutor(gateway=True)
-            with patch("omnigent.inner.claude_sdk_executor._ensure_sdk", return_value=_FakeSDK):
-                events = [
-                    e
-                    async for e in executor.run_turn(
-                        [{"role": "user", "content": "hello"}],
-                        [],
-                        "",
-                    )
-                ]
-            self.assertEqual(len(events), 1)
-            self.assertIsInstance(events[0], ExecutorError)
-            self.assertIn("authentication failed", events[0].message)
-            # Databricks gateway should mention databrickscfg
-            self.assertIn("databrickscfg", events[0].message)
 
         _run(_t())
 
@@ -3686,23 +2999,6 @@ def test_unset_env_var_restores_on_exception(monkeypatch):
             assert "CLAUDECODE" not in os.environ
             raise RuntimeError("boom")
     assert os.environ["CLAUDECODE"] == "original"
-
-
-def test_databricks_model_without_routing_raises() -> None:
-    """``databricks-*`` model with ``gateway=False`` raises ``ValueError``.
-
-    Without the guard the executor silently hits ``api.anthropic.com``
-    and surfaces a confusing "model not found" error.
-    """
-    import pytest
-
-    from omnigent.inner.claude_sdk_executor import ClaudeSDKExecutor
-
-    with pytest.raises(ValueError, match="Databricks-hosted model"):
-        ClaudeSDKExecutor(
-            model="databricks-claude-sonnet-4-6",
-            gateway=False,
-        )
 
 
 def test_non_databricks_model_without_routing_does_not_raise() -> None:
