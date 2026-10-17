@@ -280,6 +280,9 @@ intermediate into `your_files/`.
   message: one or two lines on what matters most, then one `file` card (only for a file you did
   not save yourself). Saving the same file name again adds a new version, so revise in place and save again.
 - "Open it" means show it in superchat, which the card already does.
+- A turn may start with "Artifacts in this conversation": your files here, newest first. When the
+  person asks for a change with nothing selected, change the one open beside the chat, else the most
+  recent one that fits, and name it in your first sentence. Never ask which one when the list says.
 - Deleting a saved file (`artifact_delete`) asks the person first; only do it when they ask.
 
 ## The person's files
