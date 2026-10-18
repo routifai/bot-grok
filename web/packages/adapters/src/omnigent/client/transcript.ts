@@ -15,6 +15,8 @@ export type OmnigentTranscriptBlock =
         data: Record<string, unknown>;
         fallback: string;
       };
+      /** A `plan` card: how many leading done steps fold away (ADR 0027). */
+      fold?: number;
       pending?: boolean;
     }
   | { type: "helper"; call_id: string; session_id: string; title: string; status: string }
@@ -53,6 +55,8 @@ export interface OmnigentTranscriptMessage {
   blocks: OmnigentTranscriptBlock[];
   /** `queued` while this user message waits behind the running turn. */
   delivered?: "queued";
+  /** An assistant message: the Activity of the turn that wrote it (ADR 0027). */
+  activity_id?: string;
   /** A user message only: the artifact it is about (docs/conversation.md), or null for none. */
   artifact?: OmnigentMessageArtifact | null;
 }

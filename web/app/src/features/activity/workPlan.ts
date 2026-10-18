@@ -1,5 +1,5 @@
-import type { ThreadMessage } from "@superchat/contracts";
-import { parseReplyCard } from "@superchat/contracts";
+import type { PlanState, ThreadMessage } from "@superchat/contracts";
+import { parseReplyCard, planItemState } from "@superchat/contracts";
 import type { StripHelper } from "./workStripState";
 
 // The plan in the work strip (ADR 0023): the assistant's living `plan` card (`render_card` kind
@@ -13,11 +13,17 @@ import type { StripHelper } from "./workStripState";
 // closes the reply's own messages; what follows it belongs to the reply only when it carries the
 // reply's plan (by `id`, even past a message the person steered into the running turn).
 
-export type PlanStatus = "todo" | "doing" | "done";
+/** What a step reads (ADR 0027): the engine's `state`, else the model's `status` on a plan from
+ * before the engine read it. */
+export type PlanStatus = PlanState;
 
 export interface PlanStep {
   text: string;
   status: PlanStatus;
+  /** The step in the present tense, shown while it is doing. */
+  active?: string;
+  /** The engine read this step from its evidence: its state stands once the work settles. */
+  engine?: true;
   /** New in the newest render (inserted, or past the previous end): the strip marks it once. */
   added: boolean;
   /** Reworded in the newest render (same place, new words): the strip cross-fades it once. */
@@ -33,6 +39,14 @@ export interface TurnWork {
   anchorId: string;
   /** The newest render of the reply's plan, or null without one. */
   plan: PlanStep[] | null;
+  /** The plan card a comment on a step names: its `id`, else its block (`<messageId>:<index>`). */
+  planId: string | null;
+  /** How many leading done steps of the plan fold away, as the engine counts them (ADR 0027). */
+  fold: number;
+  /** The Activity of the reply's own turn (the engine's `activity_id` on its messages). */
+  activityId: string | null;
+  /** The files the reply's own turn saved (its file cards), by artifact id. */
+  files: string[];
   helpers: StripHelper[];
   /** When the person asked (ms), or null when unknown. */
   startedAt: number | null;
@@ -58,7 +72,13 @@ export const drawnKey = (messageId: string, index: number) => `${messageId}:${in
 
 const EMPTY: TranscriptWork = { turns: new Map(), drawn: new Set(), runningSince: null };
 
-type PlanRender = { key: string; messageId: string; id: string | undefined; steps: PlanStep[] };
+type PlanRender = {
+  key: string;
+  messageId: string;
+  id: string | undefined;
+  steps: PlanStep[];
+  fold: number;
+};
 
 function planRenders(messages: readonly ThreadMessage[]): PlanRender[] {
   const renders: PlanRender[] = [];
@@ -70,8 +90,15 @@ function planRenders(messages: readonly ThreadMessage[]): PlanRender[] {
       renders.push({
         key: drawnKey(message.id, index),
         messageId: message.id,
+        fold: block.fold ?? 0,
         id: block.id,
-        steps: parsed.data.items.map((item) => ({ ...item, added: false })),
+        steps: parsed.data.items.map((item) => ({
+          text: item.text,
+          status: planItemState(item),
+          ...(item.active ? { active: item.active } : {}),
+          ...(item.state ? { engine: true as const } : {}),
+          added: false,
+        })),
       });
     });
   }
@@ -180,6 +207,19 @@ function readTurn(turn: Turn, last: boolean, out: TranscriptWork) {
   out.turns.set(anchor.id, {
     anchorId: anchor.id,
     plan: newest ? markChanges(newest.steps, mine.at(-2)?.steps) : null,
+    planId: newest ? (newest.id ?? newest.key) : null,
+    fold: newest?.fold ?? 0,
+    activityId:
+      anchor.activityId ?? replies.findLast((message) => message.activityId)?.activityId ?? null,
+    files: replies.flatMap((message) =>
+      message.blocks.flatMap((block) =>
+        block.kind === "reply_card" &&
+        block.card === "file" &&
+        typeof block.data.artifactId === "string"
+          ? [block.data.artifactId]
+          : [],
+      ),
+    ),
     helpers,
     startedAt: timeOf(turn.ask?.createdAt),
     endedAt: timeOf(replies.at(-1)?.createdAt),

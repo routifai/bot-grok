@@ -1,19 +1,23 @@
 import { useLingui } from "@lingui/react/macro";
-import type { Activity, Artifact } from "@superchat/contracts";
+import type { ActivityStep, Artifact } from "@superchat/contracts";
 import { presentActivityTitle } from "@superchat/core";
 import { cn } from "@superchat/ui-web";
-import { Check, ChevronDown, TriangleAlert } from "lucide-react";
+import { ChevronDown, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { SuperchatOrb } from "../../components/ai/orb";
 import { Shimmer } from "../../components/ai/primitives";
 import { useArtifactPanel } from "../../components/cards/context";
 import { useNow } from "../../components/chrome/useNow";
-import { watchFamily } from "../../lib/family-stream";
 import { rpc } from "../../lib/rpc";
 import { ArtifactPreviewThumbnail } from "../artifacts";
+import { StepsTimeline } from "./ActivityRunDialog";
 import { focusActivity } from "./activityFocus";
+import { useConversationFiles } from "./conversationFiles";
+import { currentStep, PlanSteps, stepWords } from "./PlanSteps";
+import { setStepComment } from "./stepComment";
 import { activityFeedFor } from "./useActivities";
 import { useFirstMissing } from "./useFirstMissing";
+import { useHelperPause } from "./useHelperPause";
 import type { PlanStep } from "./workPlan";
 import type { StripHelper, StripTurn, StripView, WorkLine } from "./workStripState";
 import {
@@ -102,55 +106,6 @@ function Flag({ text }: { text: string }) {
   );
 }
 
-/** One step of the plan: done (a filled check that pops in), doing (the orb, bold, with the latest
- * progress sentence shimmering under it), or to do (a hollow circle, muted). A new step slides in;
- * reworded words fade in. */
-function PlanRow({ step, progress }: { step: PlanStep; progress: string | null }) {
-  return (
-    <li
-      data-testid="work-plan-step"
-      data-status={step.status}
-      data-added={step.added || undefined}
-      data-changed={step.changed || undefined}
-      className={cn(
-        "grid grid-cols-[20px_minmax(0,1fr)] items-start gap-x-[9px] rounded-[7px] py-1 text-[13.5px] leading-[1.4] transition-colors duration-300",
-        step.status === "todo" && "text-ink-3",
-        step.status === "doing" && "font-[560] text-foreground",
-        step.status === "done" && "text-foreground",
-        step.added && "sc-work-added",
-      )}
-    >
-      <span aria-hidden="true" className="grid size-5 place-items-center">
-        {step.status === "done" ? (
-          <span className="sc-work-pop grid size-[15px] place-items-center rounded-full bg-foreground text-content">
-            <Check size={10} strokeWidth={3} />
-          </span>
-        ) : step.status === "doing" ? (
-          <SuperchatOrb size={13} state="working" flies={false} />
-        ) : (
-          <span className="size-[11px] rounded-full border-[1.5px] border-ink-3 opacity-70" />
-        )}
-      </span>
-      <span className="min-w-0" dir="auto">
-        <span key={step.text} className="sc-work-in">
-          {step.text}
-        </span>
-      </span>
-      {step.status === "doing" && progress ? (
-        <span
-          key={progress}
-          data-testid="work-plan-progress"
-          className="sc-work-in col-start-2 mt-px text-[12.5px] font-normal text-ink-2"
-          dir="auto"
-          aria-live="polite"
-        >
-          <Shimmer>{progress}</Shimmer>
-        </span>
-      ) : null}
-    </li>
-  );
-}
-
 /** Files the work is writing, as a row of thumbnails filling in; each opens beside the chat. */
 function DraftThumbs({ drafts, updating }: { drafts: readonly DraftFile[]; updating: boolean }) {
   const panel = useArtifactPanel();
@@ -185,21 +140,112 @@ function DraftThumbs({ drafts, updating }: { drafts: readonly DraftFile[]; updat
 const LINK =
   "shrink-0 rounded-sm text-[12.5px] text-ink-2 underline-offset-2 transition-colors hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-ring";
 
+/** The engine's one line of what the reply's work did; pressed, the steps unfold beneath it
+ * (grouped by the progress the work reported, as the run page shows them). */
+export interface StripSummary {
+  line: string;
+  /** The turn's steps, in full: read when the line is first opened. */
+  loadSteps: () => Promise<ActivityStep[]>;
+}
+
+function SummaryLine({ summary }: { summary: StripSummary }) {
+  const [open, setOpen] = useState(false);
+  const [steps, setSteps] = useState<ActivityStep[] | null>(null);
+  const { loadSteps } = summary;
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    loadSteps().then(
+      (read) => {
+        if (!cancelled) setSteps(read);
+      },
+      () => {
+        if (!cancelled) setSteps([]);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [open, loadSteps]);
+  return (
+    <div className="flex flex-col">
+      <button
+        type="button"
+        data-testid="work-strip-summary"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className={cn(LINK, "inline-flex items-center gap-1 self-start text-start")}
+      >
+        <span dir="auto">{summary.line}</span>
+        <ChevronDown
+          aria-hidden="true"
+          size={13}
+          strokeWidth={2}
+          className={cn("shrink-0 transition-transform duration-200", open && "rotate-180")}
+        />
+      </button>
+      {open && steps && steps.length > 0 ? (
+        <div data-testid="work-strip-steps">
+          <StepsTimeline steps={steps} running={false} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** Pause for a reply's running Helpers; once they are held, "Paused · Resume". */
+export interface StripPause {
+  paused: boolean;
+  onPause: () => void;
+  onResume: () => void;
+}
+
+function PauseControl({ pause }: { pause: StripPause }) {
+  const { t } = useLingui();
+  return pause.paused ? (
+    <span data-testid="work-strip-paused" className="shrink-0 text-[12.5px] text-ink-2">
+      {t`Paused`} ·{" "}
+      <button
+        type="button"
+        data-testid="work-strip-resume"
+        onClick={pause.onResume}
+        className={LINK}
+      >
+        {t`Resume`}
+      </button>
+    </span>
+  ) : (
+    <button type="button" data-testid="work-strip-pause" onClick={pause.onPause} className={LINK}>
+      {t`Pause`}
+    </button>
+  );
+}
+
 /**
- * The work strip under a reply (ADR 0022, ADR 0023). While the work runs it is lit: a slowly
- * turning edge in the tint family, the orb as its mark, the current step, a clock, a progress bar,
- * anything a Helper flagged, and the reply's plan (done, doing with its latest progress sentence,
- * to do). Without a plan it shows one line per running Helper, as before. Settled, it goes still:
- * "4 of 4 done" (or "Done") and the span, with the plan behind a "Plan" toggle. "Show details"
- * opens the Activity panel on the work.
+ * The work strip under a reply (ADR 0022, ADR 0023, ADR 0027). While the work runs it is lit: a
+ * slowly turning edge in the tint family, the orb as its mark, the current step in its present
+ * tense, a clock, a progress bar, anything a Helper flagged, and the reply's plan as the engine
+ * reads it (earlier steps folded, the current step with the latest line of the work and the step
+ * after it). Without a plan it shows one line per running Helper, as before. Running Helpers can
+ * be paused. Settled, it goes still: "4 of 4 done" (or "Done") and the span, with the plan behind
+ * a "Plan" toggle and the engine's summary line, which unfolds to the steps. "Show details" opens
+ * the Activity panel on the work.
  */
 export function WorkStripView({
   view,
   drafts = [],
+  summary = null,
+  pause = null,
+  onComment,
   onShowDetails,
 }: {
   view: StripView;
   drafts?: readonly DraftFile[];
+  summary?: StripSummary | null;
+  /** Shown while the reply has running Helpers. */
+  pause?: StripPause | null;
+  /** Puts a step in the composer (ADR 0027 "Comment"). */
+  onComment?: (index: number, step: PlanStep) => void;
   onShowDetails: () => void;
 }) {
   const { t } = useLingui();
@@ -208,9 +254,9 @@ export function WorkStripView({
   const done = plan?.filter((step) => step.status === "done").length ?? 0;
   const total = plan?.length ?? 0;
   const shown = live || open;
-  const current =
-    plan?.find((step) => step.status === "doing") ?? plan?.find((step) => step.status === "todo");
-  const now = current?.text ?? view.lines[0]?.title ?? view.progress ?? t`Working`;
+  const current = plan ? currentStep(plan) : undefined;
+  const now =
+    (current && stepWords(current)) ?? view.lines[0]?.title ?? view.progress ?? t`Working`;
   const settled =
     view.outcome === "failed"
       ? t`Didn't finish`
@@ -235,6 +281,7 @@ export function WorkStripView({
       {t`Show details`}
     </button>
   );
+  const pauseControl = live && pause ? <PauseControl pause={pause} /> : null;
   return (
     <div
       data-testid="work-strip"
@@ -251,6 +298,7 @@ export function WorkStripView({
                 <WorkLineRow key={line.helperId} line={line} />
               ))}
             </div>
+            {pauseControl}
             {details}
           </div>
         ) : (
@@ -291,6 +339,7 @@ export function WorkStripView({
                 />
               </button>
             ) : null}
+            {pauseControl}
             {details}
           </div>
         )}
@@ -311,34 +360,36 @@ export function WorkStripView({
         ) : null}
         {plan && shown ? view.flags.map((flag, index) => <Flag key={index} text={flag} />) : null}
         {plan && shown ? (
-          <ul data-testid="work-plan" className="m-0 flex list-none flex-col p-0">
-            {plan.map((step, index) => (
-              <PlanRow
-                // Steps are their words; a repeated step keeps its place.
-                key={`${step.text}#${plan.slice(0, index).filter((s) => s.text === step.text).length}`}
-                step={step}
-                progress={view.progress}
-              />
-            ))}
-          </ul>
+          <PlanSteps
+            plan={plan}
+            fold={view.fold}
+            progress={view.progress}
+            compact={live}
+            onComment={onComment}
+          />
         ) : null}
         {drafts.length > 0 && (shown || !plan) ? (
           <DraftThumbs drafts={drafts} updating={live} />
         ) : null}
+        {!live && summary ? <SummaryLine summary={summary} /> : null}
       </div>
     </div>
   );
 }
 
-/** The files these Helpers saved: those whose newest version is a save (`ai`) or a live update
- * (`update`) by one of them. */
-function draftsOf(rows: readonly Artifact[], helperIds: readonly string[]): DraftFile[] {
+/** The files this reply's work saved: those whose newest version is a save or a live update by
+ * one of its Helpers, or the ones its own turn's file cards name. */
+export function draftsOf(
+  rows: readonly Artifact[],
+  helperIds: readonly string[],
+  turnFiles: readonly string[] = [],
+): DraftFile[] {
   return rows
     .filter(
       (row) =>
-        row.chatId != null &&
-        helperIds.includes(row.chatId) &&
-        (row.origin === "ai" || row.origin === "update"),
+        (row.chatId != null && helperIds.includes(row.chatId)) ||
+        turnFiles.includes(row.id) ||
+        (row.groupId != null && turnFiles.includes(row.groupId)),
     )
     .map((row) => ({
       artifactId: row.id,
@@ -349,50 +400,15 @@ function draftsOf(rows: readonly Artifact[], helperIds: readonly string[]): Draf
     }));
 }
 
-/** Looks once the Helpers have saved, and again each time the engine says a file was saved
- * (`artifactsChanged` on the family stream). */
-function useHelperDrafts(botId: string, listed: readonly Activity[]): DraftFile[] {
-  const [drafts, setDrafts] = useState<DraftFile[]>([]);
-  const [revision, setRevision] = useState(0);
-  const saved = artifactSaveCount(listed) > 0;
-  const helperKey = listed.map((activity) => activity.chatId).join(" ");
-  useEffect(() => {
-    if (!saved) return;
-    return watchFamily(botId, (event) => {
-      if (event.type === "artifactsChanged") setRevision((value) => value + 1);
-    });
-  }, [botId, saved]);
-  useEffect(() => {
-    if (!saved || !helperKey) return;
-    let cancelled = false;
-    rpc.artifacts.list({ botId }).then(
-      (rows) => {
-        if (!cancelled) setDrafts(draftsOf(rows, helperKey.split(" ")));
-      },
-      () => undefined,
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [botId, helperKey, saved, revision]);
-  return drafts;
-}
-
-/** The work strip for one reply: its Helpers live from the shared Activity feed, and the reply's
- * own plan and running state (`turn`, from the transcript). Nothing in it runs unless the
- * Conversation's work state says something does (`lit`). */
-export function WorkStrip({
-  botId,
-  helpers,
-  turn,
-  lit,
-}: {
-  botId: string;
-  helpers: readonly StripHelper[];
-  turn?: StripTurn;
-  /** Anything in the Conversation runs (the work state's `running`). */
-  lit: boolean;
-}) {
+/** One reply's strip as it reads now: its Helpers live from the shared Activity feed and the
+ * reply's own plan and running state (`turn`). Nothing in it runs unless the Conversation's work
+ * state says something does (`lit`). The strip and the session panel both read it. */
+export function useStripView(
+  botId: string,
+  helpers: readonly StripHelper[],
+  turn: StripTurn | undefined,
+  lit: boolean,
+) {
   const feed = activityFeedFor(botId);
   const { state: feedState } = useSyncExternalStore(feed.subscribe, feed.getSnapshot);
   const activities = feedState.status === "ready" ? feedState.activities : undefined;
@@ -413,13 +429,91 @@ export function WorkStrip({
     () => composeStrip(state, listed.flatMap(flagsOf), turn, now),
     [state, listed, turn, now],
   );
-  const drafts = useHelperDrafts(botId, listed);
   // A Helper that started a moment ago may not be listed yet: ask the feed once more.
   const missing = helpersLive && feedState.status === "ready" && listed.length < helpers.length;
   useEffect(() => {
     if (missing) feed.refresh();
   }, [feed, missing]);
+  const activityId = turn?.activityId ?? null;
+  const turnActivity = useMemo(
+    () =>
+      activityId ? (activities?.find((activity) => activity.id === activityId) ?? null) : null,
+    [activities, activityId],
+  );
+  return { view, state, listed, turnActivity, activities };
+}
+
+/** The work strip for one reply (`useStripView`), with its files, its summary line, Pause for its
+ * running Helpers and Comment on its steps. */
+export function WorkStrip({
+  botId,
+  helpers,
+  turn,
+  lit,
+}: {
+  botId: string;
+  helpers: readonly StripHelper[];
+  turn?: StripTurn;
+  /** Anything in the Conversation runs (the work state's `running`). */
+  lit: boolean;
+}) {
+  const { view, state, listed, turnActivity } = useStripView(botId, helpers, turn, lit);
+  const turnFiles = turn?.files ?? NO_FILES;
+  // Read the files once the work has saved one.
+  const saved = turnFiles.length > 0 || artifactSaveCount(listed) > 0;
+  const rows = useConversationFiles(botId, saved);
+  const helperKey = listed.map((activity) => activity.chatId).join(" ");
+  const drafts = useMemo(
+    () => draftsOf(rows, helperKey ? helperKey.split(" ") : [], turnFiles),
+    [rows, helperKey, turnFiles],
+  );
+  const turnActivityId = turnActivity?.id;
+  const summaryLine = turnActivity?.summaryLine;
+  const summary = useMemo<StripSummary | null>(
+    () =>
+      summaryLine && turnActivityId
+        ? {
+            line: summaryLine,
+            loadSteps: () =>
+              rpc.activities
+                .get({ botId, activityId: turnActivityId })
+                .then((full) => full.steps ?? []),
+          }
+        : null,
+    [botId, summaryLine, turnActivityId],
+  );
+  // The running Helpers the feed lists: Pause holds them, and their entries say when it has.
+  const running = useMemo(() => {
+    const ids = state.kind === "working" ? state.lines.map((line) => line.helperId) : [];
+    return listed.filter((activity) => ids.includes(activity.chatId));
+  }, [state, listed]);
+  const { paused, pause: onPause, resume: onResume } = useHelperPause(botId, running);
+  const pause = useMemo<StripPause | null>(
+    () =>
+      running.length > 0
+        ? { paused, onPause: () => void onPause(), onResume: () => void onResume() }
+        : null,
+    [running.length, paused, onPause, onResume],
+  );
+  const planId = turn?.planId ?? null;
+  const onComment = useMemo(
+    () =>
+      planId
+        ? (index: number, step: PlanStep) =>
+            setStepComment({ botId, cardId: planId, stepIndex: index, text: step.text })
+        : undefined,
+    [botId, planId],
+  );
   return (
-    <WorkStripView view={view} drafts={drafts} onShowDetails={() => focusActivity(view.focusId)} />
+    <WorkStripView
+      view={view}
+      drafts={drafts}
+      summary={summary}
+      pause={pause}
+      onComment={onComment}
+      onShowDetails={() => focusActivity(view.focusId)}
+    />
   );
 }
+
+const NO_FILES: readonly string[] = [];

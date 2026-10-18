@@ -66,3 +66,67 @@ describe("status", () => {
     });
   });
 });
+
+describe("setPick", () => {
+  it("replaces one harness's pick in one category and keeps the rest", async () => {
+    const fetchMock = stubEngine(
+      {
+        body: {
+          foundation: { pi: "a", "claude-sdk": "b" },
+          builder: {},
+          light: { pi: "c" },
+          defaults: { pi: "a", "claude-sdk": "b" },
+        },
+      },
+      { body: { foundation: { pi: "z", "claude-sdk": "b" }, builder: {}, light: { pi: "c" } } },
+    );
+    await call(engineModelsRouter.engineModels.setPick, {
+      harness: "pi",
+      category: "foundation",
+      model: "z",
+    });
+    const [, init] = fetchMock.mock.calls[1] as [URL, RequestInit];
+    expect(init.method).toBe("PUT");
+    expect(JSON.parse(String(init.body))).toEqual({ foundation: { pi: "z", "claude-sdk": "b" } });
+  });
+
+  it("goes back to automatic by leaving the harness out", async () => {
+    const fetchMock = stubEngine(
+      { body: { foundation: {}, builder: {}, light: { pi: "c", "claude-sdk": "d" } } },
+      { body: { foundation: {}, builder: {}, light: { "claude-sdk": "d" } } },
+    );
+    await call(engineModelsRouter.engineModels.setPick, {
+      harness: "pi",
+      category: "light",
+      model: null,
+    });
+    const [, init] = fetchMock.mock.calls[1] as [URL, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual({ light: { "claude-sdk": "d" } });
+  });
+});
+
+describe("catalog", () => {
+  it("carries the three picks", async () => {
+    stubEngine({
+      body: {
+        harness: "pi",
+        status: "ready",
+        provider_label: "Anthropic",
+        default_model: "m2",
+        foundation_model: "m1",
+        builder_model: "m1",
+        light_model: "m2",
+        picks: { foundation: "m1", builder: null, light: null },
+        automatic: { foundation: "m1", builder: "m1", light: "m2" },
+        models: [
+          { id: "m1", label: "M1", is_default: false, categories: ["foundation", "builder"] },
+          { id: "m2", label: "M2", is_default: true, categories: ["light"] },
+        ],
+      },
+    });
+    const catalog = await call(engineModelsRouter.engineModels.catalog, { harness: "pi" });
+    expect(catalog.foundationModel).toBe("m1");
+    expect(catalog.picks).toEqual({ foundation: "m1", builder: null, light: null });
+    expect(catalog.models.map((m) => m.id)).toEqual(["m1", "m2"]);
+  });
+});

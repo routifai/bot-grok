@@ -1,4 +1,4 @@
-import type { MessageBlock, ThreadMessage } from "@superchat/contracts";
+import type { MessageBlock, ReplyCardBlock, ThreadMessage } from "@superchat/contracts";
 import { expect, it } from "vitest";
 import { drawnOnlyMessageIds, markChanges, outcomeOf, transcriptWork } from "./workPlan";
 
@@ -236,4 +236,65 @@ it("marks a step added where it is new and changed where it was reworded", () =>
   expect(newest.filter((step) => step.added).map((step) => step.text)).toEqual([
     "Note the cut-off",
   ]);
+});
+
+it("reads each step's engine state and present tense, and names the plan card (ADR 0027)", () => {
+  const card: MessageBlock = {
+    kind: "reply_card",
+    card: "plan",
+    id: "plan-9",
+    data: {
+      items: [
+        { text: "Brief", status: "done", state: "done" },
+        { text: "Build", status: "done", state: "claimed", active: "Building" },
+        { text: "Check", status: "todo", state: "not_checked" },
+      ],
+    },
+    fallback: "Brief\nBuild\nCheck",
+  };
+  const work = transcriptWork([
+    message("ask", "user", [text("Make the deck")], 0),
+    message("card", "bot", [card], 2),
+    message("reply", "bot", [text("Here it is.")], 3),
+  ]);
+  const turn = work.turns.get("reply");
+  expect(turn?.planId).toBe("plan-9");
+  expect(turn?.plan).toEqual([
+    { text: "Brief", status: "done", engine: true, added: false },
+    { text: "Build", status: "claimed", active: "Building", engine: true, added: false },
+    { text: "Check", status: "not_checked", engine: true, added: false },
+  ]);
+  // A plan card without an id is named by its block.
+  const plain = transcriptWork([
+    message("ask2", "user", [text("Again")], 0),
+    message("card2", "bot", [{ ...(planCard(v1) as ReplyCardBlock), id: undefined }], 1),
+  ]);
+  expect([...plain.turns.values()][0]?.planId).toBe("card2:0");
+});
+
+it("takes the engine's fold, the reply's Activity and the files its turn saved", () => {
+  const card: MessageBlock = { ...(planCard(v2) as ReplyCardBlock), fold: 1 };
+  const file: MessageBlock = {
+    kind: "reply_card",
+    card: "file",
+    id: "artifact:a1",
+    data: { name: "rbc.deck.html", artifactId: "a1" },
+    fallback: "Saved",
+  };
+  const work = transcriptWork([
+    message("ask", "user", [text("Make the deck")], 0),
+    { ...message("card", "bot", [card], 2), activityId: "turn:conv:r1" },
+    message("saved", "bot", [file], 3),
+    { ...message("reply", "bot", [text("Here it is.")], 4), activityId: "turn:conv:r1" },
+  ]);
+  const turn = work.turns.get("reply");
+  expect(turn?.fold).toBe(1);
+  expect(turn?.activityId).toBe("turn:conv:r1");
+  expect(turn?.files).toEqual(["a1"]);
+  const none = transcriptWork([
+    message("ask2", "user", [text("Again")], 0),
+    message("card2", "bot", [planCard(v1)], 1),
+  ]);
+  const plain = [...none.turns.values()][0];
+  expect([plain?.fold, plain?.activityId, plain?.files]).toEqual([0, null, []]);
 });

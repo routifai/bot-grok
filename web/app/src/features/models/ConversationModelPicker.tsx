@@ -11,18 +11,20 @@ import {
   DropdownMenuTrigger,
 } from "@superchat/ui-web";
 import { Cpu } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { errorText } from "../../lib/error-text";
 import { rpc } from "../../lib/rpc";
-import { modelOptionLabel } from "./DefaultModel";
+import { foundationOf, modelOptionLabel } from "./DefaultModel";
 import { useEngineModelsStatus } from "./engine-models";
 
 const DEFAULT_VALUE = "__default__";
 
 /**
- * The model this Conversation runs on, in the toolbar: a quiet button that opens the list the
- * engine serves for the Conversation's harness. "Default" returns to the person's own default.
- * Absent when Superchat runs without the engine; the list is only fetched when it opens.
+ * The model this Conversation runs on, in the toolbar: a quiet button named after the model in
+ * use, marked "pinned" while the chat runs on something other than the person's Foundation. It
+ * opens the list the engine serves for the Conversation's harness; "Default" returns to the
+ * Foundation. Absent when Superchat runs without the engine; asked again whenever the person's
+ * models change (Settings > Models).
  */
 export function ConversationModelPicker({ botId }: { botId: string }) {
   const { t } = useLingui();
@@ -32,10 +34,9 @@ export function ConversationModelPicker({ botId }: { botId: string }) {
     catalog: EngineModelCatalog;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const enabled = status?.enabled === true;
 
-  if (!status?.enabled) return null;
-
-  async function load() {
+  const load = useCallback(async () => {
     setError(null);
     try {
       const next = await rpc.engineModels.sessionModel({ botId });
@@ -43,7 +44,14 @@ export function ConversationModelPicker({ botId }: { botId: string }) {
     } catch (err) {
       setError(errorText(err, t`Could not load models.`));
     }
-  }
+  }, [botId, t]);
+
+  // `status` is a new answer after any change to the person's models: read the chat's again.
+  useEffect(() => {
+    if (enabled && status) void load();
+  }, [enabled, status, load]);
+
+  if (!enabled) return null;
 
   async function choose(value: string) {
     if (!state) return;
@@ -60,19 +68,31 @@ export function ConversationModelPicker({ botId }: { botId: string }) {
   }
 
   const catalog = state?.catalog;
-  const defaultLabel =
-    catalog?.models.find((m) => m.id === (catalog.defaultModel ?? ""))?.label ?? null;
   const usable = catalog?.status === "ready" && catalog.models.length > 0;
+  const foundation = catalog ? foundationOf(catalog) : null;
+  const labelOf = (id: string | null) => {
+    const row = catalog?.models.find((m) => m.id === id);
+    return row ? modelOptionLabel(row) : null;
+  };
+  const inUse = state?.model ?? foundation;
+  const inUseLabel = usable ? labelOf(inUse) : null;
+  const defaultLabel = labelOf(foundation);
+  // Pinned: the chat stores a model of its own (Default stores none).
+  const pinned = usable && state?.model != null;
   return (
     <DropdownMenu onOpenChange={(open) => open && void load()}>
       <DropdownMenuTrigger
         data-testid="conversation-model-trigger"
         title={t`Model`}
-        aria-label={t`Model`}
         className="sc-glass app-no-drag inline-flex h-11 items-center gap-2 rounded-xl px-3.5 text-[14px] font-medium text-foreground transition-colors hover:bg-foreground/10 focus-visible:outline-2 focus-visible:outline-ring data-[popup-open]:bg-foreground/10"
       >
         <Cpu size={18} strokeWidth={1.7} aria-hidden="true" />
-        <Trans>Model</Trans>
+        {inUseLabel ?? <Trans>Model</Trans>}
+        {pinned ? (
+          <span data-testid="conversation-model-pinned" className="text-[12.5px] text-ink-3">
+            <Trans>pinned</Trans>
+          </span>
+        ) : null}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" data-testid="conversation-model-menu" className="min-w-52">
         <DropdownMenuGroup>
@@ -81,7 +101,10 @@ export function ConversationModelPicker({ botId }: { botId: string }) {
           </DropdownMenuLabel>
         </DropdownMenuGroup>
         {usable && state ? (
-          <DropdownMenuRadioGroup value={state.model ?? DEFAULT_VALUE} onValueChange={choose}>
+          <DropdownMenuRadioGroup
+            value={pinned ? (state.model ?? DEFAULT_VALUE) : DEFAULT_VALUE}
+            onValueChange={choose}
+          >
             <DropdownMenuRadioItem value={DEFAULT_VALUE}>
               {defaultLabel ? t`Default · ${defaultLabel}` : t`Default`}
             </DropdownMenuRadioItem>

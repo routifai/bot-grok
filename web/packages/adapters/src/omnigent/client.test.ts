@@ -20,6 +20,7 @@ import {
   putOmnigentMuseAgent,
   putOmnigentProactivity,
   reindexOmnigentKnowledge,
+  setOmnigentHelpersPaused,
   setOmnigentMessageArtifact,
   streamOmnigentFamily,
   streamOmnigentSession,
@@ -116,6 +117,29 @@ describe("omnigent client", () => {
       choice: "answer",
       note: "Use the Q3 numbers",
     });
+  });
+
+  it("pauses and resumes a Conversation's helpers", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ paused: ["h1", "h2"] }))
+      .mockResolvedValueOnce(jsonResponse({ resumed: ["h1"] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(setOmnigentHelpersPaused(CONFIG, "e@x.test", "conv_1", true)).resolves.toEqual([
+      "h1",
+      "h2",
+    ]);
+    await expect(
+      setOmnigentHelpersPaused(CONFIG, "e@x.test", "conv_1", false, ["h1"]),
+    ).resolves.toEqual(["h1"]);
+
+    const [pauseUrl, pauseInit] = fetchMock.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(pauseUrl.pathname).toBe("/v1/sessions/conv_1/helpers/pause");
+    expect(JSON.parse(pauseInit.body as string)).toEqual({});
+    const [resumeUrl, resumeInit] = fetchMock.mock.calls[1] as unknown as [URL, RequestInit];
+    expect(resumeUrl.pathname).toBe("/v1/sessions/conv_1/helpers/resume");
+    expect(JSON.parse(resumeInit.body as string)).toEqual({ helper_ids: ["h1"] });
   });
 
   it("reads and writes proactivity on /v1/me/proactivity", async () => {
@@ -218,6 +242,18 @@ describe("omnigent client", () => {
     const init = (fetchMock.mock.calls[0] as unknown as [URL, RequestInit])[1];
     expect(JSON.parse(String(init.body)).context).toEqual({
       card_answer: { card_id: "m1:0", option_id: "nord", label: "Nord" },
+    });
+  });
+
+  it("postOmnigentMessage sends a comment on a plan step beside the message data", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({}));
+    vi.stubGlobal("fetch", fetchMock);
+    await postOmnigentMessage(CONFIG, "e@x.test", "conv_1", "Use the Q3 figures", undefined, {
+      stepComment: { cardId: "plan-1", stepIndex: 2, text: "Build the deck" },
+    });
+    const init = (fetchMock.mock.calls[0] as unknown as [URL, RequestInit])[1];
+    expect(JSON.parse(String(init.body)).context).toEqual({
+      step_comment: { card_id: "plan-1", step_index: 2, text: "Build the deck" },
     });
   });
 

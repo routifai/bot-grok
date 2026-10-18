@@ -219,7 +219,7 @@ function HeadingRow({
 /** The Steps timeline: one thin vertical rule behind every dot (same proportion as the
  * Goal plan timeline's — PlanTimeline.tsx), newest-last in the order the engine gives
  * them. */
-function StepsTimeline({ steps, running }: { steps: ActivityStep[]; running: boolean }) {
+export function StepsTimeline({ steps, running }: { steps: ActivityStep[]; running: boolean }) {
   const story = stepStory(steps);
   if (story) {
     const lastHeading = story.findLastIndex((item) => item.kind === "heading");

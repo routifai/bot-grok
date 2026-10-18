@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MessageBlock } from "./events.js";
-import { isReplyCardKind, parseReplyCard, ReplyCardData } from "./reply-cards.js";
+import { isReplyCardKind, parseReplyCard, planItemState, ReplyCardData } from "./reply-cards.js";
 
 const valid = {
   sources: { items: [{ title: "A", url: "https://a.test" }] },
@@ -67,5 +67,40 @@ describe("reply cards", () => {
   it("persists an unknown kind as a block without failing the message", () => {
     const block = { kind: "reply_card", card: "hologram", data: { x: 1 }, fallback: "text" };
     expect(MessageBlock.safeParse(block).success).toBe(true);
+  });
+});
+
+describe("the plan as the engine reads it (ADR 0027)", () => {
+  it("carries the present tense, owner, done criterion and the engine's state", () => {
+    const parsed = parseReplyCard({
+      card: "plan",
+      data: {
+        items: [
+          { text: "Brief", owner: "me", done_when: "brief", state: "done" },
+          { text: "Build", active: "Building", owner: "helper", status: "done", state: "claimed" },
+          { text: "Check", done_when: "check_ran", state: "not_checked" },
+        ],
+      },
+    });
+    expect(parsed?.kind).toBe("plan");
+    const items = parsed?.kind === "plan" ? parsed.data.items : [];
+    expect(items.map(planItemState)).toEqual(["done", "claimed", "not_checked"]);
+    expect(items[1]?.active).toBe("Building");
+  });
+
+  it("reads the model's status on a plan from before, and to do with neither", () => {
+    expect(planItemState({ status: "doing" })).toBe("doing");
+    expect(planItemState({})).toBe("todo");
+  });
+
+  it("reads a state or owner it does not know as to do and me, never a broken card", () => {
+    const parsed = parseReplyCard({
+      card: "plan",
+      data: { items: [{ text: "A", state: "maybe", owner: "robot" }, { text: "B" }] },
+    });
+    expect(parsed?.kind).toBe("plan");
+    const items = parsed?.kind === "plan" ? parsed.data.items : [];
+    expect(items.map(planItemState)).toEqual(["todo", "todo"]);
+    expect(items.map((item) => item.owner)).toEqual(["me", undefined]);
   });
 });

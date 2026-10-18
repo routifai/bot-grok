@@ -22,7 +22,7 @@ import {
 } from "../components/ai/orb";
 import { ArtifactPanelProvider, AskPreviewsProvider } from "../components/cards/context";
 import { SuperchatLogo } from "../components/SuperchatLogo";
-import { transcriptWork, useWorkState, WorkingPill } from "../features/activity";
+import { stripOf, transcriptWork, useWorkState, WorkingPill } from "../features/activity";
 import { ApprovalCards } from "../features/approvals";
 import { appsExtension } from "../features/apps";
 import { ArtifactRegistryProvider } from "../features/artifacts/registry";
@@ -35,6 +35,12 @@ import { knowledgeExtension } from "../features/knowledge";
 import { liveExtension } from "../features/live";
 import { ConversationModelPicker } from "../features/models";
 import { useChatPlace, WorkInChip } from "../features/projects/WorkIn";
+import {
+  newestPlanTurn,
+  SessionPanel,
+  SessionPanelToggle,
+  useSessionPanelOpen,
+} from "../features/session-panel";
 import { sheetsExtension } from "../features/sheets";
 import type { ArtifactTarget } from "../lib/artifact-open";
 import { markAfterPaint, markOnce } from "../lib/performance";
@@ -285,6 +291,15 @@ export function ShellPage() {
   // A View Transition already glides the composer (`superchat-composer`); the FLIP is the fallback.
   useDockTransition(composerDock, shownStart, () => orbFlight.current === "view-transition");
   const _isDesktop = useIsDesktop();
+  // The session panel (ADR 0027) opens beside the transcript when work runs (desktop only; a
+  // phone opens it from the header), and stays closed once the viewer closed it.
+  const sessionPanel = useSessionPanelOpen(running && _isDesktop);
+  const planTurn = useMemo(() => newestPlanTurn(work), [work]);
+  // The panel reads the same strip as that reply (its plan, fold and the latest line of the work).
+  const panelStrip = useMemo(
+    () => (planTurn ? stripOf(planTurn, workState, undefined) : null),
+    [planTurn, workState],
+  );
   const orbHome = orbPlacement({
     startPage: shownStart,
     sidebarVisible: false,
@@ -328,6 +343,7 @@ export function ShellPage() {
   const composerEl = (
     <Composer
       key={`bot:${active?.id}`}
+      botId={active?.id}
       activeName={active?.name}
       phase={workState.phase}
       stopFailed={stopFailed && running}
@@ -375,6 +391,12 @@ export function ShellPage() {
       <div className="app-no-drag flex shrink-0 items-center gap-2">
         {/* Running work shows here too, for when its strip is scrolled away (ADR 0023). */}
         <WorkingPill work={workState} />
+        {running || planTurn ? (
+          <SessionPanelToggle
+            open={sessionPanel.open}
+            onToggle={sessionPanel.open ? sessionPanel.close : sessionPanel.show}
+          />
+        ) : null}
         <span className="app-no-drag hidden md:inline-flex">
           <WorkInChip
             align="end"
@@ -466,8 +488,16 @@ export function ShellPage() {
               <EmptyConversationSuggestions onSend={(text) => void sendMessage(text)} />
             ) : null}
           </div>
-          {active ? chatArtifacts.panel : null}
           {active && !chatArtifacts.isOpen ? (
+            <SessionPanel
+              botId={active.id}
+              strip={panelStrip}
+              open={sessionPanel.open}
+              onClose={sessionPanel.close}
+            />
+          ) : null}
+          {active ? chatArtifacts.panel : null}
+          {active && !chatArtifacts.isOpen && !sessionPanel.open ? (
             <div className="pointer-events-none absolute end-5 bottom-24 z-20 hidden md:block xl:bottom-6 [&>*]:pointer-events-auto">
               <ConversationActivity botId={active.id} />
             </div>

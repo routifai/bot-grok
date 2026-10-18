@@ -32,6 +32,8 @@ export type FamilyEvent = z.infer<typeof FamilyEventSchema>;
 export const ChatStatusSchema = z.object({
   status: z.string(),
   blockedOn: z.string().nullable(),
+  /** A Helper held by Pause (ADR 0027), as the engine flags it. */
+  paused: z.boolean().optional(),
 });
 export type ChatStatus = z.infer<typeof ChatStatusSchema>;
 
@@ -104,6 +106,15 @@ export const chatsContract = {
                     label: z.string().min(1).max(200),
                   })
                   .optional(),
+                /** The message is about one step of a reply's plan (ADR 0027 "Comment"): the
+                 * plan card, the step's place and its words. */
+                stepComment: z
+                  .object({
+                    cardId: z.string().min(1).max(200),
+                    stepIndex: z.number().int().min(0).max(49),
+                    text: z.string().min(1).max(2000),
+                  })
+                  .optional(),
               })
               .optional(),
           })
@@ -132,6 +143,16 @@ export const chatsContract = {
         }),
       )
       .output(z.object({ delivered: z.boolean() })),
+    /** Holds the newest reply's Helpers at their next tool boundary (ADR 0027); the
+     * Conversation's own turn is never paused. A Helper left paused for 30 minutes is stopped.
+     * `helperIds` narrows it (default: every live Helper); answers with the Helpers paused. */
+    pauseHelpers: oc
+      .input(z.object({ botId: Id, helperIds: z.array(Id).optional() }))
+      .output(z.object({ paused: z.array(z.string()) })),
+    /** Lets paused Helpers go on (default: every paused one); answers with those resumed. */
+    resumeHelpers: oc
+      .input(z.object({ botId: Id, helperIds: z.array(Id).optional() }))
+      .output(z.object({ resumed: z.array(z.string()) })),
     /** Where the Conversation works: its Project (its working directory is a Project folder) or
      * null, the folder relative to the workspace (null: the whole workspace) and whether the
      * person chose it. */

@@ -79,6 +79,31 @@ export async function interruptOmnigentSession(
   return { delivered: body.delivered === true };
 }
 
+/** `POST /v1/sessions/{id}/helpers/pause|resume` (ADR 0027): holds a Conversation's Helpers at
+ * their next tool boundary, or lets them go on. `helperIds` narrows it (default: all of them);
+ * answers with the Helpers it acted on. */
+export async function setOmnigentHelpersPaused(
+  config: OmnigentClientConfig,
+  email: string,
+  sessionId: string,
+  paused: boolean,
+  helperIds?: string[],
+): Promise<string[]> {
+  const action = paused ? "pause" : "resume";
+  const response = await fetch(
+    new URL(`/v1/sessions/${encodeURIComponent(sessionId)}/helpers/${action}`, config.baseUrl),
+    {
+      method: "POST",
+      headers: omnigentHeaders(config, email),
+      body: JSON.stringify(helperIds ? { helper_ids: helperIds } : {}),
+    },
+  );
+  await throwOnError(response, `${action} helpers`, config.secrets);
+  const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  const ids = body[paused ? "paused" : "resumed"];
+  return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string") : [];
+}
+
 /** What the engine answers for a posted message: its stored id, and the runner's number for the
  * turn it started or joined (`session.status` edges carry the same number). */
 export interface OmnigentPostedMessage {
@@ -91,6 +116,8 @@ export interface OmnigentMessageContext {
   openArtifact?: { artifactId: string; version: number };
   /** The ask card option the message answers (ADR 0025). */
   cardAnswer?: { cardId: string; optionId: string; label: string };
+  /** The plan step the message comments on (ADR 0027). */
+  stepComment?: { cardId: string; stepIndex: number; text: string };
 }
 
 /** `POST /v1/sessions/{id}/events` with a `message` event carrying the user's turn text and,
@@ -120,7 +147,7 @@ export async function postOmnigentMessage(
       body: JSON.stringify({
         type: "message",
         data: { role: "user", content },
-        ...(context?.openArtifact || context?.cardAnswer
+        ...(context?.openArtifact || context?.cardAnswer || context?.stepComment
           ? {
               context: {
                 ...(context.openArtifact
@@ -137,6 +164,15 @@ export async function postOmnigentMessage(
                         card_id: context.cardAnswer.cardId,
                         option_id: context.cardAnswer.optionId,
                         label: context.cardAnswer.label,
+                      },
+                    }
+                  : {}),
+                ...(context.stepComment
+                  ? {
+                      step_comment: {
+                        card_id: context.stepComment.cardId,
+                        step_index: context.stepComment.stepIndex,
+                        text: context.stepComment.text,
                       },
                     }
                   : {}),

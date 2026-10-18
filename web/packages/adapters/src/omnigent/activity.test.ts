@@ -57,7 +57,48 @@ describe("mapActivity", () => {
       date: "2026-10-03",
       parentChatId: null,
       steps: undefined,
+      summaryLine: null,
+      families: [],
     });
+  });
+
+  it("maps the engine's summary line and families, dropping a family it does not know", () => {
+    const mapped = mapActivity({
+      id: "turn:conv_abc:resp_1",
+      kind: "turn",
+      source: "turn",
+      chat_id: "conv_abc",
+      title: "Build the RBC deck",
+      outcome: null,
+      summary: null,
+      status: "done",
+      started_at: 1000,
+      finished_at: 1060,
+      date: "2026-10-03",
+      summary_line: "Created 2 files, searched the web, and 12 more steps",
+      families: ["web", "decks", "telepathy", "files"],
+    });
+    expect(mapped.summaryLine).toBe("Created 2 files, searched the web, and 12 more steps");
+    expect(mapped.families).toEqual(["web", "decks", "files"]);
+  });
+
+  it("marks a Helper held by Pause, and nothing for any other value", () => {
+    const raw = {
+      id: "sub_agent:h1",
+      kind: "sub_agent" as const,
+      source: "background" as const,
+      chat_id: "h1",
+      title: "Build the deck",
+      outcome: null,
+      summary: null,
+      status: "in_progress" as const,
+      started_at: 1000,
+      finished_at: null,
+      date: "2026-10-03",
+    };
+    expect(mapActivity({ ...raw, paused: true }).paused).toBe(true);
+    expect(mapActivity({ ...raw, paused: "yes" })).not.toHaveProperty("paused");
+    expect(mapActivity({ ...raw, paused: false })).not.toHaveProperty("paused");
   });
 
   it("maps a studio turn's file (ADR 0024), and none when the engine sends none", () => {

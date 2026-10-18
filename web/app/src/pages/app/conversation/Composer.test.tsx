@@ -19,7 +19,10 @@ vi.mock("@lingui/react/macro", () => {
   };
 });
 
+import { setStepComment, stepCommentNow } from "../../../features/activity/stepComment";
 import { Composer } from "./Composer";
+
+const BOT_ID = "bot-1";
 
 vi.stubGlobal(
   "ResizeObserver",
@@ -39,7 +42,7 @@ async function render(
   document.body.append(host);
   const root = createRoot(host);
   await act(async () => {
-    root.render(<Composer phase="idle" failure={failure} onSend={onSend} />);
+    root.render(<Composer botId={BOT_ID} phase="idle" failure={failure} onSend={onSend} />);
   });
   return { host, cleanup: () => act(async () => root.unmount()) };
 }
@@ -108,4 +111,38 @@ it("gives the person's words back when the send fails, and clears them when it w
   });
   expect(okBox.value).toBe("");
   await ok.cleanup();
+});
+
+it("shows a step put in the composer as a removable chip", async () => {
+  const view = await render(null);
+  try {
+    expect(view.host.querySelector('[data-testid="step-comment-chip"]')).toBeNull();
+    await act(async () =>
+      setStepComment({ botId: BOT_ID, cardId: "plan-1", stepIndex: 1, text: "Build the deck" }),
+    );
+    const chip = view.host.querySelector('[data-testid="step-comment-chip"]');
+    expect(chip?.textContent).toBe("Build the deck");
+    // Commenting starts a message: the cursor is in the composer.
+    expect(document.activeElement?.tagName).toBe("TEXTAREA");
+    const remove = chip?.querySelector<HTMLButtonElement>('[aria-label="Remove step"]');
+    await act(async () => remove?.click());
+    expect(stepCommentNow()).toBeNull();
+    expect(view.host.querySelector('[data-testid="step-comment-chip"]')).toBeNull();
+  } finally {
+    setStepComment(null);
+    await view.cleanup();
+  }
+});
+
+it("never shows a step from another chat", async () => {
+  const view = await render(null);
+  try {
+    await act(async () =>
+      setStepComment({ botId: "other", cardId: "plan-1", stepIndex: 0, text: "Elsewhere" }),
+    );
+    expect(view.host.querySelector('[data-testid="step-comment-chip"]')).toBeNull();
+  } finally {
+    setStepComment(null);
+    await view.cleanup();
+  }
 });

@@ -28,15 +28,36 @@ export function formatEngineDate(seconds: number | null, locale: string): string
 
 type Status = Awaited<ReturnType<typeof rpc.engineModels.status>>;
 
+/** Every mounted `useEngineModelsStatus`: a change saved in one place (Settings > Models) reaches
+ * the others (the chat header). */
+const listeners = new Set<() => void>();
+
+/** Forget every listener (tests: a root a test left mounted never hears another's change). */
+export function resetEngineModelsListeners(): void {
+  listeners.clear();
+}
+
+/** Asks every mounted `useEngineModelsStatus` again. */
+export function engineModelsChanged(): void {
+  for (const listener of listeners) listener();
+}
+
 /** What the engine's model layer says about this person. `status` is `null` until the first
  * answer and when the engine cannot be asked (`settled` tells which); `enabled: false` means
- * Superchat runs without the engine. `refresh` asks again. */
+ * Superchat runs without the engine. `refresh` asks again, here and wherever else it is used. */
 export function useEngineModelsStatus(
   active = true,
 ): [status: Status | null, refresh: () => void, settled: boolean] {
   const [status, setStatus] = useState<Status | null>(null);
   const [settled, setSettled] = useState(false);
   const [version, setVersion] = useState(0);
+  useEffect(() => {
+    const listener = () => setVersion((v) => v + 1);
+    listeners.add(listener);
+    return () => {
+      listeners.delete(listener);
+    };
+  }, []);
   useEffect(() => {
     if (!active) return;
     let cancelled = false;
@@ -56,7 +77,7 @@ export function useEngineModelsStatus(
       cancelled = true;
     };
   }, [active, version]);
-  return [status, () => setVersion((v) => v + 1), settled];
+  return [status, engineModelsChanged, settled];
 }
 
 export type ModelProvider = Awaited<ReturnType<typeof rpc.engineModels.providers>>[number];

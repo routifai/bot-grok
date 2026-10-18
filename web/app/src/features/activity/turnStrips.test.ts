@@ -7,6 +7,10 @@ import type { WorkState } from "./workState";
 const turn = (anchorId: string, text: string, last = false, helpers = 0): TurnWork => ({
   anchorId,
   plan: [{ text, status: "doing", added: false }],
+  planId: `${anchorId}:plan`,
+  fold: 0,
+  activityId: null,
+  files: [],
   helpers: Array.from({ length: helpers }, (_, i) => ({ helperId: `h${i}`, title: "Helper" })),
   startedAt: 1_000,
   endedAt: 2_000,

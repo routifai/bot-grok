@@ -170,6 +170,8 @@ export const ProductEventSchema = z.object({
   seq: z.number().int().nonnegative(),
   type: ProductEventType,
   runId: Id.optional(),
+  /** A reply only: the Activity of the turn that wrote it (`activities.get`), ADR 0027. */
+  activityId: z.string().optional(),
   createdAt: z.string(),
   payload: z.record(z.string(), z.unknown()),
 });
@@ -197,6 +199,8 @@ export const ThreadMessageSchema = z.object({
   replyToMessageId: Id.optional(),
   replyQuote: z.string().optional(),
   runId: Id.optional(),
+  /** A reply only: the Activity of the turn that wrote it (`activities.get`), ADR 0027. */
+  activityId: z.string().optional(),
   createdAt: z.string(),
   /** `chats.transcript` only: `queued` while this message waits behind the running turn. */
   delivered: z.literal("queued").optional(),

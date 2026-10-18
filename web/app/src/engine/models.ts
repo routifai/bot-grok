@@ -108,21 +108,26 @@ function toConnection(row: OmnigentModelConnection): EngineModelConnection {
 }
 
 function toCatalog(row: OmnigentModelCatalog): EngineModelCatalog {
+  const picks = (raw: OmnigentModelCatalog["picks"] | undefined) => ({
+    foundation: raw?.foundation ?? null,
+    builder: raw?.builder ?? null,
+    light: raw?.light ?? null,
+  });
   return {
     harness: row.harness,
     status: row.status,
     providerLabel: row.provider_label,
     defaultModel: row.default_model,
+    foundationModel: row.foundation_model ?? null,
+    builderModel: row.builder_model ?? null,
     lightModel: row.light_model ?? null,
-    lightPick: row.light_pick ?? null,
-    automaticLightModel: row.automatic_light_model ?? null,
+    picks: picks(row.picks),
+    automatic: picks(row.automatic),
     models: row.models.map((model) => ({
       id: model.id,
       label: model.label,
       family: typeof model.family === "string" ? model.family : null,
       isDefault: model.is_default,
-      isUserDefault: model.is_user_default,
-      isLight: model.is_light === true,
     })),
     error: row.error ?? null,
   };
@@ -160,7 +165,7 @@ export async function modelsReady(): Promise<boolean> {
   }
 }
 
-/** The person's default pick from their model preferences: the harness their Muse runs on and
+/** The person's Foundation pick from their model preferences: the harness their Muse runs on and
  * its chosen model; nulls when none is set or the engine cannot answer. */
 export async function modelDefaults(): Promise<{ provider: string | null; model: string | null }> {
   try {
@@ -169,7 +174,7 @@ export async function modelDefaults(): Promise<{ provider: string | null; model:
       getOmnigentModelPicks(engineClient(), NO_EMAIL),
     ]);
     for (const harness of harnesses) {
-      const model = picks.defaults[harness.id];
+      const model = picks.foundation[harness.id];
       if (model) return { provider: harness.id, model };
     }
   } catch {
@@ -210,9 +215,6 @@ export const engineModelsRouter = {
     catalog: os.engineModels.catalog.handler(async ({ input }) =>
       toCatalog(await onModels(listOmnigentModels(engineClient(), NO_EMAIL, input.harness))),
     ),
-    preferences: os.engineModels.preferences.handler(
-      async () => (await onModels(getOmnigentModelPicks(engineClient(), NO_EMAIL))).defaults,
-    ),
     /** Moves the person's Superchat to the harness's agent; the engine refuses (`conflict`) while
      * a reply runs. */
     setHarness: os.engineModels.setHarness.handler(async ({ input }) => {
@@ -221,28 +223,17 @@ export const engineModelsRouter = {
       });
       return { ok: true as const };
     }),
-    /** Sets one harness's default and keeps the person's others (the engine replaces the map). */
-    setDefault: os.engineModels.setDefault.handler(async ({ input }) => {
-      const { defaults } = await onModels(getOmnigentModelPicks(engineClient(), NO_EMAIL));
-      const saved = await onModels(
+    /** Sets one category's pick on one harness (`null`: back to automatic) and keeps the rest (the
+     * engine replaces a category's whole map). */
+    setPick: os.engineModels.setPick.handler(async ({ input }) => {
+      const current = await onModels(getOmnigentModelPicks(engineClient(), NO_EMAIL));
+      const { [input.harness]: _previous, ...others } = current[input.category];
+      await onModels(
         putOmnigentModelPicks(engineClient(), NO_EMAIL, {
-          defaults: { ...defaults, [input.harness]: input.model },
+          [input.category]: input.model ? { ...others, [input.harness]: input.model } : others,
         }),
       );
-      return saved.defaults;
-    }),
-    /** Sets one harness's Light model (`null`: back to automatic) and keeps the others. */
-    setLight: os.engineModels.setLight.handler(async ({ input }) => {
-      const { light } = await onModels(getOmnigentModelPicks(engineClient(), NO_EMAIL));
-      const others = Object.fromEntries(
-        Object.entries(light).filter(([harness]) => harness !== input.harness),
-      );
-      const saved = await onModels(
-        putOmnigentModelPicks(engineClient(), NO_EMAIL, {
-          light: input.model ? { ...others, [input.harness]: input.model } : others,
-        }),
-      );
-      return saved.light;
+      return { ok: true as const };
     }),
     budget: os.engineModels.budget.handler(async () =>
       toBudget(await onModels(getOmnigentBudget(engineClient(), NO_EMAIL))),
@@ -257,8 +248,8 @@ export const engineModelsRouter = {
         ),
       ),
     ),
-    /** The model the Muse's Conversation is pinned to (`null`: the person's default) and the list
-     * to pick from, for the harness it actually runs. */
+    /** The model the Muse's Conversation runs on (`null`: none stored) and the list to pick from,
+     * for the harness it actually runs. */
     sessionModel: os.engineModels.sessionModel.handler(async () => {
       const { sessionId, harnesses } = await harnessesOf();
       const harness = harnesses[0]?.id ?? "";

@@ -296,6 +296,55 @@ describe("a file's studio chat (ADR 0024)", () => {
     ).toEqual({ status: "idle", blockedOn: null });
     expect(mapSessionStatusFrame({ type: "response.completed" })).toBeNull();
   });
+
+  it("reads a paused Helper from the engine's flag, else its label (ADR 0027)", () => {
+    expect(
+      mapSessionStatusFrame({ type: "session.status", data: { status: "running", paused: true } }),
+    ).toEqual({ status: "running", blockedOn: null, paused: true });
+    expect(
+      mapSessionStatusFrame({
+        type: "session.status",
+        status: "running",
+        labels: { "superchat.paused": "1760000000" },
+      }),
+    ).toEqual({ status: "running", blockedOn: null, paused: true });
+    expect(
+      mapSessionStatusFrame({
+        type: "session.status",
+        status: "running",
+        blocked_on: "Paused",
+        labels: { "superchat.paused": "" },
+      }),
+    ).toEqual({ status: "running", blockedOn: "Paused" });
+  });
+});
+
+describe("the engine's display (ADR 0027)", () => {
+  it("carries a reply's Activity id and a plan card's fold", () => {
+    const message = mapTranscriptMessage("conv", {
+      id: "m1",
+      role: "assistant",
+      created_at: 100,
+      activity_id: "turn:conv:resp_1",
+      blocks: [
+        {
+          type: "card",
+          card_id: "plan-1",
+          card: { card: "plan", id: "plan-1", data: { items: [] }, fallback: "" },
+          fold: 2,
+        },
+      ],
+    });
+    expect(message.activityId).toBe("turn:conv:resp_1");
+    expect(message.blocks[0]).toEqual(expect.objectContaining({ id: "plan-1", fold: 2 }));
+    const plain = mapTranscriptMessage("conv", {
+      id: "m2",
+      role: "user",
+      created_at: 100,
+      blocks: [{ type: "text", text: "hi" }],
+    });
+    expect(plain).not.toHaveProperty("activityId");
+  });
 });
 
 describe("the reply as it streams", () => {

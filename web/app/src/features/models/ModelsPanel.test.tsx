@@ -4,7 +4,7 @@ import type { EngineModelsStatus } from "@superchat/contracts";
 import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { expect, it, vi } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 
 vi.mock("react-dom/client", async (orig) =>
   (await import("../../test/i18n")).withI18nRoot(await orig<typeof import("react-dom/client")>()),
@@ -24,15 +24,17 @@ const api = vi.hoisted(() => ({
   connect: vi.fn(),
   disconnect: vi.fn(),
   catalog: vi.fn(),
-  setDefault: vi.fn(),
-  setLight: vi.fn(),
+  setPick: vi.fn(),
   setHarness: vi.fn(),
   budget: vi.fn(),
   setBudget: vi.fn(),
 }));
 vi.mock("../../lib/rpc", () => ({ rpc: { engineModels: api } }));
 
+import { resetEngineModelsListeners } from "./engine-models";
 import { ModelsPanel } from "./ModelsPanel";
+
+afterEach(resetEngineModelsListeners);
 
 const status: EngineModelsStatus = {
   enabled: true,
@@ -52,9 +54,11 @@ const catalog = {
   status: "ready",
   providerLabel: "Anthropic",
   defaultModel: "sonnet-5",
+  foundationModel: "sonnet-5",
+  builderModel: "sonnet-5",
   lightModel: "haiku-4",
-  lightPick: null,
-  automaticLightModel: "haiku-4",
+  picks: { foundation: null, builder: null, light: null },
+  automatic: { foundation: "sonnet-5", builder: "sonnet-5", light: "haiku-4" },
   error: null,
   models: [
     {
@@ -62,17 +66,8 @@ const catalog = {
       label: "Sonnet 5",
       family: "sonnet",
       isDefault: true,
-      isUserDefault: false,
-      isLight: false,
     },
-    {
-      id: "haiku-4",
-      label: "Haiku 4",
-      family: "haiku",
-      isDefault: false,
-      isUserDefault: false,
-      isLight: true,
-    },
+    { id: "haiku-4", label: "Haiku 4", family: "haiku", isDefault: false },
   ],
 };
 
@@ -207,8 +202,10 @@ it("switches the harness, then shows the new harness's models once the status fo
 
     await view.rerender({ ...status, harnesses: [{ id: "claude-sdk", label: "Claude" }] });
     expect(api.catalog).toHaveBeenLastCalledWith({ harness: "claude-sdk" });
-    expect(view.container.querySelector('[data-testid="default-model-claude-sdk"]')).not.toBeNull();
-    expect(view.container.querySelector('[data-testid="default-model-pi"]')).toBeNull();
+    expect(
+      view.container.querySelector('[data-testid="foundation-model-claude-sdk"]'),
+    ).not.toBeNull();
+    expect(view.container.querySelector('[data-testid="foundation-model-pi"]')).toBeNull();
   } finally {
     await view.cleanup();
   }
@@ -234,55 +231,50 @@ it("keeps the harness and shows the engine's message while a reply runs", async 
   }
 });
 
-it("saves the default model chosen for the harness", async () => {
+it("shows Foundation, Builder and Light, each automatic until picked", async () => {
   seed();
-  api.setDefault.mockResolvedValue({ pi: "haiku-4" });
+  api.setPick.mockResolvedValue({ ok: true });
   const view = await mount();
   try {
-    const select = view.container.querySelector(
-      '[data-testid="default-model-pi"] select, select[data-testid="default-model-pi"]',
-    ) as HTMLSelectElement;
-    expect(select.value).toBe("sonnet-5");
-    expect(select.textContent).toContain("Default");
-    await act(async () => setValue(select, "haiku-4"));
-    expect(api.setDefault).toHaveBeenCalledWith({ harness: "pi", model: "haiku-4" });
+    const select = (category: string) =>
+      view.container.querySelector(
+        `select[data-testid="${category}-model-pi"]`,
+      ) as HTMLSelectElement;
+    expect(
+      ["foundation", "builder", "light"].map((c) => select(c).getAttribute("aria-label")),
+    ).toEqual(["Foundation", "Builder", "Light"]);
+    expect(select("foundation").options[0]?.textContent).toBe("Automatic · Sonnet 5");
+    expect(select("light").options[0]?.textContent).toBe("Automatic · Haiku 4");
+    expect(select("builder").value).toBe("");
+    await act(async () => setValue(select("foundation"), "haiku-4"));
+    expect(api.setPick).toHaveBeenCalledWith({
+      harness: "pi",
+      category: "foundation",
+      model: "haiku-4",
+    });
+    await act(async () => setValue(select("light"), ""));
+    expect(api.setPick).toHaveBeenLastCalledWith({ harness: "pi", category: "light", model: null });
   } finally {
     await view.cleanup();
   }
 });
 
-it("shows the automatic Light model, saves a pick and goes back to automatic", async () => {
+it("shows the person's own pick and puts it back when saving fails", async () => {
   seed();
-  api.setLight.mockResolvedValue({});
+  api.catalog.mockResolvedValue({
+    ...catalog,
+    picks: { ...catalog.picks, builder: "haiku-4" },
+    builderModel: "haiku-4",
+  });
+  api.setPick.mockRejectedValueOnce(new Error("This model isn't available — pick another."));
   const view = await mount();
   try {
     const select = view.container.querySelector(
-      'select[data-testid="light-model-pi"]',
+      'select[data-testid="builder-model-pi"]',
     ) as HTMLSelectElement;
-    expect(select.getAttribute("aria-label")).toBe("Light model");
-    expect(select.value).toBe("");
-    expect(select.options[0]?.textContent).toBe("Automatic · Haiku 4");
+    expect(select.value).toBe("haiku-4");
     await act(async () => setValue(select, "sonnet-5"));
-    expect(api.setLight).toHaveBeenCalledWith({ harness: "pi", model: "sonnet-5" });
-    await act(async () => setValue(select, ""));
-    expect(api.setLight).toHaveBeenLastCalledWith({ harness: "pi", model: null });
-  } finally {
-    await view.cleanup();
-  }
-});
-
-it("shows the person's own Light pick and puts it back when saving fails", async () => {
-  seed();
-  api.catalog.mockResolvedValue({ ...catalog, lightPick: "sonnet-5", lightModel: "sonnet-5" });
-  api.setLight.mockRejectedValueOnce(new Error("This model isn't available — pick another."));
-  const view = await mount();
-  try {
-    const select = view.container.querySelector(
-      'select[data-testid="light-model-pi"]',
-    ) as HTMLSelectElement;
-    expect(select.value).toBe("sonnet-5");
-    await act(async () => setValue(select, "haiku-4"));
-    expect(select.value).toBe("sonnet-5");
+    expect(select.value).toBe("haiku-4");
     expect(view.container.querySelector('[role="alert"]')?.textContent).toBe(
       "This model isn't available — pick another.",
     );

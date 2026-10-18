@@ -199,6 +199,14 @@ function unlistedRunning(
 export interface StripTurn {
   /** The newest render of the reply's plan, or null without one. */
   plan: PlanStep[] | null;
+  /** The plan card a comment on one of its steps names (workPlan.ts `TurnWork.planId`). */
+  planId?: string | null;
+  /** Leading done steps that fold away, as the engine counts them. */
+  fold?: number;
+  /** The Activity of the reply's own turn, when the engine named it. */
+  activityId?: string | null;
+  /** The files the reply's own turn saved, by artifact id. */
+  files?: string[];
   /** The reply is being written right now. */
   live: boolean;
   /** When the person asked (ms), or null when unknown. */
@@ -226,6 +234,8 @@ export interface StripView {
   progress: string | null;
   /** The plan, with the step running when the work finished counted done. */
   plan: PlanStep[] | null;
+  /** Leading done steps of the plan that fold away (the engine's count). */
+  fold: number;
   focusId: string | null;
 }
 
@@ -265,17 +275,28 @@ export function composeStrip(
   }
   const progress =
     lines.find((line) => line.progress)?.progress ?? (turn?.live ? (turn.liveLabel ?? null) : null);
-  // Settled: nothing is new any more, and the step running when the work finished normally is
-  // done (not when it failed, was stopped, or waits on the person's answer).
+  // Settled: nothing is new any more. A step the engine read keeps its reading (a step is done
+  // only with evidence, ADR 0027); on a plan from before, the step running when the work finished
+  // normally is done (not when it failed, was stopped, or waits on the person's answer).
   const promote = outcome === "done" && ended !== "asked";
   const finished = (step: PlanStep): PlanStep => ({
     ...step,
     added: false,
     changed: false,
-    status: step.status === "doing" && promote ? "done" : step.status,
+    status: step.status === "doing" && promote && !step.engine ? "done" : step.status,
   });
   const plan = turn?.plan ? (live ? turn.plan : turn.plan.map(finished)) : null;
-  return { live, outcome, clockMs, lines, flags, progress, plan, focusId: state.focusId };
+  return {
+    live,
+    outcome,
+    clockMs,
+    lines,
+    flags,
+    progress,
+    plan,
+    fold: turn?.fold ?? 0,
+    focusId: state.focusId,
+  };
 }
 
 /** When a Helper's work ended: its own finish or a later one of a part it handed on. */

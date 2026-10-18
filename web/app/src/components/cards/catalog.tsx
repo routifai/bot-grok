@@ -1,5 +1,6 @@
 import { useLingui } from "@lingui/react/macro";
 import type { ReplyCardDataOf, ReplyCardKind } from "@superchat/contracts";
+import { planItemState } from "@superchat/contracts";
 import {
   Badge,
   Button,
@@ -8,7 +9,6 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
-  Checkbox,
   cn,
   Skeleton,
 } from "@superchat/ui-web";
@@ -24,6 +24,7 @@ import {
   Phone,
 } from "lucide-react";
 import { type ReactNode, useRef, useState } from "react";
+import { PlanSteps } from "../../features/activity";
 import { useAskPreviews, useReplyCardSend } from "./context";
 import { hostOf, mailtoHref, safeHttpUrl, telHref } from "./links";
 
@@ -172,44 +173,17 @@ function Compare({ title, data }: Props<"compare">) {
 }
 
 function Plan({ title, data }: Props<"plan">) {
-  const { t } = useLingui();
-  const done = data.items.filter((item) => item.status === "done").length;
-  const label = { todo: t`To do`, doing: t`In progress`, done: t`Done` };
+  // The engine's reading of each step (ADR 0027), drawn as the work strip draws it.
+  const steps = data.items.map((item) => ({
+    text: item.text,
+    status: planItemState(item),
+    ...(item.active ? { active: item.active } : {}),
+    added: false,
+  }));
+  const done = steps.filter((step) => step.status === "done").length;
   return (
-    <Frame title={title} action={`${done}/${data.items.length}`}>
-      <ul className="flex flex-col gap-2">
-        {data.items.map((item, index) => (
-          <li key={`${item.text}-${index}`} className="flex items-start gap-2.5 text-[14px]">
-            <span className="mt-0.5 grid size-4 shrink-0 place-items-center">
-              {item.status === "doing" ? (
-                <span
-                  role="img"
-                  aria-label={label.doing}
-                  className="size-2.5 animate-pulse rounded-full bg-foreground motion-reduce:animate-none"
-                />
-              ) : (
-                <Checkbox
-                  checked={item.status === "done"}
-                  readOnly
-                  tabIndex={-1}
-                  aria-label={label[item.status]}
-                  className="pointer-events-none"
-                />
-              )}
-            </span>
-            <span
-              className={cn(
-                "leading-snug",
-                item.status === "done" && "text-muted-foreground line-through",
-                item.status === "doing" && "font-medium",
-              )}
-              dir="auto"
-            >
-              {item.text}
-            </span>
-          </li>
-        ))}
-      </ul>
+    <Frame title={title} action={`${done}/${steps.length}`}>
+      <PlanSteps plan={steps} progress={null} />
     </Frame>
   );
 }

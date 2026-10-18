@@ -37,6 +37,11 @@ export const ActivityStepSchema = z.object({
 });
 export type ActivityStep = z.infer<typeof ActivityStepSchema>;
 
+/** The kinds of tool a person recognises, as the engine names them for an Activity (ADR 0027
+ * "Used in this conversation"). */
+export const ToolFamilySchema = z.enum(["web", "files", "decks", "shell", "browser"]);
+export type ToolFamily = z.infer<typeof ToolFamilySchema>;
+
 export const ActivitySchema = z.object({
   id: Id,
   kind: ActivityKindSchema,
@@ -64,6 +69,13 @@ export const ActivitySchema = z.object({
   artifact: z.object({ groupId: z.string().min(1), name: z.string() }).optional(),
   /** Present (possibly empty) on `activities.get`; omitted on the `activities.list` summary. */
   steps: z.array(ActivityStepSchema).optional(),
+  /** What the work did, in one line under the reply ("Created 2 files, searched the web, and 12
+   * more steps"); written by the engine (ADR 0027 "Display is the engine's"). */
+  summaryLine: z.string().nullable().optional(),
+  /** The kinds of tool the work used, as the engine names them. */
+  families: z.array(ToolFamilySchema).optional(),
+  /** A Helper held by Pause (ADR 0027); absent on a turn. */
+  paused: z.boolean().optional(),
 });
 export type Activity = z.infer<typeof ActivitySchema>;
 

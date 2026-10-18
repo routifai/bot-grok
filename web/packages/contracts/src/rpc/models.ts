@@ -42,14 +42,23 @@ export const EngineModelsStatusSchema = z.object({
 });
 export type EngineModelsStatus = z.infer<typeof EngineModelsStatusSchema>;
 
+/** A person's three model picks per harness (ADR 0027): Foundation runs the Super Chat, Builder
+ * the helpers that write, Light quick and background work. */
+export const EngineModelCategorySchema = z.enum(["foundation", "builder", "light"]);
+export type EngineModelCategory = z.infer<typeof EngineModelCategorySchema>;
+
+const EngineModelPicksSchema = z.object({
+  foundation: z.string().nullable(),
+  builder: z.string().nullable(),
+  light: z.string().nullable(),
+});
+
 export const EngineModelRowSchema = z.object({
   id: z.string(),
   label: z.string(),
   family: z.string().nullable(),
+  /** The connection's own default. */
   isDefault: z.boolean(),
-  isUserDefault: z.boolean(),
-  /** The model quick Helpers and background work run on for this person. */
-  isLight: z.boolean(),
 });
 export type EngineModelRow = z.infer<typeof EngineModelRowSchema>;
 
@@ -58,11 +67,13 @@ export const EngineModelCatalogSchema = z.object({
   status: z.string(),
   providerLabel: z.string().nullable(),
   defaultModel: z.string().nullable(),
-  /** Light: the person's pick (`lightPick`, `null` = automatic), else `automaticLightModel`, the
-   * cheapest model by price. */
+  /** What each category resolves to: the person's pick (`picks`, `null` = automatic), else the
+   * engine's automatic choice (`automatic`). */
+  foundationModel: z.string().nullable(),
+  builderModel: z.string().nullable(),
   lightModel: z.string().nullable(),
-  lightPick: z.string().nullable(),
-  automaticLightModel: z.string().nullable(),
+  picks: EngineModelPicksSchema,
+  automatic: EngineModelPicksSchema,
   models: z.array(EngineModelRowSchema),
   error: z.string().nullable(),
 });
@@ -99,19 +110,21 @@ export const engineModelsContract = {
     connect: oc.input(EngineConnectInputSchema).output(EngineModelConnectionSchema),
     disconnect: oc.input(EngineProviderInputSchema).output(ok),
     catalog: oc.input(z.object({ harness: z.string().min(1) })).output(EngineModelCatalogSchema),
-    preferences: oc.output(z.record(z.string(), z.string())),
+    /** Sets one category's pick on `harness`; `model: null` goes back to the automatic choice. */
+    setPick: oc
+      .input(
+        z.object({
+          harness: z.string().min(1),
+          category: EngineModelCategorySchema,
+          model: z.string().min(1).nullable(),
+        }),
+      )
+      .output(ok),
     /** Runs the person's Superchat on `harness` from its next turn; refused while a reply runs. */
     setHarness: oc.input(z.object({ harness: EngineHarnessIdSchema })).output(ok),
-    setDefault: oc
-      .input(z.object({ harness: z.string().min(1), model: z.string().min(1) }))
-      .output(z.record(z.string(), z.string())),
-    /** `model: null` goes back to the automatic choice. */
-    setLight: oc
-      .input(z.object({ harness: z.string().min(1), model: z.string().min(1).nullable() }))
-      .output(z.record(z.string(), z.string())),
     budget: oc.output(EngineBudgetSchema),
     setBudget: oc.input(EngineBudgetInputSchema).output(EngineBudgetSchema),
-    /** The model this Muse's Conversation runs on (`null`: the person's default). */
+    /** The model this Muse's Conversation runs on, and the catalog to pick from. */
     sessionModel: oc.input(botId).output(
       z.object({
         harness: z.string(),

@@ -410,3 +410,36 @@ it("previewed options with no registered tiles keep the plain buttons", () => {
   expect(host.querySelector('[data-testid="tiles"]')).toBeNull();
   expect(host.textContent).toContain("Minimal White");
 });
+
+it("draws a plan card as the engine reads each step, the way the work strip does (ADR 0027)", () => {
+  const host = mount(
+    <ReplyCard
+      block={block({
+        card: "plan",
+        data: {
+          items: [
+            { text: "Brief", state: "done" },
+            { text: "Build", status: "done", state: "claimed" },
+            { text: "Check", state: "not_checked" },
+            { text: "Export", state: "stopped" },
+            { text: "Send", state: "failed" },
+            { text: "Later", state: "someday" },
+          ],
+        },
+      })}
+    />,
+  );
+  const steps = [...host.querySelectorAll("[data-testid=work-plan-step]")];
+  expect(steps.map((step) => step.getAttribute("data-status"))).toEqual([
+    "done",
+    "claimed",
+    "not_checked",
+    "stopped",
+    "failed",
+    "todo",
+  ]);
+  expect(
+    steps.map((step) => step.querySelector("[data-testid=work-plan-reading]")?.textContent ?? null),
+  ).toEqual([null, null, "Not checked", "Stopped", "Didn't finish", null]);
+  expect(host.textContent).toContain("1/6");
+});

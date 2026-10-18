@@ -50,8 +50,49 @@ const fake = vi.hoisted(() => {
 });
 vi.mock("./useActivities", () => ({ activityFeedFor: () => fake.feed }));
 
-const rpcMock = vi.hoisted(() => ({ list: vi.fn() }));
-vi.mock("../../lib/rpc", () => ({ rpc: { artifacts: { list: rpcMock.list } } }));
+const rpcMock = vi.hoisted(() => {
+  /** Each Helper's status stream: frames pushed by the test. */
+  const streams = new Map<string, Array<(frame: unknown) => void>>();
+  return {
+    list: vi.fn(),
+    get: vi.fn(),
+    pauseHelpers: vi.fn(),
+    resumeHelpers: vi.fn(),
+    streams,
+    status(chatId: string, frame: { status: string; blockedOn: string | null; paused?: boolean }) {
+      for (const push of streams.get(chatId) ?? []) push(frame);
+    },
+    watchStatus: vi.fn(
+      async ({ chatId }: { chatId: string }, { signal }: { signal: AbortSignal }) => {
+        const queue: unknown[] = [];
+        let wake: (() => void) | null = null;
+        const push = (frame: unknown) => {
+          queue.push(frame);
+          wake?.();
+        };
+        streams.set(chatId, [...(streams.get(chatId) ?? []), push]);
+        return (async function* () {
+          while (!signal.aborted) {
+            if (queue.length === 0) await new Promise<void>((resolve) => (wake = resolve));
+            wake = null;
+            while (queue.length > 0) yield queue.shift();
+          }
+        })();
+      },
+    ),
+  };
+});
+vi.mock("../../lib/rpc", () => ({
+  rpc: {
+    artifacts: { list: rpcMock.list },
+    activities: { get: rpcMock.get },
+    chats: {
+      watchStatus: rpcMock.watchStatus,
+      pauseHelpers: rpcMock.pauseHelpers,
+      resumeHelpers: rpcMock.resumeHelpers,
+    },
+  },
+}));
 
 /** The family stream: the engine says a file was saved. */
 const family = vi.hoisted(() => {
@@ -73,6 +114,8 @@ vi.mock("../../lib/family-stream", () => ({
 import { AnsweredWhileWorking, useAnsweredWhileWorking } from "./AnsweredWhileWorking";
 import { settleActivityFocus, useActivityFocus } from "./activityFocus";
 import { activity, helper } from "./activityTestKit";
+import { resetConversationFiles } from "./conversationFiles";
+import { setStepComment, stepCommentNow } from "./stepComment";
 import { WorkStrip } from "./WorkStrip";
 import type { PlanStep } from "./workPlan";
 import type { StripHelper, StripTurn } from "./workStripState";
@@ -83,6 +126,12 @@ afterEach(() => {
   fake.set({ status: "loading" });
   fake.refresh.mockClear();
   rpcMock.list.mockReset();
+  rpcMock.get.mockReset();
+  rpcMock.pauseHelpers.mockReset();
+  rpcMock.resumeHelpers.mockReset();
+  rpcMock.streams.clear();
+  setStepComment(null);
+  resetConversationFiles();
 });
 
 const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
@@ -485,11 +534,14 @@ describe("the plan in the strip (ADR 0023)", () => {
       ],
       running(PLAN),
     );
+    // Live, the strip stops at the current step and names the next one under it.
     expect(steps(container)).toEqual([
       ["Read the file", "done"],
-      ["Build the slidesSlide 3 of 6 written", "doing"],
-      ["Check the figures", "todo"],
+      ["Build the slidesSlide 3 of 6 writtenThen: Check the figures", "doing"],
     ]);
+    expect(container.querySelector("[data-testid=work-plan-then]")?.textContent).toBe(
+      "Then: Check the figures",
+    );
     expect(container.querySelector("[data-testid=work-strip-now]")?.textContent).toBe(
       "Build the slides",
     );
@@ -520,10 +572,10 @@ describe("the plan in the strip (ADR 0023)", () => {
     );
     expect(container.querySelectorAll("[data-testid=work-strip]")).toHaveLength(1);
     expect(container.querySelector("[data-testid=work-strip]")).toBe(strip);
-    expect(steps(container).map(([, status]) => status)).toEqual(["done", "done", "doing", "todo"]);
+    expect(steps(container).map(([, status]) => status)).toEqual(["done", "done", "doing"]);
     const added = container.querySelectorAll("[data-added]");
     expect(added).toHaveLength(1);
-    expect(added[0]?.textContent).toBe("Note the cut-off");
+    expect(added[0]?.textContent).toBe("Note the cut-offThen: Check the figures");
   });
 
   it("is lit while the work runs, without any Helper, and goes still when it settles", async () => {
@@ -606,4 +658,200 @@ it("takes no draft from a file's studio turn, even one that saved", async () => 
   expect(container.querySelector("[data-testid=work-strip]")?.getAttribute("data-state")).not.toBe(
     "working",
   );
+});
+
+describe("the engine's display (ADR 0027)", () => {
+  const engineStep = (text: string, status: PlanStep["status"], active?: string): PlanStep => ({
+    text,
+    status,
+    added: false,
+    engine: true,
+    ...(active ? { active } : {}),
+  });
+
+  it("keeps the engine's reading once settled: a step left doing is not ticked", async () => {
+    const started = Date.now() - 60_000;
+    const { container } = await mount([], [], {
+      plan: [engineStep("Build", "done"), engineStep("Check", "not_checked")],
+      live: false,
+      startedAt: started,
+      endedAt: started + 60_000,
+    });
+    expect(container.querySelector("[data-testid=work-strip-settled]")?.textContent).toBe(
+      "1 of 2 done",
+    );
+  });
+
+  it("heads the live strip with the current step's present tense", async () => {
+    const { container } = await mount([], [], {
+      plan: [
+        engineStep("Build the deck", "doing", "Building the deck"),
+        engineStep("Check", "todo"),
+      ],
+      live: true,
+      startedAt: Date.now() - 5_000,
+      endedAt: null,
+    });
+    expect(container.querySelector("[data-testid=work-strip-now]")?.textContent).toBe(
+      "Building the deck",
+    );
+  });
+
+  it("puts a step in the composer from Comment, naming the plan card", async () => {
+    const { container } = await mount([], [], {
+      plan: [engineStep("Read", "done"), engineStep("Build", "doing")],
+      planId: "plan-1",
+      live: true,
+      startedAt: Date.now() - 5_000,
+      endedAt: null,
+    });
+    const buttons = container.querySelectorAll<HTMLButtonElement>(
+      "[data-testid=work-plan-comment]",
+    );
+    await act(async () => buttons[0]?.click());
+    expect(stepCommentNow()).toEqual({
+      botId: "bot-1",
+      cardId: "plan-1",
+      stepIndex: 0,
+      text: "Read",
+    });
+  });
+
+  it("says what the work did under the settled reply, and unfolds its steps in place", async () => {
+    const turnActivity = activity({
+      id: "turn:conv:r1",
+      summaryLine: "Created 2 files, searched the web, and 12 more steps",
+    });
+    const other = activity({ id: "turn:conv:r0", summaryLine: "Read your files" });
+    rpcMock.get.mockResolvedValue({
+      ...turnActivity,
+      steps: [
+        toolStep("report_progress", "Researching the figures", 1),
+        toolStep("web_search", "Searched the web", 2),
+      ],
+    });
+    const started = Date.now() - 60_000;
+    const { container } = await mount([], [other, turnActivity], {
+      plan: [engineStep("Build", "done")],
+      activityId: "turn:conv:r1",
+      live: false,
+      startedAt: started,
+      endedAt: started + 60_000,
+    });
+    const line = container.querySelector<HTMLButtonElement>("[data-testid=work-strip-summary]");
+    expect(line?.textContent).toBe("Created 2 files, searched the web, and 12 more steps");
+    expect(line?.getAttribute("aria-expanded")).toBe("false");
+    expect(container.querySelector("[data-testid=work-strip-steps]")).toBeNull();
+    await act(async () => line?.click());
+    expect(rpcMock.get).toHaveBeenCalledWith({ botId: "bot-1", activityId: "turn:conv:r1" });
+    const steps = container.querySelector("[data-testid=work-strip-steps]");
+    expect(steps?.querySelector("[data-testid=story-heading]")?.textContent).toContain(
+      "Researching the figures",
+    );
+    // "Show details" still opens the run page.
+    expect(container.querySelector("[data-testid=work-strip-details]")).not.toBeNull();
+    await act(async () => line?.click());
+    expect(container.querySelector("[data-testid=work-strip-steps]")).toBeNull();
+  });
+
+  it("has no summary line without the reply's Activity", async () => {
+    const started = Date.now() - 60_000;
+    const { container } = await mount([], [activity({ summaryLine: "Read your files" })], {
+      plan: [engineStep("Build", "done")],
+      live: false,
+      startedAt: started,
+      endedAt: started + 60_000,
+    });
+    expect(container.querySelector("[data-testid=work-strip-summary]")).toBeNull();
+  });
+
+  it("shows the files the reply's own turn saved", async () => {
+    rpcMock.list.mockResolvedValue([
+      fileRow("a1", "rbc.deck.html", "conv", "ai"),
+      fileRow("a2", "older.md", "conv", "ai"),
+    ]);
+    const started = Date.now() - 60_000;
+    const { container } = await mount([], [], {
+      plan: [engineStep("Build", "done")],
+      files: ["a1"],
+      live: false,
+      startedAt: started,
+      endedAt: started + 60_000,
+    });
+    await act(async () => undefined);
+    await act(async () =>
+      container.querySelector<HTMLButtonElement>("[data-testid=work-strip-plan-toggle]")?.click(),
+    );
+    expect(
+      [...container.querySelectorAll("[data-testid=file-thumb]")].map((thumb) => thumb.textContent),
+    ).toEqual(["rbc.deck.html v1"]);
+  });
+
+  const running = (paused?: boolean) =>
+    helper("h-deck", {
+      status: "in_progress",
+      startedAt: ago(10_000),
+      finishedAt: null,
+      ...(paused === undefined ? {} : { paused }),
+    });
+
+  it("pauses the reply's running Helpers, reads Paused once held, and resumes them", async () => {
+    let answer: (value: unknown) => void = () => undefined;
+    rpcMock.pauseHelpers.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    rpcMock.resumeHelpers.mockResolvedValue({ resumed: ["h-deck"] });
+    const { container } = await mount([deckHelper], [running()]);
+    const pause = container.querySelector<HTMLButtonElement>("[data-testid=work-strip-pause]");
+    expect(pause?.textContent).toBe("Pause");
+    await act(async () => pause?.click());
+    expect(rpcMock.pauseHelpers).toHaveBeenCalledWith({ botId: "bot-1", helperIds: ["h-deck"] });
+    // While the call is on its way, the press stands in.
+    expect(container.querySelector("[data-testid=work-strip-paused]")?.textContent).toBe(
+      "Paused · Resume",
+    );
+    // The feed says it is held, then the call returns: the engine says from here on.
+    await act(async () => fake.set(ready([running(true)])));
+    await act(async () => answer({ paused: ["h-deck"] }));
+    expect(container.querySelector("[data-testid=work-strip-paused]")).not.toBeNull();
+    await act(async () =>
+      container.querySelector<HTMLButtonElement>("[data-testid=work-strip-resume]")?.click(),
+    );
+    expect(rpcMock.resumeHelpers).toHaveBeenCalledWith({ botId: "bot-1", helperIds: ["h-deck"] });
+    // The call returned and the feed still says held: Paused until it says otherwise.
+    expect(container.querySelector("[data-testid=work-strip-paused]")).not.toBeNull();
+    await act(async () => fake.set(ready([running(false)])));
+    expect(container.querySelector("[data-testid=work-strip-pause]")).not.toBeNull();
+    // No status stream per Helper: the feed the strip already reads says it all.
+    expect(rpcMock.watchStatus).not.toHaveBeenCalled();
+  });
+
+  it("lets the press stand in for at most 10 seconds", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      rpcMock.pauseHelpers.mockReturnValue(new Promise(() => undefined));
+      const { container } = await mount([deckHelper], [running()]);
+      await act(async () =>
+        container.querySelector<HTMLButtonElement>("[data-testid=work-strip-pause]")?.click(),
+      );
+      expect(container.querySelector("[data-testid=work-strip-paused]")).not.toBeNull();
+      await act(async () => vi.advanceTimersByTime(10_000));
+      expect(container.querySelector("[data-testid=work-strip-pause]")).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reads Paused from the Helper's entry alone (paused elsewhere)", async () => {
+    const { container } = await mount([deckHelper], [running(true)]);
+    expect(container.querySelector("[data-testid=work-strip-paused]")).not.toBeNull();
+  });
+
+  it("offers no Pause without a running Helper", async () => {
+    const { container } = await mount([], [], {
+      plan: [engineStep("Build", "doing")],
+      live: true,
+      startedAt: Date.now() - 5_000,
+      endedAt: null,
+    });
+    expect(container.querySelector("[data-testid=work-strip-pause]")).toBeNull();
+  });
 });

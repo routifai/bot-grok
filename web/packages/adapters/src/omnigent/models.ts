@@ -1,5 +1,6 @@
 // The engine's model layer (engine/omnigent/superchat/models/*): a person's provider
-// keys, the models their connection serves, their Default and Light per harness and their budget.
+// keys, the models their connection serves, their Foundation, Builder and Light per harness and
+// their budget.
 // Shapes are the engine's.
 import type { OmnigentClientConfig } from "./client/core.js";
 import { omnigentHeaders, throwOnError } from "./client/core.js";
@@ -15,13 +16,14 @@ export interface OmnigentModelConnection {
   scope: OmnigentModelScope;
 }
 
+export type OmnigentModelCategory = "foundation" | "builder" | "light";
+
 export interface OmnigentModelRow {
   id: string;
   label: string;
   family?: string | null;
   is_default: boolean;
-  is_user_default: boolean;
-  is_light?: boolean;
+  categories: OmnigentModelCategory[];
   [key: string]: unknown;
 }
 
@@ -30,9 +32,11 @@ export interface OmnigentModelCatalog {
   status: string;
   provider_label: string | null;
   default_model: string | null;
-  light_model?: string | null;
-  light_pick?: string | null;
-  automatic_light_model?: string | null;
+  foundation_model: string | null;
+  builder_model: string | null;
+  light_model: string | null;
+  picks: Record<OmnigentModelCategory, string | null>;
+  automatic: Record<OmnigentModelCategory, string | null>;
   models: OmnigentModelRow[];
   error?: string;
 }
@@ -135,39 +139,42 @@ export async function listOmnigentModels(
   return call(config, email, "list models", `/v1/me/models?harness=${seg(harness)}`);
 }
 
-/** The person's own picks per harness: `defaults` (chats) and `light` (quick work). */
-export interface OmnigentModelPicks {
-  defaults: Record<string, string>;
-  light: Record<string, string>;
+/** The person's own picks per harness, `{harness: model}` per category. */
+export type OmnigentModelPicks = Record<OmnigentModelCategory, Record<string, string>>;
+
+function picksOf(raw: Partial<OmnigentModelPicks>): OmnigentModelPicks {
+  return { foundation: raw.foundation ?? {}, builder: raw.builder ?? {}, light: raw.light ?? {} };
 }
 
 export async function getOmnigentModelPicks(
   config: OmnigentClientConfig,
   email: string,
 ): Promise<OmnigentModelPicks> {
-  const picks = await call<Partial<OmnigentModelPicks>>(
-    config,
-    email,
-    "get model preferences",
-    "/v1/me/model-preferences",
+  return picksOf(
+    await call<Partial<OmnigentModelPicks>>(
+      config,
+      email,
+      "get model preferences",
+      "/v1/me/model-preferences",
+    ),
   );
-  return { defaults: picks.defaults ?? {}, light: picks.light ?? {} };
 }
 
-/** Replaces the maps given (`defaults`, `light`); the engine keeps a map left out. */
+/** Replaces the category maps given; the engine keeps a map left out. */
 export async function putOmnigentModelPicks(
   config: OmnigentClientConfig,
   email: string,
   picks: Partial<OmnigentModelPicks>,
 ): Promise<OmnigentModelPicks> {
-  const saved = await call<Partial<OmnigentModelPicks>>(
-    config,
-    email,
-    "set model preferences",
-    "/v1/me/model-preferences",
-    { method: "PUT", body: picks },
+  return picksOf(
+    await call<Partial<OmnigentModelPicks>>(
+      config,
+      email,
+      "set model preferences",
+      "/v1/me/model-preferences",
+      { method: "PUT", body: picks },
+    ),
   );
-  return { defaults: saved.defaults ?? {}, light: saved.light ?? {} };
 }
 
 /** The person's own budget (`/v1/me/budget`), with the organization's cap read-only. */
@@ -203,7 +210,8 @@ export async function getOmnigentSessionModel(
   return session.model_override ?? null;
 }
 
-/** `PATCH /v1/sessions/{id}` with `model_override`; `null` returns to the default. */
+/** `PATCH /v1/sessions/{id}` with `model_override`; `null` ("default") makes the session follow
+ * the person's Foundation pick. */
 export async function setOmnigentSessionModel(
   config: OmnigentClientConfig,
   email: string,

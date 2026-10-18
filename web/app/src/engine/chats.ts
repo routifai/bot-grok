@@ -17,6 +17,7 @@ import {
   readTurnImages,
   resetOmnigentSession,
   resolveChatOwnership,
+  setOmnigentHelpersPaused,
   setOmnigentMessageArtifact,
   streamOmnigentFamily,
   streamOmnigentSession,
@@ -196,7 +197,7 @@ export async function sendToChat(input: {
   const images = await readTurnImages(client, NO_EMAIL, sessionId, text);
   const context = input.context;
   await onSuperChat(
-    context?.openArtifact || context?.cardAnswer
+    context?.openArtifact || context?.cardAnswer || context?.stepComment
       ? postOmnigentMessage(
           client,
           NO_EMAIL,
@@ -306,6 +307,20 @@ export const chatsRouter = {
     interrupt: os.chats.interrupt.handler(async ({ input }) => {
       const sessionId = await targetChat(input);
       return onSuperChat(interruptOmnigentSession(engineClient(), NO_EMAIL, sessionId));
+    }),
+    pauseHelpers: os.chats.pauseHelpers.handler(async ({ input }) => {
+      const sessionId = await requireMuse(input.botId);
+      const paused = await onSuperChat(
+        setOmnigentHelpersPaused(engineClient(), NO_EMAIL, sessionId, true, input.helperIds),
+      );
+      return { paused };
+    }),
+    resumeHelpers: os.chats.resumeHelpers.handler(async ({ input }) => {
+      const sessionId = await requireMuse(input.botId);
+      const resumed = await onSuperChat(
+        setOmnigentHelpersPaused(engineClient(), NO_EMAIL, sessionId, false, input.helperIds),
+      );
+      return { resumed };
     }),
     // The Project the Conversation has open (ADR 0008), as the engine reports it on the session.
     project: os.chats.project.handler(async ({ input }) => {

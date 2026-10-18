@@ -14,6 +14,7 @@ import {
   AlertCircle,
   ArrowUp,
   Folder,
+  ListChecks,
   Loader2,
   Paperclip,
   Plus,
@@ -35,6 +36,7 @@ import {
 } from "react";
 import { ComposerAttachmentChip } from "../../../components/ComposerAttachmentChip";
 import type { WorkPhase } from "../../../features/activity";
+import { setStepComment, useStepComment } from "../../../features/activity";
 import {
   clearComposerAttachments,
   setComposerAttachment,
@@ -55,6 +57,7 @@ import { slashActionLabel } from "./slashActionLabel";
 const NO_FOLDERS: readonly string[] = [];
 
 export const Composer = memo(function Composer({
+  botId,
   activeName,
   phase,
   stopFailed = false,
@@ -82,6 +85,8 @@ export const Composer = memo(function Composer({
   seedText,
   onSeedConsumed,
 }: {
+  /** The Muse this composer writes to: a comment on one of its plan steps shows here. */
+  botId?: string;
   activeName?: string;
   /** The Conversation's work state (features/activity `useWorkState`): Stop shows while it is not
    * idle and is held while a Stop is on its way; Send waits while a message or a Stop is. */
@@ -123,6 +128,12 @@ export const Composer = memo(function Composer({
   const { t } = useLingui();
   const [draft, setDraft] = useState("");
   const attachments = useComposerAttachments();
+  // A comment on a plan step (ADR 0027): the next message is about it.
+  const stepComment = useStepComment(botId);
+  // Commenting on a step is the start of a message: the cursor goes to the composer.
+  useEffect(() => {
+    if (stepComment) textareaRef.current?.focus();
+  }, [stepComment]);
   const [slashQuery, setSlashQuery] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [replyAnnouncement, setReplyAnnouncement] = useState("");
@@ -382,6 +393,28 @@ export const Composer = memo(function Composer({
               textareaRef.current?.focus();
             }}
             className="shrink-0 text-muted-foreground hover:text-foreground"
+          >
+            <X size={13} strokeWidth={2} />
+          </button>
+        </div>
+      ) : null}
+      {stepComment ? (
+        <div
+          data-testid="step-comment-chip"
+          className="mb-2 flex w-fit max-w-full items-center gap-2 rounded-full border border-border bg-muted px-3 py-1.5 text-[13px] text-foreground/75"
+        >
+          <ListChecks size={14} strokeWidth={1.8} className="shrink-0" aria-hidden="true" />
+          <span className="min-w-0 flex-1 truncate" dir="auto">
+            {stepComment.text}
+          </span>
+          <button
+            type="button"
+            aria-label={t`Remove step`}
+            onClick={() => {
+              setStepComment(null);
+              textareaRef.current?.focus();
+            }}
+            className="shrink-0 rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
           >
             <X size={13} strokeWidth={2} />
           </button>

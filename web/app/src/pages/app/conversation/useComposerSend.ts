@@ -11,6 +11,7 @@ import {
 import type { MutableRefObject } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CardAnswer } from "../../../components/cards/context";
+import { setStepComment, stepCommentFor, stepCommentNow } from "../../../features/activity";
 import { notifyAsksChanged } from "../../../features/approvals";
 import type { ShownArtifact } from "../../../features/artifacts/useChatArtifacts";
 import { requestBrowserNotificationPermission } from "../../../lib/browser-notifications";
@@ -371,6 +372,8 @@ export function useComposerSend({
           workspaceAttachments.push(stored);
         }
         setUploadStatus(null);
+        // A comment on a plan step travels beside the message (ADR 0027), like a card's answer.
+        const stepComment = stepCommentFor(botTarget);
         // A quote travels as text the engine records and the model reads, not as a reply link.
         const quoted = replyQuote ? quotedMessageText(replyQuote, trimmed) : trimmed;
         // An element or sheet ask already says which artifact (and more): no soft link then.
@@ -397,7 +400,7 @@ export function useComposerSend({
             text: quoted || undefined,
             attachments: workspaceAttachments.length ? workspaceAttachments : undefined,
             folders: folders.length ? folders : undefined,
-            ...(about || cardAnswer
+            ...(about || cardAnswer || stepComment
               ? {
                   context: {
                     ...(about
@@ -406,6 +409,15 @@ export function useComposerSend({
                         }
                       : {}),
                     ...(cardAnswer ? { cardAnswer } : {}),
+                    ...(stepComment
+                      ? {
+                          stepComment: {
+                            cardId: stepComment.cardId,
+                            stepIndex: stepComment.stepIndex,
+                            text: stepComment.text,
+                          },
+                        }
+                      : {}),
                   },
                 }
               : {}),
@@ -421,6 +433,8 @@ export function useComposerSend({
           await post();
         }
         sentFiles();
+        // The chip goes with the message it travelled with (a newer pick stays).
+        if (stepComment && stepCommentNow() === stepComment) setStepComment(null);
         refresh();
         return true;
       } catch (error) {
@@ -522,6 +536,8 @@ export function useComposerSend({
       return attachmentsForThread(current, threadKey);
     });
     clearReply();
+    // A comment on a step belongs to the chat it was made in.
+    setStepComment(null);
     setAttachmentNotice(null);
     setSendError(null);
   }, [abortAttachment, active?.id, clearReply]);

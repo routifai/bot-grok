@@ -82,6 +82,9 @@ msgstr "{days}d ago"
 msgid "{done} of {total} done"
 msgstr "{done} of {total} done"
 
+msgid "{fold, plural, one {# earlier step} other {# earlier steps}}"
+msgstr "{fold, plural, one {# earlier step} other {# earlier steps}}"
+
 msgid "{hours}h ago"
 msgstr "{hours}h ago"
 
@@ -344,8 +347,17 @@ msgstr "Bot"
 msgid "Box"
 msgstr "Box"
 
+msgid "Browser"
+msgstr "Browser"
+
 msgid "Budget"
 msgstr "Budget"
+
+msgid "Builder"
+msgstr "Builder"
+
+msgid "Builder · {label}"
+msgstr "Builder · {label}"
 
 msgid "by superchat"
 msgstr "by superchat"
@@ -428,6 +440,12 @@ msgstr "Code"
 
 msgid "Color"
 msgstr "Color"
+
+msgid "Comment"
+msgstr "Comment"
+
+msgid "Comment on {words}"
+msgstr "Comment on {words}"
 
 msgid "Commitments"
 msgstr "Commitments"
@@ -660,12 +678,6 @@ msgstr "Default · {0}"
 msgid "Default · {defaultLabel}"
 msgstr "Default · {defaultLabel}"
 
-msgid "Default model"
-msgstr "Default model"
-
-msgid "Default model · {label}"
-msgstr "Default model · {label}"
-
 msgid "Delete"
 msgstr "Delete"
 
@@ -850,6 +862,12 @@ msgstr "Font size"
 msgid "Forget"
 msgstr "Forget"
 
+msgid "Foundation"
+msgstr "Foundation"
+
+msgid "Foundation · {label}"
+msgstr "Foundation · {label}"
+
 #. placeholder {0}: formatRelativeTime(ask.createdAt)
 msgid "From {sourceLabel} · {0}"
 msgstr "From {sourceLabel} · {0}"
@@ -904,6 +922,9 @@ msgstr "Hide"
 
 msgid "Hide activity"
 msgstr "Hide activity"
+
+msgid "Hide earlier steps"
+msgstr "Hide earlier steps"
 
 msgid "Hide hidden files"
 msgstr "Hide hidden files"
@@ -1024,11 +1045,11 @@ msgstr "Light"
 msgid "Light · {0}"
 msgstr "Light · {0}"
 
+msgid "Light · {label}"
+msgstr "Light · {label}"
+
 msgid "Light model"
 msgstr "Light model"
-
-msgid "Light model · {label}"
-msgstr "Light model · {label}"
 
 msgid "Line height"
 msgstr "Line height"
@@ -1198,6 +1219,9 @@ msgstr "No steps recorded"
 msgid "None"
 msgstr "None"
 
+msgid "Not checked"
+msgstr "Not checked"
+
 msgid "Not connected"
 msgstr "Not connected"
 
@@ -1301,6 +1325,9 @@ msgstr "Outcome"
 msgid "Outline"
 msgstr "Outline"
 
+msgid "Outputs"
+msgstr "Outputs"
+
 #. placeholder {0}: item.page
 msgid "p. {0}"
 msgstr "p. {0}"
@@ -1326,6 +1353,9 @@ msgstr "Paragraph"
 msgid "Password"
 msgstr "Password"
 
+msgid "Pause"
+msgstr "Pause"
+
 msgid "Paused"
 msgstr "Paused"
 
@@ -1347,6 +1377,9 @@ msgstr "Pick a folder"
 
 msgid "Pick a time and I'll do this for you."
 msgstr "Pick a time and I'll do this for you."
+
+msgid "pinned"
+msgstr "pinned"
 
 msgid "Plan"
 msgstr "Plan"
@@ -1399,6 +1432,9 @@ msgstr "Private"
 
 msgid "Professional"
 msgstr "Professional"
+
+msgid "Progress"
+msgstr "Progress"
 
 msgid "Projects"
 msgstr "Projects"
@@ -1497,6 +1533,9 @@ msgstr "Remove folder {0}"
 
 msgid "Remove selection"
 msgstr "Remove selection"
+
+msgid "Remove step"
+msgstr "Remove step"
 
 msgid "Repeat"
 msgstr "Repeat"
@@ -1644,6 +1683,9 @@ msgstr "Send it"
 msgid "Sending…"
 msgstr "Sending…"
 
+msgid "Session panel"
+msgstr "Session panel"
+
 msgid "Settings"
 msgstr "Settings"
 
@@ -1655,6 +1697,9 @@ msgstr "Sheet"
 
 msgid "Sheets"
 msgstr "Sheets"
+
+msgid "Shell"
+msgstr "Shell"
 
 msgid "Show"
 msgstr "Show"
@@ -1787,6 +1832,9 @@ msgstr "Stop"
 msgid "Stop updating"
 msgstr "Stop updating"
 
+msgid "Stopped"
+msgstr "Stopped"
+
 #. js-lingui-explicit-id
 msgid "Stopped."
 msgstr "Stopped."
@@ -1880,6 +1928,10 @@ msgstr "The model refused my key."
 msgid "Theme"
 msgstr "Theme"
 
+#. placeholder {0}: then.text
+msgid "Then: {0}"
+msgstr "Then: {0}"
+
 msgid "Things I do for you on a schedule."
 msgstr "Things I do for you on a schedule."
 
@@ -1919,9 +1971,6 @@ msgstr "This part of the page has no stable name in the file, so it can't be cha
 
 msgid "Time"
 msgstr "Time"
-
-msgid "To do"
-msgstr "To do"
 
 msgid "Today"
 msgstr "Today"
@@ -2035,6 +2084,9 @@ msgstr "Use source value"
 msgid "Use this look"
 msgstr "Use this look"
 
+msgid "Used in this conversation"
+msgstr "Used in this conversation"
+
 msgid "Username"
 msgstr "Username"
 
@@ -2070,6 +2122,9 @@ msgstr "Waiting on you"
 
 msgid "Waiting to start"
 msgstr "Waiting to start"
+
+msgid "Web search"
+msgstr "Web search"
 
 msgid "Week"
 msgstr "Week"

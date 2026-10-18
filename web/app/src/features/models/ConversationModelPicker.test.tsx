@@ -38,11 +38,21 @@ const catalog = {
   harness: "pi",
   status: "ready",
   providerLabel: "Anthropic",
-  defaultModel: "sonnet-5",
+  defaultModel: "haiku-4",
+  foundationModel: "sonnet-5",
+  builderModel: "sonnet-5",
+  lightModel: "haiku-4",
+  picks: { foundation: "sonnet-5", builder: null, light: null },
+  automatic: { foundation: "sonnet-5", builder: "sonnet-5", light: "haiku-4" },
   error: null,
   models: [
-    { id: "sonnet-5", label: "Sonnet 5", family: "sonnet", isDefault: true, isUserDefault: false },
-    { id: "haiku-4", label: "Haiku 4", family: "haiku", isDefault: false, isUserDefault: false },
+    {
+      id: "sonnet-5",
+      label: "Sonnet 5",
+      family: "sonnet",
+      isDefault: false,
+    },
+    { id: "haiku-4", label: "Haiku 4", family: "haiku", isDefault: true },
   ],
 };
 
@@ -51,9 +61,31 @@ async function mount() {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
-  await act(async () => root.render(<ConversationModelPicker botId="bot-1" />));
+  const render = async () => {
+    await act(async () => root.render(<ConversationModelPicker botId="bot-1" />));
+    await act(async () => {});
+  };
+  await render();
+  const trigger = () =>
+    container.querySelector('[data-testid="conversation-model-trigger"]') as HTMLElement | null;
   return {
     container,
+    trigger,
+    pinned: () => container.querySelector('[data-testid="conversation-model-pinned"]'),
+    /** The person's models changed somewhere (Settings > Models): the status is asked again. */
+    statusRefetched: async () => {
+      state.status = { enabled: true };
+      await render();
+    },
+    open: async () => {
+      const button = trigger() as HTMLElement;
+      await act(async () => {
+        button.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
+        button.click();
+      });
+      await act(async () => {});
+      return document.querySelector('[data-testid="conversation-model-menu"]') as HTMLElement;
+    },
     cleanup: async () => {
       await act(async () => root.unmount());
       container.remove();
@@ -61,38 +93,75 @@ async function mount() {
   };
 }
 
+function item(menu: HTMLElement, text: string): HTMLElement {
+  return [...menu.querySelectorAll('[role="menuitemradio"]')].find((el) =>
+    el.textContent?.includes(text),
+  ) as HTMLElement;
+}
+
 it("is absent without the engine", async () => {
   state.status = { enabled: false };
   const view = await mount();
   try {
-    expect(view.container.querySelector('[data-testid="conversation-model-trigger"]')).toBeNull();
+    expect(view.trigger()).toBeNull();
   } finally {
     state.status = { enabled: true };
     await view.cleanup();
   }
 });
 
-it("lists the models for the Conversation's harness and pins the one chosen", async () => {
+it("names the model in use and pins the one chosen", async () => {
   state.sessionModel.mockResolvedValue({ harness: "pi", model: null, catalog });
   state.setSessionModel.mockResolvedValue({ ok: true });
   const view = await mount();
   try {
-    const trigger = view.container.querySelector(
-      '[data-testid="conversation-model-trigger"]',
-    ) as HTMLElement;
-    await act(async () => {
-      trigger.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
-      trigger.click();
-    });
-    await act(async () => {});
     expect(state.sessionModel).toHaveBeenCalledWith({ botId: "bot-1" });
-    const menu = document.querySelector('[data-testid="conversation-model-menu"]') as HTMLElement;
+    // The Foundation, not the connection's default; no marker.
+    expect(view.trigger()?.textContent).toBe("Sonnet 5");
+    expect(view.pinned()).toBeNull();
+    const menu = await view.open();
     expect(menu.textContent).toContain("Default · Sonnet 5");
-    const haiku = [...menu.querySelectorAll('[role="menuitemradio"]')].find((el) =>
-      el.textContent?.includes("Haiku 4"),
-    ) as HTMLElement;
-    await act(async () => haiku.click());
+    await act(async () => item(menu, "Haiku 4").click());
     expect(state.setSessionModel).toHaveBeenCalledWith({ botId: "bot-1", model: "haiku-4" });
+    expect(view.trigger()?.textContent).toBe("Haiku 4pinned");
+  } finally {
+    await view.cleanup();
+  }
+});
+
+it("follows the pin, then the Foundation once Default clears it", async () => {
+  state.sessionModel.mockResolvedValue({ harness: "pi", model: "haiku-4", catalog });
+  state.setSessionModel.mockResolvedValue({ ok: true });
+  const view = await mount();
+  try {
+    expect(view.trigger()?.textContent).toContain("Haiku 4");
+    expect(view.pinned()?.textContent).toBe("pinned");
+    const menu = await view.open();
+    state.sessionModel.mockResolvedValue({ harness: "pi", model: null, catalog });
+    await act(async () => item(menu, "Default · Sonnet 5").click());
+    expect(state.setSessionModel).toHaveBeenLastCalledWith({ botId: "bot-1", model: null });
+    expect(view.trigger()?.textContent).toBe("Sonnet 5");
+    expect(view.pinned()).toBeNull();
+  } finally {
+    await view.cleanup();
+  }
+});
+
+it("marks a stored model as pinned, even when it is the Foundation, and none without one", async () => {
+  // The chat stores Sonnet, which is also the Foundation: it is still the chat's own pick.
+  state.sessionModel.mockResolvedValue({ harness: "pi", model: "sonnet-5", catalog });
+  const view = await mount();
+  try {
+    expect(view.pinned()).not.toBeNull();
+    // Settings made Haiku the Foundation and the chat stores nothing: it follows, unmarked.
+    state.sessionModel.mockResolvedValue({
+      harness: "pi",
+      model: null,
+      catalog: { ...catalog, foundationModel: "haiku-4" },
+    });
+    await view.statusRefetched();
+    expect(view.trigger()?.textContent).toBe("Haiku 4");
+    expect(view.pinned()).toBeNull();
   } finally {
     await view.cleanup();
   }

@@ -295,6 +295,20 @@ function fileTitle(verb: string, args: Record<string, unknown>): string {
  * progress headings say what it was for. */
 const SHELL_TITLE = "Ran a command on your machine";
 
+/** The context brief's first line (what it found), skipping its data fence. */
+function briefSnippet(output: string): string | null {
+  const parsed = tryParseJson(output);
+  if (parsed !== undefined) {
+    const error = errorMessage(parsed);
+    return error ? clip(error) : null;
+  }
+  const line = output
+    .split("\n")
+    .map((text) => text.trim())
+    .find((text) => text && !text.startsWith("["));
+  return line ? clip(line) : null;
+}
+
 // ── the registry ────────────────────────────────────────────────────────
 
 export const TOOL_PRESENTATION: Record<string, ToolPresentation> = {
@@ -498,6 +512,13 @@ export const TOOL_PRESENTATION: Record<string, ToolPresentation> = {
     },
   },
 
+  // ADR 0027: the engine writes these two titles (the Step's own); the web keeps the snippet.
+  context_brief: {
+    icon: "memory",
+    title: () => "",
+    snippet: briefSnippet,
+  },
+
   state_close: {
     icon: "generic",
     title: () => "Closed a line of the working list",
@@ -568,6 +589,23 @@ export const TOOL_PRESENTATION: Record<string, ToolPresentation> = {
       if (error) return clip(isNonEmptyString(message) ? message : error);
       const said = field(parsed, "edit_summary") ?? field(parsed, "summary");
       return isNonEmptyString(said) ? clip(said) : null;
+    },
+  },
+
+  // ADR 0027: the assistant reads a file's outline to review it against the ask (title above).
+  artifact_outline: {
+    icon: "generic",
+    title: () => "",
+    snippet: (output) => {
+      const parsed = tryParseJson(output);
+      if (parsed === undefined) return genericSnippet(output);
+      const error = errorMessage(parsed);
+      if (error) return clip(error);
+      const outline = field(parsed, "outline");
+      const first = isNonEmptyString(outline)
+        ? outline.split("\n").find((line) => line.trim())
+        : undefined;
+      return first ? clip(first) : null;
     },
   },
 

@@ -74,6 +74,9 @@ function mapBlock(block: OmnigentTranscriptBlock): MessageBlock {
         data: block.card.data,
         fallback: block.card.fallback,
         ...(block.pending ? { pending: true } : {}),
+        ...(typeof block.fold === "number" && block.fold > 0
+          ? { fold: Math.floor(block.fold) }
+          : {}),
       };
     }
     case "helper":
@@ -179,6 +182,9 @@ export function mapTranscriptMessage(
     createdAt: epochSecondsToIso(message.created_at),
     ...(message.delivered ? { delivered: message.delivered } : {}),
     ...(artifact !== undefined ? { artifact } : {}),
+    ...(typeof message.activity_id === "string" && message.activity_id
+      ? { activityId: message.activity_id }
+      : {}),
   };
 }
 
@@ -187,16 +193,27 @@ export function mapTranscriptMessage(
  * for a studio turn queued behind the studio cap, ADR 0024). Null for any other frame. */
 export function mapSessionStatusFrame(
   frame: OmnigentStreamEvent,
-): { status: string; blockedOn: string | null } | null {
+): { status: string; blockedOn: string | null; paused?: boolean } | null {
   if (frame.type !== "session.status") return null;
   const body = (typeof frame.data === "object" && frame.data !== null ? frame.data : frame) as {
     status?: unknown;
     blocked_on?: unknown;
+    paused?: unknown;
+    labels?: unknown;
   };
   if (typeof body.status !== "string") return null;
   const blockedOn = typeof body.blocked_on === "string" && body.blocked_on ? body.blocked_on : null;
-  return { status: body.status, blockedOn };
+  // A Helper held by Pause (ADR 0027): the engine's `paused` flag, else its `superchat.paused`
+  // label (set while it is paused).
+  const labels = (
+    typeof body.labels === "object" && body.labels !== null ? body.labels : {}
+  ) as Record<string, unknown>;
+  const paused = body.paused === true || Boolean(labels[PAUSED_LABEL]);
+  return { status: body.status, blockedOn, ...(paused ? { paused } : {}) };
 }
+
+/** The label the engine keeps on a paused Helper (`omnigent.context.labels.PAUSED_LABEL_KEY`). */
+const PAUSED_LABEL = "superchat.paused";
 
 /** The turn-ending `response.*` frames: the turn's text is stored or dropped. */
 const TERMINAL_RESPONSE_FRAMES = new Set([

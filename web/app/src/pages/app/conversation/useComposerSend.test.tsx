@@ -56,6 +56,7 @@ vi.mock("../../../lib/browser-notifications", () => ({
 }));
 vi.mock("../intro", () => ({ markFirstRunSeen: vi.fn() }));
 
+import { setStepComment, stepCommentNow } from "../../../features/activity/stepComment";
 import { registerAttachmentParser } from "../../../lib/composer-attachments";
 import { useComposerSend } from "./useComposerSend";
 
@@ -71,11 +72,12 @@ const transcript = {
   refresh: vi.fn(),
 };
 let shown: ThreadMessage[] = [];
+let activeId = BOT;
 let openArtifact: { artifactId: string; name: string; version: number } | null = null;
 
 function Harness() {
   latest = useComposerSend({
-    active: { id: BOT } as Bot,
+    active: { id: activeId } as Bot,
     activeBotId: botRef,
     userId: "u1",
     messages: shown,
@@ -462,6 +464,56 @@ it("sends a quote as text and workspace folders as pointers", async () => {
     folders: ["projects/q3"],
   });
   expect(latest.activePendingFolders).toEqual([]);
+});
+
+it("sends a comment on a plan step beside the message, and clears it once sent", async () => {
+  await mount();
+  setStepComment({ botId: BOT, cardId: "plan-1", stepIndex: 2, text: "Build the deck" });
+  expect(await act(async () => latest.sendMessage("use the Q3 figures"))).toBe(true);
+  expect(api.chats.send).toHaveBeenCalledWith({
+    botId: BOT,
+    text: "use the Q3 figures",
+    attachments: undefined,
+    folders: undefined,
+    context: { stepComment: { cardId: "plan-1", stepIndex: 2, text: "Build the deck" } },
+  });
+  expect(stepCommentNow()).toBeNull();
+  // The next message carries none.
+  expect(await act(async () => latest.sendMessage("thanks"))).toBe(true);
+  expect(api.chats.send).toHaveBeenLastCalledWith(
+    expect.not.objectContaining({ context: expect.anything() }),
+  );
+});
+
+it("sends no comment made in another chat, and drops it when the chat changes", async () => {
+  await mount();
+  setStepComment({ botId: "other", cardId: "plan-9", stepIndex: 0, text: "Elsewhere" });
+  expect(await act(async () => latest.sendMessage("hello"))).toBe(true);
+  expect(api.chats.send).toHaveBeenLastCalledWith(
+    expect.not.objectContaining({ context: expect.anything() }),
+  );
+  botRef.current = "c".repeat(32);
+  activeId = "c".repeat(32);
+  await act(async () => roots[0]?.render(<Harness />));
+  expect(stepCommentNow()).toBeNull();
+  botRef.current = BOT;
+  activeId = BOT;
+});
+
+it("keeps the step comment when the send fails", async () => {
+  vi.useFakeTimers();
+  try {
+    await mount();
+    api.chats.send.mockRejectedValue(new Error("down"));
+    setStepComment({ botId: BOT, cardId: "plan-1", stepIndex: 0, text: "Read" });
+    const sent = act(async () => latest.sendMessage("again"));
+    await act(async () => vi.advanceTimersByTimeAsync(3_000));
+    expect(await sent).toBe(false);
+    expect(stepCommentNow()).toEqual({ botId: BOT, cardId: "plan-1", stepIndex: 0, text: "Read" });
+  } finally {
+    vi.useRealTimers();
+    setStepComment(null);
+  }
 });
 
 it("retries a failed send once, quietly", async () => {

@@ -27,13 +27,22 @@ function sameSet(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
   return true;
 }
 
-function stripOf(found: TurnWork, work: WorkState, liveLabel: string | undefined): TurnStrip {
+/** One reply's strip from what the transcript says of it and the Conversation's work state. */
+export function stripOf(
+  found: TurnWork,
+  work: WorkState,
+  liveLabel: string | undefined,
+): TurnStrip {
   const live = found.last && work.turnRunning;
   const outcome = found.last && work.cancelled ? "cancelled" : found.outcome;
   return {
     helpers: found.helpers,
     turn: {
       plan: found.plan,
+      planId: found.planId,
+      fold: found.fold,
+      activityId: found.activityId,
+      files: found.files,
       live,
       startedAt: found.startedAt,
       endedAt: found.endedAt,

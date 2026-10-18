@@ -126,9 +126,7 @@ function useModelChoices(botId: string) {
           // Without a pick an automation runs on the person's Light model, like any background
           // Helper.
           defaultLabel:
-            catalog.models.find(
-              (model) => model.id === (catalog.lightModel ?? catalog.automaticLightModel),
-            )?.label ?? null,
+            catalog.models.find((model) => model.id === catalog.lightModel)?.label ?? null,
         });
       })
       .catch(() => undefined);

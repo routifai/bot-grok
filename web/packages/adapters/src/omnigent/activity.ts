@@ -3,7 +3,8 @@
 // Omnigent's snake_case Activity/Step shape (engine/omnigent/superchat/activity/) to
 // Superchat's camelCase contract (web/packages/contracts/src/rpc/activity.ts). The mapping is pure:
 // no network/database, so ./activity.test.ts exercises it directly.
-import type { Activity, ActivityStep } from "@superchat/contracts";
+import type { Activity, ActivityStep, ToolFamily } from "@superchat/contracts";
+import { ToolFamilySchema } from "@superchat/contracts";
 import { isEngineErrorText } from "@superchat/core";
 import type { OmnigentClientConfig } from "./client/core.js";
 import { omnigentHeaders, throwOnError } from "./client/core.js";
@@ -33,6 +34,11 @@ export interface OmnigentActivity {
   parent_chat_id?: string | null;
   /** A studio turn's file (ADR 0024). */
   artifact?: { group_id: string; name: string } | null;
+  /** ADR 0027: the engine's one line of what the work did, and the kinds of tool it used. */
+  summary_line?: string | null;
+  families?: string[];
+  /** A Helper's entry: whether Pause holds it (its `superchat.paused` label). */
+  paused?: unknown;
 }
 
 /** `GET /v1/sessions/{superId}/activities?before=&limit=` — the Activity Feed, newest first
@@ -133,6 +139,15 @@ export function plainFailureOutcome(raw: string | null): string | null {
   return plain ? text : GENERIC_FAILURE;
 }
 
+/** The kinds of tool the engine names for an Activity; one it does not know is dropped. */
+function mapFamilies(raw: unknown): ToolFamily[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((value) => {
+    const family = ToolFamilySchema.safeParse(value);
+    return family.success ? [family.data] : [];
+  });
+}
+
 export function mapActivity(raw: OmnigentActivity): Activity {
   const failed = raw.status === "failed";
   return {
@@ -152,5 +167,8 @@ export function mapActivity(raw: OmnigentActivity): Activity {
       ? { artifact: { groupId: raw.artifact.group_id, name: raw.artifact.name } }
       : {}),
     steps: raw.steps?.map(mapActivityStep),
+    summaryLine: typeof raw.summary_line === "string" && raw.summary_line ? raw.summary_line : null,
+    families: mapFamilies(raw.families),
+    ...(raw.paused === true ? { paused: true } : {}),
   };
 }
