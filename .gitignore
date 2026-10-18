@@ -38,3 +38,6 @@ PRODUCT_PLAN.md
 web/app/src/locales/**/*.mjs
 web/app/src/locales/**/*.js
 playwright-report-www
+engine/scripts/.evals-chat
+# Model-call traces copied out of a host (engine/scripts/llm_trace.py)
+llm-trace/

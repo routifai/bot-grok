@@ -2749,6 +2749,17 @@ class ClaudeSDKExecutor(Executor):
         # No-op off the gateway transport.
         model_overrides = await self._apply_gateway_model_vocabulary(env, api_key_helper)
         settings_payload = _claude_settings_payload(api_key_helper, model_overrides)
+        # Dev only (OMNIGENT_LLM_TRACE_DIR): every model call goes through the logging proxy.
+        from omnigent.harnesses import llm_trace
+
+        traced = llm_trace.base_url_for(
+            session_key,
+            env.get("ANTHROPIC_BASE_URL")
+            or os.environ.get("ANTHROPIC_BASE_URL")
+            or "https://api.anthropic.com",
+        )
+        if traced is not None:
+            env["ANTHROPIC_BASE_URL"] = traced
 
         # Capture stderr from the CLI subprocess for diagnostics
         stderr_lines: list[str] = []
@@ -3142,6 +3153,9 @@ class ClaudeSDKExecutor(Executor):
                     sdk_prompt = _multimodal_message_iter(prompt, session_id=session_key)
                 else:
                     sdk_prompt = prompt
+                from omnigent.harnesses import llm_trace
+
+                llm_trace.event(session_key, "prompt", prompt)
                 await asyncio.wait_for(
                     client.query(sdk_prompt, session_id=session_key),
                     timeout=_QUERY_START_TIMEOUT_SECONDS,
@@ -3562,6 +3576,10 @@ class ClaudeSDKExecutor(Executor):
                             yield CompactionStarted()
                         else:
                             logger.info("Claude CLI system message: %s", data)
+                            if isinstance(data, dict) and data.get("subtype") == "init":
+                                from omnigent.harnesses import llm_trace
+
+                                llm_trace.event(session_key, "cli_init", data)
             finally:
                 # ``receive_response`` returns an async generator, which
                 # always has ``aclose``; guard anyway for duck-typed test
