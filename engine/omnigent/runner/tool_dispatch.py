@@ -44,6 +44,7 @@ from omnigent.context.labels import (
 from omnigent.superchat._handler_http import session_kind_and_parent as _session_kind_and_parent
 from omnigent.superchat.feature import HandlerCtx, SpawnRequest, SpawnResult, SubAgentHost
 from omnigent.superchat.features import FEATURE_HANDLERS, FEATURE_RELAY_OPS, notify_result
+from omnigent.superchat.models.tiers import CATEGORIES
 from omnigent.superchat.prompt_prefix import fetch_memory_profile as _fetch_memory_profile_block
 from omnigent.superchat.subagents import (
     WORKER_TYPE,
@@ -1558,7 +1559,7 @@ async def _helper_tier_models(
     conversation_id: str,
     harness: str | None,
 ) -> dict[str, str | None] | None:
-    """The models ``fast`` (the owner's Light) and ``strong`` (their Default) mean on *harness*.
+    """The model each helper category (``light``, ``builder``, ``foundation``) means on *harness*.
 
     Asked of the engine (``GET /v1/sessions/{id}/helper-models``): the picks live in its
     database, never in this host's configuration. ``None`` when the harness is unknown or the
@@ -1579,7 +1580,7 @@ async def _helper_tier_models(
         return None
     return {
         tier: value if isinstance(value := body.get(tier), str) and value else None
-        for tier in ("fast", "strong")
+        for tier in CATEGORIES
     }
 
 

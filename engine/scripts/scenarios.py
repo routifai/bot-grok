@@ -7,7 +7,8 @@ settle, and records per scenario: time to the first saved file, asks per deliver
 ``tests.scenarios.rules.speaks_first``) and the person's wait (ADR 0026), from the engine's
 item timestamps: the message's ``created_at`` to the first assistant item (first visible event)
 and to the first text item (first word), the worst turn of the scenario, and for a deck scenario
-the message to the first ``artifact_save`` (deck end to end). Timestamps are whole seconds, so
+(``Scenario.deliverable == "deck"``) the message to the first ``artifact_save``, in the turn or
+in a Helper it started (deck end to end). Timestamps are whole seconds, so
 those waits are labelled coarse and count as over budget only past a whole second. When
 ``OMNIGENT_SCENARIO_ENGINE_LOG`` names the engine's log file, the first visible event and the
 first word come from the engine's own lines instead (sub-second, from its acceptance of the
@@ -144,7 +145,7 @@ def waits(items: list[dict[str, Any]]) -> dict[str, float | None]:
 
     ``visible``: to the first assistant item (a word or a tool call); ``word``: to the first
     text item; ``save``: to the first ``artifact_save``. ``None`` when it did not happen or a
-    timestamp is missing.
+    timestamp is missing. ``sent`` is the message's own ``created_at``.
     """
     sent = next(
         (
@@ -162,6 +163,7 @@ def waits(items: list[dict[str, Any]]) -> dict[str, float | None]:
         return float(at - sent)
 
     return {
+        "sent": float(sent) if isinstance(sent, (int, float)) else None,
         "visible": after(lambda i: i.get("type") == "function_call" or _is_text(i)),
         "word": after(_is_text),
         "save": after(lambda i: i.get("type") == "function_call" and _tool(i) == "artifact_save"),
@@ -215,6 +217,40 @@ def _helpers(activities: list[dict[str, Any]], session_id: str) -> set[str]:
     }
 
 
+def helper_save(
+    activities: list[dict[str, Any]], helper_ids: set[str], sent: float
+) -> float | None:
+    """Seconds from *sent* to the first ``artifact_save`` step of the given Helpers."""
+    saves = [
+        float(step["created_at"]) - sent
+        for a in activities
+        if str(a.get("id")) in helper_ids
+        for step in a.get("steps") or []
+        if str(step.get("tool") or "").rsplit("__", 1)[-1] == "artifact_save"
+        and isinstance(step.get("created_at"), (int, float))
+    ]
+    return min(saves) if saves else None
+
+
+def _wait_for_helper_save(
+    engine: Engine, session_id: str, helper_ids: set[str], sent: float
+) -> float | None:
+    """The deck wait of a turn that handed the deck to Helpers, polling until one saves.
+
+    Polled after the whole scenario, so a later turn can still arrive while the Helper works.
+    """
+    deadline = time.monotonic() + _TURN_TIMEOUT
+    while True:
+        activities = engine.activities(session_id)
+        found = helper_save(activities, helper_ids, sent)
+        running = any(
+            str(a.get("id")) in helper_ids and a.get("status") == "in_progress" for a in activities
+        )
+        if found is not None or not running or time.monotonic() >= deadline:
+            return found
+        time.sleep(_POLL)
+
+
 def play_turn(
     engine: Engine, session_id: str, opener: Event, cancel: bool, log: EngineLog | None = None
 ) -> tuple[list[Event], dict[str, float | None]]:
@@ -263,19 +299,31 @@ def play(
     first_file: float | None = None
     turns: list[list[Event]] = []
     turn_waits: list[dict[str, float | None]] = []
+    is_deck = scenario.deliverable == "deck"
+    # The deck is the first turn's work that saved or started a Helper: its own save, or the
+    # Helpers it started and the message's time (their save is polled after the scenario).
+    deck: float | None = None
+    deck_turn_seen = False
+    pending: tuple[set[str], float] | None = None
     for script in scenario.turns:
         opener = script[0]
         if opener[0] not in _PERSON:
             continue  # Helper notices arrive on their own
         cancel = any(kind == "cancelled" for kind, _ in script)
+        helpers_before = _helpers(engine.activities(session_id), session_id)
         turn, wait = play_turn(engine, session_id, opener, cancel, log)
         if first_file is None and any(kind == "save" for kind, _ in turn):
             first_file = time.monotonic() - start
         turns.append(turn)
         turn_waits.append(wait)
-    is_deck = any(
-        event == ("tool_call", "deck_new") for script in scenario.turns for event in script
-    )
+        started = _helpers(engine.activities(session_id), session_id) - helpers_before
+        if is_deck and not deck_turn_seen and (wait["save"] is not None or started):
+            deck_turn_seen = True
+            deck = wait["save"]
+            if deck is None and wait["sent"] is not None:
+                pending = (started, wait["sent"])
+    if pending is not None:
+        deck = _wait_for_helper_save(engine, session_id, *pending)
     deliverables = sum(
         1 for turn in turns if turn[0][0] == "request" and is_deliverable_turn(turn)
     )
@@ -287,9 +335,7 @@ def play(
         "silent": sum(1 for turn in turns if not speaks_first(turn)),
         "visible": _worst([w["visible"] for w in turn_waits]),
         "word": _worst([w["word"] for w in turn_waits]),
-        "deck": next((w["save"] for w in turn_waits if w["save"] is not None), None)
-        if is_deck
-        else None,
+        "deck": deck if is_deck else None,
     }
 
 

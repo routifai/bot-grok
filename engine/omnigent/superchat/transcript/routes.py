@@ -29,6 +29,7 @@ from omnigent.superchat.artifacts.links import attach_links
 from omnigent.superchat.artifacts.store import SqlAlchemyArtifactStore
 from omnigent.superchat.family.tree import sub_agent_status
 from omnigent.superchat.lineage import session_lineage
+from omnigent.superchat.tasks.record import PlanViews, plan_reader
 from omnigent.superchat.transcript.blocks import helper_session_ids, project_items
 from omnigent.superchat.transcript.reset import latest_reset_item
 
@@ -69,8 +70,11 @@ def read_transcript(
     before: str | None,
     limit: int,
     before_reset: bool = False,
+    plan_views: PlanViews | None = None,
 ) -> dict[str, Any]:
     """One page of a session's transcript, oldest message first.
+
+    :param plan_views: The tasks service's plan projection; without it a plan shows no states.
 
     Pages walk back from the newest items (``before`` is the ``older_cursor`` of the page
     after). Paging stops at the latest reset; ``before_reset`` pages the items older than it
@@ -117,6 +121,8 @@ def read_transcript(
             items,
             helper_statuses=statuses,
             keep_notices=is_artifact_chat(conversation.labels),
+            plan_views=plan_views(conversation.id, items) if plan_views else None,
+            conversation_id=conversation.id,
         ),
         has_more=has_more,
         older_cursor=newest_first[-1]["id"] if newest_first and has_more else None,
@@ -200,6 +206,7 @@ def register_transcript_routes(
             before=before,
             limit=limit,
             before_reset=before_reset,
+            plan_views=plan_reader(request.app.state),
         )
         if artifact_store is not None:
             await asyncio.to_thread(attach_links, artifact_store, conversation.id, page["data"])

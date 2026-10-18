@@ -20,10 +20,11 @@ from fastapi import (
 )
 from fastapi.responses import StreamingResponse
 from fastapi.routing import APIRoute
+from pydantic import BaseModel
 from starlette.datastructures import Headers
 from starlette.types import Message, Receive, Scope, Send
 
-from omnigent.context.labels import is_artifact_chat, is_superside_chat
+from omnigent.context.labels import PAUSED_LABEL_KEY, is_artifact_chat, is_superside_chat
 from omnigent.db.workspace_cache import WorkspaceScopedCache
 from omnigent.debug_logging import add_audit_attrs, debug_event, mark_request_audit_suppressed
 from omnigent.entities import (
@@ -507,6 +508,12 @@ _RUNNER_EVENT_TYPES = frozenset(
 )
 
 
+class HelperSelection(BaseModel):
+    """Which Helpers a pause or resume acts on; none named means all of them."""
+
+    helper_ids: list[str] | None = None
+
+
 def register_events_routes(
     router: APIRouter,
     *,
@@ -747,8 +754,9 @@ def register_events_routes(
             _logger.exception("Interrupt cascade to helpers failed for %r", session_id)
         return forwarded or bool(cancelled_items)
 
-    async def _interrupt_running_helpers(session_id: str) -> None:
-        """Interrupt every running Helper of *session_id* (read as ``count_live_children`` does)."""
+    async def _helpers_of(session_id: str) -> tuple[list[Any], set[str]]:
+        """*session_id*'s Helpers (never a file's studio) and the ids of the live ones, read as
+        ``count_live_children`` does."""
         page = await asyncio.to_thread(
             conversation_store.list_conversations,
             limit=100,
@@ -761,14 +769,90 @@ def register_events_routes(
         summaries = await _child_session_summaries_from_conversations(
             children, session_id, conversation_store
         )
-        live = [
+        live = {
             summary.id
             for summary in summaries
             if is_live_child_row(summary.model_dump(mode="json"))
-        ]
+        }
+        return children, live
+
+    async def _interrupt_running_helpers(session_id: str) -> None:
+        """Interrupt every running Helper of *session_id* (read as ``count_live_children`` does)."""
+        children, live_ids = await _helpers_of(session_id)
+        live = [child.id for child in children if child.id in live_ids]
         results = await asyncio.gather(*(_interrupt_session(child_id) for child_id in live))
         for child_id, delivered in zip(live, results, strict=True):
             _logger.info("interrupt helper=%s of=%s delivered=%s", child_id, session_id, delivered)
+
+    async def _hold_helpers(
+        request: Request, session_id: str, helper_ids: list[str] | None, *, paused: bool
+    ) -> list[str]:
+        """Pause or resume a Conversation's Helpers (ADR 0027); the Conversation itself never.
+
+        Pause takes the live Helpers, resume the paused ones; *helper_ids* narrows either (an id
+        that is not such a Helper of this Conversation is ignored). Each gets the
+        ``superchat.paused`` label and its runner is told; the runner holds a paused Helper at
+        its next tool boundary and stops one left paused for 30 minutes.
+
+        :returns: The Helpers paused or resumed.
+        """
+        _user_id, conv = await _authorized_conversation(request, session_id)
+        if conv.kind == "sub_agent":
+            raise OmnigentError(
+                "Pause and resume act on a conversation's helpers", code=ErrorCode.INVALID_INPUT
+            )
+        children, live = await _helpers_of(session_id)
+        if paused:
+            candidates = [c.id for c in children if c.id in live]
+        else:
+            candidates = [c.id for c in children if (c.labels or {}).get(PAUSED_LABEL_KEY)]
+        wanted = set(helper_ids) if helper_ids is not None else None
+        targets = [cid for cid in candidates if wanted is None or cid in wanted]
+        value = str(int(time.time())) if paused else ""
+        event = {"type": "pause" if paused else "resume"}
+
+        async def _apply(child_id: str) -> bool:
+            # A pause is labelled only once its runner holds it (a restarted runner restores
+            # it from the label); a resume clears the label even with no runner to tell.
+            acked = False
+            runner_client = await _get_runner_client(child_id, runner_router)
+            if runner_client is not None:
+                try:
+                    resp = await runner_client.post(
+                        f"/v1/sessions/{child_id}/events", json=event, timeout=5.0
+                    )
+                    acked = resp.status_code < 400
+                except (httpx.HTTPError, ConnectionError):
+                    _logger.warning(
+                        "%s forward failed for %r", event["type"], child_id, exc_info=True
+                    )
+            if not acked and paused:
+                return False
+            await asyncio.to_thread(
+                conversation_store.set_labels, child_id, {PAUSED_LABEL_KEY: value}
+            )
+            return True
+
+        done = await asyncio.gather(*(_apply(child_id) for child_id in targets))
+        targets = [child_id for child_id, ok in zip(targets, done, strict=True) if ok]
+        _logger.info("%s helpers=%s of=%s", event["type"], targets, session_id)
+        return targets
+
+    @router.post("/sessions/{session_id}/helpers/pause")
+    async def pause_helpers(
+        request: Request, session_id: str, body: HelperSelection | None = None
+    ) -> dict[str, list[str]]:
+        """Hold the Conversation's live Helpers at their next tool boundary (ADR 0027)."""
+        ids = body.helper_ids if body is not None else None
+        return {"paused": await _hold_helpers(request, session_id, ids, paused=True)}
+
+    @router.post("/sessions/{session_id}/helpers/resume")
+    async def resume_helpers(
+        request: Request, session_id: str, body: HelperSelection | None = None
+    ) -> dict[str, list[str]]:
+        """Let the Conversation's paused Helpers go on (ADR 0027)."""
+        ids = body.helper_ids if body is not None else None
+        return {"resumed": await _hold_helpers(request, session_id, ids, paused=False)}
 
     async def _post_event_impl(
         request: Request | _RunnerEventContext,

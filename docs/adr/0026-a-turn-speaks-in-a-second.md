@@ -31,3 +31,7 @@ Measured from the engine's acceptance of the person's message, logged by the eng
 - **Let the model stay silent and only show the strip.** Rejected: the strip is lit but empty for a minute; a sentence costs one second and says what is happening.
 - **A fresh Chromium per check, but faster.** Rejected: a cold launch under load timed out at 20 s; a warm browser is the only launch that is free.
 - **Kill the harness on Stop.** Rejected: the harness closes cleanly on interrupt already; the shield on tool execution is the bug.
+
+## Update: no cheap opener (ADR 0027, 2026-10-17)
+
+A Light-model opener was considered to reach the sub-second first word and rejected: Foundation speaks first, the strip and the session panel light at the moment of sending, and the first word lands at Foundation's own first token, two to three seconds warm.

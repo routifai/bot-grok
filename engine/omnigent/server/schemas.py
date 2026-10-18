@@ -3053,6 +3053,8 @@ class SessionStatusEvent(_SSEEventBase):
         ``None`` whenever the session is not parked. Unrelated to the
         ``waiting`` status above, which means the turn has ended and only
         background work remains.
+    :param paused: ``True`` while a paused Helper is held at a tool boundary (its
+        ``superchat.paused`` label is set; ADR 0027); ``None`` otherwise.
     :param turn: The runner's number for the turn this edge belongs to, e.g. ``42``. It
         rises with every turn the runner starts; ``POST /events`` answers a message with the
         number of the turn it started or joined, so a sender can tell that turn's ``idle``
@@ -3073,6 +3075,7 @@ class SessionStatusEvent(_SSEEventBase):
     background_tasks: list[BackgroundTaskInfo] | None = None
     blocked_on: str | None = None
     turn: int | None = None
+    paused: bool | None = None
 
 
 class SessionUsageEvent(_SSEEventBase):

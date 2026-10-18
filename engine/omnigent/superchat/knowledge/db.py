@@ -160,10 +160,15 @@ def search_text(heading_path: str, text: str) -> str:
     return text
 
 
-def _query_terms(query: str) -> list[str]:
+def query_terms(query: str) -> list[str]:
+    """The words of *query*, lowercased and once each, filler words out (all of them when only
+    filler is left)."""
     words = list(dict.fromkeys(_TOKEN.findall(query.lower())))
     # A query made only of filler ("the file") still searches, rather than finding nothing.
     return [w for w in words if w not in _STOPWORDS] or words
+
+
+_query_terms = query_terms
 
 
 def fts_query(query: str) -> str | None:
@@ -174,7 +179,7 @@ def fts_query(query: str) -> str | None:
     longer and plural forms. BM25 then ranks passages by how many, and how rare, the terms are.
     """
     parts = []
-    for word in _query_terms(query):
+    for word in query_terms(query):
         stem = word[:-1] if len(word) > _PREFIX_MIN and word.endswith("s") else word
         parts.append(f'"{stem}"*' if len(stem) >= _PREFIX_MIN else f'"{word}"')
     return " OR ".join(parts) or None

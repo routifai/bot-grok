@@ -57,6 +57,10 @@ def _install(app: FastAPI, deps: InstallDeps) -> None:
 
     preferences = ModelPreferenceStore(deps.scheduled_task_store.storage_location)
     app.state.model_preference_store = preferences
+    from omnigent.superchat.models.selection import foundation_resolver
+
+    # The Super Chat's Foundation pick, read by the core create and model-change paths.
+    app.state.foundation_model = foundation_resolver(preferences)
     app.include_router(
         create_model_selection_router(
             preferences,

@@ -348,7 +348,7 @@ def test_delete_removes_the_person_and_everything_they_own_and_is_idempotent(
     _seed_people(world)
     world.hosts.hosts["alice"] = [_host("c1", "docker"), _host("laptop", None)]
     world.connections.put("user", "alice", "openrouter", "sk-or-secret-5678")
-    ModelPreferenceStore(world.uri).set("alice", {"claude-sdk": "claude-haiku-4-5"})
+    ModelPreferenceStore(world.uri).set("alice", foundation={"claude-sdk": "claude-haiku-4-5"})
     world.budgets.store.set_approval("alice", "2026-10", "user", 1.25)
     owned = [
         c.id for c in world.ledger.list_conversations(owned_by="alice", kind=None, limit=10).data

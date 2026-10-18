@@ -7,6 +7,7 @@ endpoints (``artifact_save`` first reads the file from the host workspace).
 * ``artifact_list`` — list the Conversation's saved files.
 * ``artifact_delete`` — delete a saved file (the person is asked first).
 * ``artifact_patch`` — change named elements of a file in place (a file's studio only, ADR 0024).
+* ``artifact_outline`` — a saved file's outline, to review a Helper's result (Conversation only).
 """
 
 from __future__ import annotations
@@ -15,7 +16,13 @@ from typing import Any
 
 from omnigent.tools.base import Tool
 
-ARTIFACT_TOOL_NAMES = ("artifact_save", "artifact_list", "artifact_delete", "artifact_patch")
+ARTIFACT_TOOL_NAMES = (
+    "artifact_save",
+    "artifact_list",
+    "artifact_delete",
+    "artifact_patch",
+    "artifact_outline",
+)
 
 
 class ArtifactTool(Tool):
@@ -87,6 +94,28 @@ class ArtifactListTool(ArtifactTool):
 
     _NAME = "artifact_list"
     _DESC = "List the files already saved for the person in this chat (name, kind, versions)."
+
+
+class ArtifactOutlineTool(ArtifactTool):
+    """A saved file's outline; read from ``GET /v1/artifacts/{id}`` and its content (ADR 0027).
+
+    Offered to the Conversation only, for reviewing a Helper's result against the ask. A read,
+    like ``artifact_list``: it never counts toward the step limit.
+    """
+
+    _NAME = "artifact_outline"
+    _DESC = (
+        "Read the outline of a saved file to review a helper's result against what the person "
+        "asked: a deck's slides with their text, a sheet's headers, or the first lines of any "
+        "other text file. Read-only; use it before handing back a helper's file."
+    )
+    _PROPERTIES = {
+        "artifact_id": {
+            "type": "string",
+            "description": "The file's id from the file line or artifact_list (any version id).",
+        }
+    }
+    _REQUIRED = ("artifact_id",)
 
 
 class ArtifactDeleteTool(ArtifactTool):

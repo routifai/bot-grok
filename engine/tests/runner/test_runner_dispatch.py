@@ -3391,7 +3391,10 @@ async def test_sys_session_send_superside_chat_forwards_mode_label_to_child(
 @pytest.mark.parametrize(
     ("override_args", "refusal"),
     [
-        ({"input": "do it", "model": "claude-sonnet-x"}, "must be 'fast' or 'strong'"),
+        (
+            {"input": "do it", "model": "claude-sonnet-x"},
+            "must be one of foundation, builder, light",
+        ),
         ({"input": "do it", "reasoning_effort": "max"}, "reasoning_effort must be one of"),
     ],
     ids=["model", "reasoning_effort"],

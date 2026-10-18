@@ -17,6 +17,7 @@ from collections.abc import AsyncIterator, Callable, Iterable, Mapping
 from contextlib import asynccontextmanager
 
 from omnigent.context.labels import is_artifact_chat
+from omnigent.superchat.models.tiers import CATEGORIES, category_of
 from omnigent.util.session_lifecycle import is_session_closed
 
 # ── Default concurrency cap (across all Sub-agent Types, per tree) ────────
@@ -266,13 +267,14 @@ def refuse_subagent_dispatch_override(
     return None
 
 
-# ── Helper model choice: only ``fast`` or ``strong``, the person's Light or Default ────
+# ── Helper model choice: a category, never a model name (ADR 0027) ─────────
 
-#: The two choices a dispatch may name: ``fast`` runs on the person's Light model, ``strong`` on
-#: their Default, per harness, from their connection's own list (Settings, Models; see
-#: :mod:`omnigent.superchat.models.tiers`). With no usable catalog the Helper inherits the parent
-#: session's model. Model ids never appear in prompts or configuration.
-HELPER_MODEL_CHOICES = ("fast", "strong")
+#: A dispatch names a category (:data:`omnigent.superchat.models.tiers.CATEGORIES`): ``light``
+#: (fetch-and-compare), ``builder`` (authoring, the default) or ``foundation`` (judgement), each
+#: the person's pick per harness from their connection's own list (Settings, Models). With no
+#: usable catalog the Helper inherits the parent session's model. Model ids never appear in
+#: prompts or configuration.
+HELPER_DEFAULT_MODEL = "builder"
 HELPER_EFFORT_CHOICES = ("low", "medium", "high")
 
 
@@ -282,13 +284,13 @@ def resolve_helper_dispatch(
     reasoning_effort: str | None,
     tiers: Mapping[str, str | None] | None = None,
 ) -> tuple[str | None, str | None]:
-    """Map a Super Chat dispatch's ``fast``/``strong`` choice to a model id.
+    """Map a Super Chat dispatch's category to a model id.
 
-    :param model: The dispatch's ``model`` argument: ``None``, ``"fast"`` or ``"strong"``.
+    :param model: The dispatch's ``model`` argument: ``None`` or a category (or alias).
     :param reasoning_effort: The dispatch's reasoning level: ``None``, ``low``, ``medium`` or
         ``high``.
-    :param tiers: ``{"fast": id | None, "strong": id | None}``: the person's Light and Default
-        on the harness the Helper runs on; ``None`` when unknown.
+    :param tiers: ``{category: id | None}``: the person's picks on the harness the Helper runs
+        on; ``None`` when unknown.
     :returns: ``(model_id, reasoning_effort)``; ``model_id`` is ``None`` for "inherit the
         parent's model" (no model known for this harness, or no choice made).
     :raises ValueError: When the choice is anything else; the message is shown to the model.
@@ -299,9 +301,12 @@ def resolve_helper_dispatch(
         )
     if model is None:
         return None, reasoning_effort
-    if model in HELPER_MODEL_CHOICES:
-        return (tiers or {}).get(model) or None, reasoning_effort
-    raise ValueError(f"model must be 'fast' or 'strong' in this chat, not {model!r}")
+    category = category_of(model)
+    if category is None:
+        raise ValueError(
+            f"model must be one of {', '.join(CATEGORIES)} in this chat, not {model!r}"
+        )
+    return (tiers or {}).get(category) or None, reasoning_effort
 
 
 # ── Retired Helper types and background model ─────────────────────────────
@@ -324,19 +329,20 @@ def resolve_scheduled_helper(
 ) -> tuple[str, str | None]:
     """The Type and model a scheduled or background Helper really runs with.
 
-    A retired Type runs as ``worker``. Background work runs on the fast tier unless the task
-    names ``fast`` or ``strong``; a Type's own ``config.yaml`` pin still applies on top.
+    A retired Type runs as ``worker``. Background work runs on Light unless the task names a
+    category; a Type's own ``config.yaml`` pin still applies on top.
 
     :param agent_type: The stored Sub-agent Type, e.g. ``"researcher"``.
-    :param model_override: The stored per-run model: ``None``, ``fast``, ``strong`` or a model id.
-    :param tiers: The owner's Light and Default for the harness the resolved Type runs on (the
-        bundle's choice), as for a dispatch.
+    :param model_override: The stored per-run model: ``None``, a category (or alias) or a
+        model id.
+    :param tiers: The owner's picks for the harness the resolved Type runs on (the bundle's
+        choice), as for a dispatch.
     :returns: ``(type, model_override)`` to run with; ``None`` means inherit the parent's model.
     """
     resolved_type = scheduled_helper_type(agent_type)
-    if model_override in HELPER_MODEL_CHOICES or model_override is None:
+    if model_override is None or category_of(model_override) is not None:
         model_override, _ = resolve_helper_dispatch(
-            model=model_override or "fast", reasoning_effort=None, tiers=tiers
+            model=model_override or "light", reasoning_effort=None, tiers=tiers
         )
     return resolved_type, model_override
 

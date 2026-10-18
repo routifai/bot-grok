@@ -88,7 +88,7 @@ def find_or_create_studio(
     """The studio session of *item*'s file, made on first use.
 
     :param item: Any version of the file.
-    :param model_override: The person's Default model for the editor, when known; the
+    :param model_override: The person's Builder model for the editor, when known; the
         Conversation's model otherwise.
     :returns: ``(session_id, created)``.
     :raises LookupError: When the Conversation is gone, or the derived id is another session.
@@ -134,7 +134,7 @@ def find_or_create_studio(
 async def studio_model(
     app_state: Any, agent_store: Any, agent_cache: Any, owner: str | None, parent: Conversation
 ) -> str | None:
-    """The person's Default model on the harness the editor runs on, or ``None`` (inherit)."""
+    """The person's Builder model on the harness the editor runs on, or ``None`` (inherit)."""
     if agent_cache is None or agent_store is None or parent.agent_id is None:
         return None
     try:
@@ -149,9 +149,10 @@ async def studio_model(
         loaded = await asyncio.to_thread(agent_cache.load, agent.id, agent.bundle_location)
         sub = _find_spec_by_name(loaded.spec, STUDIO_TYPE)
         harness = spec_harness(sub if sub is not None else loaded.spec)
-        model = (await tier_models(app_state, owner, harness)).get("strong")
+        # A file editor writes, so it runs on the Builder pick (ADR 0027).
+        model = (await tier_models(app_state, owner, harness)).get("builder")
     except Exception:  # the Conversation's model is a fine fallback
-        _logger.warning("studio: could not resolve the Default model", exc_info=True)
+        _logger.warning("studio: could not resolve the Builder model", exc_info=True)
         return None
     if model and snapshot_serves_model(parent.inference_snapshot, model):
         return model

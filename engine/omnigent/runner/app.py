@@ -25,7 +25,7 @@ import time
 import urllib.parse
 import uuid
 from collections import OrderedDict
-from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine, Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeAlias, cast, overload
 
@@ -47,6 +47,7 @@ import omnigent.superchat.features  # noqa: F401
 from omnigent.context.labels import (
     ARTIFACT_CHAT_LABEL_KEY,
     CONTEXT_MODE_LABEL,
+    PAUSED_LABEL_KEY,
     SCHEDULED_HELPER_LABEL_KEY,
     SUBAGENT_DISPATCH_ID_LABEL_KEY,
     SUBAGENT_LABEL_KEY,
@@ -87,6 +88,8 @@ from omnigent.policies.types import FAIL_CLOSED_PHASES
 from omnigent.process_logging import process_log_reference
 from omnigent.runner import pending_approvals
 from omnigent.runner.mcp_execution_registry import (
+    PAUSED_NOTE,
+    STOPPED_RESULT,
     McpExecutionConflict,
     McpExecutionRegistry,
     McpExecutionResult,
@@ -552,6 +555,10 @@ def _encode_sse_event(event: Mapping[str, object]) -> bytes:
     return f"data: {_json.dumps(event)}\n\n".encode()
 
 
+class _PausedStop(Exception):
+    """A paused Helper's pause expired before its native tool call was evaluated."""
+
+
 async def _evaluate_policy_via_omnigent(
     *,
     server_client: httpx.AsyncClient,
@@ -561,6 +568,7 @@ async def _evaluate_policy_via_omnigent(
     phase: str,
     data: dict[str, Any],
     on_delivery_failure: Callable[[str], Awaitable[None]] | None = None,
+    hold: Callable[[str], Awaitable[bool]] | None = None,
 ) -> None:
     """
     Proxy a policy evaluation request from the harness to the Omnigent server.
@@ -598,6 +606,8 @@ async def _evaluate_policy_via_omnigent(
     :param data: Event data dict for the policy engine.
     :param on_delivery_failure: Called with *conversation_id* when the verdict
         cannot be delivered after retry; wired by callers to cancel the wedged turn.
+    :param hold: The paused-Helper hold (ADR 0027), awaited before a native tool call is
+        evaluated; ``False`` (the pause expired) denies the call.
     """
     # Default verdict on error / non-200 / timeout. Phase-aware: TOOL_CALL
     # fails CLOSED (this round-trip is the authoritative gate for
@@ -613,8 +623,14 @@ async def _evaluate_policy_via_omnigent(
         else None
     )
     verdict_data: _JsonObject | None = None
+    # A paused Helper's native tool call waits here, at its tool boundary.
+    stopped = phase == "PHASE_TOOL_CALL" and hold is not None and not await hold(conversation_id)
+    if stopped:
+        verdict_action, verdict_reason = "POLICY_ACTION_DENY", "Stopped while paused."
 
     try:
+        if stopped:
+            raise _PausedStop
         ap_resp = await server_client.post(
             f"/v1/sessions/{conversation_id}/policies/evaluate",
             json={
@@ -653,6 +669,8 @@ async def _evaluate_policy_via_omnigent(
                 _default_action,
                 extra={"session_id": conversation_id},
             )
+    except _PausedStop:
+        pass
     except Exception:
         _logger.warning(
             "AP policy evaluate failed for %s; defaulting to %s",
@@ -2426,6 +2444,20 @@ def unregister_child_session(child_session_id: str) -> None:
     _child_session_parents.pop(child_session_id, None)
 
 
+def session_status_event(
+    status: str, blocked_on: str | None = None, *, paused: bool = False
+) -> dict[str, object]:
+    """A ``session.status`` event: ``blocked_on`` when the turn waits on something, and
+    ``paused: true`` while a paused Helper is held (its ``superchat.paused`` label is set), so a
+    client reads the flag, never the note's words."""
+    event: dict[str, object] = {"type": "session.status", "status": status}
+    if blocked_on is not None:
+        event["blocked_on"] = blocked_on
+    if paused:
+        event["paused"] = True
+    return event
+
+
 def _session_status_to_task_status(status: object) -> str | None:
     """
     Map a ``session.status`` value to a child summary ``current_task_status``.
@@ -3178,11 +3210,10 @@ def create_runner_app(
         session_id: str,
         status: str,
         blocked_on: str | None = None,
+        *,
+        paused: bool = False,
     ) -> None:
-        event: dict[str, object] = {"type": "session.status", "status": status}
-        if blocked_on is not None:
-            event["blocked_on"] = blocked_on
-        _publish_event(session_id, event)
+        _publish_event(session_id, session_status_event(status, blocked_on, paused=paused))
 
     resource_registry.set_session_status_publisher(_publish_session_status)
 
@@ -5590,6 +5621,86 @@ def create_runner_app(
         if isinstance(target, asyncio.Task):
             await _cancel_active_turn(conv_id, expected_task=target)
 
+    async def _after_pause_hold(conv_id: str, call: Coroutine[Any, Any, Any]) -> Any:
+        """Run a runner-dispatched tool call once a paused Helper is resumed (ADR 0027).
+
+        An expired pause drops the call: the Stop that follows ends the turn waiting on it.
+        """
+        if not await mcp_execution_registry.hold(conv_id):
+            call.close()
+            return None
+        return await call
+
+    def _pause_session(conv_id: str, since: float | None = None) -> bool:
+        """Pause *conv_id* in the registry: held at its next tool boundary, stopped after
+        :data:`PAUSE_LIMIT_S` (counted from *since*, the label's time, when restored)."""
+        return mcp_execution_registry.pause(
+            conv_id,
+            on_hold=lambda sid: _publish_session_status(sid, "running", PAUSED_NOTE, paused=True),
+            on_expired=_stop_paused_helper,
+            since=since,
+        )
+
+    async def _restore_pause(conv_id: str) -> None:
+        """At a Helper's turn start, pause it again from its ``superchat.paused`` label (a
+        runner restart forgets the in-memory pause). Never raises."""
+        if mcp_execution_registry.is_paused(conv_id):
+            return
+        try:
+            if not (await _session_snapshot(conv_id)).parent_session_id:
+                return
+            labels = await _session_labels_for_runner_spawn(
+                server_client=server_client, session_id=conv_id
+            )
+            since = float((labels or {}).get(PAUSED_LABEL_KEY) or 0)
+        except Exception:
+            _logger.warning(
+                "could not read the pause of %s",
+                conv_id,
+                exc_info=True,
+                extra={"session_id": conv_id},
+            )
+            return
+        if since > 0:
+            _pause_session(conv_id, since)
+
+    async def _stop_paused_helper(conv_id: str) -> None:
+        """A Helper paused for :data:`PAUSE_LIMIT_S` unresumed (ADR 0027): stop it as Stop does
+        (the engine's interrupt, which reaches :func:`_cancel_inprocess_turn`), clear its paused
+        label, and tell its Conversation in one runtime notice. Never raises.
+        """
+        from omnigent.superchat.helpers.notices import post_notice
+
+        try:
+            resp = await server_client.get(f"/v1/sessions/{conv_id}", timeout=10.0)
+            info = resp.json() if resp.status_code == 200 else {}
+            stopped = await server_client.post(
+                f"/v1/sessions/{conv_id}/events", json={"type": "interrupt"}, timeout=10.0
+            )
+            if stopped.status_code >= 400:
+                await _cancel_inprocess_turn(conv_id)
+            await server_client.patch(
+                f"/v1/sessions/{conv_id}",
+                json={"labels": {PAUSED_LABEL_KEY: ""}},
+                timeout=10.0,
+            )
+            parent = info.get("parent_session_id") if isinstance(info, dict) else None
+            if isinstance(parent, str) and parent:
+                title = str(info.get("title") or "").strip() or "A helper"
+                await post_notice(
+                    server_client,
+                    parent,
+                    f"{title} was paused for 30 minutes and stopped.",
+                    if_running=False,
+                )
+        except Exception:
+            _logger.warning(
+                "could not stop paused helper %s",
+                conv_id,
+                exc_info=True,
+                extra={"session_id": conv_id},
+            )
+
     async def _resync_turn_state(
         conv_id: str, reason: str, *, owner_response_id: str | None = None
     ) -> None:
@@ -6553,8 +6664,6 @@ def create_runner_app(
             idle_gap_seconds=idle_gap_seconds,
             last_sent=last,
             sent_now=sent_now,
-            # The person's own chats only; a Helper's Brief is its context.
-            recall=not is_helper(tool_labels),
             helper=is_helper(tool_labels),
             # A file's studio: the file line and its write-back instead of the chat's blocks.
             studio=ARTIFACT_CHAT_LABEL_KEY in tool_labels,
@@ -7767,35 +7876,44 @@ def create_runner_app(
                                         )
                                         _dispatch_tasks.append(
                                             _asyncio.create_task(
-                                                dispatch_tool_locally(
-                                                    tool_name=tool_name,
-                                                    call_id=get_call_id(event),
-                                                    arguments=get_arguments(event),
-                                                    response_id=_response_id,
-                                                    harness_client=client,
-                                                    server_client=server_client,
-                                                    terminal_registry=terminal_registry,
-                                                    resource_registry=resource_registry,
-                                                    agent_spec=_spec_for_dispatch,
-                                                    conversation_id=conv_id,
-                                                    task_id=_omnigent_task_id or _response_id,
-                                                    agent_id=_agent_id_for_dispatch,
-                                                    agent_name=cast(str | None, body.get("model")),
-                                                    runner_workspace=_dispatch_workspace,
-                                                    local_tool_workdir=_local_tool_workdir,
-                                                    mcp_manager=cast(
-                                                        "RunnerMcpManager", _dispatch_mcp
+                                                _after_pause_hold(
+                                                    conv_id,
+                                                    dispatch_tool_locally(
+                                                        tool_name=tool_name,
+                                                        call_id=get_call_id(event),
+                                                        arguments=get_arguments(event),
+                                                        response_id=_response_id,
+                                                        harness_client=client,
+                                                        server_client=server_client,
+                                                        terminal_registry=terminal_registry,
+                                                        resource_registry=resource_registry,
+                                                        agent_spec=_spec_for_dispatch,
+                                                        conversation_id=conv_id,
+                                                        task_id=_omnigent_task_id or _response_id,
+                                                        agent_id=_agent_id_for_dispatch,
+                                                        agent_name=cast(
+                                                            str | None, body.get("model")
+                                                        ),
+                                                        runner_workspace=_dispatch_workspace,
+                                                        local_tool_workdir=_local_tool_workdir,
+                                                        mcp_manager=cast(
+                                                            "RunnerMcpManager", _dispatch_mcp
+                                                        ),
+                                                        session_inbox=_session_inboxes.get(
+                                                            conv_id
+                                                        ),
+                                                        session_async_tasks=_session_async_tasks.get(
+                                                            conv_id
+                                                        ),
+                                                        publish_event=_publish_event,
+                                                        filesystem_registry=filesystem_registry,
+                                                        effective_harness=_session_harness_name(
+                                                            conv_id
+                                                        ),
+                                                        labels=await _tool_labels_for_session(
+                                                            conv_id
+                                                        ),
                                                     ),
-                                                    session_inbox=_session_inboxes.get(conv_id),
-                                                    session_async_tasks=_session_async_tasks.get(
-                                                        conv_id
-                                                    ),
-                                                    publish_event=_publish_event,
-                                                    filesystem_registry=filesystem_registry,
-                                                    effective_harness=_session_harness_name(
-                                                        conv_id
-                                                    ),
-                                                    labels=await _tool_labels_for_session(conv_id),
                                                 )
                                             )
                                         )
@@ -7830,6 +7948,7 @@ def create_runner_app(
                                                     _resync_turn_state_on_delivery_failure,
                                                     response_id=_response_id,
                                                 ),
+                                                hold=mcp_execution_registry.hold,
                                             )
                                         )
                                     )
@@ -7970,6 +8089,7 @@ def create_runner_app(
             message_body = dict(body)
             message_body["conversation_id"] = conversation_id
             await _register_scheduled_helper_work(conversation_id)
+            await _restore_pause(conversation_id)
 
             if stream:
                 # The ?stream=true direct-dispatch path bypasses
@@ -8208,6 +8328,16 @@ def create_runner_app(
         if body_type == "stop_session":
             _drop_message_buffer(conversation_id)
             await _cancel_inprocess_turn(conversation_id)
+            return Response(status_code=204)
+
+        if body_type == "pause":
+            # A Helper's pause (ADR 0027): its next tool call waits in the registry.
+            _pause_session(conversation_id)
+            return Response(status_code=204)
+
+        if body_type == "resume":
+            if mcp_execution_registry.resume(conversation_id):
+                _publish_session_status(conversation_id, "running")
             return Response(status_code=204)
 
         if body_type == "context_reset":
@@ -9970,6 +10100,10 @@ def create_runner_app(
             import json as _json
 
             from omnigent.runner.tool_dispatch import execute_tool
+
+            # A paused Helper's call waits here, at its tool boundary (ADR 0027).
+            if not await mcp_execution_registry.hold(session_id):
+                return JSONResponse(status_code=200, content=STOPPED_RESULT)
 
             tool_name = cast(str, params.get("name") or "")
             arguments = cast(_JsonObject, params.get("arguments") or {})

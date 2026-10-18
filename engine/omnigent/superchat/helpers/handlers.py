@@ -2,7 +2,7 @@
 
 The call is translated into the ``sys_session_send`` create-path arguments and run by the same
 function, so session creation, Activity, the wake/result path, the concurrency caps, the nesting
-refusal and the ``fast``/``strong`` model choice are exactly the existing ones.
+refusal and the model category are exactly the existing ones.
 """
 
 from __future__ import annotations
@@ -16,7 +16,8 @@ from pathlib import Path
 from typing import Any
 
 from omnigent.superchat.feature import HandlerCtx, SpawnRequest, resolve_project
-from omnigent.superchat.subagents import HELPER_EFFORT_CHOICES, HELPER_MODEL_CHOICES
+from omnigent.superchat.models.tiers import CATEGORIES, category_of
+from omnigent.superchat.subagents import HELPER_DEFAULT_MODEL, HELPER_EFFORT_CHOICES
 from omnigent.superchat.titles import tidy_request_title
 
 #: A repeat of the same task from the same chat inside this window is the same hand-off.
@@ -141,8 +142,10 @@ def _invalid_input(args: dict[str, Any]) -> str | None:
         return f"does not take {', '.join(sorted(extra))}"
     if args.get("project") is not None and args.get("path") is not None:
         return "takes 'project' or 'path', not both"
-    if args.get("model", "strong") not in HELPER_MODEL_CHOICES:
-        return f"'model' must be one of {', '.join(HELPER_MODEL_CHOICES)}"
+    if not isinstance(model := args.get("model", HELPER_DEFAULT_MODEL), str) or (
+        category_of(model) is None
+    ):
+        return f"'model' must be one of {', '.join(CATEGORIES)}"
     reasoning = args.get("reasoning")
     if reasoning is not None and reasoning not in HELPER_EFFORT_CHOICES:
         return f"'reasoning' must be one of {', '.join(HELPER_EFFORT_CHOICES)}"
@@ -228,7 +231,7 @@ async def handle_start_helper(ctx: HandlerCtx, args: dict[str, Any]) -> str:
                 agent=agent,
                 task=task,
                 title=title,
-                model=args.get("model", "strong"),
+                model=args.get("model", HELPER_DEFAULT_MODEL),
                 reasoning_effort=args.get("reasoning"),
                 file_ids=tuple(args.get("files") or ()),
                 workspace=folder[0] if folder else None,

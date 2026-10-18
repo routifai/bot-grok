@@ -70,6 +70,13 @@ SCHEDULED_FIRE_LABEL_KEY = "omnigent.scheduled_task_id"
 #: sets each to an empty string.
 STATE_CLOSE_LABEL_PREFIX = "omnigent.state_close."
 
+#: Set on a Helper the person paused (ADR 0027): the pause's epoch seconds; empty once resumed.
+PAUSED_LABEL_KEY = "superchat.paused"
+
+#: Prefix of the session labels that hold entries code adds to the working list (a task's
+#: decision, ADR 0027): ``<prefix><tag id>`` = the entry's text. Consumed like a close.
+STATE_ADD_LABEL_PREFIX = "omnigent.state_add."
+
 # Token count at which a rollover session rolls over. Unset falls back to
 # 60% of the model's context window (100k-200k), or 100,000 when unknown
 # (see rollover.resolve_rollover_threshold).

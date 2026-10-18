@@ -20,7 +20,7 @@ The assistant starts one with `start_helper` (`superchat/helpers/tools.py`):
 |---|---|
 | `task` | the whole brief; the helper does not see the conversation |
 | `title` | 3 to 6 words the person would say |
-| `model` | `fast` (the person's Light model) or `strong` (Default, the default) |
+| `model` | `builder` (the default, for writing), `light` (fetch-and-compare) or `foundation` (judgement): the person's pick for that category ([ADR 0027](adr/0027-super-chat-is-an-agentic-layer.md)); `fast` and `strong` are accepted as Light and Foundation for one release |
 | `reasoning` | `low`, `medium` or `high`, or omitted |
 | `files` | uploaded file ids |
 | `project`, `path` | start in another Project's or file's folder |
@@ -40,15 +40,32 @@ Limits:
 - **Concurrency.** 10 live helpers per conversation tree (`OMNIGENT_SUBAGENT_MAX_CONCURRENT`), plus
   each type's `max_sessions`. The count is read from the engine's child-session rows.
 - **Step limit.** A conversation turn may make 3 work tool calls (search and fetch, browser, shell
-  and files, artifact writes); the next is refused with an instruction to hand the rest to a
-  helper (`superchat/step_limit/policy.py`). Memory, cards, scheduling, vault and helper management
-  never count. The person saying "do it here" lifts it for that turn. A turn that is refused
+  and files, artifact writes, and `deck_new`, `deck_theme_set` and `deck_export`); the next is
+  refused with an instruction to hand the rest to a helper (`superchat/step_limit/policy.py`,
+  `superchat/work_tools.py`). Reads (`artifact_list`, `artifact_outline`, `deck_check`,
+  `deck_themes`), memory, cards, scheduling, vault and helper management never count. The person saying "do it here" lifts it for that turn. A turn that is refused
   must start the helper in the same turn; one that ends without it is a stall
   ([ADR 0025](adr/0025-act-by-default-tasks-have-state.md)).
 - **Approvals.** Sending, posting, deleting, spending, uploading and sharing in the person's name
   ask first, for helpers too (`superchat/approvals/`). A helper's ask is shown where the
   conversation's asks show (`GET /v1/me/asks`) and waits up to 7 days; after 120 seconds the parent
   is told the helper is blocked on the person.
+
+## Pause
+
+`POST /v1/sessions/{id}/helpers/pause` and `/resume` on the Conversation (body `{helper_ids?}`,
+default every live helper for pause and every paused one for resume) answer `{paused: [ids]}` or
+`{resumed: [ids]}` ([ADR 0027](adr/0027-super-chat-is-an-agentic-layer.md)). Its runner holds each
+helper at its next tool call, built-in or the harness's own (`McpExecutionRegistry.hold` in
+`runner/mcp_execution_registry.py`), and once it acknowledges, the helper gets the
+`superchat.paused` label; a restarted runner restores the pause from it at the helper's next turn.
+A held helper shows `session.status` `running` with `blocked_on:
+"Paused"`. The Conversation's own turn is never paused. A helper left paused for 30 minutes is
+stopped the way Stop stops it, and the Conversation gets one line: "<title> was paused for 30
+minutes and stopped."
+
+The Conversation reviews a helper's file against the ask with `artifact_outline` (a deck's slides,
+a sheet's headers, or a text file's first 60 lines), offered to the Conversation only.
 
 ## Helper types
 

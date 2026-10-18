@@ -96,6 +96,33 @@ def _agent_name(raw: str) -> str:
     return _SWITCH_SUFFIX_RE.sub("", raw)
 
 
+def find_super_chat(
+    conversation_store: ConversationStore, user_id: str | None, key: str
+) -> Conversation | None:
+    """The caller's Super Chat for its Muse *key* (:func:`muse_key`), or ``None``. Blocking.
+
+    A session carrying the key label and owned by the caller, else the one made under the
+    derived id before its owner grant landed (its id proves whose it is).
+    """
+    ids = conversation_store.find_conversation_ids_by_label(
+        MUSE_KEY_LABEL_KEY, key, limit=_LOOKUP_LIMIT
+    )
+    rows = conversation_store.get_conversations(ids)
+    for session_id in ids:
+        conv = rows.get(session_id)
+        if conv is None or conv.labels.get(MUSE_LABEL_KEY) != "true":
+            continue
+        # Auth disabled (no user): the single local user owns everything.
+        if user_id is None or (
+            conversation_store.get_session_owner(session_id, owner_only=True) == user_id
+        ):
+            return conv
+    made = conversation_store.get_conversation(key)
+    if made is not None and made.labels.get(MUSE_KEY_LABEL_KEY) == key:
+        return made
+    return None
+
+
 def register_muse_routes(
     router: APIRouter,
     *,
@@ -117,27 +144,8 @@ def register_muse_routes(
             return True
         return conversation_store.get_session_owner(session_id, owner_only=True) == user_id
 
-    def _find_sync(user_id: str | None, key: str) -> Conversation | None:
-        ids = conversation_store.find_conversation_ids_by_label(
-            MUSE_KEY_LABEL_KEY, key, limit=_LOOKUP_LIMIT
-        )
-        rows = conversation_store.get_conversations(ids)
-        for session_id in ids:
-            conv = rows.get(session_id)
-            if (
-                conv is not None
-                and conv.labels.get(MUSE_LABEL_KEY) == "true"
-                and _owns(user_id, session_id)
-            ):
-                return conv
-        # Made here but not yet granted (a concurrent first call): its id proves whose it is.
-        made = conversation_store.get_conversation(key)
-        if made is not None and made.labels.get(MUSE_KEY_LABEL_KEY) == key:
-            return made
-        return None
-
     async def _find(user_id: str | None, key: str) -> Conversation | None:
-        return await asyncio.to_thread(_find_sync, user_id, key)
+        return await asyncio.to_thread(find_super_chat, conversation_store, user_id, key)
 
     async def _builtin_agent_id(name: str) -> str:
         agent = await asyncio.to_thread(agent_store.get_by_name, name)

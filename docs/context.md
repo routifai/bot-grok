@@ -34,9 +34,22 @@ In the order the model reads it:
    - the Projects list: one line per `PROJECT.md` card under `~/workspace/projects/`, the 15 most
      recent plus the open one;
    - the memory profile (below);
-   - the recall hint, when the person turned it on (below);
    - attached files' text in an `<attachment_context>` block, framed as data.
 5. **The person's message**, as stored, with any image blocks.
+
+The **context brief** is not in the prefix: it is the result of the Conversation's `context_brief`
+tool ([ADR 0027](adr/0027-super-chat-is-an-agentic-layer.md), `superchat/context_brief/`). The
+runner starts building it when the message is accepted (a Conversation-only `message_prefix` that
+adds no block; a runtime notice starts none) and keeps it per session and message until the turn
+ends or two minutes pass, so the call returns at once and a second call gets the same text. It
+reads, in parallel within 1.5 seconds, what we made before (artifact groups whose name or title
+shares the message's subject words, newest version, the deck's look from its task, who saved it and
+when), the Conversation's open tasks and last five done ones with their decision (the tasks view),
+earlier work (the recall pull with the planner's sub-queries, planned once per message, as at most
+six dated pointers; none with recall off), the top three matching files with their page count, and
+the working list's `p-` lines on the subject (the memory profile is only pointed to). A part that
+fails or is late is left out. It renders as plain lines under four headings, at most 40 lines and
+2,500 characters, fenced as data. Helpers and a file's studio never get it.
 
 The memory profile and Projects blocks go in full on a cold start or when they changed; otherwise
 each is one line ("Standing memory unchanged since the last message."). The per-turn prefix exists
@@ -127,13 +140,13 @@ Finding earlier work is split by cost ([ADR 0016](adr/0016-recall-is-a-bounded-h
   near-duplicates collapse into the newest. Every hit is dated and carries an id for
   `recall_get`: `i_<item>` (a turn), `ep_<passage>` (a journal passage), `f_<file>@<page>`,
   `c_<claim>`. `session_history` still reads exact earlier items of the chat.
-- **The bounded hint.** When the person turns it on (`PUT /v1/me/recall-hint` with
-  `{"recall_hint": "on"}`; off by default), each turn gets at most 8 lines and 300 tokens of dated
-  pointers, never bodies, fenced as data (`superchat/recall_hint/hint.py`). A planner call on the
-  cheap model decides whether anything earlier is needed and writes up to three sub-queries within
-  0.6 seconds; past that, code derives them from the message. The whole hint is built within 1.2
-  seconds or skipped. Turns still in the window are excluded, and nothing is shown when the best
-  score is under the floor or the message is an acknowledgement.
+- **Recall in the context brief.** Nothing from recall is in the per-turn prefix (ADR 0027); the
+  `context_brief` tool carries it. Unless the person turns recall off (`PUT /v1/me/recall-hint`
+  with `{"recall_hint": "off"}`; on by default), a planner call on the cheap model decides once per
+  message whether anything earlier is needed and writes up to three sub-queries within 0.6
+  seconds; past that, code derives them from the message (`superchat/recall_hint/hint.py`,
+  `turn_plan`). Runtime notices, acknowledgements and card picks get no planner call. Turns still
+  in the window are excluded, and nothing is listed when the best score is under the floor.
 
 ## The knowledge index in the host
 

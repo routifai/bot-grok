@@ -69,6 +69,7 @@ from omnigent.superchat.activity.derive import (
     schedule_missing_titles,
 )
 from omnigent.superchat.family.changes import watch_activity_changes
+from omnigent.superchat.tasks.record import plan_reader
 
 
 async def _caller_readable_ids(
@@ -533,6 +534,7 @@ def register_items_routes(
             before=before,
             limit=limit,
             tz=tz,
+            plan_views=plan_reader(request.app.state),
         )
         allowed_ids = await _caller_readable_ids(
             user_id,
@@ -636,6 +638,7 @@ def register_items_routes(
             session_id,
             activity_id,
             tz,
+            plan_reader(request.app.state),
         )
         if activity is None:
             raise _session_not_found()

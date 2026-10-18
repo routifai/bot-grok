@@ -20,12 +20,15 @@ class Scenario:
     :param turns: The turns in order, each a list of events (see :mod:`tests.scenarios.rules`).
     :param max_asks: How many question cards the whole conversation may show.
     :param refusals: How many calls the step limit refuses offline.
+    :param deliverable: ``"deck"`` when the scenario makes a new deck: the live runner then
+        measures the message to its first save, in the turn or in the Helper it started.
     """
 
     name: str
     turns: tuple[tuple[Event, ...], ...]
     max_asks: int = 0
     refusals: int = 0
+    deliverable: str = ""
 
 
 SCENARIOS: tuple[Scenario, ...] = (
@@ -35,14 +38,19 @@ SCENARIOS: tuple[Scenario, ...] = (
             (
                 ("request", "Make a deck from sales.csv for Monday's review"),
                 ("reply", "Building the review deck from sales.csv."),
-                ("plan", ""),
-                ("tool_call", "sys_os_bash"),
-                ("tool_call", "deck_new"),
-                ("tool_call", "deck_check"),
-                ("save", ""),
+                ("tool_call", "context_brief"),
+                ("plan", "brief,helper_done,check_ran"),
+                ("helper_started", ""),
+            ),
+            (
+                ("notice", "result"),
+                ("helper_save", ""),
+                ("check", "deck_check"),
+                ("tool_call", "artifact_outline"),
                 ("reply", "Here is the review deck, in Corporate Clean."),
             ),
         ),
+        deliverable="deck",
     ),
     Scenario(
         "deck-no-look",
@@ -50,12 +58,19 @@ SCENARIOS: tuple[Scenario, ...] = (
             (
                 ("request", "Create some presentation about RBC vs TD"),
                 ("reply", "Building the RBC vs TD comparison deck now."),
-                ("plan", ""),
-                ("tool_call", "deck_new"),
-                ("save", ""),
+                ("tool_call", "context_brief"),
+                ("plan", "brief,helper_done,check_ran"),
+                ("helper_started", ""),
+            ),
+            (
+                ("notice", "result"),
+                ("helper_save", ""),
+                ("check", "deck_check"),
+                ("tool_call", "artifact_outline"),
                 ("reply", "Here is the comparison, in Pitch Deck."),
             ),
         ),
+        deliverable="deck",
     ),
     Scenario(
         "pick-question-continue",
@@ -71,20 +86,27 @@ SCENARIOS: tuple[Scenario, ...] = (
             (
                 ("answer", "Use mock numbers"),
                 ("reply", "Building the Q3 deck with mock numbers."),
-                ("plan", ""),
-                ("tool_call", "deck_new"),
-                ("save", ""),
+                ("tool_call", "context_brief"),
+                ("plan", "brief,helper_done,check_ran"),
+                ("helper_started", ""),
+            ),
+            (
+                ("notice", "result"),
+                ("helper_save", ""),
+                ("check", "deck_check"),
+                ("tool_call", "artifact_outline"),
                 ("reply", "Here is the Q3 deck with mock numbers."),
             ),
         ),
         max_asks=2,
+        deliverable="deck",
     ),
     Scenario(
         "steer-mid-helper",
         (
             (
                 ("request", "Compare five CRM vendors and write it up"),
-                ("plan", ""),
+                ("plan", "helper_done,check_ran"),
                 ("helper_started", ""),
                 ("reply", "I'm comparing the five vendors now."),
             ),
@@ -147,7 +169,7 @@ SCENARIOS: tuple[Scenario, ...] = (
         (
             (
                 ("request", "Write a report on the EU AI Act obligations for our product"),
-                ("plan", ""),
+                ("plan", "helper_done,check_ran"),
                 ("helper_started", ""),
                 ("reply", "I'm working through the obligations."),
             ),
@@ -166,9 +188,10 @@ SCENARIOS: tuple[Scenario, ...] = (
         (
             (
                 ("request", "Build a market-sizing deck for meal kits"),
-                ("plan", ""),
+                ("reply", "I'll size the meal-kit market and build the deck."),
+                ("tool_call", "context_brief"),
+                ("plan", "brief,helper_done,check_ran"),
                 ("helper_started", ""),
-                ("reply", "I'm sizing the market and building the deck."),
             ),
             (
                 ("request", "Also turn last week's notes into a one-page summary"),
@@ -177,17 +200,27 @@ SCENARIOS: tuple[Scenario, ...] = (
                 ("save", ""),
                 ("reply", "Here is the summary; the deck is still being built."),
             ),
+            (
+                ("notice", "result"),
+                ("helper_save", ""),
+                ("check", "deck_check"),
+                ("tool_call", "artifact_outline"),
+                ("reply", "The meal-kit deck is ready."),
+            ),
         ),
+        deliverable="deck",
     ),
     Scenario(
         "cancelled-turn",
         (
             (
                 ("request", "Make a 20-slide deck on the history of banking"),
-                ("plan", ""),
-                ("tool_call", "sys_os_bash"),
+                ("reply", "Building a 20-slide deck on the history of banking."),
+                ("tool_call", "context_brief"),
+                ("plan", "brief,helper_done,check_ran"),
                 ("cancelled", ""),
             ),
         ),
+        deliverable="deck",
     ),
 )

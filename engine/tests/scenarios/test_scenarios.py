@@ -11,9 +11,11 @@ from tests.scenarios.rules import (
     Event,
     as_turn,
     asks,
+    checked,
     ends_well,
     gives_up,
     is_deliverable_turn,
+    plan_spans,
     speaks_first,
 )
 from tests.scenarios.scripts import SCENARIOS, Scenario
@@ -51,6 +53,47 @@ def test_scenario_never_stalls(scenario: Scenario) -> None:
 def test_deliverable_scenario_speaks_first(scenario: Scenario) -> None:
     silent = [index for index, turn in enumerate(run(scenario)) if not speaks_first(turn)]
     assert silent == []
+
+
+@pytest.mark.parametrize(
+    "scenario", [s for s in SCENARIOS if s.deliverable == "deck"], ids=lambda s: s.name
+)
+def test_a_deck_scenarios_plan_ends_on_a_check_that_ran(scenario: Scenario) -> None:
+    spans = plan_spans(run(scenario))
+    assert spans and all(checked(span) for span in spans), spans
+
+
+@pytest.mark.parametrize(
+    ("span", "ok"),
+    [
+        # the Helper built, saved and checked: the check step is done
+        (
+            [
+                ("request", "a deck"),
+                ("tool_call", "context_brief"),
+                ("plan", "brief,helper_done,check_ran"),
+                ("helper_started", ""),
+                ("notice", "result"),
+                ("helper_save", ""),
+                ("check", "deck_check"),
+            ],
+            True,
+        ),
+        # the plan says check, nothing checked: not checked
+        ([("request", "a deck"), ("plan", "brief,check_ran"), ("save", "")], False),
+        # a check before anything was built proves nothing
+        (
+            [("request", "a deck"), ("plan", "check_ran"), ("tool_call", "deck_check")],
+            False,
+        ),
+        ([("request", "a deck"), ("plan", "saved"), ("save", "")], False),  # no check step
+        ([("request", "a deck"), ("plan", "check_ran"), ("cancelled", "")], True),
+        ([("message", "time in Tokyo?"), ("tool_call", "web_search")], True),
+        ([("request", "a deck"), ("tool_call", "deck_new"), ("save", "")], True),  # no plan
+    ],
+)
+def test_checked(span: list[Event], ok: bool) -> None:
+    assert checked(span) is ok
 
 
 # The conversation in ADR 0025's opening: four turns, nothing built.

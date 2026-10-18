@@ -14,8 +14,15 @@ from typing import Any
 from urllib.parse import quote
 
 from omnigent.superchat._handler_http import HEX_ID_RE, error, finish, resolve_caller
-from omnigent.superchat.artifact_kinds import KIND_MIME, MAX_ARTIFACT_BYTES, kind_for_name
+from omnigent.superchat.artifact_kinds import (
+    KIND_MIME,
+    MAX_ARTIFACT_BYTES,
+    is_deck_name,
+    kind_for_name,
+)
+from omnigent.superchat.decks.outline import deck_outline
 from omnigent.superchat.feature import HandlerCtx
+from omnigent.superchat.sheets.table import TABLE_KINDS, read_table
 
 
 def workspace_roots() -> list[Path]:
@@ -88,6 +95,8 @@ async def handle_artifact_tool(ctx: HandlerCtx, args: dict[str, Any]) -> str:
             resp = await caller.client.delete(f"/v1/artifacts/{artifact_id}", timeout=30.0)
         elif tool_name == "artifact_patch":
             return await _patch(caller.client, caller.conversation_id, args)
+        elif tool_name == "artifact_outline":
+            return await _outline(caller.client, args)
         else:
             saver = caller.conversation_id if caller.is_helper else None
             return await _save(caller.client, chat_id, args, saver)
@@ -232,3 +241,80 @@ async def _patch(client: Any, studio_id: str, args: dict[str, Any]) -> str:
             except Exception:  # noqa: BLE001 - the version is saved; the next read refreshes
                 pass
     return json.dumps({"type": "artifact", **saved})
+
+
+#: Lines of a text file the outline shows, and the characters they may take.
+OUTLINE_LINES = 60
+OUTLINE_MAX_CHARS = 4000
+_TEXT_KINDS = frozenset({"html", "md", "txt", "json"})
+#: Characters of one sheet header cell shown.
+_HEADER_CELL = 40
+
+
+def _sheet_headers(data: bytes, kind: str) -> str:
+    lines: list[str] = []
+    for sheet in read_table(data, kind):
+        rows = sheet.get("rows") or []
+        cells = [
+            str(c.get("v") if c.get("v") is not None else "") for c in (rows[0] if rows else [])
+        ]
+        header = " | ".join(c.strip()[:_HEADER_CELL] for c in cells)
+        size = f"{sheet.get('n_rows', 0)} rows, {sheet.get('n_cols', 0)} columns"
+        lines.append(f"{sheet.get('name')} ({size}): {header or '(empty)'}")
+    return "Sheets and their headers:\n" + "\n".join(lines)[:OUTLINE_MAX_CHARS]
+
+
+def outline_text(name: str, kind: str, data: bytes) -> str:
+    """A saved file's outline (ADR 0027): a deck's slides, a sheet's headers, or its first lines.
+
+    :param name: The file name (a ``*.deck.html`` is a deck).
+    :param kind: The artifact kind.
+    :param data: The newest version's bytes.
+    :returns: The outline text, bounded.
+    """
+    if kind == "html" and is_deck_name(name):
+        outline = deck_outline(data)
+        if outline:
+            return outline
+    if kind in TABLE_KINDS:
+        try:
+            return _sheet_headers(data, kind)
+        except Exception:  # noqa: BLE001 - an unreadable sheet still gets an answer
+            return f"{name} could not be read as a sheet."
+    if kind in _TEXT_KINDS:
+        lines = data.decode("utf-8", "replace").splitlines()
+        head = "\n".join(lines[:OUTLINE_LINES])[:OUTLINE_MAX_CHARS]
+        more = len(lines) - OUTLINE_LINES
+        tail = f"\n… ({more} more lines)" if more > 0 else ""
+        return f"First lines of {name}:\n{head}{tail}"
+    return f"{name} is a {kind} file; it has no text outline."
+
+
+async def _outline(client: Any, args: dict[str, Any]) -> str:
+    """``artifact_outline``: the newest version's outline, read through the engine."""
+    artifact_id = args.get("artifact_id")
+    if not isinstance(artifact_id, str) or not HEX_ID_RE.match(artifact_id):
+        return error("artifact_outline requires a valid artifact_id")
+    meta = await client.get(f"/v1/artifacts/{artifact_id}", timeout=30.0)
+    if meta.status_code >= 400:
+        return finish(meta)
+    item = meta.json()
+    versions = [v.get("version") for v in item.get("all_versions") or []]
+    newest = max((v for v in versions if isinstance(v, int)), default=item.get("version"))
+    url = f"/v1/artifacts/{artifact_id}/content"
+    if isinstance(newest, int):
+        url += f"?version={newest}"
+    content = await client.get(url, timeout=60.0)
+    if content.status_code >= 400:
+        return finish(content)
+    name = str(item.get("name") or "")
+    kind = str(item.get("kind") or kind_for_name(name) or "")
+    outline = await asyncio.to_thread(outline_text, name, kind, content.content)
+    return json.dumps(
+        {
+            "artifact_id": item.get("group_id") or artifact_id,
+            "name": name,
+            "version": newest,
+            "outline": outline,
+        }
+    )

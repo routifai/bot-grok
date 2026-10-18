@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import copy
+from collections.abc import Mapping
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 
+from omnigent.context.labels import SUBAGENT_LABEL_KEY, is_artifact_chat, is_superside_chat
 from omnigent.entities import Conversation
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.inference_config import (
@@ -149,8 +151,8 @@ async def prepare_create_inference(
         served = {row["id"] for row in catalog.get("models", [])}
         if model_override is not None and model_override not in served:
             model_override = parent.model_override if parent.model_override in served else None
-    else:
-        preferred = await user_default_model(request, user_id, harness)
+    elif follows_person_picks(getattr(body, "labels", None)):
+        preferred = await user_default_model(request, user_id, harness, catalog)
     selected = selected_catalog_model(catalog, model_override, preferred)
     return snapshot, selected
 
@@ -166,15 +168,29 @@ def snapshot_serves_model(snapshot: dict[str, Any] | None, model: str) -> bool:
     return model in {row["id"] for row in catalog["models"]}
 
 
-async def user_default_model(request: Request, user_id: str | None, harness: str) -> str | None:
-    """The caller's saved default model for *harness*, if any."""
-    from omnigent.server.auth import RESERVED_USER_LOCAL
+def follows_person_picks(labels: Mapping[str, str] | None) -> bool:
+    """Whether a session runs on its owner's Foundation pick: a Super Chat itself, never a
+    Helper or a file's studio chat. Every other session starts on the connection's default."""
+    return (
+        is_superside_chat(labels)
+        and SUBAGENT_LABEL_KEY not in (labels or {})
+        and not is_artifact_chat(labels)
+    )
 
-    store = getattr(request.app.state, "model_preference_store", None)
-    if store is None:
+
+async def user_default_model(
+    request: Request, user_id: str | None, harness: str, catalog: dict[str, Any] | None = None
+) -> str | None:
+    """The caller's Foundation model for *harness*: resolved against *catalog* (their pick when
+    it serves it, else the automatic choice), or their raw pick when no catalog is given.
+
+    Answered by ``app.state.foundation_model`` (the Super Chat models feature installs it);
+    ``None`` without it.
+    """
+    resolve = getattr(request.app.state, "foundation_model", None)
+    if resolve is None:
         return None
-    defaults = await asyncio.to_thread(store.get, user_id or RESERVED_USER_LOCAL)
-    return defaults.get(normalize_inference_harness(harness))
+    return await resolve(user_id, normalize_inference_harness(harness), catalog)
 
 
 async def preview_inference(
@@ -217,14 +233,33 @@ async def preview_inference(
 
 
 async def validate_saved_selection(
-    request: Request, conversation: Conversation, model: str | None
+    request: Request,
+    conversation: Conversation,
+    model: str | None,
+    *,
+    foundation: bool = False,
+    user_id: str | None = None,
 ) -> str | None:
-    """Recheck availability using saved provider/credential identity, never current defaults."""
+    """Recheck availability using saved provider/credential identity.
+
+    With no *model*: *user_id*'s Foundation on the session's harness when *foundation* is set and
+    the session follows its owner's picks (:func:`follows_person_picks`), resolved against the
+    saved catalog; else the catalog's own default.
+    """
     snapshot = conversation.inference_snapshot
     if not configured_snapshot(snapshot):
         return model
+    assert snapshot is not None
     catalog = await inference_service(request).catalog(snapshot)
-    return selected_catalog_model(catalog, model)
+    preferred = None
+    if (
+        model is None
+        and foundation
+        and follows_person_picks(conversation.labels)
+        and catalog.get("status") == "ready"
+    ):
+        preferred = await user_default_model(request, user_id, snapshot["harness"], catalog)
+    return selected_catalog_model(catalog, model, preferred)
 
 
 def create_sandbox_inference_router(

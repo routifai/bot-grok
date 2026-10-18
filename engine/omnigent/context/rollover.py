@@ -564,6 +564,7 @@ async def build_rollover_item(
     conversation_id: str | None = None,
     cause: CheckpointCause = "size",
     pending_closes: Mapping[str, str] | None = None,
+    pending_entries: Mapping[str, str] | None = None,
 ) -> CompactionData:
     """
     Build the next rollover compaction item: a rolling summary + recent tail.
@@ -602,6 +603,8 @@ async def build_rollover_item(
         (:func:`checkpoint_header`).
     :param pending_closes: ``{tag id: reason}`` closes the person asked for since the previous
         checkpoint; applied to the state file by code (see ``context/state_file.py``).
+    :param pending_entries: ``{tag id: text}`` entries code added since then (a task's
+        decision); written into the state file by code.
     :returns: A new :class:`CompactionData` ready to be posted as a
         ``compaction`` item. Besides the summary it carries the journal lines the summarizer
         wrote, the refs of the whole window (code-written, put on every journal line), the
@@ -641,6 +644,7 @@ async def build_rollover_item(
         strip_checkpoint_header(previous_summary) if previous_summary else None,
         state_text,
         closes=pending_closes,
+        adds=pending_entries,
         today=today,
         count=lambda text: count_tokens(_summary_exchange(text)[1:], model),
     )

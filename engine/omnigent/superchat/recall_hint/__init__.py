@@ -1,9 +1,10 @@
-"""Recall hint: a few dated pointers to earlier work prepended to a turn, when the owner wants it.
+"""Recall for the context brief: the per-message planner and the ``recall_hint`` setting.
 
-Layout: ``planner`` (the cheap model call and its code fallback), ``hint`` (search, the block,
-the caps; runner side, called from ``prompt_prefix``), ``preference`` (the ``recall_hint``
-setting and ``/v1/me/recall-hint``), this module (registration). It adds no tool: the pull path
-is the ``recall`` tool.
+Layout: ``planner`` (the cheap model call and its code fallback), ``hint`` (the shared per-message
+plan, the search, the pointer line; runner side, read by the context brief), ``preference`` (the
+``recall_hint`` setting and ``/v1/me/recall-hint``: on by default, ADR 0027), this module
+(registration). Nothing goes in the turn prefix and it adds no tool: the brief carries what it
+finds, and the pull path is the ``recall`` tool.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 from omnigent.superchat.feature import Feature, InstallDeps, ToolManagerCtx
+from omnigent.superchat.recall_hint.hint import forget_turn
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -41,4 +43,4 @@ def _install(app: FastAPI, deps: InstallDeps) -> None:
     )
 
 
-FEATURE = Feature(name="recall_hint", tools=_tools, install=_install)
+FEATURE = Feature(name="recall_hint", tools=_tools, on_turn_end=forget_turn, install=_install)

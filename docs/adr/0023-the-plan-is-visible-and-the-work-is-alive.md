@@ -30,3 +30,7 @@ ADR 0022 made the assistant talk while helpers work. In use, the reply still rea
 - The strip reads the turn's outcome: a failed or cancelled turn says so on the plan path too, and the running step is checked only on a normal finish. The engine has no cancel marker, so a settled reply with no text, no error and no question reads as cancelled.
 - The strip's live clock and the header pill count from the same server time, offset-corrected, so they agree before and after a reload; a helper the activity feed does not list settles after a minute unless the turn runs.
 - Reduced motion also stops the step, flag and pill entry animations; the static edge stays.
+
+## Update: the engine ticks the plan (ADR 0027, 2026-10-17)
+
+The model renders the plan once with an `active` form, an owner and a done criterion per step; the engine moves steps from evidence it holds (a helper started or finished, a check that ran, a save). A step the model marks done without evidence reads as not done; a check with no action reads "Not checked". The session panel shows the same plan while work runs; the strip stays the compact view, so "the plan in the activity panel: rejected" above becomes "one plan, two views".

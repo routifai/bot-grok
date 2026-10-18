@@ -177,6 +177,14 @@ def hand_edit_line(
     return format_line(date, f"{text}: {detail}" if detail else text, origin, refs)
 
 
+def journal_line(
+    conversation_id: str, text: str, *, refs: Mapping[str, list[str]] | None = None
+) -> tuple[str, str]:
+    """:returns: ``(date, line)``: a line of today's journal from the Conversation, e.g. a task's
+    decision (ADR 0027)."""
+    return format_line(today(), text, Origin("main", conversation_id), refs)
+
+
 def state_text_of(summary: str | None) -> str:
     """:returns: The state file text of a stored checkpoint summary, without its header."""
     return strip_checkpoint_header(summary or "").strip()

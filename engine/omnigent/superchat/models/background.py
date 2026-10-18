@@ -40,8 +40,8 @@ _CACHE_SECONDS = 60
 
 def background_harness(bindings: list[str], picks: ModelPicks) -> str | None:
     """The harness whose models background work uses: the first bound harness the person
-    picked a Light model for, else one they picked a Default for, else the first bound one."""
-    for chosen in (picks.light, picks.defaults):
+    picked a Light model for, else one they picked a Foundation for, else the first bound one."""
+    for chosen in (picks.light, picks.foundation):
         for harness in bindings:
             if chosen.get(harness):
                 return harness

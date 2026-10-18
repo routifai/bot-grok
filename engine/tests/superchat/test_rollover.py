@@ -772,6 +772,44 @@ async def test_the_posted_body_carries_the_new_payload_fields() -> None:
     assert client.patched == []
 
 
+@dataclass
+class _LabelsServerClient(_FakeServerClient):
+    """The items route plus the labels route, whose labels can change mid-checkpoint."""
+
+    labels: dict[str, str] = field(default_factory=dict)
+
+    async def get(self, url: str, **kwargs: Any) -> _FakeResponse:
+        if url.endswith("/labels"):
+            return _FakeResponse(200, {"labels": self.labels})
+        return await super().get(url, **kwargs)
+
+
+@pytest.mark.asyncio
+async def test_a_decision_is_written_and_cleared_unless_a_newer_one_came_meanwhile() -> None:
+    key_a, key_b = "omnigent.state_add.d-q3-deck", "omnigent.state_add.d-budget"
+    labels = {**_SUPERSIDE, key_a: "Q3 deck (deck): 8 slides, checked", key_b: "Budget: checked"}
+    client = _LabelsServerClient(
+        items=[_msg("u1", "user", "hi"), _msg("a1", "assistant", "hello")],
+        # The Q3 deck was decided again while the summary was being written.
+        labels={key_a: "Q3 deck (deck): 9 slides, checked", key_b: "Budget: checked"},
+    )
+
+    ok = await roll_over_session(
+        "conv_1",
+        labels=labels,
+        model="gpt-4o",
+        server_client=client,  # type: ignore[arg-type]
+        llm_client=_ReturnsTextClient("- [t-a] A"),
+    )
+
+    assert ok is True
+    summary = client.posted[0]["data"]["summary"]
+    assert "[d-q3-deck · " in summary and "Q3 deck (deck): 8 slides, checked" in summary
+    assert "Budget: checked" in summary
+    # Only the unchanged label is cleared; the newer decision waits for the next checkpoint.
+    assert client.patched == [{"labels": {key_b: ""}}]
+
+
 # ── state_close tool ────────────────────────────────────────────────────────
 
 

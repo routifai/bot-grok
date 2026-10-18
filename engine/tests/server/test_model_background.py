@@ -25,17 +25,17 @@ DEFAULT_TEMPLATE = Path(__file__).resolve().parents[3] / "deployment/engine/conf
 
 
 def _with_picks(state: SimpleNamespace, light: dict, defaults: dict | None = None):
-    picks = ModelPicks(defaults=defaults or {}, light=light)
+    picks = ModelPicks(foundation=defaults or {}, light=light)
     state.model_preference_store = SimpleNamespace(read=lambda _owner: picks)
     return state
 
 
-def test_the_harness_is_the_one_with_a_light_pick_else_a_default_else_the_first() -> None:
+def test_the_harness_is_the_one_with_a_light_pick_else_a_foundation_else_the_first() -> None:
     bound = ["claude-sdk", "pi"]
     assert background_harness(bound, ModelPicks()) == "claude-sdk"
-    assert background_harness(bound, ModelPicks(defaults={"pi": "x"})) == "pi"
+    assert background_harness(bound, ModelPicks(foundation={"pi": "x"})) == "pi"
     assert background_harness(
-        bound, ModelPicks(defaults={"pi": "x"}, light={"claude-sdk": "y"})
+        bound, ModelPicks(foundation={"pi": "x"}, light={"claude-sdk": "y"})
     ) == ("claude-sdk")
     assert background_harness([], ModelPicks()) is None
 

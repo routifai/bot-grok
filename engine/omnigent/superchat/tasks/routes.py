@@ -2,8 +2,10 @@
 
 ``GET`` is what a turn and ``deck_new`` read (:meth:`TaskService.view`). ``POST .../events``
 carries one event the runner saw: a tool's result (``deck_new``, ``artifact_save``,
-``start_helper``) or the end of a Conversation turn (``turn_end``); the server decides what it
-does to the record.
+``start_helper``), a ``plan`` card shown, a result that is evidence for a plan item
+(``evidence``: a brief, a read, a check) or the end of a Conversation turn (``turn_end``); the
+server decides what it does to the record. ``turn_start`` and ``turn_end`` answer with every task
+they closed (``closed``); a ``GET`` never changes a task.
 """
 
 from __future__ import annotations
@@ -24,7 +26,10 @@ EVENTS = {
     "deck_new": TaskService.deck_built,
     "artifact_save": TaskService.saved,
     "start_helper": TaskService.helper_started,
+    "turn_start": TaskService.turn_started,
     "turn_end": TaskService.turn_ended,
+    "plan": TaskService.plan_rendered,
+    "evidence": TaskService.evidence,
 }
 
 
@@ -63,7 +68,11 @@ def create_tasks_router(
             raise OmnigentError(
                 f"event must be one of {', '.join(EVENTS)}", code=ErrorCode.INVALID_INPUT
             )
-        task = await asyncio.to_thread(apply, service, session_id, body)
-        return {"task": task.to_wire() if task is not None else None}
+        result = await asyncio.to_thread(apply, service, session_id, body)
+        if isinstance(result, list):
+            # A turn's start or end: every task it closed (the runner journals each decision).
+            closed = [task.to_wire() for task in result]
+            return {"task": closed[0] if closed else None, "closed": closed}
+        return {"task": result.to_wire() if result is not None else None}
 
     return router

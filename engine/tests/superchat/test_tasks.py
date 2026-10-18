@@ -198,6 +198,11 @@ def _ask(
 
 @pytest.fixture()
 def env(db_uri: str):
+    return make_env(db_uri)
+
+
+def make_env(db_uri: str):
+    """A task service behind its routes, and a Conversation: ``(client, service, store, id)``."""
     conversations = SqlAlchemyConversationStore(db_uri)
     service = TaskService(SqlAlchemyTaskStore(db_uri), conversations)
     app = FastAPI()
@@ -246,7 +251,12 @@ def test_a_deck_builds_in_its_turn_and_is_done_when_the_saving_turn_ends(env) ->
     # a save does not close the task; the turn that saved it does
     assert saved["id"] == built["id"] and saved["status"] == "building"
     assert saved["artifact_group_ids"] == ["g1"]
-    assert _event(client, chat, event="turn_end") is None
+    # the turn's end answers with the task it closed, and its decision line
+    closed = _event(client, chat, event="turn_end")
+    assert closed["id"] == built["id"] and closed["status"] == "done"
+    assert (
+        closed["fields"]["decision"] == "RBC vs TD (deck): look Pitch Deck, 6 slides, not checked"
+    )
     assert _view(client, chat)["tasks"] == []
     # a later save of the same file stays on that task
     again = _event(client, chat, event="artifact_save", name="renamed.deck.html", group_id="g1")
@@ -313,6 +323,9 @@ def test_a_helper_works_on_its_task_its_saves_are_drafts_and_its_finish_closes_i
     )
     view = _view(client, chat)
     assert view["tasks"] == [] and view["by_person"] is False
+    # a read never closes it: the turn's start does
+    assert service.store.list(chat)[0].status == "building"
+    _event(client, chat, event="turn_start")
     assert service.store.list(chat)[0].status == "done"
     scheduled = _helper(conversations, chat, **{SCHEDULED_HELPER_LABEL_KEY: "t1"})
     assert _view(client, scheduled)["background"] is True
@@ -325,6 +338,8 @@ def test_a_failed_helper_reopens_its_task(env) -> None:
     assert (started["kind"], started["title"]) == ("deck", "Sales deck")
     conversations.set_session_live_status(helper, "failed")
     assert _view(client, chat)["tasks"][0]["status"] == "open"
+    assert service.store.list(chat)[0].status == "building"
+    _event(client, chat, event="turn_start")
     assert service.store.list(chat)[0].status == "open"
 
 
@@ -369,7 +384,7 @@ def _answer_message(conversations, chat: str, service: TaskService, answer: dict
     )
     conv = conversations.get_conversation(chat)
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(orchestration, "ON_MESSAGE_CONTEXT", {"tasks": service.card_answered})
+        patch.setattr(orchestration, "ON_MESSAGE_CONTEXT", {"tasks": service.message_context})
         return asyncio.run(orchestration._persist_user_event_item(chat, conv, body, conversations))
 
 
@@ -540,7 +555,13 @@ async def test_tool_results_and_the_turns_end_reach_the_server_in_order() -> Non
     assert posted == [
         {"event": "deck_new", "title": "T", "look": "Nord", "written": True},
         {"event": "start_helper", "helper_id": "h1", "title": "Research"},
-        {"event": "artifact_save", "name": "t.deck.html", "title": None, "group_id": "g1"},
+        {
+            "event": "artifact_save",
+            "name": "t.deck.html",
+            "title": None,
+            "group_id": "g1",
+            "artifact_id": "a1",
+        },
         {"event": "turn_end"},
     ]
     # a turn with no task and no task event tells the server nothing at its end

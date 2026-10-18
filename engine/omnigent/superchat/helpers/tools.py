@@ -9,7 +9,8 @@ from __future__ import annotations
 from typing import Any
 
 from omnigent.superchat.helpers.notices import RAISE_FLAG_TOOL_NAME, REPORT_PROGRESS_TOOL_NAME
-from omnigent.superchat.subagents import HELPER_EFFORT_CHOICES, HELPER_MODEL_CHOICES
+from omnigent.superchat.models.tiers import CATEGORIES
+from omnigent.superchat.subagents import HELPER_DEFAULT_MODEL, HELPER_EFFORT_CHOICES
 from omnigent.tools.base import Tool
 
 START_HELPER_TOOL_NAME = "start_helper"
@@ -59,11 +60,12 @@ class StartHelperTool(Tool):
                         },
                         "model": {
                             "type": "string",
-                            "enum": list(HELPER_MODEL_CHOICES),
-                            "default": "strong",
+                            "enum": list(CATEGORIES),
+                            "default": HELPER_DEFAULT_MODEL,
                             "description": (
-                                "fast: lookups, extraction, form filling. strong: judgment, "
-                                "synthesis, writing."
+                                "builder (the default): writing decks, pages, documents, "
+                                "sheets. light: fetch-and-compare, lookups, extraction. "
+                                "foundation: only for judgement."
                             ),
                         },
                         "reasoning": {

@@ -664,3 +664,34 @@ def lowered_idle_thresholds(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(terminal_module, "_IDLE_POLL_INTERVAL_SECONDS", 0.1)
     monkeypatch.setattr(terminal_module, "_IDLE_MARKER_SUBSTRINGS", [])
     monkeypatch.setattr(terminal_module, "_IDLE_MARKER_THRESHOLD_SECONDS", 0.4)
+
+
+@pytest.fixture(autouse=True)
+def _reset_server_globals() -> Generator[None, None, None]:
+    """
+    Reset the server's process-global stores and caches after every test.
+
+    Installing the superchat features binds the app's approvals store,
+    ``ModelBudgets``, ``SuspensionStore`` and ``ModelEmbeddings`` to module
+    globals so the policy builder and the proxy can find them without an app
+    handle, and the session routes keep a host-launch cache keyed by session
+    id. A test that builds an app leaves them for the rest of its xdist
+    worker; the approvals policy then applies to every unknown conversation,
+    the owner budget policy to every owner with a limit, and a fixed id such
+    as ``conv_1`` reads another test's launch stage.
+
+    The binders are imported before the test runs: a test may wipe
+    ``omnigent`` from ``sys.modules`` to simulate a missing package.
+    """
+    from omnigent.server.routes.sessions import _session_sandbox_status_cache
+    from omnigent.superchat.approvals.policy import configure_store
+    from omnigent.superchat.models.budget import bind_budgets
+    from omnigent.superchat.models.embeddings import bind_embeddings
+    from omnigent.superchat.models.org import bind_suspensions
+
+    yield
+    configure_store(None)
+    bind_budgets(None)
+    bind_suspensions(None)
+    bind_embeddings(None)
+    _session_sandbox_status_cache.clear()

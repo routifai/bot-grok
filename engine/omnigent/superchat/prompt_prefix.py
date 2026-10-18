@@ -29,7 +29,6 @@ from omnigent.superchat.projects.block import PROJECTS_OPEN, projects_block
 from omnigent.superchat.projects.choice import MOVED_NOTE
 from omnigent.superchat.recall_hint.hint import FOOTER as HINT_FOOTER
 from omnigent.superchat.recall_hint.hint import HEADER as HINT_HEADER
-from omnigent.superchat.recall_hint.hint import recall_hint_block
 
 if TYPE_CHECKING:
     from omnigent.superchat.feature import Feature
@@ -197,17 +196,16 @@ async def turn_prefix_blocks(
     idle_gap_seconds: float | None = None,
     last_sent: Mapping[str, str] | None = None,
     sent_now: dict[str, str] | None = None,
-    recall: bool = False,
     studio: bool = False,
     helper: bool = False,
 ) -> list[str]:
     """The blocks to prepend to a Super Chat turn, in application order.
 
     Each block is prepended in turn, so the last one ends up first: ``[message blocks (the files
-    it attaches), recall hint (when any), memory profile (when any), Projects (when any), feature
-    notes such as hand edits (when any), local time]`` renders as local time, then the feature
-    notes, then the Projects, then the profile, then the recall hint, then the message blocks,
-    then the person's message.
+    it attaches), memory profile (when any), Projects (when any), feature notes such as hand edits
+    (when any), local time]`` renders as local time, then the feature notes, then the Projects,
+    then the profile, then the message blocks, then the person's message. Nothing from recall:
+    earlier work reaches the model through the ``context_brief`` tool (ADR 0027).
 
     :param workspace: The session's current working directory (marks the open Project).
     :param message_texts: Text parts of the turn's own message; features build blocks from them
@@ -219,13 +217,11 @@ async def turn_prefix_blocks(
         ``None`` (a cold start, or anything unproven) sends every block in full.
     :param sent_now: Filled with the hashes of the profile and Projects blocks this turn
         carries, for the caller to remember once the turn completes.
-    :param recall: Whether this chat may get the recall hint (the owner's setting decides, see
-        :mod:`omnigent.superchat.recall_hint`). It is built alongside the other fetches.
     :param helper: The session is a Helper: no Conversation-only message blocks (tasks). A
         file's studio is treated the same way.
     :param studio: The session is a file's studio (ADR 0024): its turn gets the memory profile,
-        the file line and this file's write-back notes only (no Projects, no recall hint, no
-        feature notes, no Conversation artifact hint).
+        the file line and this file's write-back notes only (no Projects, no feature notes, no
+        Conversation artifact hint).
     """
     # Every block is an independent read: fetch them together (ADR 0026: the prefix is paid on
     # every turn), then assemble them in the documented order.
@@ -245,21 +241,16 @@ async def turn_prefix_blocks(
             )
         blocks.extend(studio_blocks)
         return blocks
-    message_blocks, recalled, profile, projects, feature_blocks, local_time = await asyncio.gather(
+    message_blocks, profile, projects, feature_blocks, local_time = await asyncio.gather(
         _message_prefix_blocks(server_client, conversation_id, message_texts, helper)
         if message_texts
         else _no_blocks(),
-        recall_hint_block(server_client, conversation_id, workspace, message_texts)
-        if recall and message_texts
-        else _no_block(),
         fetch_memory_profile(server_client, conversation_id),
         asyncio.to_thread(_safe_projects_block, workspace),
         _feature_prefix_blocks(server_client, conversation_id),
         fetch_local_time_line(server_client),
     )
     blocks = list(message_blocks)
-    if recalled:
-        blocks.append(recalled)
     if profile:
         blocks.append(
             _delta_block("profile", profile, PROFILE_UNCHANGED_LINE, last_sent, sent_now)
@@ -279,14 +270,11 @@ async def _no_blocks() -> list[str]:
     return []
 
 
-async def _no_block() -> str | None:
-    return None
-
-
 #: The blocks that span lines, as (how one starts, what ends it). Projects end at the ``]`` that
 #: closes the block, the one followed by the blank line before the next block.
 _FENCED_BLOCKS = (
     (PROFILE_BLOCK_HEADER, PROFILE_BLOCK_FOOTER),
+    # The recall hint block an older turn carried (before ADR 0027).
     (HINT_HEADER, "\n" + HINT_FOOTER),
     (ATTACHMENT_OPEN, ATTACHMENT_REMINDER),
     (PROJECTS_OPEN, "]\n\n"),

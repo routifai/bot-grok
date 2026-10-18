@@ -28,7 +28,7 @@ import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 
-from omnigent.context.labels import STATE_CLOSE_LABEL_PREFIX
+from omnigent.context.labels import STATE_ADD_LABEL_PREFIX, STATE_CLOSE_LABEL_PREFIX
 
 #: Token budget of the rendered state file.
 STATE_FILE_BUDGET_TOKENS = 4_000
@@ -44,6 +44,8 @@ JOURNAL_MAX_LINES = 10
 JOURNAL_LINE_MAX_CHARS = 300
 #: Longest reason kept for a ``state_close``, so a label value (256 chars) always holds it.
 CLOSE_REASON_MAX_CHARS = 200
+#: Longest text of an entry code adds through a label (:func:`entry_label_key`).
+ADDED_ENTRY_MAX_CHARS = 250
 #: Longest tag id ``state_close`` accepts; the label key (128 chars) holds the prefix plus it.
 TAG_ID_MAX_CHARS = 64
 #: Days without a touch after which an open entry renders ``stale?``.
@@ -219,6 +221,22 @@ def apply_closes(
         new = _swap(new, tag, closed) if present else _insert(new, [closed])
         applied.append({"tag": tag, "reason": reason})
     return new, applied
+
+
+def append_entry(lines: list[Line], entry_id: str, body: str, *, today: str) -> list[Line]:
+    """*lines* with an open entry ``[entry_id · today] body``: added after the last entry, or put
+    in place of the entry that has that id (a newer decision on the same subject replaces it).
+
+    :param entry_id: A tag id (``d-``, ``t-``, ``o-`` or ``p-``), already normalized.
+    :param body: The entry's text, on one line.
+    :returns: The new lines; *lines* is not changed.
+    """
+    text = " ".join(body.split())[:ENTRY_MAX_CHARS]
+    entry = Entry(entry_id, today, False, None, text, "- ", "")
+    entry = replace(entry, line=_render_entry(entry))
+    if entry_id in entries(lines):
+        return _swap(lines, entry_id, entry)
+    return _insert(lines, [entry])
 
 
 def repair(previous: list[Line], new: list[Line]) -> tuple[list[Line], int]:
@@ -397,6 +415,7 @@ def reconcile(
     new_text: str,
     *,
     closes: Mapping[str, str] | None = None,
+    adds: Mapping[str, str] | None = None,
     today: str,
     count: Callable[[str], int],
     budget: int = STATE_FILE_BUDGET_TOKENS,
@@ -411,12 +430,15 @@ def reconcile(
     :param previous_text: The previous state file (no checkpoint header), or ``None``.
     :param new_text: The summarizer's state file (no journal section).
     :param closes: Pending ``{id: reason}`` closes.
+    :param adds: Pending ``{id: text}`` entries code adds (:func:`append_entry`), after the closes.
     :param today: ISO date for entries the code touches.
     :param count: Token counter for a text.
     :param budget: Token budget of the rendered file.
     """
     before = parse(previous_text or "")
     lines, applied = apply_closes(before, parse(new_text), closes or {}, today=today)
+    for tag, text in (adds or {}).items():
+        lines = append_entry(lines, tag, text, today=today)
     lines, repairs = repair(before, lines)
     lines = clip_entries(carry_dates(before, lines, today=today))
     lines, evicted = fit_budget(lines, budget, count)
@@ -456,6 +478,21 @@ def pending_closes(labels: Mapping[str, str] | None) -> dict[str, str]:
     for key, value in (labels or {}).items():
         if key.startswith(STATE_CLOSE_LABEL_PREFIX) and value.strip():
             found[key.removeprefix(STATE_CLOSE_LABEL_PREFIX)] = value.strip()
+    return found
+
+
+def entry_label_key(tag: str) -> str:
+    """:returns: The session label that holds a pending added entry for *tag*."""
+    return f"{STATE_ADD_LABEL_PREFIX}{tag}"
+
+
+def pending_entries(labels: Mapping[str, str] | None) -> dict[str, str]:
+    """:returns: ``{id: text}`` of the pending added entries; a cleared (empty) one is skipped."""
+    found: dict[str, str] = {}
+    for key, value in (labels or {}).items():
+        tag = normalize_tag(key.removeprefix(STATE_ADD_LABEL_PREFIX))
+        if key.startswith(STATE_ADD_LABEL_PREFIX) and value.strip() and tag is not None:
+            found[tag] = value.strip()
     return found
 
 

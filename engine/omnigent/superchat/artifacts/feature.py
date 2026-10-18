@@ -11,7 +11,7 @@ from omnigent.superchat.artifacts.handlers import handle_artifact_tool
 from omnigent.superchat.artifacts.hint import fetch_artifact_hint
 from omnigent.superchat.artifacts.tools import ARTIFACT_TOOL_NAMES
 from omnigent.superchat.artifacts.writeback import deliver_manual_edits
-from omnigent.superchat.feature import Feature, InstallDeps, ToolManagerCtx
+from omnigent.superchat.feature import Feature, InstallDeps, ToolManagerCtx, is_super_chat
 from omnigent.superchat.risk import Risk, register_classifier, register_target_namer
 
 if TYPE_CHECKING:
@@ -38,10 +38,12 @@ def _tools(labels: Mapping[str, str] | None, _ctx: ToolManagerCtx) -> list[Tool]
     """Offered to the Super Chat and to Helpers alike (a Helper saves under its parent).
 
     ``artifact_patch`` only in a file's studio (ADR 0024): it edits that one file.
+    ``artifact_outline`` only in the Conversation itself (ADR 0027): it reviews a Helper's file.
     """
     from omnigent.superchat.artifacts.tools import (
         ArtifactDeleteTool,
         ArtifactListTool,
+        ArtifactOutlineTool,
         ArtifactPatchTool,
         ArtifactSaveTool,
     )
@@ -51,6 +53,8 @@ def _tools(labels: Mapping[str, str] | None, _ctx: ToolManagerCtx) -> list[Tool]
     tools: list[Tool] = [ArtifactSaveTool(), ArtifactListTool(), ArtifactDeleteTool()]
     if is_artifact_chat(labels):
         tools.append(ArtifactPatchTool())
+    elif is_super_chat(labels):
+        tools.append(ArtifactOutlineTool())
     return tools
 
 

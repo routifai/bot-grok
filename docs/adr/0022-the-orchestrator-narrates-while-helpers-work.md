@@ -39,3 +39,7 @@ The first build steered a progress notice only into a turn streaming at that mom
 - The runner's notice state does not survive its restart.
 
 Contract: [`docs/conversation.md`](../conversation.md#helper-notices).
+
+## Update: the assistant speaks three times (ADR 0027, 2026-10-17)
+
+Progress is the panel's job. The assistant speaks at its first sentence, at a decision or a surprise, and at the hand-back; helper notices move the plan, never prose. The sentence-per-progress rule above is withdrawn.

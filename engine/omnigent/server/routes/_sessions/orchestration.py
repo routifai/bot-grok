@@ -6446,6 +6446,7 @@ async def _relay_runner_stream_once(
                                     else None
                                 ),
                                 failure_origin="relayed_runner_status",
+                                paused=event.get("paused") is True,
                                 blocked_on=(
                                     raw_blocked_on
                                     if isinstance(raw_blocked_on, str) and raw_blocked_on

@@ -1,8 +1,8 @@
-"""The ``recall_hint`` setting: one value per person, ``on`` or ``off`` (the default).
+"""The ``recall_hint`` setting: one value per person, ``on`` (the default) or ``off``.
 
 ``GET /v1/me/recall-hint`` returns ``{"recall_hint": "on" | "off"}``; ``PUT`` takes the same body
 and returns it. Stored in the generic ``preferences`` table under the caller's user id, like the
-model picks; no row means ``off``.
+model picks; no row means ``on`` (ADR 0027), and turning it off stores ``off``.
 """
 
 from __future__ import annotations
@@ -41,29 +41,31 @@ class RecallHintStore:
         )
 
     def get(self, owner: str) -> str:
-        """``on`` or ``off``; anything unset or unreadable is ``off``."""
+        """``on`` or ``off``; only a stored ``off`` is off (unset or unreadable is ``on``)."""
         with self._session("select_recall_hint") as session:
             row = session.get(SqlPreference, (current_workspace_id(), owner, PREFERENCE_KEY))
             raw = row.value if row is not None else None
         try:
-            value = json.loads(raw) if raw else OFF
+            value = json.loads(raw) if raw else ON
         except ValueError:
-            return OFF
-        return ON if value == ON else OFF
+            return ON
+        return OFF if value == OFF else ON
 
     def set(self, owner: str, value: str) -> None:
-        """Store *value*; ``off`` removes the row."""
+        """Store *value*; ``on`` (the default) removes the row."""
 
         def write(session: Any) -> None:
             pk = (current_workspace_id(), owner, PREFERENCE_KEY)
             row = session.get(SqlPreference, pk)
-            if value == OFF:
+            if value == ON:
                 if row is not None:
                     session.delete(row)
             elif row is None:
-                session.add(SqlPreference(user_id=owner, key=PREFERENCE_KEY, value=json.dumps(ON)))
+                session.add(
+                    SqlPreference(user_id=owner, key=PREFERENCE_KEY, value=json.dumps(OFF))
+                )
             else:
-                row.value = json.dumps(ON)
+                row.value = json.dumps(OFF)
 
         run_write_transaction(self._session_immediate, "upsert_recall_hint", write)
 

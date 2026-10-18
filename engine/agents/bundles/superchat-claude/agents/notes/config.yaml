@@ -11,7 +11,7 @@ description: >-
 # engine starts it for the daily-note passes (omnigent.superchat.daily_notes.quiet_moment).
 
 # Sub-agent Type: notes. Claude Agent SDK, same engine as the Super Chat (ADR 0001, ADR 0007).
-# No model pinned: a background run uses the person's fast tier, else the Muse's model.
+# No model pinned: a background run uses the person's Light pick, else the Muse's model.
 executor:
   type: omnigent
   config:

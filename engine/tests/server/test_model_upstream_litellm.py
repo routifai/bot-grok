@@ -216,8 +216,8 @@ async def test_the_prices_litellm_reports_choose_the_light_model(
     assert snapshot is not None
     rows = {row["id"]: row for row in snapshot["catalog"]["models"]}
     assert rows["team-small"]["costPerToken"] == {"input": 2e-7, "output": 8e-7}
-    resolved = person_models_from_catalog(snapshot["catalog"], default_pick=None, light_pick=None)
-    assert (resolved.default, resolved.light) == ("team-big", "team-small")
+    resolved = person_models_from_catalog(snapshot["catalog"], {})
+    assert (resolved.foundation, resolved.light) == ("team-big", "team-small")
 
 
 @pytest.mark.asyncio

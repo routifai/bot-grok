@@ -15,10 +15,16 @@ them; where code still uses one, the entry says so.
 - **Chip**: the pointer on a message to the artifact, or part of one, the message is about ([conversation.md](conversation.md)).
 - **Claim**: one sentence about the person in long-term memory, with its quote, evidence, kind and confidence (table `memory_claims`).
 - **Computer**: old name for **host**, gone from code, config and copy since the rename wave (ADR 0018). The person's word for their host is "your machine"; the web tab is Files.
+- **Context brief**: the engine's account, at the start of a tool-using turn, of what the person made before on the subject, what earlier turns and the journal say, standing preferences, open tasks and matching sources; the result of the `context_brief` tool and the plan's first step ([ADR 0027](adr/0027-super-chat-is-an-agentic-layer.md)).
+- **Done criterion**: the evidence a plan step needs before the engine ticks it (`brief`, `helper_done`, `check_ran`, `saved`, `read`, `answered`); the model never ticks a step ([ADR 0027](adr/0027-super-chat-is-an-agentic-layer.md)).
+- **Not checked**: a check step with no action behind it; the hand-back must say so.
+- **Session panel**: the panel beside the transcript while work runs: Progress (the plan), Outputs (files made), Used in this conversation (tool kinds).
+- **Paused**: a helper state: held at its next tool boundary until resumed; cancelled after thirty minutes unresumed.
+- **Comment (on a step)**: a step's text attached to the composer as a chip and sent as structured context with the next message.
 - **Conversation**: the one chat between a person and the assistant; the engine calls it the Super Chat.
 - **Daily note**: one note per person per local day, kept by background `notes` helper passes; the person's own edits are protected ([context.md](context.md#daily-notes-and-the-working-list)).
 - **Deck**: an HTML artifact named `*.deck.html` with 1920x1080 slides, exported to PowerPoint or PDF in the host ([decks.md](decks.md)).
-- **Default** and **Light**: a person's two model picks per harness; chats run on Default, background work and a helper's `fast` on Light, a helper's `strong` on Default.
+- **Foundation**, **Builder** and **Light**: a person's three model picks per harness, chosen from the catalog by capability and price and overridable in Settings ([ADR 0027](adr/0027-super-chat-is-an-agentic-layer.md)). The Super Chat runs on Foundation; helpers on the category the assistant names, Builder by default; titles, summaries and rerank on Light. Replaces Default and Light; the `fast` and `strong` helper picks are aliases for Light and Foundation for one release.
 - **Engine**: the server, one process: the API, the built web, Postgres, sessions, scheduling and the model proxy.
 - **Feature**: a folder under `engine/omnigent/superchat/` with a `FEATURE`, registered once in `superchat/features.py`.
 - **Fork**: deprecated and removed ([ADR 0021](adr/0021-one-conversation-messages-link-to-artifacts.md)); a message links to an artifact instead.

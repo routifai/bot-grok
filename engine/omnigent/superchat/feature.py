@@ -49,7 +49,7 @@ class SpawnRequest:
     :param agent: The declared Sub-agent Type to start.
     :param task: The brief (the child's first message).
     :param title: Instance label, or ``None`` to leave naming to the engine.
-    :param model: The ``fast`` / ``strong`` choice.
+    :param model: The category: ``light``, ``builder`` or ``foundation``.
     :param reasoning_effort: ``low`` / ``medium`` / ``high``, or ``None`` for the default.
     :param file_ids: Uploaded file ids to hand to the child.
     :param workspace: Absolute folder the child works in, set before its brief is posted;
@@ -60,7 +60,7 @@ class SpawnRequest:
     agent: str
     task: str
     title: str | None = None
-    model: str = "strong"
+    model: str = "builder"
     reasoning_effort: str | None = None
     file_ids: tuple[str, ...] = ()
     workspace: str | None = None

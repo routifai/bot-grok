@@ -13,12 +13,15 @@ from omnigent.superchat.tasks.runtime import current_task
 
 async def handle_card_tool(_ctx: HandlerCtx, args: dict[str, Any]) -> str:
     """
-    Validate and echo a reply card.
+    Validate and echo a reply card. A ``plan`` card with no ``id`` gets one, so the engine's
+    record of it (ADR 0027) and the transcript name the same plan.
 
     :param _ctx: The call context (unused).
     :param args: Parsed tool arguments.
     :returns: The card as a JSON string.
     """
+    if args.get("card") == "plan" and not args.get("id"):
+        args = {**args, "id": f"plan-{uuid.uuid4().hex}"}
     return json.dumps(build_card(args), ensure_ascii=False)
 
 

@@ -26,6 +26,8 @@ out. The rules a client would otherwise copy:
   their message or the turn's calls) and showed no chips ends with one "Keep this page updated
   when <file> changes" chip;
 * one ``call_id`` is one block, however often the call repeats;
+* a ``plan`` card's items are the engine's (ADR 0027): the model's fields and ``state``, as the
+  tasks service projects them (``plan_views``; the model's ``status`` never travels);
 * an ``error`` item is an ``error`` block carrying its code, never its text; the code is read
   through ``public_error_code`` so legacy rows (exception names, old codes) show the closed set;
 * in a file's studio (``keep_notices``) a runtime line is a ``system`` message with one
@@ -56,6 +58,7 @@ from omnigent.superchat.cards.tools import (
 )
 from omnigent.superchat.helpers.tools import START_HELPER_TOOL_NAME
 from omnigent.superchat.subagents import STUDIO_QUEUED_NOTE
+from omnigent.superchat.tasks.record import fold
 
 VAULT_REQUEST_TOOL_NAME = "vault_request_secret"
 ARTIFACT_SAVE_TOOL_NAME = "artifact_save"
@@ -163,6 +166,20 @@ def _card_block(call: Item, output: str | None) -> dict[str, Any] | None:
         "card": payload,
         **({"pending": True} if pending else {}),
     }
+
+
+def _with_states(
+    block: dict[str, Any], call_id: str, plan_views: Mapping[str, list[dict[str, Any]]]
+) -> dict[str, Any]:
+    """A shown ``plan`` card with the engine's items (``state`` beside the model's fields)."""
+    card = block["card"]
+    if card.get("card") != "plan" or block.get("pending"):
+        return block
+    items = plan_views.get(str(card.get("id") or call_id))
+    if items is None:
+        return block
+    data = {**card["data"], "items": items}
+    return {**block, "card": {**card, "data": data}, "fold": fold(items)}
 
 
 def _secure_entry_block(output: str | None) -> dict[str, Any] | None:
@@ -343,6 +360,11 @@ def notice_block(text: str) -> dict[str, Any] | None:
     return None
 
 
+def turn_activity_id(conversation_id: str, response_id: str) -> str:
+    """The id of the Activity a turn is (``activity/derive.py``): ``turn:<chat>:<response>``."""
+    return f"turn:{conversation_id}:{response_id}"
+
+
 def _message(item: Item, role: str, blocks: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "id": item["id"],
@@ -432,6 +454,8 @@ def project_items(
     *,
     helper_statuses: Mapping[str, str] | None = None,
     keep_notices: bool = False,
+    plan_views: Mapping[str, list[dict[str, Any]]] | None = None,
+    conversation_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """Turn *items* (oldest first) into transcript messages.
 
@@ -439,7 +463,11 @@ def project_items(
     :param helper_statuses: Helper session id -> status, for the ``helper`` blocks.
     :param keep_notices: Keep the studio's runtime lines as ``system`` messages with one
         ``notice`` block (a file's studio, ADR 0024); dropped everywhere else.
-    :returns: ``[{"id", "role", "created_at", "blocks"}, ...]``.
+    :param plan_views: Plan id (a card's id, else its call id) -> its items as the tasks service
+        projects them (``TaskService.plan_views``); a plan not in it keeps the model's items.
+    :param conversation_id: The session *items* belong to: each assistant message then carries
+        ``activity_id``, the Activity of the turn that wrote it (:func:`turn_activity_id`).
+    :returns: ``[{"id", "role", "created_at", "blocks", "activity_id"?}, ...]``.
     """
     statuses = helper_statuses or {}
     outputs = tool_outputs_by_call_id(items)
@@ -468,6 +496,8 @@ def project_items(
                 continue
             if _is_call(item, CARD_TOOL_NAME):
                 block = _card_block(item, output)
+                if block:
+                    block = _with_states(block, call_id, plan_views or {})
             elif any(_is_call(item, name) for name in _TURN_ENDING_CARD_TOOLS):
                 # Instant tools: the card appears with its result, never as a skeleton.
                 block = _card_block(item, output) if output is not None else None
@@ -517,6 +547,12 @@ def project_items(
                 cited = []
             messages.append(_message(item, role, blocks))
     _offer_keep_updated(items, messages)
+    if conversation_id:
+        turns = {i.get("id"): i.get("response_id") for i in items if i.get("response_id")}
+        for message in messages:
+            response_id = turns.get(message["id"])
+            if message["role"] == "assistant" and isinstance(response_id, str):
+                message["activity_id"] = turn_activity_id(conversation_id, response_id)
     return messages
 
 

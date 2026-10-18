@@ -63,6 +63,7 @@ tools:
     - "vault_*"
     - "artifact_*"
     - "files_*"
+    - context_brief
     - recall
     - recall_get
     - "deck_*"

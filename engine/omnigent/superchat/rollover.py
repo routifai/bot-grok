@@ -40,7 +40,12 @@ from omnigent.context.rollover import (
     resolve_rollover_threshold,
     split_at_latest_compaction,
 )
-from omnigent.context.state_file import close_label_key, pending_closes
+from omnigent.context.state_file import (
+    close_label_key,
+    entry_label_key,
+    pending_closes,
+    pending_entries,
+)
 from omnigent.entities import CompactionData
 
 logger = logging.getLogger(__name__)
@@ -363,15 +368,41 @@ def summarizer_model(
     return model
 
 
+async def _current_labels(
+    server_client: httpx.AsyncClient, conversation_id: str
+) -> dict[str, str] | None:
+    """The session's labels now, or ``None`` when they cannot be read (nothing is cleared)."""
+    try:
+        resp = await server_client.get(f"/v1/sessions/{conversation_id}/labels", timeout=10.0)
+        labels = resp.json().get("labels") if resp.status_code == 200 else None
+    except (httpx.HTTPError, RuntimeError, ValueError, AttributeError):
+        return None
+    return {str(k): str(v) for k, v in labels.items()} if isinstance(labels, dict) else None
+
+
 async def _clear_closes(
-    server_client: httpx.AsyncClient, conversation_id: str, closes: Mapping[str, str]
+    server_client: httpx.AsyncClient,
+    conversation_id: str,
+    closes: Mapping[str, str],
+    adds: Mapping[str, str] | None = None,
 ) -> None:
-    """Empty the ``state_close`` labels the stored checkpoint consumed. Best effort.
+    """Empty the ``state_close`` and added-entry labels the stored checkpoint consumed.
 
     Labels are upsert-only, so "cleared" is an empty value. A failure leaves the close pending,
-    which the next checkpoint finds already closed: harmless.
+    which the next checkpoint finds already closed: harmless. An added entry is cleared only when
+    its label still holds the text the checkpoint wrote (compare and clear): a newer decision
+    written while the summary was built stays pending for the next checkpoint.
     """
     consumed = {close_label_key(tag): "" for tag in closes}
+    if adds:
+        current = await _current_labels(server_client, conversation_id)
+        consumed.update(
+            {
+                entry_label_key(tag): ""
+                for tag, text in adds.items()
+                if current is not None and current.get(entry_label_key(tag), "").strip() == text
+            }
+        )
     if not consumed:
         return
     try:
@@ -446,6 +477,7 @@ async def roll_over_session(
         if not items_since:
             return False
         closes = pending_closes(labels)
+        adds = pending_entries(labels)
         try:
             compaction = await build_rollover_item(
                 items_since,
@@ -457,6 +489,7 @@ async def roll_over_session(
                 conversation_id=conversation_id,
                 cause=cause,
                 pending_closes=closes,
+                pending_entries=adds,
             )
         except Exception:  # a rollover failure must never fail the turn
             logger.warning(
@@ -497,7 +530,7 @@ async def roll_over_session(
                 resp.status_code,
             )
             return False
-        await _clear_closes(server_client, conversation_id, closes)
+        await _clear_closes(server_client, conversation_id, closes, adds)
         if on_stored is not None:
             try:
                 await on_stored(compaction, items_since)

@@ -513,9 +513,9 @@ async def _scheduled_model(
 ) -> str | None:
     from omnigent.superchat.models import tiers
 
-    # The owner's Light (fast) and Default (strong) per harness (Settings > Models).
+    # The owner's picks per category and harness (Settings > Models).
     async def tier_models(_state: Any, _owner: str | None, harness: str | None) -> dict:
-        return {"fast": None, "strong": None, **picks.get(harness or "", {})}
+        return {"light": None, "builder": None, "foundation": None, **picks.get(harness or "", {})}
 
     monkeypatch.setattr(tiers, "tier_models", tier_models)
     conv_store = _ParentConversationStore(_Parent(model_override=parent_model))
@@ -531,7 +531,7 @@ async def _scheduled_model(
     return conv_store.created[0]["model_override"]
 
 
-_CLAUDE_PICKS = {"claude-sdk": {"fast": "claude-haiku-4-5", "strong": "claude-sonnet-4-6"}}
+_CLAUDE_PICKS = {"claude-sdk": {"light": "claude-haiku-4-5", "foundation": "claude-sonnet-4-6"}}
 
 
 @pytest.mark.parametrize("agent_type", ["worker", "goal", "teacher"])
@@ -544,17 +544,17 @@ async def test_scheduled_helper_on_pi_bundle_never_gets_another_harness_pick(
     assert model == "openai/gpt-5.6-luna"
 
 
-async def test_scheduled_helper_on_pi_bundle_uses_the_pi_fast_pick(
+async def test_scheduled_helper_on_pi_bundle_uses_the_pi_light_pick(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    picks = {**_CLAUDE_PICKS, "pi": {"fast": "openai/gpt-5.6-mini"}}
+    picks = {**_CLAUDE_PICKS, "pi": {"light": "openai/gpt-5.6-mini"}}
     model = await _scheduled_model(
         "superchat-pi", "goal", "openai/gpt-5.6-luna", monkeypatch, picks
     )
     assert model == "openai/gpt-5.6-mini"
 
 
-async def test_scheduled_helper_on_claude_bundle_runs_on_the_claude_fast_pick(
+async def test_scheduled_helper_on_claude_bundle_runs_on_the_claude_light_pick(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     model = await _scheduled_model("superchat-claude", "worker", None, monkeypatch, _CLAUDE_PICKS)

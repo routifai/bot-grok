@@ -71,10 +71,15 @@ function main() {
   const configTemplate = readFileSync(join(here, "templates/config.yaml.tmpl"), "utf8");
   const filesystem = readFileSync(join(here, "templates/filesystem.md"), "utf8").trimEnd();
   // The layout menu is the deck kit's own file (one source for the prompt and the deck_new
-  // result); the rules around it live in templates/decks.md.
+  // result); the rules around it live in templates/deck-rules.md.
   const deckLayouts = readFileSync(join(here, DECK_LAYOUTS_PATH), "utf8").trimEnd();
-  const decks = render(readFileSync(join(here, "templates/decks.md"), "utf8"), {
+  // The shared deck rules go to every Type that builds decks; templates/decks.md adds the
+  // Conversation's own part (when a deck is a Helper job, the Brief, the review).
+  const deckRules = render(readFileSync(join(here, "templates/deck-rules.md"), "utf8"), {
     DECK_LAYOUTS: deckLayouts,
+  }).trimEnd();
+  const decks = render(readFileSync(join(here, "templates/decks.md"), "utf8"), {
+    DECK_RULES: deckRules,
   }).trimEnd();
   // The template opens with a provenance comment for ported text; the prompt does not carry it.
   const agentsTemplate = readFileSync(join(here, "templates/AGENTS.md"), "utf8").replace(
@@ -111,6 +116,7 @@ function main() {
         GENERATED_HEADER +
           render(subTemplate, {
             FILESYSTEM: indent(filesystem, 2),
+            DECK_RULES: indent(deckRules, 2),
             HARNESS: bundle.harness,
             HARNESS_NAME: bundle.harnessName,
             EXECUTOR_EXTRA: bundle.executorExtra,

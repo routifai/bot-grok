@@ -52,3 +52,7 @@ Follow-up under this rule: a helper that reported no progress still shows a flat
 - **Keep the gate, fix the evidence window.** Rejected: it keeps asking first, and every other gate has the same shape; the record fixes all of them.
 - **Let the model keep task state in its working list.** Rejected: the working list is the model's own notes, rewritten at rollover; a gate cannot trust it, and it is not there on a cold start.
 - **Make every refusal an engine-side action** (the engine starts the helper when the limit is hit). Rejected for now: it hides a prompt problem behind machinery; the stall metric says whether it is needed.
+
+## Update: categories and evidence (ADR 0027, 2026-10-17)
+
+The task record now keeps the plan and its evidence state, and the decision line of a finished deliverable goes to the working list and the journal. Model picks are three categories, Foundation, Builder and Light; Settings is their source of truth.

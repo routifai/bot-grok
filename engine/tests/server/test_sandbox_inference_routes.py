@@ -391,6 +391,44 @@ async def test_default_reset_and_catalog_use_saved_config_after_operator_edit(en
     assert len(env.catalog.calls) == calls
 
 
+async def test_default_stores_the_persons_foundation_only_in_a_super_chat(env: _Env):
+    from omnigent.context.labels import CONTEXT_MODE_LABEL, SUPERSIDE_CHAT_MODE_VALUE
+
+    async def foundation(_user: str | None, harness: str, catalog: dict | None) -> str | None:
+        # The person's Foundation is not the connection's default (gateway/main).
+        return "gateway/fast" if harness == "pi" else None
+
+    env.app.state.foundation_model = foundation
+    super_chat = await _json_create(env, labels={CONTEXT_MODE_LABEL: SUPERSIDE_CHAT_MODE_VALUE})
+    other = await _json_create(env)
+    assert super_chat.status_code == other.status_code == 201
+
+    async def patch(session_id: str, model: str):
+        return await env.client.patch(
+            f"/v1/sessions/{session_id}", json={"model_override": model, "silent": True}
+        )
+
+    def stored(session_id: str) -> str | None:
+        saved = env.store.get_conversation(session_id)
+        assert saved is not None
+        return saved.model_override
+
+    sc, plain = super_chat.json()["id"], other.json()["id"]
+    # Created on the Foundation; any other session on the connection's default.
+    assert (stored(sc), stored(plain)) == ("gateway/fast", "gateway/main")
+    # A real id is still checked against the saved catalog, then stored.
+    assert (await patch(sc, "gateway/hidden")).status_code == 400
+    assert (await patch(sc, "gateway/main")).status_code == 200
+    assert stored(sc) == "gateway/main"
+    for clear in ("default", "reset"):
+        await patch(sc, "gateway/main")
+        assert (await patch(sc, clear)).status_code == 200
+        assert stored(sc) == "gateway/fast"
+        await patch(plain, "gateway/fast")
+        assert (await patch(plain, clear)).status_code == 200
+        assert stored(plain) == "gateway/main"
+
+
 @pytest.mark.parametrize("event_type", ["message", "slash_command"])
 async def test_unavailable_saved_provider_rejects_input_before_dispatch_or_items(
     env: _Env, monkeypatch: pytest.MonkeyPatch, event_type: str

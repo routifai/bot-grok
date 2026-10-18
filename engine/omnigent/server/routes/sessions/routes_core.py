@@ -2285,8 +2285,15 @@ def register_core_routes(
             )
 
             if configured_snapshot(conv_for_model.inference_snapshot):
+                # A configured session always runs a stored model: unset, its harness would
+                # fall back to the connection's default. "Default" therefore stores the
+                # caller's Foundation pick (ADR 0027), never the connection's default.
                 model_override = await validate_saved_selection(
-                    request, conv_for_model, None if clear_model else model_override
+                    request,
+                    conv_for_model,
+                    None if clear_model else model_override,
+                    foundation=True,
+                    user_id=user_id,
                 )
                 clear_model = False
 

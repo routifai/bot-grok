@@ -114,9 +114,11 @@ A runner sees only an allowlist of process variables plus the names listed in th
 
 `deployment/engine/start.sh` renders one of three templates from `deployment/engine/` into the
 engine config. None names a model: the pickers list what the connection serves, and each person has
-a **Default** and a **Light** pick per harness (`superchat/models/tiers.py`), chosen automatically
-until they pick in **Settings > Models**. Background work runs on Light; a helper's `fast` runs on
-Light and `strong` on Default.
+a **Foundation**, a **Builder** and a **Light** pick per harness (`superchat/models/tiers.py`),
+chosen automatically by price until they pick in **Settings > Models**, which is the source of
+truth: the Super Chat runs on Foundation, a Foundation change moves it there, and "Default" in the
+chat header stores the Foundation pick, never the connection's default. Helpers run on the category
+the assistant names (Builder by default); background work runs on Light.
 
 | Template | Selected when | Where the key lives |
 |---|---|---|

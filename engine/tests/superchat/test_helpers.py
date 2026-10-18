@@ -29,9 +29,9 @@ from omnigent.superchat.helpers import handlers as h
 from omnigent.superchat.helpers import saved_files as sf
 from omnigent.superchat.helpers.feature import HELPERS_FEATURE
 from omnigent.superchat.helpers.tools import MessageHelperTool, StartHelperTool
+from omnigent.superchat.models.tiers import CATEGORIES
 from omnigent.superchat.subagents import (
     HELPER_EFFORT_CHOICES,
-    HELPER_MODEL_CHOICES,
     format_subagent_wake_notice_with_result,
 )
 
@@ -50,7 +50,7 @@ def _offered(labels: dict[str, str] | None, spec: Any) -> list[str]:
 # ── schema and surface ─────────────────────────────────────────────────────
 
 
-def test_schema_is_one_flat_task_with_fast_strong() -> None:
+def test_schema_is_one_flat_task_with_a_model_category() -> None:
     params = StartHelperTool().get_schema()["function"]["parameters"]
     assert params["required"] == ["task"]
     assert params["additionalProperties"] is False
@@ -63,8 +63,8 @@ def test_schema_is_one_flat_task_with_fast_strong() -> None:
         "project",
         "path",
     }
-    assert params["properties"]["model"]["enum"] == ["fast", "strong"]
-    assert params["properties"]["model"]["default"] == "strong"
+    assert params["properties"]["model"]["enum"] == ["foundation", "builder", "light"]
+    assert params["properties"]["model"]["default"] == "builder"
     assert params["properties"]["reasoning"]["enum"] == ["low", "medium", "high"]
 
 
@@ -234,7 +234,7 @@ async def test_call_becomes_the_create_path_request(dispatched: list[SpawnReques
             agent="worker",
             task="Compare notes apps",
             title="Compare notes apps",
-            model="strong",
+            model="builder",
             reasoning_effort="high",
             file_ids=("file_1",),
         )
@@ -250,9 +250,14 @@ async def test_title_avoids_existing_children(dispatched: list[SpawnRequest]) ->
 
 async def test_coordinator_starts_its_subworker(dispatched: list[SpawnRequest]) -> None:
     await h.handle_start_helper(
-        _ctx(dispatched, _spec("subworker")), {"task": "Part one", "model": "fast"}
+        _ctx(dispatched, _spec("subworker")), {"task": "Part one", "model": "light"}
     )
-    assert (dispatched[0].agent, dispatched[0].model) == ("subworker", "fast")
+    assert (dispatched[0].agent, dispatched[0].model) == ("subworker", "light")
+    # An earlier name still starts the Helper, for one release.
+    await h.handle_start_helper(
+        _ctx(dispatched, _spec("subworker")), {"task": "Two", "model": "fast"}
+    )
+    assert dispatched[1].model == "fast"
 
 
 async def test_same_task_twice_in_parallel_starts_one_helper(
@@ -305,7 +310,7 @@ async def test_refusal_is_not_cached_and_names_the_right_tool(
         ({"task": "x", "colour": "y"}, "does not take colour"),
         ({"task": "x", "title": 3}, "'title' must be a string"),
         ({"task": " "}, "requires a non-empty 'task'"),
-        ({"task": "x", "model": "gpt"}, "'model' must be one of fast, strong"),
+        ({"task": "x", "model": "gpt"}, "'model' must be one of foundation, builder, light"),
         ({"task": "x", "reasoning": "ultra"}, "'reasoning' must be one of low, medium, high"),
         ({"task": "x", "files": "file_1"}, "'files' must be a list of uploaded file ids"),
     ],
@@ -391,7 +396,7 @@ async def test_a_symlink_out_of_the_workspace_is_refused(
 
 def test_tool_schema_uses_the_shared_choices() -> None:
     props = StartHelperTool().get_schema()["function"]["parameters"]["properties"]
-    assert tuple(props["model"]["enum"]) == HELPER_MODEL_CHOICES
+    assert tuple(props["model"]["enum"]) == CATEGORIES
     assert tuple(props["reasoning"]["enum"]) == HELPER_EFFORT_CHOICES
 
 

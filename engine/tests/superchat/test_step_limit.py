@@ -83,6 +83,10 @@ def test_fourth_work_call_is_refused_with_handoff_text() -> None:
         "vault_fill",
         "session_history",
         "artifact_list",
+        "artifact_outline",
+        "deck_check",
+        "deck_themes",
+        "mcp__omnigent__deck_check",
     ],
 )
 def test_coordination_tools_are_free(name: str) -> None:
@@ -91,7 +95,16 @@ def test_coordination_tools_are_free(name: str) -> None:
 
 @pytest.mark.parametrize(
     "name",
-    ["artifact_save", "mcp__omnigent__browser_snapshot", "sys_os_read", "mcp__computer__click"],
+    [
+        "artifact_save",
+        "mcp__omnigent__browser_snapshot",
+        "sys_os_read",
+        "mcp__computer__click",
+        "deck_new",
+        "deck_theme_set",
+        "deck_export",
+        "mcp__omnigent__deck_new",
+    ],
 )
 def test_work_tools_count(name: str) -> None:
     assert is_work_tool(name)

@@ -10,6 +10,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+import yaml
 
 REPO = Path(__file__).resolve().parents[3]
 AGENTS = REPO / "engine/agents/bundles"
@@ -161,3 +162,27 @@ def test_prompts_point_at_the_memory_folder(bundle: Path) -> None:
     assert "Never edit it or the journal" in muse
     worker = (bundle / "agents/worker/config.yaml").read_text()
     assert "`memory/STATE.md` holds" in worker and "Never write there" in worker
+
+
+@pytest.mark.parametrize("bundle", [CLAUDE, PI], ids=["claude", "pi"])
+def test_the_conversation_plans_from_the_brief_and_helpers_do_not(bundle: Path) -> None:
+    # Named in the allow list, so the Conversation always has them up front (ADR 0027).
+    muse = yaml.safe_load((bundle / "config.yaml").read_text())["tools"]["allow"]
+    assert {"render_card", "context_brief"} <= set(muse)
+    for helper in HELPERS:
+        allow = yaml.safe_load((bundle / "agents" / helper / "config.yaml").read_text())["tools"][
+            "allow"
+        ]
+        assert "context_brief" not in allow, helper
+    prompt = (bundle / "AGENTS.md").read_text()
+    section = prompt.split("## How a turn runs", 1)[1].split("\n## ", 1)[0]
+    for term in ("`context_brief`", "`active`", "`owner`", "`done_when`", "`artifact_outline`"):
+        assert term in section, term
+    assert "Never mark a step done" in section and "under eighty words" in section
+
+
+@pytest.mark.parametrize("bundle", [CLAUDE, PI], ids=["claude", "pi"])
+def test_a_helper_building_a_deck_has_the_deck_rules(bundle: Path) -> None:
+    for helper in ("worker", "worker/agents/subworker"):
+        config = yaml.safe_load((bundle / "agents" / helper / "config.yaml").read_text())
+        assert "a headline is 8 words or fewer" in config["prompt"], helper

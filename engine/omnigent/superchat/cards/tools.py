@@ -58,6 +58,8 @@ def _shape(schema: dict[str, Any]) -> str:
         return "{" + fields + "}"
     if kind == "array":
         return "[" + _shape(schema["items"]) + "]"
+    if "enum" in schema:
+        return "|".join(schema["enum"])
     return str(kind)
 
 
@@ -111,9 +113,17 @@ CARD_DATA_SCHEMAS: dict[str, dict[str, Any]] = {
         ["items"],
         items=_arr(
             _obj(
-                ["text", "status"],
+                ["text"],
                 text=_STR,
+                # The model's status is read when the plan is first shown; the engine ticks
+                # each item from evidence after that (ADR 0027).
                 status={"type": "string", "enum": ["todo", "doing", "done"]},
+                active=_STR,
+                owner={"type": "string", "enum": ["me", "helper"]},
+                done_when={
+                    "type": "string",
+                    "enum": ["brief", "helper_done", "check_ran", "saved", "read", "answered"],
+                },
             )
         ),
     ),
@@ -255,8 +265,8 @@ class RenderCardTool(Tool):
         """:returns: Human-readable description of the tool."""
         return (
             "Show the person a card instead of prose, only when it reads better than text: "
-            "numbers to compare (compare), a market quote (quote), a plan you will update "
-            "(plan), sources you read (sources), a contact "
+            "numbers to compare (compare), a market quote (quote), a plan (plan), "
+            "sources you read (sources), a contact "
             "(person), a file (file), long-running work (progress). For a chart or a "
             "dashboard build a page with `superchat-dashboard` from the data files, never a card "
             "with typed numbers. "
@@ -266,7 +276,8 @@ class RenderCardTool(Tool):
             "drawn and kept in your history; never repeat the card's content in your reply, "
             "add one line of context at most, before the card; after it add no more text "
             "(only `suggest_follow_ups` may follow). "
-            "Reuse the same `id` to update a plan or progress card in place."
+            "Render the plan once; re-render it with the same `id` only to add, drop or reword a "
+            "step; the engine ticks the steps."
         )
 
     def get_schema(self) -> dict[str, Any]:

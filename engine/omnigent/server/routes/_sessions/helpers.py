@@ -2949,6 +2949,7 @@ def _publish_status(
     blocked_on: str | None = None,
     turn: int | None = None,
     persist_live_status: bool = True,
+    paused: bool = False,
     scheduled_run_outcome: Literal["auto", "failed"] = "auto",
     failure_origin: str | None = None,
 ) -> None:
@@ -3108,6 +3109,7 @@ def _publish_status(
         background_task_count=background_task_count,
         background_tasks=background_tasks,
         blocked_on=blocked_on,
+        paused=True if paused else None,
         turn=turn,
     )
     payload = event.model_dump()
@@ -3124,6 +3126,8 @@ def _publish_status(
         payload.pop("background_tasks", None)
     if blocked_on is None:
         payload.pop("blocked_on", None)
+    if not paused:
+        payload.pop("paused", None)
     session_stream.publish(session_id, payload)
 
 
