@@ -80,8 +80,11 @@ from .executor import (
     TextChunk,
     ToolCallComplete,
     ToolCallRequest,
+    ToolCallStarted,
     ToolCallStatus,
+    ToolInputChunk,
     ToolSpec,
+    TurnCancelled,
     TurnComplete,
     result_ends_turn,
 )
@@ -2594,6 +2597,8 @@ class PiExecutor(Executor):
         # Read events until agent_end.
         response_text = ""
         streamed_any = False
+        # Content index → (tool call id, name) for the tool calls Pi is streaming.
+        streaming_tools: dict[object, tuple[str, str]] = {}
         # Per-LLM-call token usage captured from each assistant message pi
         # forwards (``message_end`` is the capture site; ``agent_end`` is a
         # fallback). Summed into a turn-level usage dict at completion so a
@@ -2685,6 +2690,18 @@ class PiExecutor(Executor):
                     if isinstance(raw_delta, str) and raw_delta:
                         # Reasoning stays out of response_text — it is not assistant text.
                         yield ReasoningChunk(delta=raw_delta, event_type="reasoning_text")
+                elif ame_type == "toolcall_start":
+                    start_id, start_name = ame.get("id"), ame.get("toolName")
+                    if isinstance(start_id, str) and start_id and isinstance(start_name, str):
+                        streaming_tools[ame.get("contentIndex")] = (start_id, start_name)
+                        yield ToolCallStarted(name=start_name, metadata={"call_id": start_id})
+                elif ame_type == "toolcall_delta":
+                    streaming = streaming_tools.get(ame.get("contentIndex"))
+                    raw_delta = ame.get("delta")
+                    if streaming is not None and isinstance(raw_delta, str) and raw_delta:
+                        yield ToolInputChunk(
+                            name=streaming[1], delta=raw_delta, metadata={"call_id": streaming[0]}
+                        )
                 continue
 
             # Both lifecycle events must retain the same Pi-owned correlation ID.
@@ -2853,8 +2870,8 @@ class PiExecutor(Executor):
                     raw_stop = msg.get("stopReason")
                     stop: str | None = raw_stop if isinstance(raw_stop, str) else None
                     if stop == "aborted":
-                        err = msg.get("errorMessage", stop)
-                        yield ExecutorError(message=str(err))
+                        # Pi stopped on an abort (``interrupt_session``): a cancelled turn.
+                        yield TurnCancelled()
                         return
                     if stop == "error":
                         # Pi emits the turn-terminal ``agent_end`` after an

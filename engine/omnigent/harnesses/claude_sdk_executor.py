@@ -32,7 +32,7 @@ import sys
 import tempfile
 import time
 import uuid
-from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Sequence
 from contextlib import ExitStack, contextmanager, suppress
 from dataclasses import dataclass, field
 from types import ModuleType
@@ -78,8 +78,11 @@ from .executor import (
     TextChunk,
     ToolCallComplete,
     ToolCallRequest,
+    ToolCallStarted,
     ToolCallStatus,
+    ToolInputChunk,
     ToolSpec,
+    TurnCancelled,
     TurnComplete,
     classify_tool_result,
     describe_exception,
@@ -736,6 +739,10 @@ _CLAUDE_CODE_DISABLE_AUTO_MEMORY_ENV = "CLAUDE_CODE_DISABLE_AUTO_MEMORY"
 # ClaudeAgentOptions.agents); "Task" is its historical CLI name. Omnigent
 # sub-agents are Omnigent sessions (see ``sys_session_create``), never this.
 _SDK_BUILTIN_SUBAGENT_TOOLS = ("Agent", "Task")
+# The CLI's native checklist tools, off unless this env var opts the CLI in. A turn whose
+# config asks for a checklist gets them; their calls surface as ordinary tool events.
+_CLAUDE_CODE_ENABLE_TODO_TOOLS_ENV = "CLAUDE_CODE_ENABLE_TODO_TOOLS"
+_CLI_TASK_TOOLS = ("TaskCreate", "TaskUpdate", "TaskList", "TaskGet")
 
 
 def _usage_from_observed_call(
@@ -912,15 +919,24 @@ class _SteerWindow:
     pending: dict[str, str] = field(default_factory=dict)
 
 
+def _call_metadata(call_id: str, message: object) -> dict[str, str]:
+    """A tool event's metadata: its call id, and the SDK's ``parent_tool_use_id`` when the
+    call was made inside another tool call (e.g. by a sub-agent)."""
+    parent = getattr(message, "parent_tool_use_id", None)
+    if isinstance(parent, str) and parent:
+        return {"call_id": call_id, "parent_tool_use_id": parent}
+    return {"call_id": call_id}
+
+
 def _launch_key(
-    system_prompt: str, tools: list[ToolSpec], effort: object, extra: Mapping[str, object]
+    system_prompt: str, tools: list[ToolSpec], effort: object, cfg: ExecutorConfig
 ) -> dict[str, str]:
     """What a Claude CLI launch is fixed to, a hash per part: prompt, tools, effort, mode."""
     parts: dict[str, object] = {
         "instructions": system_prompt,
         "tools": tools,
         "effort": effort,
-        "mode": [extra.get("context_mode"), extra.get("max_turns")],
+        "mode": [cfg.extra.get("context_mode"), cfg.extra.get("max_turns"), cfg.checklist],
     }
     return {
         name: hashlib.sha256(
@@ -1714,6 +1730,8 @@ class ClaudeSDKExecutor(Executor):
         self._pending_framework_context: dict[str, str] = {}
         # Session keys whose Claude harness process crashed and must not be reused.
         self._crashed_sessions: dict[str, str] = {}
+        # Session keys interrupted during their current turn: the turn ends as cancelled.
+        self._interrupted_sessions: set[str] = set()
         # Force-close tasks for clients evicted on turn cancellation, kept
         # referenced so they are not GC'd mid-close.
         self._cancel_close_tasks: set[asyncio.Task[None]] = set()
@@ -2004,6 +2022,7 @@ class ClaudeSDKExecutor(Executor):
         state = self._clients.get(session_key)
         if state is None:
             return False
+        self._interrupted_sessions.add(session_key)
         # Interrupt is best-effort and fast; a failure just falls through to
         # the close below.
         try:
@@ -2148,6 +2167,13 @@ class ClaudeSDKExecutor(Executor):
         # no-op against test fakes that only stub `disconnect`.
         query = getattr(client, "_query", None)
         if query is not None:
+            # Cancel the SDK's reader before marking the query closed: a reader that sees
+            # ``_closed`` breaks out of the transport's message generator mid-yield, and that
+            # generator's finalizer later raises the CLI's exit status in a task nobody awaits.
+            read_task = getattr(query, "_read_task", None)
+            if read_task is not None:
+                with suppress(Exception):
+                    read_task.cancel()
             query._closed = True
             tg = getattr(query, "_tg", None)
             if tg is not None:
@@ -2605,6 +2631,7 @@ class ClaudeSDKExecutor(Executor):
         cfg = config or ExecutorConfig()
 
         session_key = self._session_key(messages)
+        self._interrupted_sessions.discard(session_key)
         crashed_reason = self._crashed_sessions.get(session_key)
         if crashed_reason is not None:
             yield ExecutorError(
@@ -2697,6 +2724,9 @@ class ClaudeSDKExecutor(Executor):
         if is_superside_chat:
             env[_CLAUDE_CODE_DISABLE_AUTO_COMPACT_ENV] = "1"
             env[_CLAUDE_CODE_DISABLE_AUTO_MEMORY_ENV] = "1"
+        if cfg.checklist:
+            env[_CLAUDE_CODE_ENABLE_TODO_TOOLS_ENV] = "1"
+            allowed_tools.extend(_CLI_TASK_TOOLS)
         api_key_helper = env.pop(_CLAUDE_API_KEY_HELPER_ENV_KEY, None)
         # Teach Claude Code this gateway's spellings so no model surface routes
         # to an id the gateway rejects: pins for the family aliases, rewrites
@@ -2744,6 +2774,8 @@ class ClaudeSDKExecutor(Executor):
         # SDK's native Bash/Read/Edit/Write. Keep Skill and ToolSearch in
         # the base set so MCP definitions can be discovered on demand.
         base_tools: list[str] = ["Skill", "ToolSearch"]
+        if cfg.checklist:
+            base_tools.extend(_CLI_TASK_TOOLS)
         # Translate the spec's host-skill filter into the SDK
         # options. Falls back to ``"all"`` semantics when the
         # field is malformed (the parser already validates, so
@@ -2854,7 +2886,7 @@ class ClaudeSDKExecutor(Executor):
             len(tools),
             options_kwargs.get("thinking"),
         )
-        launch_key = _launch_key(system_prompt, tools, reasoning_effort, cfg.extra)
+        launch_key = _launch_key(system_prompt, tools, reasoning_effort, cfg)
         if prelaunch:
             try:
                 await self._get_or_create_client(
@@ -2904,6 +2936,9 @@ class ClaudeSDKExecutor(Executor):
         # Track in-flight tool calls so we can emit ToolCallComplete
         # with the tool name and duration when results arrive.
         pending_tools: dict[str, tuple[str, float]] = {}  # id → (name, start_mono)
+        # (parent call, stream block index) → (tool id, name), so ``input_json_delta`` (keyed
+        # by index within its own stream) can name its call.
+        streaming_tools: dict[object, tuple[str, str]] = {}
 
         # Track whether we've received any StreamEvent messages.
         # When True, we skip text/tool events from AssistantMessage to
@@ -3186,6 +3221,15 @@ class ClaudeSDKExecutor(Executor):
                                 # loses a few ms of "tool call started"
                                 # feedback in exchange for correct args.
                                 pending_tools[raw_tool_id] = (tool_name, time.monotonic())
+                                streaming_tools[
+                                    (
+                                        getattr(message, "parent_tool_use_id", None),
+                                        evt.get("index"),
+                                    )
+                                ] = (raw_tool_id, tool_name)
+                                yield ToolCallStarted(
+                                    name=tool_name, metadata=_call_metadata(raw_tool_id, message)
+                                )
 
                         elif evt_type == "content_block_delta":
                             delta = evt.get("delta", {})
@@ -3207,6 +3251,20 @@ class ClaudeSDKExecutor(Executor):
                                     yield ReasoningChunk(
                                         delta=thinking_text,
                                         event_type="reasoning_text",
+                                    )
+                            elif delta_type == "input_json_delta":
+                                streaming = streaming_tools.get(
+                                    (
+                                        getattr(message, "parent_tool_use_id", None),
+                                        evt.get("index"),
+                                    )
+                                )
+                                partial = delta.get("partial_json")
+                                if streaming is not None and isinstance(partial, str) and partial:
+                                    yield ToolInputChunk(
+                                        name=streaming[1],
+                                        delta=partial,
+                                        metadata={"call_id": streaming[0]},
                                     )
 
                     elif isinstance(message, sdk.AssistantMessage):
@@ -3249,7 +3307,7 @@ class ClaudeSDKExecutor(Executor):
                                         # with the matching
                                         # :class:`ToolCallComplete`
                                         # by call_id.
-                                        metadata={"call_id": tool_block.id},
+                                        metadata=_call_metadata(tool_block.id, message),
                                     )
                         else:
                             # No streaming — emit events from the full message.
@@ -3286,7 +3344,7 @@ class ClaudeSDKExecutor(Executor):
                                     yield ToolCallRequest(
                                         name=tool_block.name,
                                         args=tool_block.input,
-                                        metadata={"call_id": tool_block.id},
+                                        metadata=_call_metadata(tool_block.id, message),
                                     )
 
                     elif isinstance(message, sdk.UserMessage):
@@ -3324,7 +3382,7 @@ class ClaudeSDKExecutor(Executor):
                                         # thing the adapter can
                                         # use to pair this output
                                         # back to its function_call.
-                                        metadata={"call_id": result_block.tool_use_id},
+                                        metadata=_call_metadata(result_block.tool_use_id, message),
                                     )
 
                     elif isinstance(message, sdk.ResultMessage):
@@ -3500,6 +3558,12 @@ class ClaudeSDKExecutor(Executor):
             raise
         except Exception as exc:  # noqa: BLE001 — top-level executor error boundary; records crash and surfaces to caller
             self._pending_framework_context.pop(session_key, None)
+            if session_key in self._interrupted_sessions:
+                # The interrupt closed the CLI under this read: a cancelled turn, not a crash.
+                for refused in self._settle_steer_window(session_key, steer_window):
+                    yield refused
+                yield TurnCancelled()
+                return
             self._crashed_sessions[session_key] = str(exc)
             await self._close_live_client(session_key, "the previous turn failed")
             for refused in self._settle_steer_window(session_key, steer_window):
@@ -3562,6 +3626,9 @@ class ClaudeSDKExecutor(Executor):
         # whenever it runs.
         if turn_usage is None:
             turn_usage = _usage_from_observed_call(last_call_usage, observed_model or model)
+        if session_key in self._interrupted_sessions:
+            yield TurnCancelled()
+            return
 
         if provider_error_type and not terminal_error:
             # The CLI flagged a provider failure but sent no failing ResultMessage.
