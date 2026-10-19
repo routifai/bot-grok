@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextvars
 import json
 import logging
 import threading
@@ -425,10 +426,13 @@ def test_record_to_row_session_ambient_beats_primary_but_explicit_wins(
 
 def test_request_audit_attrs_accumulate_and_reset() -> None:
     # Outside a request (no bag) add_audit_attrs is a no-op and the current
-    # attrs are empty.
-    assert dl.current_request_audit_attrs() == {}
-    dl.add_audit_attrs(event_type="message")
-    assert dl.current_request_audit_attrs() == {}
+    # attrs are empty. An empty context is "outside a request": sync tests share
+    # the worker's context, so an earlier test's bag would otherwise be visible.
+    def _outside_a_request() -> dict[str, str]:
+        dl.add_audit_attrs(event_type="message")
+        return dl.current_request_audit_attrs()
+
+    assert contextvars.Context().run(_outside_a_request) == {}
     # After a per-request reset, handlers accumulate attrs (coerced to str,
     # None dropped) that the middleware later reads.
     dl.reset_request_audit_attrs()

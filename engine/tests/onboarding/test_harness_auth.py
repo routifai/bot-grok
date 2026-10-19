@@ -172,7 +172,7 @@ def test_store_key_makes_pi_ready_despite_subscription_default(
     pi_provider = default_provider_for_harness(cfg, "pi")
     assert pi_provider is not None and pi_provider.kind != "subscription"
     # …while Claude's own subscription default is left intact.
-    claude_provider = default_provider_for_harness(cfg, "claude-native")
+    claude_provider = default_provider_for_harness(cfg, "claude-sdk")
     assert claude_provider is not None and claude_provider.kind == "subscription"
 
 

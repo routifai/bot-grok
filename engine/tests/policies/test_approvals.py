@@ -106,11 +106,14 @@ def test_connector_and_publish_tools_are_classified_by_name() -> None:
 
 def test_registered_classifier_runs_first() -> None:
     risk = approvals.Risk("send", ("acme",), "Tell acme")
+    # The registry is process-wide: put back exactly what was there, so the
+    # classifiers other modules registered at import keep running for later tests.
+    registered = list(approvals._extra_classifiers)
     approvals.register_classifier(lambda name, args: risk if name == "acme_notify" else None)
     try:
         assert approvals.classify_tool_call("acme_notify", {}) == risk
     finally:
-        approvals._extra_classifiers.clear()
+        approvals._extra_classifiers[:] = registered
 
 
 def test_policy_asks_with_a_decodable_reason(store: SqlAlchemyApprovalStore) -> None:
