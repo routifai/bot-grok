@@ -24,7 +24,6 @@ from omnigent.stores.conversation_store.sqlalchemy_store import SqlAlchemyConver
 from omnigent.superchat.artifact_kinds import DECK_SUFFIX, KIND_MIME
 from omnigent.superchat.artifacts.store import SqlAlchemyArtifactStore
 from omnigent.superchat.rounds.fold import fold
-from omnigent.superchat.rounds.read import ROUND_FILES_ENV, cards
 from omnigent.superchat.rounds.store import RoundEvent, SqlAlchemyRoundStore
 from omnigent.superchat.transcript.blocks import project_items
 from omnigent.superchat.transcript.routes import read_transcript, register_transcript_routes
@@ -582,31 +581,88 @@ def _tool(call_id: str, name: str, output: str) -> list[NewConversationItem]:
     ]
 
 
-@pytest.mark.parametrize("by_round", [False, True])
+def cards(messages: list[dict[str, Any]]) -> list[tuple[str, int | None]]:
+    """The file cards of transcript *messages* in order, as ``(artifact_id, version)``."""
+    return [
+        (b["artifact_id"], b.get("version"))
+        for m in messages
+        for b in m["blocks"]
+        if b["type"] == "file" and b.get("by") != "user"
+    ]
+
+
+def _file_card(saved: Any) -> str:
+    data = {"name": saved.name, "artifactId": saved.id, "version": saved.version}
+    return json.dumps({"type": "card", "card": "file", "data": data, "fallback": saved.name})
+
+
+def _resave_and_show(
+    conversations: SqlAlchemyConversationStore,
+    rounds: SqlAlchemyRoundStore,
+    artifacts: SqlAlchemyArtifactStore,
+    root: str,
+) -> tuple[str, str]:
+    """A Round in which the Assistant saves a deck twice, shows it with a file card, and shows
+    an older file with another: three cards for one file before the Round drew them.
+
+    :returns: The Round id and the older file's artifact id.
+    """
+    (asked,) = conversations.append(root, [_say("user", "Make a deck on the history of jazz")])
+    older = artifacts.create(
+        user_id=None,
+        parent_session_id=root,
+        name="notes.md",
+        title="Notes",
+        kind="md",
+        mime=KIND_MIME["md"],
+        data=b"notes",
+        chat_id=root,
+    )
+    events = [RoundEvent(asked.id, root, "round.opened", "person", 9_000_000, {"text": "jazz"})]
+    for n in (1, 2):
+        saved = artifacts.create(
+            user_id=None,
+            parent_session_id=root,
+            name=f"history-of-jazz{DECK_SUFFIX}",
+            title="Jazz",
+            kind="html",
+            mime=KIND_MIME["html"],
+            data=b"<p>v%d</p>" % n,
+            chat_id=root,
+            round_id=asked.id,
+        )
+        result = {"type": "artifact", "id": saved.id, "name": saved.name, "kind": "html"}
+        conversations.append(
+            root, _tool(f"jazz{n}", "artifact_save", json.dumps({**result, "version": n}))
+        )
+        body = {"name": saved.name, "file_kind": "html", "artifact_id": saved.id, "version": n}
+        events.append(RoundEvent(asked.id, root, "file.saved", "assistant", 9_000_000 + n, body))
+    conversations.append(root, _tool("jazz3", "render_card", _file_card(saved)))
+    conversations.append(root, _tool("jazz4", "render_card", _file_card(older)))
+    conversations.append(root, [_say("assistant", "Your jazz deck is ready.")])
+    rounds.append(events)
+    return asked.id, older.id
+
+
 async def test_pages_walk_back_and_draw_each_rounds_cards_at_any_page_size(
-    by_round: bool,
     client: httpx.AsyncClient,
     conversation_store: SqlAlchemyConversationStore,
     db_uri: str,
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The recorded Rounds, replayed into one Conversation, page back to their first message at
-    40, 100 and 500 items a page. With the file cards drawn from the save calls, the cards are
-    the Assistant's own saves; drawn from each Round's record, they are every file of its view,
-    the Assistant's and its Helper's, in order on the Round's last reply. Either way a page's
-    size never moves a card, and the two ways agree on the Assistant's saves. Every message
-    carries the Round it is in (``round_id``, the id of the message that opened it), whatever the
-    page size."""
-    if by_round:
-        monkeypatch.setenv(ROUND_FILES_ENV, "1")
-    else:
-        monkeypatch.delenv(ROUND_FILES_ENV, raising=False)
+    9, 40, 100 and 500 items a page. A Round's file cards are every file of its view, the
+    Assistant's and its Helper's, in order on the Round's last reply, one per file at its latest
+    version, and a page's size never moves a card. A file card the Assistant drew for a file of
+    its Round is dropped; one for a file outside it stays. Every message carries the Round it is
+    in (``round_id``, the id of the message that opened it), whatever the page size."""
     rounds = SqlAlchemyRoundStore(db_uri)
     blobs = LocalArtifactStore(str(tmp_path / "blobs"))
     artifacts = SqlAlchemyArtifactStore(db_uri, lambda: blobs)
     root = conversation_store.create_conversation(kind="default", title="S", labels=_MODE)
     opened = _replay_recorded(conversation_store, rounds, artifacts, root.id)
+    jazz, older = _resave_and_show(conversation_store, rounds, artifacts, root.id)
+    opened.append(jazz)
     assert len(conversation_store.list_items(root.id, limit=500).data) > 100
 
     def read_all(limit: int) -> list[dict[str, Any]]:
@@ -645,29 +701,29 @@ async def test_pages_walk_back_and_draw_each_rounds_cards_at_any_page_size(
         assert all(in_round.get(m["id"], m["round_id"]) == m["round_id"] for m in paged)
     views = {rid: fold(rounds.events(rid, root.id), rid)["files"] for rid in opened}
     recorded = [(f["artifact_id"], f["version"]) for rid in opened for f in views[rid]]
-    assistants = [
-        (f["artifact_id"], f["version"])
-        for rid in opened
-        for f in views[rid]
-        if f["helper_id"] is None
+    assistants = [f for rid in opened for f in views[rid] if f["helper_id"] is None]
+    assert (len(assistants), len(recorded)) == (5, 11)
+    assert cards(whole) == recorded
+    current, per_round = None, {}
+    for message in whole:
+        if message["role"] == "user":
+            current = message["id"]
+        elif cards([message]):
+            assert message["blocks"][0]["type"] == "text"  # after the reply's words
+            per_round.setdefault(current, []).extend(cards([message]))
+    assert per_round == {
+        rid: [(f["artifact_id"], f["version"]) for f in views[rid]] for rid in opened if views[rid]
+    }
+    (deck,) = views[jazz]
+    assert per_round[jazz] == [(deck["artifact_id"], 2)]
+    shown = [
+        b["card"]["data"]["artifactId"]
+        for m in whole
+        if m["round_id"] == jazz
+        for b in m["blocks"]
+        if b["type"] == "card" and b["card"]["card"] == "file"
     ]
-    assert (len(assistants), len(recorded)) == (4, 10)
-    drawn = cards(whole)
-    assert drawn == (recorded if by_round else assistants)
-    assert [c for c in drawn if c in assistants] == assistants
-    if by_round:
-        current, per_round = None, {}
-        for message in whole:
-            if message["role"] == "user":
-                current = message["id"]
-            elif cards([message]):
-                assert message["blocks"][0]["type"] == "text"  # after the reply's words
-                per_round.setdefault(current, []).extend(cards([message]))
-        assert per_round == {
-            rid: [(f["artifact_id"], f["version"]) for f in views[rid]]
-            for rid in opened
-            if views[rid]
-        }
+    assert shown == [older]
     with pytest.raises(OmnigentError, match="not found"):
         await client.get("/v1/sessions/ad563e906854634c49e1a6fd2fbb31d4/transcript")
 

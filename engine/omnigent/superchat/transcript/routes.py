@@ -33,7 +33,6 @@ from omnigent.superchat.rounds.read import (
     attach_round_files,
     attach_round_ids,
     item_rounds,
-    round_files_on,
 )
 from omnigent.superchat.rounds.store import SqlAlchemyRoundStore
 from omnigent.superchat.transcript.blocks import helper_session_ids, project_items
@@ -82,9 +81,8 @@ def read_transcript(
     """One page of a session's transcript, oldest message first.
 
     :param rounds: The Round record: each message's ``round_id`` is read from it
-        (:func:`attach_round_ids`) and, with
-        :data:`~omnigent.superchat.rounds.read.ROUND_FILES_ENV` set, a Conversation's file
-        cards are drawn from it (:func:`attach_round_files`).
+        (:func:`attach_round_ids`) and a Conversation's file cards are drawn from it
+        (:func:`attach_round_files`).
     :param artifacts: Where those cards' titles and sizes are read.
 
     Pages walk back from the newest items (``before`` is the ``older_cursor`` of the page
@@ -136,7 +134,7 @@ def read_transcript(
     )
     if rounds is not None:
         attach_round_ids(rounds, conv_store, conversation, items, messages)
-    if rounds is not None and conversation.kind != "sub_agent" and round_files_on():
+    if rounds is not None and conversation.kind != "sub_agent":
         newer_round = item_rounds(rounds, conv_store, conversation.id, [newer]) if newer else []
         attach_round_files(
             rounds,

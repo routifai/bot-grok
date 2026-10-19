@@ -7,13 +7,12 @@
   :func:`attach_round_ids` puts on each transcript message (``round_id``) and the Activity rows
   read; :func:`open_rounds` lists the Rounds whose Helpers still work (the turn prefix and the
   context brief).
-* :func:`attach_round_files`, on when :data:`ROUND_FILES_ENV` is set, draws a transcript
-  page's file cards from each Round's view instead of from the save calls on the page.
+* :func:`attach_round_files` draws a transcript page's file cards from each recorded Round's
+  view instead of from the save calls on the page.
 * :func:`shadow_diff`, on when :data:`SHADOW_ENV` is set, folds a Round after a turn of it ends
   and logs at INFO each way the fold disagrees with what the engine derives today from the
-  stored items and Helper sessions: status, start time, files, Helpers, and the Round's file
-  cards drawn with :data:`ROUND_FILES_ENV` off and on. Development only; nothing it finds
-  reaches a person.
+  stored items and Helper sessions: status, start time, files and Helpers. Development only;
+  nothing it finds reaches a person.
 """
 
 from __future__ import annotations
@@ -53,8 +52,6 @@ SHADOW_DELAY = 2.0
 _SHADOW_ITEMS = 500
 #: Seconds two start times may differ by and still agree.
 _START_SLACK = 2.0
-#: Set (``1``, ``true``) to draw file cards from each Round's record (:func:`attach_round_files`).
-ROUND_FILES_ENV = "OMNIGENT_ROUND_FILES"
 #: Messages searched back from a page for the Round its first items are in.
 _OPENER_LOOKBACK = 50
 #: Latest Rounds :func:`open_rounds` looks through for the ones still working.
@@ -102,21 +99,18 @@ def shadow_on() -> bool:
     return env_var_is_truthy(SHADOW_ENV, default=False)
 
 
-def round_files_on() -> bool:
-    """Whether file cards come from each Round's record (:data:`ROUND_FILES_ENV`)."""
-    return env_var_is_truthy(ROUND_FILES_ENV, default=False)
-
-
 def _is_card(block: Mapping[str, Any]) -> bool:
     """A file card the Assistant's work drew; a file the person delivered is not one."""
     return block.get("type") == "file" and block.get("by") != "user"
 
 
-def cards(messages: Sequence[Mapping[str, Any]]) -> list[tuple[str, int | None]]:
-    """The file cards of transcript *messages* in order, as ``(artifact_id, version)``."""
-    return [
-        (b["artifact_id"], b.get("version")) for m in messages for b in m["blocks"] if _is_card(b)
-    ]
+def _shows_file(block: Mapping[str, Any], ids: set[str], names: set[str]) -> bool:
+    """Whether *block* is a ``render_card`` file card for one of the files *ids* or *names*."""
+    if block.get("type") != "card" or block["card"].get("card") != "file":
+        return False
+    data = block["card"].get("data") or {}
+    shown = data.get("artifactId")
+    return shown in ids if isinstance(shown, str) else data.get("name") in names
 
 
 class _Views:
@@ -243,11 +237,13 @@ def attach_round_files(
 
     The messages are in the Rounds their ``round_id`` names (:func:`attach_round_ids`). A
     recorded Round's cards are its view's files in order, the Assistant's and its Helpers', as
-    ``file`` blocks after the words of its last assistant message; the cards its save calls drew
-    are dropped. A Round that goes on past the page (*newer_round_id*, the Round of the oldest
-    item of the page after this one, is the page's last Round) draws its cards on the page that
-    holds its end, so a page's size never moves a card. A Round with no record keeps the cards
-    its calls drew.
+    ``file`` blocks after the words of its last assistant message, one per file at its latest
+    version; the cards its save calls drew are dropped, and so is a ``render_card`` file card for
+    one of those files, while one for any other file stays. A Round that goes on past the page
+    (*newer_round_id*, the Round of the oldest item of the page after this one, is the page's
+    last Round) draws its cards on the page that holds its end, so a page's size never moves a
+    card. A Round with no record, such as one from before Rounds, keeps the cards its calls
+    drew.
 
     :param newer_round_id: The Round of the oldest item of the page after this one; ``None`` on
         the newest page.
@@ -269,8 +265,12 @@ def attach_round_files(
         view = views(round_id) if round_id is not None else None
         if view is None:
             continue
+        ids = {f["artifact_id"] for f in view["files"]}
+        names = {f["name"] for f in view["files"]}
         for message in mine:
-            message["blocks"] = [b for b in message["blocks"] if not _is_card(b)]
+            message["blocks"] = [
+                b for b in message["blocks"] if not (_is_card(b) or _shows_file(b, ids, names))
+            ]
         replies = [m for m in mine if m["role"] == "assistant"]
         closing = next((m for m in reversed(replies) if m["blocks"]), None)
         closing = closing or (replies[-1] if replies else None)
@@ -318,23 +318,6 @@ def _file_names(items: list[Any]) -> set[str]:
     return names
 
 
-def _round_cards(
-    store: SqlAlchemyRoundStore,
-    conv_store: ConversationStore,
-    conversation_id: str,
-    items: list[Any],
-) -> dict[str, list[tuple[str, int | None]]]:
-    """The Round's file cards drawn from its *items*, with :data:`ROUND_FILES_ENV` off and on."""
-    flat = [item.to_api_dict() for item in items]
-    messages = project_items(flat)
-    off = cards(messages)
-    conversation = conv_store.get_conversation(conversation_id)
-    if conversation is not None:
-        attach_round_ids(store, conv_store, conversation, flat, messages)
-    attach_round_files(store, conversation_id, messages, newer_round_id=None)
-    return {"off": off, "on": cards(messages)}
-
-
 def derive_today(
     conv_store: ConversationStore, conversation_id: str, round_id: str
 ) -> dict[str, Any] | None:
@@ -378,28 +361,22 @@ def shadow_diff(
 ) -> list[str]:
     """Fold the Round, derive it today's way, and log each field they disagree on.
 
-    :returns: The fields that disagree, e.g. ``["files"]``; ``cards`` when the Round's file
-        cards differ with :data:`ROUND_FILES_ENV` off (logged as ``today``) and on (``fold``).
+    :returns: The fields that disagree, e.g. ``["files"]``.
     """
     events = store.events(round_id, conversation_id)
     today = derive_today(conv_store, conversation_id, round_id)
     if not events or today is None:
         return []
-    drawn = _round_cards(
-        store, conv_store, conversation_id, _round_items(conv_store, conversation_id, round_id)
-    )
     view = fold(events, round_id)
     folded = {
         "status": view["status"],
         "started_at": view["started_at"],
         "files": {f["name"] for f in view["files"]},
         "helpers": set(view["helpers"]),
-        "cards": drawn["on"],
     }
-    today["cards"] = drawn["off"]
     differ = [
         key
-        for key in ("status", "started_at", "files", "helpers", "cards")
+        for key in ("status", "started_at", "files", "helpers")
         if (
             abs((folded[key] or 0) - today[key]) > _START_SLACK
             if key == "started_at"

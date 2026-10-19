@@ -40,7 +40,6 @@ from omnigent.superchat.artifacts.store import (
     SqlAlchemyArtifactStore,
 )
 from omnigent.superchat.prompt_prefix import person_words
-from omnigent.superchat.rounds.read import ROUND_FILES_ENV
 from omnigent.superchat.transcript import routes as transcript_routes
 from omnigent.superchat.transcript.routes import register_transcript_routes
 
@@ -270,18 +269,10 @@ def test_a_save_links_the_message_and_the_version_names_it(env) -> None:
     assert (link["artifact_id"], link["version"]) == (again["id"], 2)
 
 
-@pytest.mark.parametrize("by_round", [False, True])
-def test_a_helper_save_names_the_message_the_helper_came_from(
-    env, by_round: bool, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A save names the person's message it came from and is stamped with its Round. Found from
-    the chats' items, the Conversation's own save after a steer names the steer; read from the
-    saving chat's Round, it names the message that opened the Round. A Helper's save names
-    that message both ways."""
-    if by_round:
-        monkeypatch.setenv(ROUND_FILES_ENV, "1")
-    else:
-        monkeypatch.delenv(ROUND_FILES_ENV, raising=False)
+def test_a_helper_save_names_the_message_the_helper_came_from(env) -> None:
+    """A save names the person's message that opened the saving chat's Round and is stamped with
+    that Round: a Helper's save, and the Conversation's own save after a steer. A scheduled
+    run, in no Round, names no message."""
     client, store, conversations, chat, _updates, _steers = env
     asked = _ask(conversations, chat, "write the memo")
     in_round = {"omnigent.context.mode": "superside-chat", ROUND_LABEL_KEY: asked}
@@ -296,7 +287,7 @@ def test_a_helper_save_names_the_message_the_helper_came_from(
     assert _transcript_message(client, chat, asked)["artifact"]["how"] == "edited"
     own = _save(client, chat, "notes.md")
     version = client.get(f"/v1/artifacts/{own['id']}").json()["all_versions"][0]
-    assert version["item_id"] == (asked if by_round else steer)
+    assert version["item_id"] == asked != steer
     assert {store.get_in_session(a["id"], chat).round_id for a in (saved, own)} == {asked}
 
     scheduled = conversations.create_conversation(

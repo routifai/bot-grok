@@ -138,7 +138,7 @@ async def test_a_round_reads_folded_from_any_chat_of_its_conversation_and_shadow
     """The Round route folds the Conversation's Round for the Conversation and its Helper, lists
     it with its status, refuses another Conversation's Round, and the shadow diff logs only the
     fields the record and today's derivation disagree on: a save the record missed is a file
-    and a card more, with the cards drawn from the save calls, than the Round's view has."""
+    more than the Round's view has."""
     root_id = _root(conversation_store)
     other_id = _root(conversation_store)
     helper = conversation_store.create_conversation(
@@ -184,8 +184,7 @@ async def test_a_round_reads_folded_from_any_chat_of_its_conversation_and_shadow
     with caplog.at_level(logging.INFO, logger="omnigent.superchat.rounds.read"):
         assert shadow_diff(round_store, conversation_store, root_id, rid) == []
         conversation_store.append(root_id, save("c2", "notes"))  # a save the record missed
-        assert shadow_diff(round_store, conversation_store, root_id, rid) == ["files", "cards"]
+        assert shadow_diff(round_store, conversation_store, root_id, rid) == ["files"]
     assert [r.getMessage() for r in caplog.records] == [
         f"round {rid} shadow files: fold=['deck'] today=['deck', 'notes']",
-        f"round {rid} shadow cards: fold=[('a_deck', 1)] today=[('a_deck', 1), ('a_notes', 1)]",
     ]

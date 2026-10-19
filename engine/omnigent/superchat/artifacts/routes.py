@@ -63,7 +63,6 @@ from omnigent.superchat.artifacts.studio import (
 )
 from omnigent.superchat.decks.outline import deck_outline
 from omnigent.superchat.family.signals import notify_item_updated
-from omnigent.superchat.rounds.read import round_files_on
 from omnigent.superchat.rounds.record import file_saved, round_of
 from omnigent.superchat.transcript.blocks import project_items
 
@@ -459,7 +458,7 @@ def create_artifacts_router(
             saving_chat, conversation_store, parent_session_id, chat_id
         )
         round_id = round_of(saving.labels) if saving is not None and not studio else None
-        if saving is not None and round_id is not None and round_files_on():
+        if saving is not None and round_id is not None:
             # The version came from its chat's Round: the person's message that opened it.
             saver, turn_item_id, item_id = saving.id, round_id, round_id
         else:
