@@ -61,10 +61,10 @@ def _out(item_id: str, call_id: str, output: Any) -> dict[str, Any]:
 
 _CARD = {
     "type": "card",
-    "card": "plan",
-    "id": "plan-1",
+    "card": "progress",
+    "id": "progress-1",
     "data": {"steps": ["a"]},
-    "fallback": " the plan ",
+    "fallback": " the progress ",
     "note": "internal",
 }
 
@@ -225,18 +225,18 @@ def test_card_call_becomes_a_card_message_without_internal_fields() -> None:
     (message,) = project_items(items)
     assert message["role"] == "assistant"
     (block,) = message["blocks"]
-    assert block["type"] == "card" and block["card_id"] == "plan-1"
+    assert block["type"] == "card" and block["card_id"] == "progress-1"
     assert block["card"] == {
-        "card": "plan",
-        "id": "plan-1",
+        "card": "progress",
+        "id": "progress-1",
         "data": {"steps": ["a"]},
-        "fallback": "the plan",
+        "fallback": "the progress",
     }
     assert "pending" not in block
 
 
 def test_card_without_output_is_pending_and_failed_card_is_skipped() -> None:
-    args = {"card": "plan", "fallback": "wait", "data": {"x": 1}}
+    args = {"card": "progress", "fallback": "wait", "data": {"x": 1}}
     (pending,) = project_items([_call("c1", "render_card", "k1", args)])
     assert pending["blocks"][0]["pending"] is True
     assert pending["blocks"][0]["card"]["data"] == {}

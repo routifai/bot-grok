@@ -17,11 +17,8 @@ them; where code still uses one, the entry says so.
 - **Claim**: one sentence about the person in long-term memory, with its quote, evidence, kind and confidence (table `memory_claims`).
 - **Computer**: old name for **host**, gone from code, config and copy since the rename wave (ADR 0018). The person's word for their host is "your machine"; the web tab is Files.
 - **Context brief**: the engine's account, built when the assistant calls `context_brief`, of what the person made before on the subject, what earlier turns and the journal say, standing preferences, open tasks and matching sources ([ADR 0027](adr/0027-super-chat-is-an-agentic-layer.md)). Pulled by judgement, never ordered first ([ADR 0029](adr/0029-a-round-is-recorded-and-the-harness-owns-the-words.md)).
-- **Done criterion**: the evidence a plan step needs before the engine ticks it (`brief`, `helper_done`, `check_ran`, `saved`, `read`, `answered`); the model never ticks a step ([ADR 0027](adr/0027-super-chat-is-an-agentic-layer.md)). Goes with the plan machinery ([ADR 0029](adr/0029-a-round-is-recorded-and-the-harness-owns-the-words.md)).
-- **Not checked**: a check step with no action behind it; the hand-back must say so. Goes with the plan machinery ([ADR 0029](adr/0029-a-round-is-recorded-and-the-harness-owns-the-words.md)).
-- **Session panel**: the panel beside the transcript while work runs: Progress (the plan), Outputs (files made), Used in this conversation (tool kinds).
+- **Session panel**: the panel beside the transcript while work runs: Outputs (files made), Used in this conversation (tool kinds).
 - **Paused**: a helper state: held at its next tool boundary until resumed; cancelled after thirty minutes unresumed.
-- **Comment (on a step)**: a step's text attached to the composer as a chip and sent as structured context with the next message.
 - **Conversation**: the one chat between a person and the assistant; code still uses a retired name for it (see **Assistant**).
 - **Daily note**: one note per person per local day, kept by background `notes` helper passes; the person's own edits are protected ([context.md](context.md#daily-notes-and-the-working-list)).
 - **Deck**: an HTML artifact named `*.deck.html` with 1920x1080 slides, exported to PowerPoint or PDF in the host ([decks.md](decks.md)).

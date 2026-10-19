@@ -17,7 +17,6 @@ from tests.scenarios.rules import (
     gives_up,
     is_deliverable_turn,
     mechanism_words,
-    plan_spans,
     speaks_first,
 )
 from tests.scenarios.scripts import ROUNDS, SCENARIOS, Scenario
@@ -72,20 +71,19 @@ def test_deliverable_scenario_speaks_first(scenario: Scenario) -> None:
 @pytest.mark.parametrize(
     "scenario", [s for s in SCENARIOS if s.deliverable == "deck"], ids=lambda s: s.name
 )
-def test_a_deck_scenarios_plan_ends_on_a_check_that_ran(scenario: Scenario) -> None:
-    spans = plan_spans(run(scenario))
-    assert spans and all(checked(span) for span in spans), spans
+def test_a_deck_scenario_ends_on_a_check_that_ran(scenario: Scenario) -> None:
+    events = [event for turn in run(scenario) for event in turn]
+    assert checked(events), events
 
 
 @pytest.mark.parametrize(
     ("span", "ok"),
     [
-        # the Helper built, saved and checked: the check step is done
+        # the Helper built, saved and checked
         (
             [
                 ("request", "a deck"),
                 ("tool_call", "context_brief"),
-                ("plan", "brief,helper_done,check_ran"),
                 ("helper_started", ""),
                 ("notice", "result"),
                 ("helper_save", ""),
@@ -93,17 +91,15 @@ def test_a_deck_scenarios_plan_ends_on_a_check_that_ran(scenario: Scenario) -> N
             ],
             True,
         ),
-        # the plan says check, nothing checked: not checked
-        ([("request", "a deck"), ("plan", "brief,check_ran"), ("save", "")], False),
-        # a check before anything was built proves nothing
+        ([("request", "a deck"), ("tool_call", "deck_new"), ("save", "")], False),  # not checked
+        # a save after the check needs another check
         (
-            [("request", "a deck"), ("plan", "check_ran"), ("tool_call", "deck_check")],
+            [("request", "a deck"), ("save", ""), ("tool_call", "deck_check"), ("save", "")],
             False,
         ),
-        ([("request", "a deck"), ("plan", "saved"), ("save", "")], False),  # no check step
-        ([("request", "a deck"), ("plan", "check_ran"), ("cancelled", "")], True),
+        ([("request", "a deck"), ("tool_call", "deck_new"), ("cancelled", "")], True),
         ([("message", "time in Tokyo?"), ("tool_call", "web_search")], True),
-        ([("request", "a deck"), ("tool_call", "deck_new"), ("save", "")], True),  # no plan
+        ([("request", "a deck"), ("card", "look")], True),  # nothing built
     ],
 )
 def test_checked(span: list[Event], ok: bool) -> None:
@@ -175,7 +171,7 @@ def test_mechanism_words(text: str, said: list[str]) -> None:
     ("turn", "spoken"),
     [
         ([("request", "a deck"), ("reply", "Making it."), ("tool_call", "deck_new")], True),
-        ([("request", "a deck"), ("plan", ""), ("tool_call", "deck_new")], True),
+        ([("request", "a deck"), ("reply", "On it."), ("tool_call", "deck_new")], True),
         ([("request", "a deck"), ("helper_started", ""), ("reply", "On it.")], False),
         ([("request", "a deck"), ("card", "look")], True),
         ([("answer", "Nord"), ("tool_call", "deck_theme_set")], False),
@@ -190,7 +186,7 @@ def test_speaks_first(turn: list[Event], spoken: bool) -> None:
     ("turn", "well"),
     [
         # a request opens no task until its work does: only its refusals can stall it
-        ([("request", "a deck"), ("plan", ""), ("reply", "Working on it.")], True),
+        ([("request", "a deck"), ("reply", "Working on it.")], True),
         ([("request", "a deck"), ("save", "")], True),
         ([("answer", "Nord"), ("save", "")], True),
         ([("answer", "Nord"), ("helper_started", "")], True),

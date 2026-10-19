@@ -13,12 +13,9 @@ import { ArtifactPreviewThumbnail } from "../artifacts";
 import { StepsTimeline } from "./ActivityRunDialog";
 import { focusActivity } from "./activityFocus";
 import { useConversationFiles } from "./conversationFiles";
-import { currentStep, PlanSteps, stepWords } from "./PlanSteps";
-import { setStepComment } from "./stepComment";
 import { activityFeedFor } from "./useActivities";
 import { useFirstMissing } from "./useFirstMissing";
 import { useHelperPause } from "./useHelperPause";
-import type { PlanStep } from "./workPlan";
 import type { StripHelper, StripTurn, StripView, WorkLine } from "./workStripState";
 import {
   artifactSaveCount,
@@ -52,7 +49,7 @@ export function WorkMark({ live, size = 20 }: { live: boolean; size?: number }) 
   );
 }
 
-/** A running Helper's line, for a reply without a plan (ADR 0022's strip). */
+/** A running Helper's line (ADR 0022's strip). */
 export function WorkLineRow({ line }: { line: WorkLine }) {
   const { t } = useLingui();
   return (
@@ -228,14 +225,11 @@ export function PauseControl({ pause }: { pause: StripPause }) {
 }
 
 /**
- * The work strip under a reply (ADR 0022, ADR 0023, ADR 0027). While the work runs it is lit: a
- * slowly turning edge in the tint family, the orb as its mark, the current step in its present
- * tense, a clock, a progress bar, anything a Helper flagged, and the reply's plan as the engine
- * reads it (earlier steps folded, the current step with the latest line of the work and the step
- * after it). Without a plan it shows one line per running Helper, as before. Running Helpers can
- * be paused. Settled, it goes still: "4 of 4 done" (or "Done") and the span, with the plan behind
- * a "Plan" toggle and the engine's summary line, which unfolds to the steps. "Show details" opens
- * the Activity panel on the work.
+ * The work strip under a reply from before Rounds (ADR 0022, ADR 0027). While the work runs it is
+ * lit: a slowly turning edge in the tint family, the orb as its mark, one line per running Helper
+ * (else the turn's own latest step), a clock and anything a Helper flagged. Running Helpers can be
+ * paused. Settled, it goes still: "Done" and the span, with the engine's summary line, which
+ * unfolds to the steps. "Show details" opens the Activity panel on the work.
  */
 export function WorkStripView({
   view,
@@ -243,30 +237,21 @@ export function WorkStripView({
   summary = null,
   pause = null,
   liveSteps = NO_STEPS,
-  onComment,
   onShowDetails,
 }: {
   view: StripView;
-  /** A running turn without a plan or a Helper: its own steps so far, newest last. */
+  /** A running turn without a Helper: its own steps so far, newest last. */
   liveSteps?: readonly ActivityStep[];
   drafts?: readonly DraftFile[];
   summary?: StripSummary | null;
   /** Shown while the reply has running Helpers. */
   pause?: StripPause | null;
-  /** Puts a step in the composer (ADR 0027 "Comment"). */
-  onComment?: (index: number, step: PlanStep) => void;
   onShowDetails: () => void;
 }) {
   const { t } = useLingui();
-  const [open, setOpen] = useState(false);
-  const { live, plan } = view;
-  const done = plan?.filter((step) => step.status === "done").length ?? 0;
-  const total = plan?.length ?? 0;
-  const shown = live || open;
-  const current = plan ? currentStep(plan) : undefined;
-  const lastStep = live && !plan ? liveSteps.at(-1) : undefined;
+  const { live } = view;
+  const lastStep = live ? liveSteps.at(-1) : undefined;
   const now =
-    (current && stepWords(current)) ??
     view.lines[0]?.title ??
     (lastStep ? presentStep(lastStep).title : null) ??
     view.progress ??
@@ -276,9 +261,7 @@ export function WorkStripView({
       ? t`Didn't finish`
       : view.outcome === "cancelled"
         ? t`Cancelled`
-        : plan
-          ? t`${done} of ${total} done`
-          : t`Done`;
+        : t`Done`;
   const clock =
     view.clockMs !== null ? (
       <span
@@ -304,7 +287,7 @@ export function WorkStripView({
       className="sc-work mt-2.5 w-[520px] max-w-full"
     >
       <div className="flex flex-col gap-[9px] rounded-[12.5px] bg-content px-3.5 pt-[11px] pb-2.5">
-        {live && !plan && view.lines.length > 0 ? (
+        {live && view.lines.length > 0 ? (
           <div className="flex min-w-0 items-start gap-2.5 text-[13.5px]">
             <WorkMark live />
             <div className="flex min-w-0 flex-1 flex-col gap-1.5 pt-px">
@@ -336,60 +319,16 @@ export function WorkStripView({
               </span>
             )}
             {clock}
-            {!live && plan ? (
-              <button
-                type="button"
-                data-testid="work-strip-plan-toggle"
-                aria-expanded={open}
-                onClick={() => setOpen((value) => !value)}
-                className={cn(LINK, "inline-flex items-center gap-0.5")}
-              >
-                {t`Plan`}
-                <ChevronDown
-                  aria-hidden="true"
-                  size={13}
-                  strokeWidth={2}
-                  className={cn("transition-transform duration-200", open && "rotate-180")}
-                />
-              </button>
-            ) : null}
             {pauseControl}
             {details}
           </div>
         )}
-        {live && plan ? (
-          <div
-            role="progressbar"
-            aria-valuemin={0}
-            aria-valuemax={total}
-            aria-valuenow={done}
-            data-testid="work-strip-progress"
-            className="h-[3px] overflow-hidden rounded-[2px] bg-separator"
-          >
-            <span
-              className="block h-full rounded-[2px] bg-linear-to-r from-tint to-tint-2 transition-[width] duration-600 ease-out"
-              style={{ width: `${total ? (done / total) * 100 : 0}%` }}
-            />
-          </div>
-        ) : null}
         {lastStep ? (
           <div data-testid="work-strip-live-steps">
             <StepsTimeline steps={[...liveSteps]} running />
           </div>
         ) : null}
-        {plan && shown ? view.flags.map((flag, index) => <Flag key={index} text={flag} />) : null}
-        {plan && shown ? (
-          <PlanSteps
-            plan={plan}
-            fold={view.fold}
-            progress={view.progress}
-            compact={live}
-            onComment={onComment}
-          />
-        ) : null}
-        {drafts.length > 0 && (shown || !plan) ? (
-          <DraftThumbs drafts={drafts} updating={live} />
-        ) : null}
+        {drafts.length > 0 ? <DraftThumbs drafts={drafts} updating={live} /> : null}
         {!live && summary ? <SummaryLine summary={summary} /> : null}
       </div>
     </div>
@@ -514,17 +453,8 @@ export function WorkStrip({
         : null,
     [running.length, paused, onPause, onResume],
   );
-  const planId = turn?.planId ?? null;
-  const onComment = useMemo(
-    () =>
-      planId
-        ? (index: number, step: PlanStep) =>
-            setStepComment({ botId, cardId: planId, stepIndex: index, text: step.text })
-        : undefined,
-    [botId, planId],
-  );
-  // A settled reply with no plan, no Helper and no steps of its own has nothing to show.
-  if (!view.live && !view.plan && helpers.length === 0 && !turnActivity?.summaryLine) return null;
+  // A settled reply with no Helper and no steps of its own has nothing to show.
+  if (!view.live && helpers.length === 0 && !turnActivity?.summaryLine) return null;
   return (
     <WorkStripView
       view={view}
@@ -532,11 +462,8 @@ export function WorkStrip({
       summary={summary}
       pause={pause}
       liveSteps={
-        view.live && !view.plan && view.lines.length === 0
-          ? (turnActivity?.steps ?? NO_STEPS)
-          : NO_STEPS
+        view.live && view.lines.length === 0 ? (turnActivity?.steps ?? NO_STEPS) : NO_STEPS
       }
-      onComment={onComment}
       onShowDetails={() => focusActivity(view.focusId ?? turnActivity?.id ?? null)}
     />
   );

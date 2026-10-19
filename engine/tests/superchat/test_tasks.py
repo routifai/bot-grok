@@ -221,11 +221,11 @@ def test_a_rounds_running_helper_is_open_work_until_its_session_ends(env: _Env) 
     # the Helper's session ends before its finish is recorded: no longer working
     env.conversations.set_session_live_status(helper, "idle")
     assert _view(env)["rounds"] == []
-    # its finish recorded too (the Round settles): still nothing, and no task was ever written
+    # its finish recorded too (the Round settles): still nothing
     env.rounds.append(
         [RoundEvent(rid, env.chat, "helper.finished", "helper", 4, {"helper_id": helper})]
     )
-    assert _view(env)["rounds"] == [] and env.service.store.list(env.chat) == []
+    assert _view(env)["rounds"] == []
     # a failed Helper is not working either; a scheduled one is background work
     failed = _start_helper(env, later, "Memo")
     env.conversations.set_session_live_status(failed, "failed")
@@ -235,11 +235,10 @@ def test_a_rounds_running_helper_is_open_work_until_its_session_ends(env: _Env) 
 
 
 def test_no_writer_is_left_and_an_unknown_session_reads_nothing(env: _Env) -> None:
-    for event in ("deck_new", "artifact_save", "start_helper", "turn_start", "turn_end", "x"):
+    for event in ("deck_new", "artifact_save", "start_helper", "turn_end", "check", "plan"):
         resp = env.client.post(f"/v1/sessions/{env.chat}/tasks/events", json={"event": event})
-        assert resp.status_code == 400, event
+        assert resp.status_code == 404, event
     assert env.client.get(f"/v1/sessions/{'f' * 32}/tasks").status_code == 404
-    assert env.service.store.list(env.chat) == []
 
 
 def _answer_message(env: _Env, answer: dict[str, str]):
@@ -254,7 +253,7 @@ def _answer_message(env: _Env, answer: dict[str, str]):
     )
     conv = env.conversations.get_conversation(env.chat)
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(orchestration, "ON_MESSAGE_CONTEXT", {"tasks": env.service.message_context})
+        patch.setattr(orchestration, "ON_MESSAGE_CONTEXT", {"tasks": env.service.card_answered})
         return asyncio.run(
             orchestration._persist_user_event_item(env.chat, conv, body, env.conversations)
         )
@@ -314,20 +313,9 @@ def _server(view: dict[str, Any] | None):
     return httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="http://srv")
 
 
-async def _sent(session: str) -> None:
-    """Wait for *session*'s queued event posts."""
-    seen = None
-    while (pending := runtime._posts.get(session)) is not None and pending is not seen:
-        seen = pending
-        await pending
-
-
 @pytest.fixture(autouse=True)
 def _fresh_runtime(monkeypatch) -> None:
     monkeypatch.setattr(runtime, "_turns", {})
-    monkeypatch.setattr(runtime, "_posts", {})
-    monkeypatch.setattr(runtime, "_unsent", {})
-    monkeypatch.setattr(runtime, "_loose", {})
     monkeypatch.setattr(runtime, "STALLS", 0)
 
 
@@ -442,106 +430,12 @@ async def test_a_step_limit_deny_with_no_helper_is_a_stall() -> None:
 # ---------------------------------------------------------------- bounded calls (ADR 0026)
 
 
-@pytest.fixture()
-def unsent(monkeypatch) -> dict[str, list[dict[str, Any]]]:
-    queue: dict[str, list[dict[str, Any]]] = {}
-    monkeypatch.setattr(runtime, "_unsent", queue)
+async def test_a_slow_server_never_holds_the_read_and_no_result_is_posted(monkeypatch) -> None:
     monkeypatch.setattr(runtime, "BUDGET", 0.05)
-    return queue
+    posted: list[str] = []
 
-
-def _flaky(failures: list[type[httpx.TransportError]], posted: list[dict[str, Any]], view=None):
-    """A server whose next POSTs raise *failures* in turn, then answer; GETs answer *view*."""
-    seen: list[str] = []
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        if request.method == "GET":
-            seen.append("GET")
-            return httpx.Response(200, json=view) if view else httpx.Response(404)
-        if failures:
-            raise failures.pop(0)("down", request=request)
-        posted.append(json.loads(request.content))
-        seen.append(posted[-1]["event"])
-        return httpx.Response(200, json={"task": None})
-
-    client = httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="http://srv")
-    return client, seen
-
-
-_CHECKED = {"problems": []}
-
-
-async def test_an_event_that_times_out_is_retried_once(unsent) -> None:
-    posted: list[dict[str, Any]] = []
-    client, _ = _flaky([httpx.ReadTimeout], posted)
-    runtime.on_result(HandlerCtx("deck_check", client, "conv3"), json.dumps(_CHECKED))
-    await _sent("conv3")
-    assert [p["event"] for p in posted] == ["evidence"] and unsent == {}
-    # a refused connection is not retried at once: it waits for the next turn
-    client, _ = _flaky([httpx.ConnectError], posted)
-    runtime.on_result(HandlerCtx("deck_check", client, "conv3"), json.dumps(_CHECKED))
-    await _sent("conv3")
-    assert len(posted) == 1 and [e["event"] for e in unsent["conv3"]] == ["evidence"]
-
-
-async def test_an_unsent_event_goes_in_the_background_at_the_next_turn_then_is_dropped(
-    unsent, caplog
-) -> None:
-    posted: list[dict[str, Any]] = []
-    down, _ = _flaky([httpx.ReadTimeout] * 2, posted)
-    runtime.on_result(HandlerCtx("deck_check", down, "conv4"), json.dumps(_CHECKED))
-    await _sent("conv4")
-    assert "task event evidence not sent" in caplog.text and unsent
-    # the next turn reads its view without waiting for it, and sends it beside the read
-    up, seen = _flaky([], posted, _wire([], at="conv4"))
-    await runtime.message_prefix(up, "conv4", ["hi"])
-    await asyncio.gather(*runtime._flushes)
-    assert sorted(seen) == ["GET", "evidence"] and unsent == {}
-    # still down at the next turn: dropped, said so
-    down, _ = _flaky([httpx.ReadTimeout] * 2, posted)
-    runtime.on_result(HandlerCtx("deck_check", down, "conv4"), json.dumps(_CHECKED))
-    await _sent("conv4")
-    still_down, _ = _flaky([httpx.ConnectError] * 3, posted)
-    caplog.clear()
-    await runtime.message_prefix(still_down, "conv4", ["hi"])
-    await asyncio.gather(*runtime._flushes)
-    assert "task event evidence dropped" in caplog.text and unsent == {}
-
-
-async def test_a_dropped_check_is_sent_again_before_the_turns_end(unsent, caplog) -> None:
-    """A long ``deck_check`` returned on a connection the server had closed: the post is retried
-    at once; still not through, it goes again first at the turn's end, in order."""
-    caplog.set_level("INFO", logger="omnigent.superchat.tasks.runtime")
-    posted: list[dict[str, Any]] = []
-    client, seen = _flaky([httpx.RemoteProtocolError], posted, _wire([], at="conv8"))
-    await runtime.message_prefix(client, "conv8", ["go"])
-    runtime.on_result(HandlerCtx("deck_check", client, "conv8"), json.dumps({"problems": []}))
-    await _sent("conv8")
-    assert seen == ["GET", "evidence"] and unsent == {}
-    assert "task event evidence connection dropped (RemoteProtocolError) (try 1)" in caplog.text
-    # dropped twice: kept, said why, and sent before the turn's end
-    client, seen = _flaky([httpx.ReadError] * 2, posted, _wire([], at="conv8"))
-    await runtime.message_prefix(client, "conv8", ["go"])
-    runtime.on_result(HandlerCtx("deck_check", client, "conv8"), json.dumps({"problems": []}))
-    await _sent("conv8")
-    assert [e["event"] for e in unsent["conv8"]] == ["evidence"]
-    assert "task event evidence not sent (connection dropped (ReadError))" in caplog.text
-    runtime.turn_ended("conv8")
-    await _sent("conv8")
-    assert seen == ["GET", "evidence"] and unsent == {}  # sent at the turn's end
-    # a timed-out one too, before the turn is over
-    timeout, seen = _flaky([httpx.ReadTimeout] * 2, posted, _wire([], at="conv9"))
-    await runtime.message_prefix(timeout, "conv9", ["hi"])
-    runtime.on_result(HandlerCtx("deck_check", timeout, "conv9"), json.dumps({"problems": []}))
-    await _sent("conv9")
-    assert "task event evidence not sent (timed out)" in caplog.text
-    runtime.turn_ended("conv9")
-    await _sent("conv9")
-    assert seen == ["GET", "evidence"] and unsent == {}
-
-
-async def test_a_slow_server_never_holds_a_read_or_an_event(unsent) -> None:
     async def hang(request: httpx.Request) -> httpx.Response:
+        posted.append(request.method)
         await asyncio.sleep(5)
         return httpx.Response(200, json={})
 
@@ -549,14 +443,14 @@ async def test_a_slow_server_never_holds_a_read_or_an_event(unsent) -> None:
     loop = asyncio.get_running_loop()
     start = loop.time()
     assert await runtime.read_tasks(client, "conv5") is None
-    runtime.on_result(HandlerCtx("deck_check", client, "conv5"), json.dumps(_CHECKED))
-    runtime.on_result(HandlerCtx("deck_check", client, "conv5"), json.dumps(_CHECKED))
-    await _sent("conv5")
+    runtime.on_result(HandlerCtx("deck_check", client, "conv5"), json.dumps({"ok": True}))
+    await asyncio.sleep(0)
     assert loop.time() - start < 1
-    assert [e["event"] for e in unsent["conv5"]] == ["evidence", "evidence"]
+    # the Round record has the check from the relay: the runner posts nothing
+    assert posted == ["GET"]
 
 
-def test_event_calls_have_a_two_second_budget() -> None:
+def test_the_read_has_a_two_second_budget() -> None:
     assert runtime._TIMEOUT.read == 2.0 and runtime._TIMEOUT.connect == 1.0
 
 
@@ -652,4 +546,3 @@ async def test_the_runner_reads_a_working_round_until_its_helper_ends(env: _Env)
     notice = "[System: worker/RBC vs TD deck finished]"
     _say(env.conversations, env.chat, notice, is_system_notice=True)
     assert await runtime.message_prefix(engine, env.chat, [notice]) == []
-    assert env.service.store.list(env.chat) == []

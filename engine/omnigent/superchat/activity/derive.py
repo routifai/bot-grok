@@ -56,9 +56,8 @@ from omnigent.superchat.family.tree import (  # noqa: F401  (re-exported: the fa
     resolve_super_chat_id,
     sub_agent_status,
 )
-from omnigent.superchat.tasks.record import PlanViews, evidence_for, fold
 from omnigent.superchat.titles import STRUCTURED_TEXT, one_line_summary, truncate
-from omnigent.superchat.transcript.blocks import tool_outputs_by_call_id, turn_activity_id
+from omnigent.superchat.transcript.blocks import turn_activity_id
 from omnigent.superchat.work_tools import is_work_tool
 from omnigent.tools.builtins.spawn import _project_activity_item
 from omnigent.util.session_lifecycle import title_without_closed_marker
@@ -189,9 +188,6 @@ class Activity:
         ``{"group_id": ..., "name": ...}``; ``None`` otherwise.
     :param summary_line: What the work did, in one line under the reply (ADR 0027), e.g.
         ``"Created 2 files, searched the web, and 12 more steps"``; ``None`` with no steps.
-    :param plan: The turn's plan as the engine projects it (``tasks.record.project``), or
-        ``None`` when the turn showed no plan.
-    :param fold: How many of the plan's leading done steps fold away (``tasks.record.fold``).
     :param paused: For a Helper, whether it is paused (its ``superchat.paused`` label is set);
         ``None`` for a turn.
     :param round_id: The Round the work is in (ADR 0029): a turn's, from the record; a Helper's,
@@ -214,8 +210,6 @@ class Activity:
     parent_chat_id: str | None = None
     artifact: dict[str, str] | None = None
     summary_line: str | None = None
-    plan: list[dict[str, Any]] | None = None
-    fold: int = 0
     paused: bool | None = None
     round_id: str | None = None
 
@@ -596,12 +590,8 @@ def _turn_activity(
     include_step_detail: bool,
     stored_title: str | None,
     stored_summary: str | None = None,
-    plan: list[dict[str, Any]] | None = None,
 ) -> Activity | None:
-    """Build the Activity for one turn's items, or ``None`` if it had no tool calls.
-
-    :param plan: The turn's plan, projected (:func:`_turn_plans`).
-    """
+    """Build the Activity for one turn's items, or ``None`` if it had no tool calls."""
     calls = [item for item in group if item.type == "function_call"]
     if not calls:
         return None
@@ -642,8 +632,6 @@ def _turn_activity(
         ),
         stored_summary=stored_summary,
         summary_line=_calls_line(calls),
-        plan=plan,
-        fold=fold(plan or ()),
     )
 
 
@@ -651,29 +639,6 @@ def _calls_line(calls: list[ConversationItem]) -> str | None:
     return summary_line(
         [(call.data.name, call.data.arguments) for call in calls]  # type: ignore[union-attr]
     )
-
-
-def _turn_plans(
-    plan_views: PlanViews | None, conversation: Conversation, items: list[ConversationItem]
-) -> dict[str, list[dict[str, Any]]]:
-    """``response id -> the plan its turn showed (the last one)``, as the tasks service projects
-    it (the same projection the transcript reads)."""
-    if plan_views is None:
-        return {}
-    flat = [item.to_api_dict() for item in items]
-    outputs = tool_outputs_by_call_id(flat)
-    shown: dict[str, str] = {}
-    for raw in flat:
-        if raw.get("type") != "function_call" or not isinstance(raw.get("name"), str):
-            continue
-        call_id = str(raw.get("call_id") or "")
-        event = evidence_for(raw["name"], outputs.get(call_id), call_id=call_id)
-        if event is not None and event["kind"] == "plan":
-            shown[str(raw.get("response_id"))] = event["id"]
-    if not shown:
-        return {}
-    views = plan_views(conversation.id, flat)
-    return {rid: views[pid] for rid, pid in shown.items() if pid in views}
 
 
 def _split_sub_agent_title(conversation: Conversation) -> tuple[str, str]:
@@ -794,7 +759,6 @@ def _activities_for_conversation(
     conversation: Conversation,
     *,
     include_step_detail: bool,
-    plan_views: PlanViews | None = None,
 ) -> list[Activity]:
     # Newest-first, bounded, then reversed to chronological order: for a
     # conversation with more than _ITEMS_SCAN_LIMIT items, an ascending scan
@@ -825,7 +789,6 @@ def _activities_for_conversation(
     groups = _group_items_by_response(items)
     rounds = _item_rounds(conversation.id, items) if not studio else {}
     stored_labels = conv_store.get_activity_labels([group[0].response_id for group in groups])
-    plans = {} if studio else _turn_plans(plan_views, conversation, items)
     activities: list[Activity] = []
     # The user message that started a turn is usually stored outside its
     # response group, so carry the latest one forward.
@@ -845,7 +808,6 @@ def _activities_for_conversation(
             include_step_detail=include_step_detail,
             stored_title=stored_labels.get(group[0].response_id, (None, None))[0],
             stored_summary=stored_labels.get(group[0].response_id, (None, None))[1],
-            plan=plans.get(group[0].response_id),
         )
         if activity is not None:
             activities.append(replace(activity, round_id=rounds.get(group[0].id)))
@@ -956,7 +918,6 @@ def list_activities(
     before: int | None = None,
     limit: int = _DEFAULT_LIMIT,
     tz: str | None = None,
-    plan_views: PlanViews | None = None,
 ) -> list[Activity]:
     """The user's Activity Feed: every Activity under one Super Chat's family.
 
@@ -967,8 +928,6 @@ def list_activities(
     :param limit: Maximum Activities to return, newest-first (clamped to
         :data:`_MAX_LIMIT`).
     :param tz: The person's IANA time zone; upkeep runs are grouped by their local day.
-    :param plan_views: The tasks service's plan projection (a turn's ``plan``); without it no
-        Activity carries a plan.
     :returns: Activities newest-first; ``[]`` when ``session_id`` doesn't
         resolve to a ``superside-chat`` Super Chat.
     """
@@ -980,9 +939,7 @@ def list_activities(
     activities: list[Activity] = []
     for conversation in chats:
         activities.extend(
-            _activities_for_conversation(
-                conv_store, conversation, include_step_detail=False, plan_views=plan_views
-            )
+            _activities_for_conversation(conv_store, conversation, include_step_detail=False)
         )
     activities.sort(key=lambda activity: activity.started_at, reverse=True)
     activities = _feed(activities, tz)
@@ -1055,7 +1012,6 @@ def get_activity(
     session_id: str,
     activity_id: str,
     tz: str | None = None,
-    plan_views: PlanViews | None = None,
 ) -> Activity | None:
     """One Activity, in full (steps include capped call/result detail).
 
@@ -1073,9 +1029,7 @@ def get_activity(
         return None
     kind, _, rest = activity_id.partition(":")
     if kind == KIND_SUB_AGENT and rest.startswith(f"{HOUSEKEEPING_PREFIX}:"):
-        for row in list_activities(
-            conv_store, session_id, limit=_MAX_LIMIT, tz=tz, plan_views=plan_views
-        ):
+        for row in list_activities(conv_store, session_id, limit=_MAX_LIMIT, tz=tz):
             if row.id == activity_id:
                 return row
         return None
@@ -1090,7 +1044,7 @@ def get_activity(
     if conversation is None or (kind == KIND_SUB_AGENT and is_artifact_chat(conversation.labels)):
         return None
     for activity in _activities_for_conversation(
-        conv_store, conversation, include_step_detail=True, plan_views=plan_views
+        conv_store, conversation, include_step_detail=True
     ):
         if activity.id == activity_id:
             return activity
@@ -1154,7 +1108,5 @@ def activity_to_dict(activity: Activity, tz: str | None = None) -> dict[str, Any
         "families": step_families(activity.steps),
         # A Helper's pause (ADR 0027); absent for a turn.
         **({"paused": activity.paused} if activity.paused is not None else {}),
-        "fold": activity.fold,
-        "plan": activity.plan,
         "round_id": activity.round_id,
     }

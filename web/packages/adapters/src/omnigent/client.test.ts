@@ -245,18 +245,6 @@ describe("omnigent client", () => {
     });
   });
 
-  it("postOmnigentMessage sends a comment on a plan step beside the message data", async () => {
-    const fetchMock = vi.fn(async () => jsonResponse({}));
-    vi.stubGlobal("fetch", fetchMock);
-    await postOmnigentMessage(CONFIG, "e@x.test", "conv_1", "Use the Q3 figures", undefined, {
-      stepComment: { cardId: "plan-1", stepIndex: 2, text: "Build the deck" },
-    });
-    const init = (fetchMock.mock.calls[0] as unknown as [URL, RequestInit])[1];
-    expect(JSON.parse(String(init.body)).context).toEqual({
-      step_comment: { card_id: "plan-1", step_index: 2, text: "Build the deck" },
-    });
-  });
-
   it("setOmnigentMessageArtifact posts the pick and answers with the engine's message", async () => {
     const message = {
       id: "item 1",

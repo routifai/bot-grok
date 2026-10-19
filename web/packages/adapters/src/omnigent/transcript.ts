@@ -74,9 +74,6 @@ function mapBlock(block: OmnigentTranscriptBlock): MessageBlock {
         data: block.card.data,
         fallback: block.card.fallback,
         ...(block.pending ? { pending: true } : {}),
-        ...(typeof block.fold === "number" && block.fold > 0
-          ? { fold: Math.floor(block.fold) }
-          : {}),
       };
     }
     case "helper":

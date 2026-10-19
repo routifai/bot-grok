@@ -88,42 +88,15 @@ The hint is derived from the artifact store and the send context. It is not a to
 - *Activity.* The two calls show as lines under their Helper: the progress text, and `Flagged: <text>`.
 - *Measurement.* Two log lines with the session id: `first token for <session> <s>s after the turn started` (each turn in the Conversation; counted from the runner's turn start, after the engine's dispatch and any host wake, so it measures the model and the prefix, not the person's wait) and `first progress for <parent> <s>s after its helper started`. The person's wait is logged by the engine's relay ([ADR 0026](adr/0026-a-turn-speaks-in-a-second.md)), once per turn and counted from the moment the engine accepted the person's message that started it (an in-memory sub-second stamp the events route sets on accept; without one, after a restart or on another replica, the message's whole-second `created_at`): `first visible event for <session> <s>s after the message` (the first text delta or tool call, plans and cards included), `first word for <session> <s>s after the message` (the first text), and `no text for <session>: turn ended after <s>s without a word`. A turn with no new message of the person's (a Helper's notice) logs none of them. `engine/scripts/scenarios.py` reads these lines when `OMNIGENT_SCENARIO_ENGINE_LOG` names the engine's log, else coarse waits from the item timestamps, and fails a scenario over the budget.
 
-## The plan is ticked by evidence
+## The check line
 
-Reversed by [ADR 0029](adr/0029-a-round-is-recorded-and-the-harness-owns-the-words.md): progress is the fold of a Round's recorded events, the model's checklist drives nothing, and a Helper no longer settles a task; the Round settles when no turn, no Helper and no unconsumed result remain. This section describes the code until the plan machinery is deleted.
+The plan of [ADR 0027](adr/0027-super-chat-is-an-agentic-layer.md) is gone ([ADR 0029](adr/0029-a-round-is-recorded-and-the-harness-owns-the-words.md)): there is no `plan` card, no step state and no step comment. A Round's progress is the fold of its recorded events, and no task record is written: the work still under way is read from the Round record. What stays from ADR 0027 is the check.
 
-The contract for the plan card and the display the engine writes from it ([ADR 0027](adr/0027-super-chat-is-an-agentic-layer.md): "A step is done only with evidence", "Display is the engine's"). Additive; names are final. The tasks service is the only owner of plan state; the rule is `evidence_for`, `tick` and `project` in `superchat/tasks/record.py`.
+**Check.** A Round that saved a deck or ran `deck_check` is checked when a `deck_check` in its record, the Assistant's or a Helper's, came back clean: no structured error (`{"error": …}`) and not `"ok": false`. The record's `tool.result` carries that as `ok`, from the relay; the runner posts nothing. The Round's journal entry says `Checked` or `Not checked`; a Round with no deck says neither.
 
-**Card.** A `plan` card's items are `{text, status?, active?, owner?, done_when?}`: `active` the present-tense form ("Building the deck"), `owner` `me` | `helper`, `done_when` the evidence that ticks it: `brief` | `helper_done` | `check_ran` | `saved` | `read` | `answered`. `status` (`todo` | `doing` | `done`) is read once, when the plan is first shown, and never travels back. A later render with the same `id` may add or reword items and never changes their state. A plan card with no `id` gets one when it is shown (`plan-…`); an older one is named by its call id.
+**Transcript.** Each assistant message carries `activity_id` (`turn:<conversation>:<response_id>`), the Activity of the turn that wrote it. A `plan` card in an older chat is no card kind any more: it draws its fallback text.
 
-**Record.** A plan joins a task only once a deliverable event of its turn (`deck_new`, `artifact_save`, `start_helper`) made or found one; a plan with no deliverable makes no task, no `Open task` line and no watched turn. The task keeps it in `fields.plan` (`id`, `kind`, `items` with their `evidence` and `comments`, `outputs`). The engine ticks it from what it saw, in the Conversation and in the Helpers working on the task:
-
-- `context_brief` result: the `brief` step (else a `read` one); evidence a turn gathers before its plan counts for that plan;
-- `files_*`, `recall`, `recall_get`: the first `read` step (sent and saved only when it ticks one; a Helper's reads are not sent);
-- `start_helper` started: the first Helper-owned todo step that is not a check is doing, with the Helper's id; that Helper failing makes it failed, finishing well makes it done when its criterion is `helper_done` (or none);
-- `artifact_save`: the first `saved` step, and the file is listed in `outputs`;
-- `deck_check` after `deck_new` wrote a deck or a file was saved: the first `check_ran` step;
-- the person's answer to the task's question card: the first `answered` step.
-
-Only a structured error (`{"error": …}`) makes a result a failure. A check step is needed only for a deliverable with a check tool (decks, `deck_check`); a plan for any other kind ends on a `read` or `saved` step and never reads "Not checked". No event creates or settles a task any more (ADR 0029): a plan is kept only on a task recorded before, and a read (`GET .../tasks`) never changes one.
-
-**Step comment.** A person's message may carry `context.step_comment {card_id, step_index, text}` beside it, sent like `card_answer`. The engine keeps the text on that step (`comments`) and the turn the message opens reads one line before its task lines: `About the step "<step text>": <comment>`.
-
-**States.** Every projected item is `{text, active?, owner?, done_when?, comments?, state}`:
-
-| `state` | When |
-| --- | --- |
-| `todo` | no evidence yet |
-| `doing` | a Helper started for it is running (or the turn is) |
-| `done` | its evidence arrived |
-| `claimed` | the model said `done`, nothing backs it |
-| `failed` | its Helper failed or was cancelled |
-| `not_checked` | a deliverable with a check tool, its check step with no check, once nothing runs (the hand-back must say so) |
-| `stopped` | still doing when the turn ended, nothing runs |
-
-**Transcript.** A `plan` card block's `card.data.items` are the projected items, and the block carries `fold`. Each assistant message carries `activity_id` (`turn:<conversation>:<response_id>`), the Activity of the turn that wrote it. The transcript and the activity read the same projection (`TaskService.plan_views`: the record's plan wins over the transcript's own, the same running rule and Helper statuses).
-
-**Activity.** Each Activity dict gains `summary_line` (one line under the reply: "Created 2 files, searched the web, and 12 more steps"; files counted once per name saved, at most two kinds named, the rest "N more steps", cards not counted; `null` with no steps), `families` (the tool families its steps used: `web`, `files`, `decks`, `shell`, `browser`), `plan` (the turn's last plan, projected as above, else `null`) and `fold` (leading `done` items minus two, at least 0). Each step gains `kind` (`file`, `web`, `brief`, `recall`, `read`, `helper`, `command`, `check`, or absent) and, for the brief, `snippet` (its first line). Titles: `context_brief` is "Checked what we already have", `artifact_outline` "Reviewed <name>" (else "Reviewed the file").
+**Activity.** Each Activity dict gains `summary_line` (one line under the reply: "Created 2 files, searched the web, and 12 more steps"; files counted once per name saved, at most two kinds named, the rest "N more steps", cards not counted; `null` with no steps) and `families` (the tool families its steps used: `web`, `files`, `decks`, `shell`, `browser`). Each step gains `kind` (`file`, `web`, `brief`, `recall`, `read`, `helper`, `command`, `check`, or absent) and, for the brief, `snippet` (its first line). Titles: `context_brief` is "Checked what we already have", `artifact_outline` "Reviewed <name>" (else "Reviewed the file").
 
 **Pause.** A held Helper's `session.status` carries `paused: true` beside `blocked_on`; otherwise `paused` is absent or null.
 

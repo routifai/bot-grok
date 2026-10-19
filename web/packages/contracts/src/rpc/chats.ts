@@ -191,15 +191,6 @@ export const chatsContract = {
                     label: z.string().min(1).max(200),
                   })
                   .optional(),
-                /** The message is about one step of a reply's plan (ADR 0027 "Comment"): the
-                 * plan card, the step's place and its words. */
-                stepComment: z
-                  .object({
-                    cardId: z.string().min(1).max(200),
-                    stepIndex: z.number().int().min(0).max(49),
-                    text: z.string().min(1).max(2000),
-                  })
-                  .optional(),
               })
               .optional(),
           })

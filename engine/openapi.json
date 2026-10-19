@@ -21707,51 +21707,6 @@
         ]
       }
     },
-    "/v1/sessions/{session_id}/tasks/events": {
-      "post": {
-        "description": "Apply one event the runner saw; answers with the task it changed (or ``None``).",
-        "operationId": "task_event_v1_sessions__session_id__tasks_events_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "session_id",
-            "required": true,
-            "schema": {
-              "title": "Session Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Task Event V1 Sessions  Session Id  Tasks Events Post",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Task Event",
-        "tags": [
-          "tasks"
-        ]
-      }
-    },
     "/v1/sessions/{session_id}/transcript": {
       "get": {
         "description": "A session's transcript as typed blocks (``text``, ``card``, ``helper``, ``file``,\n``secure_entry``, ``error``).\n\n:param session_id: Any session the caller can READ (same gate as ``.../items``).\n:param limit: Items per page, newest page first.\n:param before: Cursor: the ``older_cursor`` of the page after this one.\n:param before_reset: Page the history before the latest reset instead (empty when the\n    session was never reset).\n:returns: ``{\"data\": [message], \"has_more\", \"older_cursor\", \"lineage\", \"reset\", \"live\"}``:\n    ``reset`` is ``{\"item_id\", \"created_at\"}`` of the latest reset or ``None``; ``live``\n    is whether a turn is in flight. A user message still waiting behind the running\n    turn has ``delivered: \"queued\"`` (from the runner's live queue). A person's message\n    linked to an artifact has ``artifact`` (``{artifact_id, name, version, how}``, or\n    ``None`` when the person said it is about none). Every message has ``round_id``: the\n    Round it is in (the id of the person's message that opened it), ``None`` outside\n    any Round.\n:raises OmnigentError: 403 without READ; 404 if no session exists.",
