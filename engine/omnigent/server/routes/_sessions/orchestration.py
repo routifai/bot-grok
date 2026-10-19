@@ -9569,11 +9569,8 @@ async def _get_session_snapshot(
                         else:
                             resolved_spec = _sub_spec
                     if resolved_spec is not None:
-                        # Prefer the spec's name over the agent row's: a
-                        # switch-created session-scoped clone is named
-                        # "<builtin> (switch ag_…)" for row disambiguation,
-                        # but clients display agent_name verbatim — the spec
-                        # carries the clean identity (e.g. "claude-native-ui").
+                        # Prefer the spec's name over the agent row's: the
+                        # spec carries the clean identity (e.g. "claude-native-ui").
                         if resolved_spec.name:
                             agent_name = resolved_spec.name
                         llm_model = resolved_spec.executor.model

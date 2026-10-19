@@ -3219,12 +3219,10 @@ class SessionAgentChangedEvent(_SSEEventBase):
 
     :param type: Always ``"session.agent_changed"``.
     :param conversation_id: Session identifier, e.g. ``"conv_abc123"``.
-    :param agent_id: The session-scoped clone now bound to the session,
+    :param agent_id: The built-in agent now bound to the session,
         e.g. ``"ag_abc123"``.
     :param agent_name: Display name of the agent the session now runs,
-        e.g. ``"claude-native-ui"``. Deliberately the clean target-agent
-        name — not the clone row's ``"… (switch ag_…)"`` disambiguation
-        name — because clients render it verbatim.
+        e.g. ``"claude-native-ui"``.
 
     Category: **transient** (SSE-only). The switch is persisted on the
     conversation row, so on reconnect clients read the new binding from

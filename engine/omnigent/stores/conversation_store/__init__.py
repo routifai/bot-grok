@@ -1859,44 +1859,27 @@ class ConversationStore(ABC):
         conversation_id: str,
         *,
         new_agent_id: str,
-        new_agent_name: str,
-        new_agent_bundle_location: str,
-        new_agent_description: str | None,
         copy_model_settings: bool,
         presentation_labels: dict[str, str],
         previous_builtin_id: str | None,
     ) -> Conversation:
         """
-        Rebind a session in place to a different (cloned) agent.
+        Rebind a session in place to a different built-in agent.
 
         Unlike :meth:`fork_conversation`, this mutates the SAME
         conversation row — the transcript, comments, files, host,
         and workspace are untouched; only the agent/harness changes.
-        In one transaction it: deletes the session's current
-        session-scoped agent (now unreferenced once ``agent_id`` is
-        repointed), creates a new session-scoped agent from the
-        supplied bundle, points ``agent_id`` at it, applies the
-        model-settings and label deltas below, and clears
-        ``external_session_id`` (the old harness's native runtime
-        state). The whole operation is atomic: any failure rolls back
-        and the session stays on its current agent.
-
-        The replacement agent's ``created_by`` is left unset, so it is
-        admin-only to mutate until a full switch implementation assigns
-        the session owner (the delete is also not yet reference-safe for
-        an agent shared via reuse or named sub-agents).
+        It points ``agent_id`` at the built-in itself (no per-session
+        copy, so a refreshed built-in reaches the session like it reaches
+        one created on it), deletes the session's previous agent when that
+        one was session-scoped, applies the model-settings and label deltas
+        below, and clears ``external_session_id`` (the old harness's native
+        runtime state).
 
         :param conversation_id: Session to switch, e.g.
             ``"conv_abc123"``.
-        :param new_agent_id: Pre-generated id for the new
-            session-scoped agent, e.g. ``"ag_def456"``.
-        :param new_agent_name: Name for the new agent row, e.g.
-            ``"Codex (switch ag_def456)"``.
-        :param new_agent_bundle_location: Artifact-store key of the
-            target built-in's bundle to clone, e.g.
-            ``"ag_builtin/abcd1234"``.
-        :param new_agent_description: Optional description from the
-            target's spec. ``None`` leaves the column NULL.
+        :param new_agent_id: Id of the built-in agent to bind, e.g.
+            ``"ag_builtin"``.
         :param copy_model_settings: When ``True``, keep the session's
             existing ``model_override`` / ``reasoning_effort`` (the
             switch stays in the same provider family). When ``False``,
@@ -1915,6 +1898,21 @@ class ConversationStore(ABC):
             exists.
         """
         ...
+
+    def rebind_switch_clones(self) -> int:
+        """
+        Move every session still bound to a legacy switch clone onto its built-in.
+
+        A switch used to bind a per-session copy of the target built-in
+        (``"<name> (switch ag_…)"``), frozen at the bundle of that day, so a
+        refreshed built-in never reached the session. Run at startup after the
+        built-ins are refreshed: each such session is pointed at the built-in
+        named ``<name>`` and the copy is deleted. A copy whose built-in is gone
+        is left alone. Idempotent.
+
+        :returns: How many sessions were rebound.
+        """
+        return 0
 
     @abstractmethod
     def has_other_live_session_in_workspace(

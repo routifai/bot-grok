@@ -1352,6 +1352,11 @@ def create_app(
         # warmup blocks deleted here.
 
         _ensure_default_agents(agent_store, artifact_store, agent_cache)
+        # Sessions a harness switch left on a frozen per-session copy of a
+        # built-in move onto the (just refreshed) built-in itself.
+        _rebound = conversation_store.rebind_switch_clones()
+        if _rebound:
+            _logger.info("Rebound %d switched sessions onto their built-in agents", _rebound)
 
         # Populate the policy registry (builtins + user-configured
         # modules) so GET /v1/policy-registry serves the catalog.
