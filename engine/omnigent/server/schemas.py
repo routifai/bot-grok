@@ -5039,6 +5039,9 @@ class RoundView(BaseModel):
     :param words: The Assistant's text, one entry per finished turn.
     :param live_words: The running turn's text so far.
     :param failed_helper: A Helper failed.
+    :param delivered_at: Epoch seconds the Round delivered its answer (a terminal card, the
+        chips or a question, with no Helper of it running), or ``None``; the Round may still
+        run until its turn ends.
     """
 
     round_id: str
@@ -5059,6 +5062,7 @@ class RoundView(BaseModel):
     words: list[str]
     live_words: str
     failed_helper: bool
+    delivered_at: float | None = None
 
 
 class RoundSummary(BaseModel):

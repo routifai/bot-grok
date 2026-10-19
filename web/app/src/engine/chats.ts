@@ -165,6 +165,7 @@ export function roundView(round: OmnigentRoundView): RoundView {
     startedAt: round.started_at === null ? null : ms(round.started_at),
     settledAt: round.settled_at === null ? null : ms(round.settled_at),
     elapsedMs: ms(round.elapsed),
+    deliveredAt: round.delivered_at == null ? null : ms(round.delivered_at),
     stopLine: round.stop_line,
     now: round.now && {
       actor: round.now.actor,

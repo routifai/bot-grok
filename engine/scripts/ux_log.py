@@ -66,6 +66,7 @@ def show_ux(rec: dict[str, Any]) -> str:
     parts = [
         f"UX {rec.get('source')} round={rec.get('round_id')} status={rec.get('status')}",
         f"settled_at={rec.get('settled_at')}" if rec.get("settled_at") else "",
+        f"delivered_at={rec.get('delivered_at')}" if rec.get("delivered_at") else "",
         f"helpers=[{helpers}]" if helpers else "",
         f"files={rec.get('files')}" if rec.get("files") else "",
         f"checklist=[{checklist}]" if checklist else "",

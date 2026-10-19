@@ -25,7 +25,12 @@ Helper and events that arrive after settlement are cases of the fold, not rules 
   says it was: the steered results count as read then, and the Round may settle.
 * ``helper.titled`` renames a Helper (its model-written name), before or after settlement.
 * Each actor has one live slot (the Assistant, or one Helper by its id): the newest tool it
-  started. ``now`` is the slot started last; a settled Round has none.
+  started. ``now`` is the slot started last; a settled Round has none. A delivery tool (a card,
+  the follow-up chips, a question to the person) is not work and never takes a slot.
+* A Round has **delivered** (``delivered_at``) once the Assistant's turn showed its answer (a
+  terminal card, the chips or a question) and no Helper of it runs or waits to be read; the
+  Assistant starting more work, a new turn or a new Helper takes it back. It only says what to
+  show: the Round still settles at its turn's end.
 """
 
 from __future__ import annotations
@@ -33,6 +38,13 @@ from __future__ import annotations
 import copy
 from collections.abc import Mapping, Sequence
 from typing import Any
+
+from omnigent.superchat.cards.tools import (
+    CARD_TOOL_NAME,
+    CLARIFICATION_TOOL_NAME,
+    FOLLOW_UPS_TOOL_NAME,
+    TERMINAL_CARDS,
+)
 
 #: Event kinds (ADR 0029). ``record`` writes them; the fold reads them.
 ROUND_OPENED = "round.opened"
@@ -55,6 +67,9 @@ STOP_REQUESTED = "stop.requested"
 
 #: Actors.
 PERSON, SYSTEM, ASSISTANT, HELPER = "person", "system", "assistant", "helper"
+
+#: Tools that show the person something rather than work on it: never the live tool.
+_DELIVERY = frozenset({CARD_TOOL_NAME, CLARIFICATION_TOOL_NAME, FOLLOW_UPS_TOOL_NAME})
 
 #: Events that still apply to a settled Round.
 _AFTER_SETTLE = frozenset({TURN_ENDED, HELPER_FINISHED, HELPER_TITLED})
@@ -121,9 +136,9 @@ def fold(events: Sequence[Mapping[str, Any]], round_id: str | None = None) -> di
         ``checklist``, ``words`` (one entry per finished Assistant turn), ``live_words`` (the
         running turn's text so far), ``failed_helper``, ``after_settle``, ``turn_due`` (an
         unsettled Round waits for an Assistant turn that has not started: its message's first
-        turn, or the wake that reads a Helper's result) and ``read_on_idle`` (an unsettled Round
+        turn, or the wake that reads a Helper's result), ``read_on_idle`` (an unsettled Round
         whose only wait is Helper results steered into a turn that has ended: the session going
-        idle settles it).
+        idle settles it) and ``delivered_at`` (when the Round delivered its answer, or ``None``).
     """
     if round_id is None and events:
         round_id = events[-1].get("round_id")
@@ -146,6 +161,7 @@ def fold(events: Sequence[Mapping[str, Any]], round_id: str | None = None) -> di
         "live_words": "",
         "after_settle": [],
         "failed_helper": False,
+        "delivered_at": None,
     }
     assistant_running = False
     unconsumed: set[str] = set()
@@ -154,6 +170,8 @@ def fold(events: Sequence[Mapping[str, Any]], round_id: str | None = None) -> di
     cur_words: list[str] | None = None
     live: dict[str, dict[str, Any]] = {}
     ended: Mapping[str, Any] | None = None  # the last Assistant turn.ended
+    cards: dict[str, Any] = {}  # call id -> the kind of card it showed
+    delivered: float | None = None  # when the Assistant's turn showed its answer
     for ev in mine:
         kind, t, actor = ev["kind"], ev["t"], ev.get("actor")
         settled = v["settled_at"] is not None
@@ -176,8 +194,13 @@ def fold(events: Sequence[Mapping[str, Any]], round_id: str | None = None) -> di
                         v["words"].append(ev["text"])
                 else:
                     cur_words.append(ev["text"])
+        elif kind in (TOOL_STARTED, TOOL_CALLED) and ev.get("name") in _DELIVERY:
+            if ev.get("card"):
+                cards[str(ev.get("call_id"))] = ev["card"]
         elif kind in (TOOL_STARTED, TOOL_CALLED):
             slot = _slot(ev)
+            if slot == ASSISTANT:
+                delivered = None  # the Assistant works on
             cur = live.get(slot)
             if kind == TOOL_STARTED or cur is None or cur["call_id"] != ev.get("call_id"):
                 live.pop(slot, None)  # the newest tool of an actor supersedes its last one
@@ -214,6 +237,12 @@ def fold(events: Sequence[Mapping[str, Any]], round_id: str | None = None) -> di
                     "ok": bool(ev.get("ok", True)),
                 }
             )
+            name, card = ev.get("name"), cards.get(str(ev.get("call_id")))
+            answer = name in (CLARIFICATION_TOOL_NAME, FOLLOW_UPS_TOOL_NAME) or (
+                name == CARD_TOOL_NAME and card in TERMINAL_CARDS
+            )
+            if slot == ASSISTANT and answer and ev.get("ok", True):
+                delivered = delivered or t
         elif kind == FILE_SAVED:
             name = ev.get("name")
             v["files"] = [f for f in v["files"] if f["name"] != name]  # a re-save replaces it
@@ -250,6 +279,7 @@ def fold(events: Sequence[Mapping[str, Any]], round_id: str | None = None) -> di
             h = v["helpers"].setdefault(ev["helper_id"], _new_helper(ev["helper_id"], t))
             h["title"] = ev.get("title") or h["title"]  # never reopens a finished Helper
             h["folder"] = ev.get("folder") or h["folder"]
+            delivered = None
         elif kind == HELPER_TITLED:
             h = v["helpers"].get(ev.get("helper_id"))
             if h is not None and ev.get("title"):
@@ -273,6 +303,7 @@ def fold(events: Sequence[Mapping[str, Any]], round_id: str | None = None) -> di
                 steered = set()
         elif kind == TURN_STARTED and actor == ASSISTANT:
             assistant_running, cur_words, turned = True, [], True
+            delivered = None
             unconsumed, steered = set(), set()  # an Assistant turn reads the results that woke it
         elif kind == TURN_ENDED and actor == ASSISTANT:
             if not assistant_running:
@@ -302,6 +333,10 @@ def fold(events: Sequence[Mapping[str, Any]], round_id: str | None = None) -> di
         if v["settled_at"] is not None:
             live = {}  # nothing is live on a settled Round
         v["now"] = copy.deepcopy(list(live.values())[-1]) if live else None
+        if v["settled_at"] is None:
+            v["delivered_at"] = (
+                delivered if not _running(v["helpers"]) and not unconsumed else None
+            )
         v["live_words"] = "".join(cur_words or []) if v["settled_at"] is None else ""
     unsettled = v["status"] == "running"
     v["turn_due"] = unsettled and (
