@@ -9,12 +9,17 @@ binary payloads are dropped.
 
 The line is tool output, not the person's words. It always opens with :data:`FRAMING`, collapses to
 one line (so a result cannot forge a ``user:`` line) and never spans a second line.
+
+:func:`call_digest` is the short phrase a person reads beside a tool's title in a Round's record:
+the file name, the command's first word, the Helper's title, the deck's name. It never carries the
+arguments themselves.
 """
 
 from __future__ import annotations
 
 import contextlib
 import json
+import posixpath
 import re
 from typing import Any
 
@@ -46,6 +51,25 @@ _TARGET_KEYS = (
     "message",
     "text",
 )
+#: Tools whose phrase is the name of the file they act on, across harnesses.
+_FILE_TOOLS = frozenset(
+    {"sys_os_read", "sys_os_write", "sys_os_edit", "read", "write", "edit"}
+    | {"Read", "Write", "Edit", "MultiEdit", "NotebookEdit"}
+)
+#: Tools whose phrase is the first word of the command they run.
+_SHELL_TOOLS = frozenset({"sys_os_shell", "bash", "Bash"})
+#: Tools whose phrase is the title they were given.
+_TITLED_TOOLS = frozenset({"start_helper"})
+#: Deck tools, named by prefix; their phrase is the deck's title, else its file name.
+_DECK_PREFIX = "deck_"
+_DECK_SUFFIX = ".deck.html"
+#: Argument names that hold a path, most telling first.
+_PATH_KEYS = ("path", "file_path", "filepath", "filename", "notebook_path")
+#: Argument names any other tool's phrase is read from, most telling first; never free text.
+_PHRASE_KEYS = ("title", "name", "query", "pattern", "url")
+#: Longest phrase :func:`call_digest` returns.
+_PHRASE_LIMIT = 60
+_COMMANDS = re.compile(r"&&|\|\||[;|\n]")
 _TEXT_BLOCK_TYPES = frozenset({"text", "input_text", "output_text"})
 _BLOCK_TYPES = _TEXT_BLOCK_TYPES | {
     "image",
@@ -78,18 +102,22 @@ def _short_name(name: Any) -> str:
     return text.split("__", 2)[2] if text.startswith("mcp__") and text.count("__") >= 2 else text
 
 
+def _arguments(arguments: Any) -> dict[str, Any]:
+    """*arguments* as a dict: from the JSON text or the dict; empty for anything else."""
+    if isinstance(arguments, str):
+        try:
+            arguments = json.loads(arguments)
+        except ValueError:
+            return {}
+    return arguments if isinstance(arguments, dict) else {}
+
+
 def short_arguments(arguments: Any) -> str:
     """The arguments that name what the call acted on, as ``key=value`` pairs.
 
     Falls back to the first short text argument; empty when there is none.
     """
-    if isinstance(arguments, str):
-        try:
-            arguments = json.loads(arguments)
-        except ValueError:
-            return ""
-    if not isinstance(arguments, dict):
-        return ""
+    arguments = _arguments(arguments)
     pairs: list[str] = []
     for key in _TARGET_KEYS:
         value = arguments.get(key)
@@ -103,6 +131,57 @@ def short_arguments(arguments: Any) -> str:
                 pairs.append(f"{key}={_one_line(value)}")
                 break
     return _clip(" ".join(pairs), _ARGS_LIMIT)
+
+
+def _text_arg(arguments: dict[str, Any], keys: tuple[str, ...]) -> str | None:
+    """The first non-empty text of *keys* in *arguments*, on one line."""
+    for key in keys:
+        value = arguments.get(key)
+        if isinstance(value, str) and value.strip():
+            return _one_line(value)
+    return None
+
+
+def _file_name(path: str | None) -> str | None:
+    """The last part of *path*: ``your_files/q3.deck.html`` -> ``q3.deck.html``."""
+    return (posixpath.basename(path.rstrip("/")) or None) if path else None
+
+
+def _command_word(command: str | None) -> str | None:
+    """The first word of the first command in *command* that is not a ``cd``."""
+    for part in _COMMANDS.split(command or ""):
+        words = part.split()
+        if words and words[0] != "cd":
+            return _file_name(words[0])
+    return None
+
+
+def call_digest(name: Any, arguments: Any) -> str | None:
+    """The short phrase a person reads beside a tool call's title, from its tool's rule.
+
+    A file tool gives the file name, a shell the command's first word, ``start_helper`` the
+    Helper's title, a deck tool the deck's title (else its file name without ``.deck.html``), any
+    other tool its first naming argument (a title, name, query, pattern or url, else a file
+    name). Never the arguments themselves.
+
+    :param name: The tool name (an ``mcp__<server>__`` prefix is dropped).
+    :param arguments: The call's arguments, as the JSON string or the dict.
+    :returns: The phrase clipped to :data:`_PHRASE_LIMIT` characters, or ``None`` when the call
+        names nothing.
+    """
+    tool, args = _short_name(name), _arguments(arguments)
+    path = _file_name(_text_arg(args, _PATH_KEYS))
+    if tool in _FILE_TOOLS:
+        phrase = path
+    elif tool in _SHELL_TOOLS:
+        phrase = _command_word(_text_arg(args, ("command", "cmd")))
+    elif tool in _TITLED_TOOLS:
+        phrase = _text_arg(args, ("title",))
+    elif tool.startswith(_DECK_PREFIX):
+        phrase = _text_arg(args, ("title",)) or (path.removesuffix(_DECK_SUFFIX) if path else None)
+    else:
+        phrase = _text_arg(args, _PHRASE_KEYS) or path
+    return _clip(phrase, _PHRASE_LIMIT) if phrase else None
 
 
 def _binary_run(match: re.Match[str]) -> str:
