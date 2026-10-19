@@ -200,29 +200,10 @@ describe("omnigent client", () => {
     });
   });
 
-  it("postOmnigentMessage appends images as input_image data URIs after the text", async () => {
-    const fetchMock = vi.fn(async () => jsonResponse({}));
-    vi.stubGlobal("fetch", fetchMock);
-    await postOmnigentMessage(CONFIG, "e@x.test", "conv_1", "look", [
-      { mimeType: "image/png", dataBase64: "iVBORw==" },
-    ]);
-    const init = (fetchMock.mock.calls[0] as unknown as [URL, RequestInit])[1];
-    expect(JSON.parse(String(init.body))).toEqual({
-      type: "message",
-      data: {
-        role: "user",
-        content: [
-          { type: "input_text", text: "look" },
-          { type: "input_image", image_url: "data:image/png;base64,iVBORw==" },
-        ],
-      },
-    });
-  });
-
   it("postOmnigentMessage sends the open artifact beside the message data, never inside it", async () => {
     const fetchMock = vi.fn(async () => jsonResponse({}));
     vi.stubGlobal("fetch", fetchMock);
-    await postOmnigentMessage(CONFIG, "e@x.test", "conv_1", "bigger title", undefined, {
+    await postOmnigentMessage(CONFIG, "e@x.test", "conv_1", "bigger title", {
       openArtifact: { artifactId: "art_1", version: 3 },
     });
     const init = (fetchMock.mock.calls[0] as unknown as [URL, RequestInit])[1];
@@ -236,7 +217,7 @@ describe("omnigent client", () => {
   it("postOmnigentMessage sends an ask card's pick beside the message data", async () => {
     const fetchMock = vi.fn(async () => jsonResponse({}));
     vi.stubGlobal("fetch", fetchMock);
-    await postOmnigentMessage(CONFIG, "e@x.test", "conv_1", "Nord", undefined, {
+    await postOmnigentMessage(CONFIG, "e@x.test", "conv_1", "Nord", {
       cardAnswer: { cardId: "m1:0", optionId: "nord", label: "Nord" },
     });
     const init = (fetchMock.mock.calls[0] as unknown as [URL, RequestInit])[1];
@@ -248,7 +229,7 @@ describe("omnigent client", () => {
   it("postOmnigentMessage sends a comment on a plan step beside the message data", async () => {
     const fetchMock = vi.fn(async () => jsonResponse({}));
     vi.stubGlobal("fetch", fetchMock);
-    await postOmnigentMessage(CONFIG, "e@x.test", "conv_1", "Use the Q3 figures", undefined, {
+    await postOmnigentMessage(CONFIG, "e@x.test", "conv_1", "Use the Q3 figures", {
       stepComment: { cardId: "plan-1", stepIndex: 2, text: "Build the deck" },
     });
     const init = (fetchMock.mock.calls[0] as unknown as [URL, RequestInit])[1];
