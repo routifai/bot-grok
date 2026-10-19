@@ -90,7 +90,10 @@ class _Sources:
             {
                 "round_id": "r1",
                 "ask": "Build the Q3 revenue review deck",
-                "helpers": [{"id": "h1", "title": "Q3 deck"}, {"id": "h3", "title": None}],
+                "helpers": [
+                    {"id": "h1", "title": "Q3 deck", "status": "running"},
+                    {"id": "h3", "title": None, "status": "failed"},
+                ],
             },
         ]
 
@@ -171,10 +174,11 @@ async def test_every_part_renders_under_four_headings_fenced_as_data() -> None:
     assert any("revenue.csv" in line and "edited by the person" in line for line in lines)
     assert any("dana-notes.md" in line and "saved by a helper" in line for line in lines)
     assert not any("Garden" in line for line in lines)
-    # The Rounds still working: what was asked and the Helpers on it, never a stale status.
+    # The Rounds not settled: what was asked and each Helper as the view has it.
     assert '- working · asked "A pricing page, tier B" · helper "Pricing page"' in lines
     assert (
-        '- working · asked "Build the Q3 revenue review deck" · helper "Q3 deck" · helper' in lines
+        '- working · asked "Build the Q3 revenue review deck" · helper "Q3 deck" · helper failed'
+        in lines
     )
     assert not any("building" in line or "decision" in line for line in lines)
     # Dated pointers, never bodies; a file listed under sources is not repeated.

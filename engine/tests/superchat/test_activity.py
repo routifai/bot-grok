@@ -500,9 +500,12 @@ def test_flagged_notice_without_the_legacy_prefix_is_still_system_started() -> N
 def test_a_rounds_rows_read_its_view_not_the_chats_title(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A recorded Round is one row read from its folded view: its ask names it (never the
-    chat's title), its status and outcome are the Round's, and its Helper's row reads the
-    Round's Helper; with no Round each turn keeps the request, or the chat's title."""
+    """A recorded Round is one row read from its folded view, as the strip reads it: its ask
+    names it (never the chat's title), its status and outcome are the Round's, its steps are
+    the view's trail (the Helper's steps too, never the stored calls), a Round whose last turn
+    failed reads failed with its reason, and its Helper's row reads the Round's Helper, named
+    by ``helper.titled`` once the titler names it; with no Round each turn keeps the request,
+    or the chat's title."""
     conv = _conv(title="Uruguay Five-Slide Presentation")
     items = [
         _msg("u1", "user", "make a history of jazz deck\nfive slides", response_id="resp_user"),
@@ -530,12 +533,37 @@ def test_a_rounds_rows_read_its_view_not_the_chats_title(
         },
         {
             "t": 2,
+            "kind": "tool.called",
+            "actor": "assistant",
+            "call_id": "call_1",
+            "name": "memory_search",
+            "digest": "jazz",
+        },
+        {
+            "t": 3,
+            "kind": "tool.result",
+            "actor": "assistant",
+            "call_id": "call_1",
+            "name": "memory_search",
+        },
+        {
+            "t": 3,
             "kind": "helper.started",
             "actor": "assistant",
             "helper_id": "h1",
             "title": "Draft the deck",
         },
         {"t": 4, "kind": "turn.ended", "actor": "assistant"},
+        {
+            "t": 5,
+            "kind": "tool.result",
+            "actor": "helper",
+            "helper_id": "h1",
+            "call_id": "x1",
+            "name": "web_search",
+            "ok": False,
+        },
+        {"t": 6, "kind": "helper.titled", "helper_id": "h1", "title": "Jazz history deck"},
         {"t": 9, "kind": "stop.requested", "actor": "person"},
     ]
     view = fold([{**e, "round_id": "u1"} for e in events], "u1")
@@ -553,7 +581,15 @@ def test_a_rounds_rows_read_its_view_not_the_chats_title(
         "u1",
     )
     assert row.summary == view["stop_line"] and row.finished_at == 9
-    assert [s.tool for s in row.steps] == ["memory_search", "sys_read_inbox"]
+    # The steps are the trail: the stored sys_read_inbox call the record never saw is not one.
+    assert [(s.tool, s.digest, s.helper_id, s.ok) for s in row.steps] == [
+        ("memory_search", "jazz", None, True),
+        ("web_search", None, "h1", False),
+    ]
+    assert (
+        row.steps[0].item_id == "call_1"
+        and row.summary_line == "Recalled earlier work and searched the web"
+    )
     assert row.title_round_id == "u1" and "history of jazz" in (row.title_prompt or "")
 
     # The Round's model-written title, stored once under its id, names it.
@@ -571,7 +607,25 @@ def test_a_rounds_rows_read_its_view_not_the_chats_title(
     [helper_row] = _activities_for_conversation(
         _FakeItemsStore([]), helper, include_step_detail=False
     )
-    assert (helper_row.title, helper_row.status) == ("Draft the deck", STATUS_CANCELLED)
+    assert (helper_row.title, helper_row.status) == ("Jazz history deck", STATUS_CANCELLED)
+    assert view["helpers"]["h1"]["title"] == "Jazz history deck"  # the strip's name too
+
+    # A Round whose last turn ended failed reads failed: a model error says what it was, an
+    # engine reason (a lost relay) never reaches the row.
+    for reason, outcome in (
+        ("Overloaded, try again", "Overloaded, try again"),
+        ("relay lost", "Could not complete the request"),
+    ):
+        ended = {"t": 4, "kind": "turn.ended", "actor": "assistant", "status": "failed"}
+        failed = fold(
+            [{**e, "round_id": "u1"} for e in [*events[:3], {**ended, "reason": reason}]], "u1"
+        )
+        assert (failed["status"], failed["reason"]) == ("failed", reason)
+        monkeypatch.setitem(ROUND_VIEWS, "rounds", lambda _c, ids, v=failed: dict.fromkeys(ids, v))
+        [row] = _activities_for_conversation(
+            _FakeItemsStore(items), conv, include_step_detail=False
+        )
+        assert (row.status, row.outcome, row.finished_at) == (STATUS_FAILED, outcome, 4)
 
 
 # ── model-written titles, sources, summaries ─────────────────────────────

@@ -16,6 +16,10 @@ Helper and events that arrive after settlement are cases of the fold, not rules 
 * An Assistant ``turn.ended`` with no Assistant turn running is the engine settling a Round no
   turn is coming for (a reset, or a Round left without one): no turn reads the Helper results
   it still holds.
+* A Round that settles on an Assistant ``turn.ended`` whose status is ``failed`` (a model error,
+  a turn the relay lost with no reply stored, a reset, a Round the sweep found with no turn to
+  come) is **failed**, with that end's ``reason``; one that settles on any other end is done.
+* ``helper.titled`` renames a Helper (its model-written name), before or after settlement.
 * Each actor has one live slot (the Assistant, or one Helper by its id): the newest tool it
   started. ``now`` is the slot started last; a settled Round has none.
 """
@@ -37,6 +41,7 @@ TOOL_STARTED, TOOL_INPUT, TOOL_CALLED, TOOL_RESULT = (
     "tool.result",
 )
 HELPER_STARTED, HELPER_FINISHED = "helper.started", "helper.finished"
+HELPER_TITLED = "helper.titled"
 FILE_SAVED = "file.saved"
 CHIPS = "chips"
 CHECKLIST_CREATED, CHECKLIST_UPDATED = "checklist.created", "checklist.updated"
@@ -47,7 +52,7 @@ STOP_REQUESTED = "stop.requested"
 PERSON, SYSTEM, ASSISTANT, HELPER = "person", "system", "assistant", "helper"
 
 #: Events that still apply to a settled Round.
-_AFTER_SETTLE = frozenset({TURN_ENDED, HELPER_FINISHED})
+_AFTER_SETTLE = frozenset({TURN_ENDED, HELPER_FINISHED, HELPER_TITLED})
 
 
 def _slot(ev: Mapping[str, Any]) -> str:
@@ -104,8 +109,9 @@ def fold(events: Sequence[Mapping[str, Any]], round_id: str | None = None) -> di
 
     :param events: Events in record order; only those of *round_id* are read.
     :param round_id: The Round to fold; ``None`` folds the Round of the last event.
-    :returns: ``status`` (``idle``, ``running``, ``done`` or ``stopped``), ``hidden`` (a run no
-        person started), ``started_at``, ``settled_at``, ``elapsed``, ``ask``, ``stop_line``,
+    :returns: ``status`` (``idle``, ``running``, ``done``, ``failed`` or ``stopped``), ``hidden``
+        (a run no person started), ``started_at``, ``settled_at``, ``elapsed``, ``ask``,
+        ``reason`` (why a failed Round failed, when its end said), ``stop_line``,
         ``now`` (the live tool or ``None``), ``trail``, ``helpers`` by id, ``files``, ``chips``,
         ``checklist``, ``words`` (one entry per finished Assistant turn), ``live_words`` (the
         running turn's text so far), ``failed_helper`` and ``after_settle``.
@@ -119,6 +125,7 @@ def fold(events: Sequence[Mapping[str, Any]], round_id: str | None = None) -> di
         "started_at": None,
         "settled_at": None,
         "ask": None,
+        "reason": None,
         "stop_line": None,
         "now": None,
         "trail": [],
@@ -135,6 +142,7 @@ def fold(events: Sequence[Mapping[str, Any]], round_id: str | None = None) -> di
     unconsumed: set[str] = set()
     cur_words: list[str] | None = None
     live: dict[str, dict[str, Any]] = {}
+    ended: Mapping[str, Any] | None = None  # the last Assistant turn.ended
     for ev in mine:
         kind, t, actor = ev["kind"], ev["t"], ev.get("actor")
         settled = v["settled_at"] is not None
@@ -187,6 +195,7 @@ def fold(events: Sequence[Mapping[str, Any]], round_id: str | None = None) -> di
             v["trail"].append(
                 {
                     "t": t,
+                    "call_id": ev.get("call_id"),
                     "actor": actor,
                     "helper_id": ev.get("helper_id"),
                     "name": ev.get("name"),
@@ -230,6 +239,10 @@ def fold(events: Sequence[Mapping[str, Any]], round_id: str | None = None) -> di
             h = v["helpers"].setdefault(ev["helper_id"], _new_helper(ev["helper_id"], t))
             h["title"] = ev.get("title") or h["title"]  # never reopens a finished Helper
             h["folder"] = ev.get("folder") or h["folder"]
+        elif kind == HELPER_TITLED:
+            h = v["helpers"].get(ev.get("helper_id"))
+            if h is not None and ev.get("title"):
+                h["title"] = ev["title"]
         elif kind == HELPER_FINISHED:
             h = v["helpers"].get(ev["helper_id"])
             if settled:
@@ -246,7 +259,7 @@ def fold(events: Sequence[Mapping[str, Any]], round_id: str | None = None) -> di
         elif kind == TURN_ENDED and actor == ASSISTANT:
             if not assistant_running:
                 unconsumed = set()  # an end with no turn running: no turn will read them
-            assistant_running = False
+            assistant_running, ended = False, ev
             if cur_words:
                 v["words"].append("".join(cur_words))
             cur_words = None
@@ -266,6 +279,8 @@ def fold(events: Sequence[Mapping[str, Any]], round_id: str | None = None) -> di
         ):
             failed = any(h["status"] == "failed" for h in v["helpers"].values())
             v.update(status="done", settled_at=t, failed_helper=failed)
+            if ended is not None and ended.get("status") == "failed":
+                v.update(status="failed", reason=ended.get("reason"))
         if v["settled_at"] is not None:
             live = {}  # nothing is live on a settled Round
         v["now"] = copy.deepcopy(list(live.values())[-1]) if live else None

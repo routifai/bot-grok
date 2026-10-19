@@ -29,7 +29,7 @@ from omnigent.superchat.rounds.fold import fold
 from omnigent.superchat.rounds.store import SqlAlchemyRoundStore
 
 ROUNDS = Path(__file__).parent / "rounds"
-RANK = {"idle": 0, "running": 1, "done": 2, "stopped": 2}
+RANK = {"idle": 0, "running": 1, "done": 2, "failed": 2, "stopped": 2}
 
 
 def load(name: str) -> list[dict[str, Any]]:
@@ -267,6 +267,46 @@ CASES: list[tuple[str, Callable[[], Any], Callable[[Any], bool]]] = [
         ),
     ),
     (
+        "a Round whose last turn failed reads failed with its reason",
+        lambda: cuts_ok(
+            S().open().words("On it")("turn.ended", status="failed", reason="boom").ev
+        ),
+        lambda v: (v["status"], v["reason"], v["words"]) == ("failed", "boom", ["On it"]),
+    ),
+    (
+        "a failed turn its wake turn followed reads done",
+        lambda: cuts_ok(
+            S()
+            .open()
+            .spawn("h1", "D")("turn.ended", status="failed", reason="boom")
+            .fin("h1")
+            .wake()
+            .end()
+            .ev
+        ),
+        lambda v: (v["status"], v["reason"]) == ("done", None),
+    ),
+    (
+        "the titler renames a Helper, after settlement too; an unknown Helper is not added",
+        lambda: cuts_ok(
+            S()
+            .open()
+            .spawn("h1", "worker task")
+            .end()
+            .fin("h1")
+            .wake()
+            .end()("helper.titled", helper_id="h1", title="Faroe deck")(
+                "helper.titled", helper_id="h9", title="Ghost"
+            )
+            .ev
+        ),
+        lambda v: (
+            v["status"] == "done"
+            and v["helpers"]["h1"]["title"] == "Faroe deck"
+            and list(v["helpers"]) == ["h1"]
+        ),
+    ),
+    (
         "a Helper result is not consumed before its wake",
         lambda: fold(S().open().spawn("h1", "D").end().fin("h1").ev),
         lambda v: v["status"] == "running" and not v["failed_helper"],
@@ -448,6 +488,7 @@ KINDS = [
     "stop.requested",
     "checklist.created",
     "round.opened",
+    "helper.titled",
 ]
 
 
@@ -467,7 +508,9 @@ def _random_event(rng: random.Random, t: float) -> dict[str, Any]:
         )
     elif kind == "file.saved":
         e["name"] = rng.choice(["d", "p"])
-    elif kind in ("helper.started", "helper.finished"):
+    elif kind == "turn.ended":
+        e.update(status=rng.choice(["done", "failed"]), reason=rng.choice([None, "boom"]))
+    elif kind in ("helper.started", "helper.finished", "helper.titled"):
         e.update(helper_id=hid, title="T", status=rng.choice(["done", "failed", "stopped"]))
     elif kind == "checklist.created":
         e.update(item_id="1", subject="x")
@@ -602,7 +645,9 @@ def test_a_round_is_written_from_the_message_the_relay_and_the_save(
     become events in order, the save and the Stop are recorded, each stored batch is handed on,
     and the fold reads them back. The Helper the Stop interrupts reads stopped though its
     executor called the turn done, and its late wake is a stopped Round's. The Stop settles it:
-    one journal entry, never a second, and none for a hidden Round."""
+    one journal entry, never a second, and none for a hidden Round. The titler's name for the
+    Helper, saved from a worker thread after settlement, still renames it in the view; a turn
+    that fails ends with the error it failed with, and its Round reads failed."""
     store = SqlAlchemyRoundStore(db_uri)
     written: list[Any] = []
     journaled: list[tuple[str, dict[str, Any]]] = []
@@ -679,7 +724,10 @@ def test_a_round_is_written_from_the_message_the_relay_and_the_save(
         cold = record.RelayRound(root, convs)
         await cold.observe({"type": "response.in_progress"})
         await record.note_message(convs, convs.rows[root], "8" * 32, msg, None, turn_running=True)
-        await cold.observe({"type": "response.completed"})
+        await cold.observe({"type": "response.failed", "error": {"message": "Overloaded"}})
+        child.task_summary = "Faroe Islands deck"
+        await asyncio.to_thread(record.helper_titled, child)
+        await asyncio.sleep(0)
         await record.RECORDER.idle()
 
     asyncio.run(run())
@@ -740,7 +788,11 @@ def test_a_round_is_written_from_the_message_the_relay_and_the_save(
         ("turn.started", "assistant"),
         ("turn.ended", "assistant"),
     ]
-    assert [e["kind"] for e in store.events(item)][-2:] == ["helper.finished", "wake"]
+    asked = fold(store.events(ask), ask)
+    assert (asked["status"], asked["reason"]) == ("failed", "Overloaded")
+    later = store.events(item)
+    assert [e["kind"] for e in later][-3:] == ["helper.finished", "wake", "helper.titled"]
+    assert fold(later, item)["helpers"][helper_id]["title"] == "Faroe Islands deck"
     hidden_view = fold(store.events("f" * 32))
     assert hidden_view["hidden"] is True and hidden_view["settled_at"] is not None
     assert convs.rows[helper_id].labels[ROUND_LABEL_KEY] == item
@@ -904,7 +956,9 @@ def test_a_turn_the_relay_lost_ends_from_the_store(
         assert [(e["kind"], e["status"], e["reason"]) for e in events[1:]] == [
             ("turn.ended", "failed", record.RESET if by == "reset" else record.NO_TURN)
         ]
-        assert fold(events, item)["settled_at"] is not None
+        view = fold(events, item)
+        assert view["settled_at"] is not None
+        assert (view["status"], view["reason"]) == ("failed", events[-1]["reason"])
         return
     ended = [e for e in events if e["kind"] == "turn.ended"]
     assert len(ended) == (2 if by == "helper" else 1)
@@ -918,4 +972,7 @@ def test_a_turn_the_relay_lost_ends_from_the_store(
         assert view["helpers"][helper_id]["result"] == "Saved the page."
         assert view["status"] == "running"  # settlement waits for the wake turn
     else:
-        assert view["settled_at"] is not None and view["status"] == "done"
+        assert view["settled_at"] is not None
+        assert (view["status"], view["reason"]) == (
+            ("done", None) if stored else ("failed", record.RELAY_LOST)
+        )

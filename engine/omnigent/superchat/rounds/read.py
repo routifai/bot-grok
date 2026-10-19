@@ -5,8 +5,8 @@
   and only while a family stream is open.
 * :func:`item_rounds` cuts a run of a Conversation's items into the Rounds they are in, which
   :func:`attach_round_ids` puts on each transcript message (``round_id``) and the Activity rows
-  read; :func:`open_rounds` lists the Rounds whose Helpers still work (the turn prefix and the
-  context brief).
+  read; :func:`open_rounds` lists the Rounds not settled, from their views (the turn prefix
+  and the context brief).
 * :func:`attach_round_files` draws a transcript page's file cards from each recorded Round's
   view instead of from the save calls on the page.
 * :func:`shadow_diff`, on when :data:`SHADOW_ENV` is set, folds a Round after a turn of it ends
@@ -29,6 +29,7 @@ from omnigent.superchat.activity.derive import _turn_status
 from omnigent.superchat.family import signals
 from omnigent.superchat.family.tree import (
     STATUS_CANCELLED,
+    STATUS_FAILED,
     STATUS_IN_PROGRESS,
     sub_agent_status,
 )
@@ -54,10 +55,14 @@ _SHADOW_ITEMS = 500
 _START_SLACK = 2.0
 #: Messages searched back from a page for the Round its first items are in.
 _OPENER_LOOKBACK = 50
-#: Latest Rounds :func:`open_rounds` looks through for the ones still working.
+#: Latest Rounds :func:`open_rounds` looks through for the ones not settled.
 _OPEN_LOOKBACK = 10
 #: Today's statuses (an Activity's, a Helper's) as the fold names them.
-_OLD_STATUS = {STATUS_IN_PROGRESS: "running", STATUS_CANCELLED: "stopped"}
+_OLD_STATUS = {
+    STATUS_IN_PROGRESS: "running",
+    STATUS_CANCELLED: "stopped",
+    STATUS_FAILED: "failed",
+}
 
 
 class Announcer:
@@ -190,38 +195,25 @@ def attach_round_ids(
         message["round_id"] = by_item.get(message["id"])
 
 
-def open_rounds(
-    store: SqlAlchemyRoundStore, conv_store: ConversationStore, conversation_id: str
-) -> list[dict[str, Any]]:
-    """The Conversation's Rounds still working, newest first: unsettled in the record, opened
-    by the person, and with a Helper whose session still runs.
+def open_rounds(store: SqlAlchemyRoundStore, conversation_id: str) -> list[dict[str, Any]]:
+    """The Conversation's Rounds not settled, newest first, read only from their views: opened
+    by the person (not hidden), each with its Helpers as the view has them. A Round whose
+    sessions went idle is settled by the :class:`~omnigent.superchat.rounds.record.Sweep`, so
+    nothing reads as working once its work is gone.
 
-    A Round whose record never settled (its process ended mid-turn) and whose Helpers all ended
-    is not working, so nothing reads as working once its work is gone.
-
-    :returns: ``[{"round_id", "ask", "helpers": [{"id", "title"}]}]``, at most from the
-        :data:`_OPEN_LOOKBACK` latest Rounds.
+    :returns: ``[{"round_id", "ask", "helpers": [{"id", "title", "status"}]}]``, at most from
+        the :data:`_OPEN_LOOKBACK` latest Rounds.
     """
     rows: list[dict[str, Any]] = []
     for round_id in store.recent(conversation_id, _OPEN_LOOKBACK):
         view = fold(store.events(round_id, conversation_id), round_id)
-        if view["settled_at"] is not None or view["hidden"]:
+        if view["settled_at"] is not None or view["hidden"] or view["status"] == "idle":
             continue
-        running = [h for h in view["helpers"].values() if h["status"] == "running"]
-        live = conv_store.get_conversations([h["id"] for h in running]) if running else {}
-        working = [
-            h
-            for h in running
-            if h["id"] in live and sub_agent_status(live[h["id"]]) == STATUS_IN_PROGRESS
+        helpers = [
+            {"id": h["id"], "title": h["title"], "status": h["status"]}
+            for h in view["helpers"].values()
         ]
-        if working:
-            rows.append(
-                {
-                    "round_id": round_id,
-                    "ask": view["ask"],
-                    "helpers": [{"id": h["id"], "title": h["title"]} for h in working],
-                }
-            )
+        rows.append({"round_id": round_id, "ask": view["ask"], "helpers": helpers})
     return rows
 
 

@@ -5110,7 +5110,7 @@
         "type": "object"
       },
       "RoundStep": {
-        "description": "One finished tool call of a Round.\n\n:param t: Epoch seconds it finished.\n:param actor: ``assistant`` or ``helper``.\n:param helper_id: The Helper session, or ``None`` for the Assistant.\n:param name: The tool.\n:param digest: Its arguments in a few words.\n:param ok: Its output reads as success.",
+        "description": "One finished tool call of a Round.\n\n:param t: Epoch seconds it finished.\n:param call_id: The call.\n:param actor: ``assistant`` or ``helper``.\n:param helper_id: The Helper session, or ``None`` for the Assistant.\n:param name: The tool.\n:param digest: Its arguments in a few words.\n:param ok: Its output reads as success.",
         "properties": {
           "actor": {
             "anyOf": [
@@ -5122,6 +5122,17 @@
               }
             ],
             "title": "Actor"
+          },
+          "call_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Call Id"
           },
           "digest": {
             "anyOf": [
@@ -5174,7 +5185,7 @@
         "type": "object"
       },
       "RoundSummary": {
-        "description": "One Round in a list, and the fields ``round.updated`` carries on the family stream.\n\n:param round_id: The Round.\n:param status: ``idle``, ``running``, ``done`` or ``stopped``.\n:param started_at: Epoch seconds, or ``None``.\n:param live: The running tool's digest, else its name, else ``None``.\n:param helpers: How many Helpers it started.\n:param files: How many files it saved.\n:param steps: How many tool calls finished.",
+        "description": "One Round in a list, and the fields ``round.updated`` carries on the family stream.\n\n:param round_id: The Round.\n:param status: ``idle``, ``running``, ``done``, ``failed`` or ``stopped``.\n:param started_at: Epoch seconds, or ``None``.\n:param live: The running tool's digest, else its name, else ``None``.\n:param helpers: How many Helpers it started.\n:param files: How many files it saved.\n:param steps: How many tool calls finished.",
         "properties": {
           "files": {
             "format": "int64",
@@ -5310,7 +5321,7 @@
         "type": "object"
       },
       "RoundView": {
-        "description": "Response for ``GET /v1/sessions/{session_id}/rounds/{round_id}``: the Round's events folded\n(``omnigent.superchat.rounds.fold``).\n\n:param round_id: The Round: the id of the person's message that opened it.\n:param status: ``idle``, ``running``, ``done`` or ``stopped``.\n:param hidden: A run no person started.\n:param started_at: Epoch seconds, or ``None`` before it opened.\n:param settled_at: Epoch seconds, or ``None`` while it runs.\n:param elapsed: Seconds from start to settlement, or to its last event.\n:param ask: The person's message.\n:param stop_line: What Stop stopped, once stopped.\n:param now: The tool running now, or ``None``.\n:param trail: Finished tool calls, in order.\n:param helpers: Helpers by session id.\n:param files: Files saved.\n:param chips: The follow-up suggestions.\n:param checklist: The model's checklist.\n:param words: The Assistant's text, one entry per finished turn.\n:param live_words: The running turn's text so far.\n:param failed_helper: A Helper failed.",
+        "description": "Response for ``GET /v1/sessions/{session_id}/rounds/{round_id}``: the Round's events folded\n(``omnigent.superchat.rounds.fold``).\n\n:param round_id: The Round: the id of the person's message that opened it.\n:param status: ``idle``, ``running``, ``done``, ``failed`` or ``stopped``.\n:param hidden: A run no person started.\n:param started_at: Epoch seconds, or ``None`` before it opened.\n:param settled_at: Epoch seconds, or ``None`` while it runs.\n:param elapsed: Seconds from start to settlement, or to its last event.\n:param ask: The person's message.\n:param reason: Why a failed Round failed, when its last turn's end said.\n:param stop_line: What Stop stopped, once stopped.\n:param now: The tool running now, or ``None``.\n:param trail: Finished tool calls, in order.\n:param helpers: Helpers by session id.\n:param files: Files saved.\n:param chips: The follow-up suggestions.\n:param checklist: The model's checklist.\n:param words: The Assistant's text, one entry per finished turn.\n:param live_words: The running turn's text so far.\n:param failed_helper: A Helper failed.",
         "properties": {
           "ask": {
             "anyOf": [
@@ -5377,6 +5388,17 @@
                 "type": "null"
               }
             ]
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
           },
           "round_id": {
             "title": "Round Id",

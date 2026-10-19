@@ -2,9 +2,10 @@
 the cards that asked.
 
 The Round record is the source (ADR 0029): the work still under way is the Conversation's
-Rounds whose Helpers still run (:func:`~omnigent.superchat.rounds.read.open_rounds`), and a card
-answer is kept on the message that carried it, the opener of its Round. Nothing creates,
-settles or reads a task record any more.
+Rounds not settled besides the one asking (:func:`~omnigent.superchat.rounds.read.open_rounds`),
+and a card
+answer is kept on the message that carried it, the opener of its Round. Nothing creates, settles
+or reads a task record any more.
 """
 
 from __future__ import annotations
@@ -119,7 +120,7 @@ class TaskService:
     def view(self, session_id: str) -> dict[str, Any] | None:
         """What a turn and ``deck_new`` read: the person's latest message, whether a person
         opened this turn, the Round the session is in (``round_id``), the card answer that
-        Round's message carried, and the Conversation's Rounds still working (``rounds``,
+        Round's message carried, and the Conversation's other Rounds not settled (``rounds``,
         :func:`~omnigent.superchat.rounds.read.open_rounds`). A read changes nothing.
         """
         place = self.place(session_id)
@@ -145,7 +146,9 @@ class TaskService:
             "by_person": by_person and not place.is_helper,
             "round_id": round_id,
             "answer": answer.to_wire() if answer else None,
-            "rounds": open_rounds(self.rounds, self.conversations, conversation_id),
+            "rounds": [
+                r for r in open_rounds(self.rounds, conversation_id) if r["round_id"] != round_id
+            ],
         }
 
     def card_answered(self, session_id: str, item_id: str, context: Mapping[str, Any]) -> None:

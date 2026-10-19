@@ -75,15 +75,24 @@ def kind_for_name(name: str) -> str:
     return next((k for suffix, k in _KIND_BY_SUFFIX.items() if low.endswith(suffix)), "file")
 
 
+def helper_part(helper: Mapping[str, Any]) -> str:
+    """A Helper of a Round not settled, as a line names it: ``helper "Uruguay deck"`` while it
+    runs, else with its state (``helper "Uruguay deck" done``)."""
+    named = f'helper "{helper["title"]}"' if helper.get("title") else "helper"
+    status = helper.get("status")
+    return named if status in (None, "running") else f"{named} {status}"
+
+
 def round_line(row: Mapping[str, Any]) -> str:
-    """One line naming a Round still working (``rounds.read.open_rounds``) and what comes next,
-    e.g. ``Open task: "make a deck on Uruguay" · helper "Uruguay deck" · next: wait for the
-    helper``."""
+    """One line naming a Round not settled (``rounds.read.open_rounds``) and, while a Helper of
+    it runs, what comes next, e.g. ``Open task: "make a deck on Uruguay" · helper "Uruguay
+    deck" · next: wait for the helper``."""
     ask = truncate(str(row.get("ask") or ""), _ASK_CHARS)
     parts = [f'{LINE_OPEN}"{ask}"' if ask else LINE_OPEN.rstrip(": ")]
     helpers = [h for h in row.get("helpers") or () if isinstance(h, Mapping)]
-    parts += [f'helper "{h["title"]}"' if h.get("title") else "helper" for h in helpers]
-    parts.append("next: wait for the helper")
+    parts += [helper_part(h) for h in helpers]
+    if any(h.get("status") in (None, "running") for h in helpers):
+        parts.append("next: wait for the helper")
     return " · ".join(parts)
 
 
