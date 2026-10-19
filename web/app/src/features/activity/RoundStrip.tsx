@@ -203,7 +203,13 @@ export function RoundStrip({ botId, roundId }: { botId: string; roundId: string 
   const drafts = useRoundDrafts(botId, view);
   const pause = useRoundPause(botId, view);
   const [open, setOpen] = useState(false);
-  if (!view || (view.status !== "running" && view.status !== "done" && view.status !== "stopped")) {
+  if (
+    !view ||
+    (view.status !== "running" &&
+      view.status !== "done" &&
+      view.status !== "stopped" &&
+      view.status !== "failed")
+  ) {
     return null;
   }
   const worked =
@@ -235,9 +241,11 @@ export function RoundStrip({ botId, roundId }: { botId: string; roundId: string 
   const settled =
     view.status === "stopped"
       ? t`Stopped`
-      : view.files.length > 0
-        ? plural(view.files.length, { one: "# file", other: "# files" })
-        : t`Done`;
+      : view.status === "failed"
+        ? t`Didn't finish`
+        : view.files.length > 0
+          ? plural(view.files.length, { one: "# file", other: "# files" })
+          : t`Done`;
   const shown = live || open;
   return (
     <div

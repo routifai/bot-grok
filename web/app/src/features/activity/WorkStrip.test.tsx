@@ -845,5 +845,10 @@ describe("the Round's strip (ADR 0029)", () => {
     expect(trail.every((step) => step.textContent?.split(" · ").length === 2)).toBe(true);
     expect(q(container, "round-helper-title")?.textContent).toBe("Write the deck · projects/q3");
     expect(q(container, "round-helper-live")).toBeNull();
+    // A Round that settled on a failed turn still shows, and says it did not finish.
+    rpcMock.round.mockResolvedValue({ ...settled, status: "failed", files: [] });
+    await act(async () => family.roundUpdated("r1"));
+    expect(q(container, "round-strip")?.getAttribute("data-state")).toBe("settled");
+    expect(q(container, "round-strip-settled")?.textContent).toContain("Didn't finish");
   });
 });

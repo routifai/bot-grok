@@ -6,7 +6,7 @@ import { ThreadMessageSchema } from "../events.js";
 import { Id } from "../ids.js";
 
 /** A Round (ADR 0029): one person's message through settlement, as the engine's record folds it.
- * Times are epoch ms on the engine's clock. `status`: `idle`, `running`, `done` or `stopped`. */
+ * Times are epoch ms on the engine's clock. `status`: `idle`, `running`, `done`, `failed` or `stopped`. */
 export const RoundSummarySchema = z.object({
   /** The id of the person's message that opened it. */
   roundId: z.string(),
