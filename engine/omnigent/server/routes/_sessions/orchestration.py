@@ -16,7 +16,7 @@ import secrets
 import time
 import uuid
 from collections.abc import Awaitable, Callable, Iterator, Mapping, Sequence
-from typing import Any, Literal, NamedTuple, cast
+from typing import Any, Final, Literal, NamedTuple, cast
 
 import httpx
 from fastapi import (
@@ -118,7 +118,12 @@ from omnigent.server.background_session_titles import (
 )
 from omnigent.server.bundles import bundle_location, validate_agent_bundle
 from omnigent.server.creation_logging import creation_metadata, creation_stage, session_created
-from omnigent.server.host_registry import HostConnection, HostRegistry, RunnerExitReports
+from omnigent.server.host_registry import (
+    HostConnection,
+    HostRegistry,
+    RunnerExitReports,
+    multi_replica,
+)
 from omnigent.server.hosts import (
     MANAGED_REPO_LABEL_KEY,
     HostDeployment,
@@ -3365,6 +3370,49 @@ async def _run_managed_launch(
         )
 
 
+#: :func:`_await_launched_host`'s answer for a host that connected to another replica.
+_HOST_ON_ANOTHER_REPLICA: Final = "another-replica"
+
+#: With several replicas, how often a launch waiting for its host checks whether the
+#: host connected to another one instead.
+_CROSS_REPLICA_ONLINE_CHECK_S = 3.0
+
+
+async def _await_launched_host(
+    host_id: str,
+    host_registry: HostRegistry,
+    host_store: HostStore,
+) -> HostConnection | Literal["another-replica"] | None:
+    """
+    Wait for a just-launched host's connection, the only proof it is up.
+
+    The hosts row flips online a moment before the connection registers here, so
+    the row alone lets a launch report ready with no host to start its runner on.
+    With one engine only this replica's connection counts. With several
+    (:func:`multi_replica`), the host may have dialled another replica: that is
+    reported, so the caller settles and the waiting request is re-addressed there.
+
+    :param host_id: The launched host's identifier.
+    :param host_registry: Live host connections on this replica.
+    :param host_store: Persistent host registrations, read only with several replicas.
+    :returns: The connection, :data:`_HOST_ON_ANOTHER_REPLICA`, or ``None`` when the
+        host connected nowhere within ``_HOST_RELAUNCH_RUNNER_CONNECT_TIMEOUT_S``.
+    """
+    from omnigent.server.routes import sessions as _facade
+
+    timeout_s = _facade._HOST_RELAUNCH_RUNNER_CONNECT_TIMEOUT_S
+    if not multi_replica():
+        return await host_registry.wait_for(host_id, timeout_s)
+    deadline = time.monotonic() + timeout_s
+    while (remaining := deadline - time.monotonic()) > 0:
+        conn = await host_registry.wait_for(host_id, min(_CROSS_REPLICA_ONLINE_CHECK_S, remaining))
+        if conn is not None:
+            return conn
+        if await asyncio.to_thread(host_store.is_online, host_id):
+            return _HOST_ON_ANOTHER_REPLICA
+    return None
+
+
 async def _bind_and_launch_managed_runner(
     *,
     session_id: str,
@@ -3447,8 +3495,17 @@ async def _bind_and_launch_managed_runner(
     _publish_sandbox_status(session_id, "connecting")
     runner_id: str | None = None
     if host_registry is not None:
-        host_conn = host_registry.get(managed.host_id)
-        if host_conn is not None:
+        host_conn = await _await_launched_host(managed.host_id, host_registry, host_store)
+        if host_conn is None:
+            reason = "managed host did not connect after launch"
+            if host_to_relaunch is None:
+                host = await asyncio.to_thread(host_store.get_host, managed.host_id)
+                if host is not None:
+                    await terminate_host(host, host_store, sandbox_config)
+            tracker.fail(session_id, reason)
+            _publish_sandbox_status(session_id, "failed", reason)
+            return
+        if isinstance(host_conn, HostConnection):
             launch_attempt = await _launch_runner_on_host(
                 conv,
                 conversation_store,
@@ -3562,9 +3619,12 @@ async def _maybe_relaunch_managed_sandbox(
     host = await asyncio.to_thread(host_store.get_host, conv.host_id)
     if host is None or host.sandbox_provider is None:
         return False
-    if host_is_live(host):
-        host_registry = getattr(app_state, "host_registry", None)
-        host_conn = host_registry.get(conv.host_id) if host_registry is not None else None
+    host_registry = getattr(app_state, "host_registry", None)
+    host_conn = host_registry.get(conv.host_id) if host_registry is not None else None
+    # With one engine the connection is the only proof of life: an "online" row with no
+    # connection here outlived it (the caller already gave the host its reconnect window),
+    # so the host is relaunched.
+    if host_is_live(host) and (host_conn is not None or multi_replica()):
         if not (host_resume_supported(host, sandbox_config) and host_conn is None):
             # The host row still reads live (status online with a fresh
             # heartbeat). For non-resumable providers or a live local tunnel,
@@ -3623,7 +3683,8 @@ async def _maybe_relaunch_managed_sandbox(
     # rather than merely elsewhere.
     local_host_registry = getattr(app_state, "host_registry", None)
     if (
-        conv.host_id is not None
+        multi_replica()
+        and conv.host_id is not None
         and local_host_registry is not None
         and local_host_registry.get(conv.host_id) is None
         and await asyncio.to_thread(host_store.is_online, conv.host_id)
@@ -4288,7 +4349,6 @@ async def _run_managed_wake(
         resolve_managed_agent_label,
         resume_host,
     )
-    from omnigent.server.routes import sessions as _facade
 
     sandbox_config = deployment_with_inference_snapshot(sandbox_config, conv.inference_snapshot)
     host_id = conv.host_id
@@ -4372,49 +4432,30 @@ async def _run_managed_wake(
             tracker.fail(session_id, "session not found after wake")
             return
         runner_id: str | None = None
-        host_conn = host_registry.get(host_id) if host_registry is not None else None
-        if host_registry is not None and host_conn is None:
-            # resume_host waits on cross-replica host-store liveness, not
-            # this replica's in-memory tunnel registry — the woken host's tunnel
-            # can lag here (or land on another replica). Poll briefly so the runner
-            # launches once it reconnects, instead of settling "ready" with no
-            # runner; fail only if it turns out to be online nowhere.
-            _host_reconnect_deadline = (
-                time.monotonic() + _facade._HOST_RELAUNCH_RUNNER_CONNECT_TIMEOUT_S
-            )
-            _cross_replica_online_poll_s = 3.0
-            _next_cross_replica_check = time.monotonic() + _cross_replica_online_poll_s
-            online_elsewhere = False
-            while host_conn is None and time.monotonic() < _host_reconnect_deadline:
-                await asyncio.sleep(0.5)
-                host_conn = host_registry.get(host_id)
-                if host_conn is not None:
-                    break
-                if time.monotonic() >= _next_cross_replica_check:
-                    _next_cross_replica_check = time.monotonic() + _cross_replica_online_poll_s
-                    if await asyncio.to_thread(host_store.is_online, host_id):
-                        online_elsewhere = True
-                        break
-            if host_conn is None:
-                # A host that reads live CROSS-REPLICA means the wake SUCCEEDED: the
-                # sandbox booted and its tunnel registered, just not here. Publishing
-                # a terminal "failed" for that is wrong AND it outlives the recovery —
-                # sandbox_status is cached PER POD and only "ready" evicts it, so the
-                # false failure is served back by every later keyed snapshot read (a
-                # 200, with no wrong-replica signal to correct it). Settle as ready
-                # instead; it clears any stale entry. The runner still has to launch
-                # from the replica that owns the tunnel — the request parked on this
-                # rendezvous is sent there by the WRONG_REPLICA raised in
+        host_conn: HostConnection | None = None
+        if host_registry is not None:
+            # resume_host waits on the hosts row, which reads online a moment before
+            # the woken host's connection registers (or registers on another replica).
+            # Launch the runner once the connection is here, instead of settling
+            # "ready" with no runner.
+            awaited = await _await_launched_host(host_id, host_registry, host_store)
+            if awaited == _HOST_ON_ANOTHER_REPLICA:
+                # The wake SUCCEEDED, just not here. Publishing a terminal "failed"
+                # would be wrong AND outlive the recovery — sandbox_status is cached
+                # PER POD and only "ready" evicts it. The runner launches from the
+                # replica that owns the tunnel: the request parked on this rendezvous
+                # is sent there by the WRONG_REPLICA raised in
                 # _maybe_relaunch_managed_sandbox.
-                if online_elsewhere or await asyncio.to_thread(host_store.is_online, host_id):
-                    tracker.finish(session_id)
-                    _publish_sandbox_status(session_id, "ready")
-                    return
+                tracker.finish(session_id)
+                _publish_sandbox_status(session_id, "ready")
+                return
+            if awaited is None:
                 tracker.fail(session_id, "managed host did not reconnect after wake")
                 _publish_sandbox_status(
                     session_id, "failed", "managed host did not reconnect after wake"
                 )
                 return
+            host_conn = awaited
         if host_conn is not None:
             launch_attempt = await _launch_runner_on_host(
                 refreshed,

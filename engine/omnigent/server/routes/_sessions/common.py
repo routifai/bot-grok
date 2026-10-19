@@ -180,6 +180,12 @@ _HOST_BOUND_RUNNER_CONNECT_GRACE_S = 10.0
 _HOST_RELAUNCH_RUNNER_CONNECT_TIMEOUT_S = 30.0
 
 
+# How long a message waits for a host whose row still reads online to redial this
+# engine (a few of the host's reconnect backoffs, capped at 3 s) before the host is
+# treated as gone and relaunched.
+_HOST_RECONNECT_GRACE_S = 15.0
+
+
 _HOST_RUNNER_STATUS_TIMEOUT_S = 3.0
 
 

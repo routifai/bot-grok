@@ -20,7 +20,9 @@ simply knows nothing about them until the host reconnects and re-reports.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
+import os
 import threading
 import time
 from collections.abc import Callable, Iterator, Mapping
@@ -45,6 +47,23 @@ from omnigent.host.frames import (
 )
 
 _logger = logging.getLogger(__name__)
+
+
+def multi_replica() -> bool:
+    """
+    Whether more than one engine replica serves this deployment.
+
+    Set ``OMNIGENT_MULTI_REPLICA=1`` when several engines share one database. Off
+    (the default, one engine), a host is connected exactly when this process's
+    :class:`HostRegistry` holds it: an ``"online"`` hosts row with no connection
+    here is left over from a connection that is gone (this engine restarted, the
+    host died), never a host held by another replica.
+
+    :returns: ``True`` when the hosts table may describe connections held by other
+        replicas.
+    """
+    return os.environ.get("OMNIGENT_MULTI_REPLICA", "").strip().lower() in {"1", "true", "yes"}
+
 
 _expected_host_owner: ContextVar[AccountAuthority | None] = ContextVar(
     "expected_host_owner", default=None
@@ -357,6 +376,12 @@ class HostConnection:
     )
 
 
+def _resolve_waiter(waiter: asyncio.Future[HostConnection], conn: HostConnection) -> None:
+    """Hand a connected host to one :meth:`HostRegistry.wait_for` caller still waiting."""
+    if not waiter.done():
+        waiter.set_result(conn)
+
+
 class HostRegistry:
     """Thread-safe registry of live host WebSocket connections.
 
@@ -379,6 +404,8 @@ class HostRegistry:
         # server re-learns it from the reconnect handshake.
         self._gateway_inference: dict[str, dict[str, bool]] = {}
         self._interactive_shells: dict[str, list[str]] = {}
+        # Callers waiting for a host to connect, resolved by ``register``.
+        self._waiters: dict[tuple[int, str], list[asyncio.Future[HostConnection]]] = {}
         self.launch_authorizer: (
             Callable[[str, str, str | None, str | None, bool, str | None], None] | None
         ) = None
@@ -452,7 +479,46 @@ class HostRegistry:
                 )
             else:
                 self._interactive_shells.pop(host_id, None)
+            waiters = self._waiters.pop(key, [])
+        for waiter in waiters:
+            with contextlib.suppress(RuntimeError):  # the waiter's loop already closed
+                waiter.get_loop().call_soon_threadsafe(_resolve_waiter, waiter, conn)
         return conn
+
+    async def wait_for(
+        self,
+        host_id: str,
+        timeout_s: float,
+        workspace_id: int | None = None,
+    ) -> HostConnection | None:
+        """Return the host's connection on this replica, waiting for it to connect.
+
+        :param host_id: Host identifier, in any accepted spelling.
+        :param timeout_s: Longest wait, in seconds.
+        :param workspace_id: Tenant partition; defaults to
+            :func:`current_workspace_id`.
+        :returns: The connection, or ``None`` when the host did not connect here in
+            time.
+        """
+        ws_id = current_workspace_id() if workspace_id is None else workspace_id
+        key = (ws_id, _canonical_host_id(host_id))
+        waiter: asyncio.Future[HostConnection] = asyncio.get_running_loop().create_future()
+        with self._lock:
+            conn = self._hosts.get(key)
+            if conn is not None:
+                return conn
+            self._waiters.setdefault(key, []).append(waiter)
+        try:
+            return await asyncio.wait_for(waiter, timeout=timeout_s)
+        except asyncio.TimeoutError:
+            return None
+        finally:
+            with self._lock:
+                pending = self._waiters.get(key)
+                if pending is not None and waiter in pending:
+                    pending.remove(waiter)
+                    if not pending:
+                        del self._waiters[key]
 
     def deregister(
         self,
