@@ -27,7 +27,7 @@ from omnigent.context.state_file import PREFERENCE, Entry, parse
 from omnigent.memory.service import PROFILE_PREFERENCES
 from omnigent.superchat.knowledge.db import query_terms
 from omnigent.superchat.recall_hint.hint import TurnPlan, hit_line
-from omnigent.superchat.tasks.record import kind_for_name
+from omnigent.superchat.tasks.record import helper_part, kind_for_name
 
 _logger = logging.getLogger(__name__)
 
@@ -132,13 +132,12 @@ def made_lines(artifacts: Sequence[Mapping[str, Any]], words: Sequence[str]) -> 
 
 
 def round_lines(rounds: Sequence[Mapping[str, Any]]) -> list[str]:
-    """The Rounds still working (``rounds.read.open_rounds``): what was asked and the Helpers
-    still running on it."""
+    """The Rounds not settled (``rounds.read.open_rounds``): what was asked and its Helpers."""
     lines = []
     for row in rounds:
         parts = ["working", f'asked "{" ".join(str(row.get("ask") or "").split())}"']
         helpers = [h for h in row.get("helpers") or () if isinstance(h, Mapping)]
-        parts += [f'helper "{h["title"]}"' if h.get("title") else "helper" for h in helpers]
+        parts += [helper_part(h) for h in helpers]
         lines.append(_clip("- " + " · ".join(parts)))
     return lines
 

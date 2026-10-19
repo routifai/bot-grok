@@ -2,13 +2,15 @@
 
 * :func:`assign_round` is the one rule for which Round a stored message belongs to.
 * :class:`Recorder` appends events in order on a background task: a write never blocks the
-  turn or the request that saw the fact, and a failed write is logged, never raised. Streamed
+  turn or the request that saw the fact, and a failed write is logged, never raised. An event
+  recorded from a worker thread is handed to the loop the recorder last ran on. Streamed
   words are joined per :data:`WORDS_EVERY` seconds. Each stored batch is handed to the
   recorder's ``on_written`` (:mod:`omnigent.superchat.rounds.read`).
 * :class:`RelayRound` turns one session's runner stream, as the server relays it, into events:
   turns, words, tool calls, a Helper's finish, chips and checklist changes.
-* :func:`note_message`, :func:`helper_created` and :func:`file_saved` are the writers at a
-  stored message, a Helper's creation and an artifact save.
+* :func:`note_message`, :func:`helper_created`, :func:`helper_titled` and :func:`file_saved`
+  are the writers at a stored message, a Helper's creation, its model-written name and an
+  artifact save.
 * :func:`stop_round` is Stop: it picks the Round the person stops, records ``stop.requested``
   and returns the Stop line; :func:`stopped_wake` tells a Helper's late notice of a stopped
   Round from one that may still start a turn.
@@ -61,6 +63,7 @@ from omnigent.superchat.rounds.fold import (
     HELPER,
     HELPER_FINISHED,
     HELPER_STARTED,
+    HELPER_TITLED,
     PERSON,
     ROUND_OPENED,
     STOP_REQUESTED,
@@ -281,11 +284,23 @@ class Recorder:
         self.turned: dict[str, str] = {}
         #: Held by :func:`close_lost_turns`, so two never end one turn.
         self.closing = asyncio.Lock()
+        #: The loop events were last recorded on: a worker thread's event is handed to it.
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     def record(
         self, round_id: str, conversation_id: str, kind: str, actor: str, **body: Any
     ) -> None:
         """Queue one event of *round_id*, after any words of that Round still being joined."""
+        try:
+            self._loop = asyncio.get_running_loop()
+        except RuntimeError:  # a worker thread: the loop records it
+            if self._loop is None or self._loop.is_closed():
+                _logger.warning("round event %s dropped: no loop", kind)
+                return
+            self._loop.call_soon_threadsafe(
+                lambda: self.record(round_id, conversation_id, kind, actor, **body)
+            )
+            return
         self._flush_words(round_id)
         self._queue_event(
             RoundEvent(round_id, conversation_id, kind, actor, _now_ms(), _clean(body))
@@ -561,6 +576,23 @@ def helper_created(conversation: Any) -> None:
         title=title,
         agent=agent,
         folder=helper_folder(conversation.workspace, workspace_root()),
+    )
+
+
+def helper_titled(conversation: Any) -> None:
+    """Record ``helper.titled`` for a Helper in a Round its background titler just named
+    (its ``task_summary``), so the strip and Activity show the one name."""
+    round_id = round_of(conversation.labels)
+    title = getattr(conversation, "task_summary", None)
+    if round_id is None or conversation.parent_conversation_id is None or not title:
+        return
+    _record(
+        round_id,
+        conversation.root_conversation_id or conversation.id,
+        HELPER_TITLED,
+        ASSISTANT,
+        helper_id=conversation.id,
+        title=title,
     )
 
 
@@ -978,7 +1010,10 @@ class RelayRound:
             elif kind == "response.output_item.done" and isinstance(event.get("item"), Mapping):
                 self._item(turn, event["item"])
             elif kind in _TERMINAL:
-                self._end(turn, "stopped" if stopped else _TERMINAL[str(kind)])
+                error = event.get("error")
+                reason = error.get("message") if isinstance(error, Mapping) else None
+                status = "stopped" if stopped else _TERMINAL[str(kind)]
+                self._end(turn, status, clip(str(reason), RESULT_LIMIT) if reason else None)
         except Exception:
             _logger.warning("round event not recorded for %s", self._session_id, exc_info=True)
 
@@ -1130,10 +1165,10 @@ class RelayRound:
                 active_form=args.get("active_form"),
             )
 
-    def _end(self, turn: _Turn, status: str) -> None:
+    def _end(self, turn: _Turn, status: str, reason: str | None = None) -> None:
         if _LIVE.get(self._session_id) is turn:
             del _LIVE[self._session_id]
-        self._emit(turn, TURN_ENDED, status=status)
+        self._emit(turn, TURN_ENDED, status=status, reason=reason if status == "failed" else None)
         if turn.actor == HELPER:
             result = clip("".join(turn.text).strip(), RESULT_LIMIT)
             self._emit(turn, HELPER_FINISHED, status=status, result=result)

@@ -4945,6 +4945,7 @@ class RoundStep(BaseModel):
     One finished tool call of a Round.
 
     :param t: Epoch seconds it finished.
+    :param call_id: The call.
     :param actor: ``assistant`` or ``helper``.
     :param helper_id: The Helper session, or ``None`` for the Assistant.
     :param name: The tool.
@@ -4953,6 +4954,7 @@ class RoundStep(BaseModel):
     """
 
     t: float
+    call_id: str | None = None
     actor: str | None = None
     helper_id: str | None = None
     name: str | None = None
@@ -5022,12 +5024,13 @@ class RoundView(BaseModel):
     (``omnigent.superchat.rounds.fold``).
 
     :param round_id: The Round: the id of the person's message that opened it.
-    :param status: ``idle``, ``running``, ``done`` or ``stopped``.
+    :param status: ``idle``, ``running``, ``done``, ``failed`` or ``stopped``.
     :param hidden: A run no person started.
     :param started_at: Epoch seconds, or ``None`` before it opened.
     :param settled_at: Epoch seconds, or ``None`` while it runs.
     :param elapsed: Seconds from start to settlement, or to its last event.
     :param ask: The person's message.
+    :param reason: Why a failed Round failed, when its last turn's end said.
     :param stop_line: What Stop stopped, once stopped.
     :param now: The tool running now, or ``None``.
     :param trail: Finished tool calls, in order.
@@ -5047,6 +5050,7 @@ class RoundView(BaseModel):
     settled_at: float | None = None
     elapsed: float
     ask: str | None = None
+    reason: str | None = None
     stop_line: str | None = None
     now: RoundTool | None = None
     trail: list[RoundStep]
@@ -5064,7 +5068,7 @@ class RoundSummary(BaseModel):
     One Round in a list, and the fields ``round.updated`` carries on the family stream.
 
     :param round_id: The Round.
-    :param status: ``idle``, ``running``, ``done`` or ``stopped``.
+    :param status: ``idle``, ``running``, ``done``, ``failed`` or ``stopped``.
     :param started_at: Epoch seconds, or ``None``.
     :param live: The running tool's digest, else its name, else ``None``.
     :param helpers: How many Helpers it started.

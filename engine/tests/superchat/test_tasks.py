@@ -62,7 +62,10 @@ def test_a_working_round_reads_as_one_line_with_what_comes_next() -> None:
     )
     long = round_line(_working("word " * 40))
     assert long.startswith('Open task: "word word') and '…" · helper' in long
-    assert round_line({"helpers": []}) == "Open task · next: wait for the helper"
+    # With no Helper running there is nothing to wait for; a finished one says how it ended.
+    assert round_line({"helpers": []}) == "Open task"
+    done = {"round_id": "r1", "ask": "A deck", "helpers": [{"title": "Deck", "status": "done"}]}
+    assert round_line(done) == 'Open task: "A deck" · helper "Deck" done'
 
 
 def test_the_pick_comes_first_and_the_lines_are_capped() -> None:
@@ -192,36 +195,42 @@ def _turn_ended(env: _Env, rid: str) -> None:
     )
 
 
-def test_a_rounds_running_helper_is_open_work_until_its_session_ends(env: _Env) -> None:
-    """The Round view is the source: a Helper started in a Round makes it working, and it stops
-    reading as working the moment the Helper's session ends, whether or not its finish reached
-    the record, so the turn and the brief never read a stale "building"."""
+def test_a_round_not_settled_is_open_work_until_its_view_settles(env: _Env) -> None:
+    """The Round view is the only source: a Round reads as open from the asking Round's turns
+    while its view is not settled, with its Helpers as the view has them, whatever their
+    sessions say, and stops the moment it settles. The asking Round is never its own open work,
+    and a Round whose last turn failed is settled."""
     rid = _open_round(env, "a deck about our 2026 sales")
     helper = _start_helper(env, rid, "Sales deck")
     _turn_ended(env, rid)
-    working = {"round_id": rid, "ask": "a deck about our 2026 sales"}
-    assert _view(env)["rounds"] == [
-        {**working, "helpers": [{"id": helper, "title": "Sales deck"}]}
-    ]
+    assert _view(env)["rounds"] == []  # the Round the turn is in
     view = _view(env, helper)
     assert (view["conversation_id"], view["is_helper"], view["round_id"]) == (env.chat, True, rid)
     assert view["message"] == "a deck about our 2026 sales" and view["by_person"] is False
     assert view["background"] is False
-    # the next person's message opens its own Round: the Helper's still reads as working
+    # the next person's message opens its own Round: the Helper's still reads as open
     later = _open_round(env, "and a memo")
-    assert [r["round_id"] for r in _view(env)["rounds"]] == [rid]
+    working = {"round_id": rid, "ask": "a deck about our 2026 sales"}
+    running = {"id": helper, "title": "Sales deck", "status": "running"}
+    assert _view(env)["rounds"] == [{**working, "helpers": [running]}]
     assert _view(env)["round_id"] == later
-    # the Helper's session ends before its finish is recorded: no longer working
+    # the Helper's session ends before its finish is recorded: the view still runs it
     env.conversations.set_session_live_status(helper, "idle")
-    assert _view(env)["rounds"] == []
-    # its finish recorded too (the Round settles): still nothing
+    assert _view(env)["rounds"] == [{**working, "helpers": [running]}]
+    # its finish waits for the wake turn that reads it; then the Round settles
     env.rounds.append(
         [RoundEvent(rid, env.chat, "helper.finished", "helper", 4, {"helper_id": helper})]
     )
+    assert _view(env)["rounds"] == [{**working, "helpers": [{**running, "status": "done"}]}]
+    env.rounds.append([RoundEvent(rid, env.chat, "turn.started", "assistant", 5, {})])
+    _turn_ended(env, rid)
     assert _view(env)["rounds"] == []
-    # a failed Helper is not working either; a scheduled one is background work
-    failed = _start_helper(env, later, "Memo")
-    env.conversations.set_session_live_status(failed, "failed")
+    # a Round whose last turn failed is settled; a scheduled Helper is background work
+    _turn_ended(env, later)
+    failed = _open_round(env, "a page")
+    end = {"status": "failed", "reason": "relay lost"}
+    env.rounds.append([RoundEvent(failed, env.chat, "turn.ended", "assistant", 6, end)])
+    _open_round(env, "anything else")
     assert _view(env)["rounds"] == []
     scheduled = _start_helper(env, later, "Report", **{SCHEDULED_HELPER_LABEL_KEY: "t1"})
     assert _view(env, scheduled)["background"] is True
@@ -451,8 +460,9 @@ def test_a_turns_end_reaches_every_listening_feature(monkeypatch) -> None:
 
 
 async def test_the_runner_reads_a_working_round_until_its_helper_ends(env: _Env) -> None:
-    """Live, through the real routes: the person's pick starts a Helper; the wake turn's prefix
-    reads that Round as working while the Helper runs, and nothing once it has ended."""
+    """Live, through the real routes: the person's pick starts a Helper; the next message's
+    prefix reads that Round as working while its view runs the Helper, and nothing once the
+    Round has settled."""
     engine = httpx.AsyncClient(
         transport=httpx.ASGITransport(app=env.client.app), base_url="http://srv"
     )
@@ -466,7 +476,11 @@ async def test_the_runner_reads_a_working_round_until_its_helper_ends(env: _Env)
     ]
     assert runtime.current_round(env.chat) == later
     runtime.turn_ended(env.chat)
-    env.conversations.set_session_live_status(helper, "idle")
+    env.rounds.append(
+        [RoundEvent(rid, env.chat, "helper.finished", "helper", 4, {"helper_id": helper})]
+    )
+    env.rounds.append([RoundEvent(rid, env.chat, "turn.started", "assistant", 5, {})])
+    _turn_ended(env, rid)
     notice = "[System: worker/RBC vs TD deck finished]"
     _say(env.conversations, env.chat, notice, is_system_notice=True)
     assert await runtime.message_prefix(engine, env.chat, [notice]) == []
