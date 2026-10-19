@@ -4913,3 +4913,181 @@ class UpdateProjectRequest(BaseModel):
         if len(trimmed) > 100:
             raise ValueError("name must be at most 100 characters")
         return trimmed
+
+
+# ── Rounds (ADR 0029) ───────────────────────────────────────────
+
+
+class RoundTool(BaseModel):
+    """
+    The tool an actor of a Round is running now.
+
+    :param actor: ``assistant`` or ``helper``.
+    :param helper_id: The Helper session, or ``None`` for the Assistant.
+    :param call_id: The call's id.
+    :param name: The tool, e.g. ``"artifact_save"``.
+    :param since: Epoch seconds the call started.
+    :param bytes: Size of the arguments written so far.
+    :param digest: The arguments in a few words once complete, e.g. ``"name=deck"``.
+    """
+
+    actor: str | None = None
+    helper_id: str | None = None
+    call_id: str | None = None
+    name: str | None = None
+    since: float
+    bytes: int = 0
+    digest: str | None = None
+
+
+class RoundStep(BaseModel):
+    """
+    One finished tool call of a Round.
+
+    :param t: Epoch seconds it finished.
+    :param actor: ``assistant`` or ``helper``.
+    :param helper_id: The Helper session, or ``None`` for the Assistant.
+    :param name: The tool.
+    :param digest: Its arguments in a few words.
+    :param ok: Its output reads as success.
+    """
+
+    t: float
+    actor: str | None = None
+    helper_id: str | None = None
+    name: str | None = None
+    digest: str | None = None
+    ok: bool = True
+
+
+class RoundHelper(BaseModel):
+    """
+    A Helper started in a Round.
+
+    :param id: The Helper session.
+    :param title: Its title.
+    :param folder: The folder it works in.
+    :param status: ``running``, ``done``, ``failed`` or ``stopped``.
+    :param started_at: Epoch seconds.
+    :param finished_at: Epoch seconds, or ``None`` while it runs.
+    :param result: The start of its last words.
+    """
+
+    id: str
+    title: str | None = None
+    folder: str | None = None
+    status: str
+    started_at: float
+    finished_at: float | None = None
+    result: str | None = None
+
+
+class RoundFile(BaseModel):
+    """
+    A file saved in a Round (a re-save replaces it).
+
+    :param name: The file's name.
+    :param kind: Its kind, e.g. ``"html"``.
+    :param artifact_id: The saved version's artifact id.
+    :param version: The version number.
+    :param helper_id: The Helper that saved it, or ``None`` for the Assistant.
+    """
+
+    name: str | None = None
+    kind: str | None = None
+    artifact_id: str | None = None
+    version: int | None = None
+    helper_id: str | None = None
+
+
+class RoundChecklistItem(BaseModel):
+    """
+    One item of the checklist the model wrote in a Round.
+
+    :param id: The item's id.
+    :param subject: What it is.
+    :param active_form: How it reads while in progress.
+    :param status: ``pending``, ``in_progress`` or ``completed``.
+    """
+
+    id: str | None = None
+    subject: str | None = None
+    active_form: str | None = None
+    status: str
+
+
+class RoundView(BaseModel):
+    """
+    Response for ``GET /v1/sessions/{session_id}/rounds/{round_id}``: the Round's events folded
+    (``omnigent.superchat.rounds.fold``).
+
+    :param round_id: The Round: the id of the person's message that opened it.
+    :param status: ``idle``, ``running``, ``done`` or ``stopped``.
+    :param hidden: A run no person started.
+    :param started_at: Epoch seconds, or ``None`` before it opened.
+    :param settled_at: Epoch seconds, or ``None`` while it runs.
+    :param elapsed: Seconds from start to settlement, or to its last event.
+    :param ask: The person's message.
+    :param stop_line: What Stop stopped, once stopped.
+    :param now: The tool running now, or ``None``.
+    :param trail: Finished tool calls, in order.
+    :param helpers: Helpers by session id.
+    :param files: Files saved.
+    :param chips: The follow-up suggestions.
+    :param checklist: The model's checklist.
+    :param words: The Assistant's text, one entry per finished turn.
+    :param live_words: The running turn's text so far.
+    :param failed_helper: A Helper failed.
+    """
+
+    round_id: str
+    status: str
+    hidden: bool
+    started_at: float | None = None
+    settled_at: float | None = None
+    elapsed: float
+    ask: str | None = None
+    stop_line: str | None = None
+    now: RoundTool | None = None
+    trail: list[RoundStep]
+    helpers: dict[str, RoundHelper]
+    files: list[RoundFile]
+    chips: list[str]
+    checklist: list[RoundChecklistItem]
+    words: list[str]
+    live_words: str
+    failed_helper: bool
+
+
+class RoundSummary(BaseModel):
+    """
+    One Round in a list, and the fields ``round.updated`` carries on the family stream.
+
+    :param round_id: The Round.
+    :param status: ``idle``, ``running``, ``done`` or ``stopped``.
+    :param started_at: Epoch seconds, or ``None``.
+    :param live: The running tool's digest, else its name, else ``None``.
+    :param helpers: How many Helpers it started.
+    :param files: How many files it saved.
+    :param steps: How many tool calls finished.
+    """
+
+    round_id: str
+    status: str
+    started_at: float | None = None
+    live: str | None = None
+    helpers: int
+    files: int
+    steps: int
+
+
+class RoundList(BaseModel):
+    """
+    Response for ``GET /v1/sessions/{session_id}/rounds``.
+
+    :param object: Discriminator; always ``"list"``.
+    :param data: The Conversation's latest Rounds, newest first.
+    """
+
+    object: Literal["list"] = "list"
+    data: list[RoundSummary]

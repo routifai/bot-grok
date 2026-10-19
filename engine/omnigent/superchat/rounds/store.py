@@ -92,17 +92,19 @@ class SqlAlchemyRoundStore:
                 if attempt == _APPEND_ATTEMPTS - 1:
                     raise
 
-    def events(self, round_id: str) -> list[dict[str, Any]]:
-        """The Round's events in order, flat as the fold reads them (``t`` in seconds)."""
+    def events(self, round_id: str, conversation_id: str | None = None) -> list[dict[str, Any]]:
+        """The Round's events in order, flat as the fold reads them (``t`` in seconds).
+
+        :param conversation_id: Only a Round of this Conversation; another's reads as empty.
+        """
+        query = select(SqlRoundEvent).where(
+            SqlRoundEvent.workspace_id == current_workspace_id(),
+            SqlRoundEvent.round_id == round_id,
+        )
+        if conversation_id is not None:
+            query = query.where(SqlRoundEvent.conversation_id == conversation_id)
         with self._session("round_events_list") as session:
-            rows = session.execute(
-                select(SqlRoundEvent)
-                .where(
-                    SqlRoundEvent.workspace_id == current_workspace_id(),
-                    SqlRoundEvent.round_id == round_id,
-                )
-                .order_by(SqlRoundEvent.seq)
-            ).scalars()
+            rows = session.execute(query.order_by(SqlRoundEvent.seq)).scalars()
             return [
                 {
                     **json.loads(row.body),
@@ -114,6 +116,23 @@ class SqlAlchemyRoundStore:
                 }
                 for row in rows
             ]
+
+    def recent(self, conversation_id: str, limit: int) -> list[str]:
+        """The Conversation's *limit* Rounds with the newest last event, newest first."""
+        last = func.max(SqlRoundEvent.at_ms)
+        with self._session("round_events_recent") as session:
+            return list(
+                session.execute(
+                    select(SqlRoundEvent.round_id)
+                    .where(
+                        SqlRoundEvent.workspace_id == current_workspace_id(),
+                        SqlRoundEvent.conversation_id == conversation_id,
+                    )
+                    .group_by(SqlRoundEvent.round_id)
+                    .order_by(last.desc())
+                    .limit(limit)
+                ).scalars()
+            )
 
     def delete_conversation(self, conversation_id: str) -> None:
         """Drop every Round event of a deleted Conversation."""

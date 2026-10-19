@@ -8,6 +8,8 @@ from collections.abc import AsyncIterator
 from omnigent.stores.conversation_store.sqlalchemy_store import SqlAlchemyConversationStore
 from omnigent.superchat.family.signals import notify_chats_changed, notify_message_done
 from omnigent.superchat.family.stream import watch_family
+from omnigent.superchat.rounds.read import Announcer
+from omnigent.superchat.rounds.store import RoundEvent, SqlAlchemyRoundStore
 
 _MODE = {"omnigent.context.mode": "superside-chat"}
 
@@ -115,6 +117,47 @@ async def test_a_turn_ending_is_a_turn_done(
     assert seen == [
         {"type": "turn.done", "chat_id": root_id, "status": "failed"},
         {"type": "turn.done", "chat_id": root_id, "status": "completed"},
+    ]
+    await stream.aclose()
+
+
+async def test_a_rounds_writes_reach_the_stream_as_one_coalesced_summary(
+    conversation_store: SqlAlchemyConversationStore, db_uri: str
+) -> None:
+    """Two batches of one Round stored together are one round.updated with the folded summary."""
+    root_id = _family(conversation_store)
+    store = SqlAlchemyRoundStore(db_uri)
+    announcer = Announcer(store, every=0.05)
+    rid = "e" * 32
+    stream = await _open(conversation_store, root_id, _Bus())
+    first = [
+        RoundEvent(rid, root_id, "round.opened", "person", 1000, {"text": "Make a deck."}),
+        RoundEvent(rid, root_id, "tool.called", "assistant", 1100, {"call_id": "t1", "name": "x"}),
+    ]
+    second = [RoundEvent(rid, root_id, "tool.input", "assistant", 1200, {"call_id": "t1"})]
+    for batch in (first, second):
+        store.append(batch)
+        announcer.written(batch)
+    await asyncio.sleep(0.15)
+    notify_chats_changed(root_id)
+    seen = []
+    while not seen or seen[-1]["type"] != "chats.changed":
+        event = await _next(stream)
+        if event["type"] != "activities.changed":
+            seen.append(event)
+    assert seen == [
+        {
+            "type": "round.updated",
+            "root_id": root_id,
+            "round_id": rid,
+            "status": "running",
+            "started_at": 1.0,
+            "live": "x",
+            "helpers": 0,
+            "files": 0,
+            "steps": 0,
+        },
+        {"type": "chats.changed", "root_id": root_id},
     ]
     await stream.aclose()
 

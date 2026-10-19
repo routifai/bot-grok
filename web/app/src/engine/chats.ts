@@ -164,6 +164,17 @@ export async function* watchFamily(
       else if (frame.type === "activities.changed") yield { type: "activitiesChanged" };
       else if (frame.type === "artifacts.changed") {
         yield { type: "artifactsChanged", groupId: frame.group_id };
+      } else if (frame.type === "round.updated") {
+        yield {
+          type: "roundUpdated",
+          roundId: frame.round_id,
+          status: frame.status,
+          startedAt: frame.started_at,
+          live: frame.live,
+          helpers: frame.helpers,
+          files: frame.files,
+          steps: frame.steps,
+        };
       } else yield { type: "heartbeat" };
     }
   } catch (error) {
