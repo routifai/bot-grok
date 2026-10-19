@@ -141,7 +141,14 @@ from omnigent.superchat.helpers.saved_files import (
     forget_saved_files,
     format_saved_files,
 )
-from omnigent.superchat.prompt_prefix import message_needs_own_turn, turn_prefix_blocks
+from omnigent.superchat.prompt_prefix import (
+    message_needs_own_turn,
+    setup_changed_line,
+    turn_prefix_blocks,
+)
+
+#: How a harness is named to the model when it says which setup it runs on.
+_HARNESS_LABELS = {"pi": "pi", "claude-sdk": "Claude Agent SDK"}
 from omnigent.superchat.subagents import (
     STUDIO_QUEUED_NOTE,
     STUDIO_WARM_SECONDS,
@@ -3051,6 +3058,9 @@ def create_runner_app(
     # turn in flight carries, kept once the turn completes (see _apply_turn_prefix_blocks).
     _superside_chat_prefix_sent: dict[str, dict[str, str]] = {}
     _superside_chat_prefix_pending: dict[str, dict[str, str]] = {}
+    # conv_id -> the setup ("<harness> with <model>") its last turn ran on, so a turn after a
+    # switch says what changed instead of leaving the model to trust its earlier answers.
+    _superside_chat_setup: dict[str, str] = {}
     # A file's studio sessions on this host (ADR 0024): the turn cap, and when each harness goes
     # cold (released by the sweeper below once untouched for ten minutes).
     _studio_runners = StudioRunners()
@@ -7203,10 +7213,11 @@ def create_runner_app(
                             extra={"session_id": conv},
                         )
 
-        # Super Chat answers which model it runs on when asked; the bundle's prompt names the
-        # harness, the turn names the model. In the instructions, so a model change relaunches
-        # the harness (both key their launch on the prompt) and the line never goes stale.
+        # Super Chat answers which model and harness it runs on when asked. In the instructions,
+        # so a change relaunches the harness (both key their launch on the prompt) and the line
+        # never goes stale; a turn after a change also says what changed (below).
         _turn_model = msg_body.get("model_override")
+        _setup_now: str | None = None
         if (
             instructions
             and isinstance(_turn_model, str)
@@ -7214,7 +7225,13 @@ def create_runner_app(
             and (await _rollover_labels_for_session(conv)).get(CONTEXT_MODE_LABEL)
             == SUPERSIDE_CHAT_MODE_VALUE
         ):
-            instructions = f"{instructions}\n\nSetup: you run on the model {_turn_model}."
+            _harness_label = _HARNESS_LABELS.get(harness_name, harness_name)
+            _setup_now = f"{_harness_label} with {_turn_model}"
+            instructions = (
+                f"{instructions}\n\nSetup: you run on the model {_turn_model} through the "
+                f"{_harness_label} harness. Earlier messages may describe another setup: go by "
+                "this one."
+            )
         _setup_env = time.monotonic() - _env_started
         ctx = TurnDispatch(
             agent_id=_dispatched_agent_id,
@@ -7376,6 +7393,13 @@ def create_runner_app(
                 prompt_key=_prompt_key,
                 idle_gap_seconds=_idle_gap,
             )
+            if _setup_now is not None:
+                _setup_before = _superside_chat_setup.get(conv)
+                _superside_chat_setup[conv] = _setup_now
+                if _setup_before is not None and _setup_before != _setup_now:
+                    harness_body = _prepend_turn_blocks(
+                        harness_body, [setup_changed_line(_setup_before, _setup_now)], conv
+                    )
         if is_superside_chat(_turn_labels):
             # After the prefix: its reads and the sync's never compete (ADR 0026).
             _schedule_memory_sync(conv, _turn_labels)

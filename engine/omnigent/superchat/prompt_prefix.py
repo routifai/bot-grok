@@ -64,6 +64,16 @@ PROJECTS_LATE_LINE = (
 
 
 IDLE_GAP_OPEN, IDLE_GAP_CLOSE = "It has been ", " since the last message."
+#: The line a turn gets when the model or harness changed since the Conversation's last turn.
+SETUP_CHANGED_OPEN, SETUP_CHANGED_CLOSE = (
+    "[Since the last message the setup changed: ",
+    ". Earlier messages may describe the old setup; go by the current one.]",
+)
+
+
+def setup_changed_line(before: str, now: str) -> str:
+    """One line saying the setup changed, e.g. ``... was pi with claude-opus-5-5, now ...``."""
+    return f"{SETUP_CHANGED_OPEN}was {before}, now {now}{SETUP_CHANGED_CLOSE}"
 
 
 def idle_gap_line(idle_seconds: float) -> str:
@@ -425,6 +435,7 @@ def _injected_line(line: str) -> bool:
             ATTACHMENT_REMINDER,
         )
         or (line.startswith(IDLE_GAP_OPEN) and line.endswith(IDLE_GAP_CLOSE))
+        or (line.startswith(SETUP_CHANGED_OPEN) and line.endswith(SETUP_CHANGED_CLOSE))
         or (line.startswith(_MOVED_OPEN) and line.endswith(_MOVED_CLOSE))
         or line.startswith(FILE_LINE_OPEN)
         or EDIT_NOTE_LINE.fullmatch(line) is not None
