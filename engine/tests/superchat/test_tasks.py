@@ -385,7 +385,7 @@ def _answer_message(conversations, chat: str, service: TaskService, answer: dict
     )
     conv = conversations.get_conversation(chat)
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(orchestration, "ON_MESSAGE_CONTEXT", {"tasks": service.message_context})
+        patch.setattr(orchestration, "ON_MESSAGE_CONTEXT", {"tasks": service.card_answered})
         return asyncio.run(orchestration._persist_user_event_item(chat, conv, body, conversations))
 
 
@@ -785,27 +785,27 @@ async def test_a_dropped_check_is_sent_again_before_the_turns_end(unsent, caplog
     await runtime.message_prefix(client, "conv8", ["go"])
     runtime.on_result(HandlerCtx("deck_check", client, "conv8"), json.dumps({"problems": []}))
     await _sent("conv8")
-    assert seen == ["GET", "evidence"] and unsent == {}
-    assert "task event evidence connection dropped (RemoteProtocolError) (try 1)" in caplog.text
+    assert seen == ["GET", "check"] and unsent == {}
+    assert "task event check connection dropped (RemoteProtocolError) (try 1)" in caplog.text
     # dropped twice: kept, said why, and sent before the turn's end
     client, seen = _flaky([httpx.ReadError] * 2, posted, _wire([_OPEN], at="conv8"))
     await runtime.message_prefix(client, "conv8", ["go"])
     runtime.on_result(HandlerCtx("deck_check", client, "conv8"), json.dumps({"problems": []}))
     await _sent("conv8")
-    assert [e["event"] for e in unsent["conv8"]] == ["evidence"]
-    assert "task event evidence not sent (connection dropped (ReadError))" in caplog.text
+    assert [e["event"] for e in unsent["conv8"]] == ["check"]
+    assert "task event check not sent (connection dropped (ReadError))" in caplog.text
     runtime.turn_ended("conv8")
     await _sent("conv8")
-    assert seen == ["GET", "evidence", "turn_end"] and unsent == {}
+    assert seen == ["GET", "check", "turn_end"] and unsent == {}
     # a turn with no task to report still sends what it could not, before it is over
     timeout, seen = _flaky([httpx.ReadTimeout] * 2, posted, _wire([], at="conv9"))
     await runtime.message_prefix(timeout, "conv9", ["hi"])
     runtime.on_result(HandlerCtx("deck_check", timeout, "conv9"), json.dumps({"problems": []}))
     await _sent("conv9")
-    assert "task event evidence not sent (timed out)" in caplog.text
+    assert "task event check not sent (timed out)" in caplog.text
     runtime.turn_ended("conv9")
     await _sent("conv9")
-    assert seen == ["GET", "evidence"] and unsent == {}
+    assert seen == ["GET", "check"] and unsent == {}
     assert "turn_end of conv9 not sent: no task" in caplog.text
 
 
@@ -924,25 +924,14 @@ async def _helper_built_the_deck(env, engine: httpx.AsyncClient) -> tuple[str, s
     _say(conversations, chat, "Pitch Deck")
     await runtime.message_prefix(engine, chat, ["Pitch Deck"])
     _ran(engine, chat, "context_brief", {"brief": "nothing yet"})
-    items = [
-        {"text": "Check what we have", "done_when": "brief"},
-        {"text": "Build the deck", "owner": "helper", "done_when": "helper_done"},
-        {"text": "Check the layout", "owner": "helper", "done_when": "check_ran"},
-    ]
-    plan = {"type": "card", "card": "plan", "id": "p1", "data": {"items": items}}
-    _ran(engine, chat, "render_card", plan)
     helper = _helper(conversations, chat)
     title = "New RBC vs TD deck, different look"
     _ran(engine, chat, "start_helper", {"started": True, "helper_id": helper, "title": title})
-    await _sent(chat)  # the hand-off sentence: the start reached the server, the plan with it
+    await _sent(chat)  # the hand-off sentence: the start reached the server
     runtime.turn_ended(chat)
     await _sent(chat)
     (task,) = service.store.list(chat)
     assert (task.status, task.helper_ids) == ("building", [helper])
-    # the plan waited for the Helper's start: its Helper step is doing, for that Helper
-    steps = task.fields["plan"]["items"]
-    assert [i["evidence"] for i in steps] == ["done", "doing", "todo"]
-    assert steps[1]["helper_id"] == helper
     deck = {"title": "RBC vs TD", "look": "Swiss Grid", "slides": 6, "file": "rbc.deck.html"}
     _ran(engine, helper, "deck_new", {"ok": True, "written": True, "deck": deck})
     saved = {"type": "artifact", "name": "rbc.deck.html", "id": "a1", "group_id": "g1"}
@@ -972,8 +961,8 @@ async def test_a_helper_that_finishes_during_the_wake_turn_closes_its_task_at_it
     task = service.store.get(task_id)
     assert task.status == "done"
 
+    # the Helper's own deck_check is the check its decision line reads
     assert task.fields["decision"] == _DECISION
-    assert [i["evidence"] for i in task.fields["plan"]["items"]] == ["done"] * 3
 
 
 async def test_a_helper_that_finished_before_the_wake_read_closes_its_task_at_the_start(

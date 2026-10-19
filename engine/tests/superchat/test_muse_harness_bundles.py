@@ -165,7 +165,7 @@ def test_prompts_point_at_the_memory_folder(bundle: Path) -> None:
 
 
 @pytest.mark.parametrize("bundle", [CLAUDE, PI], ids=["claude", "pi"])
-def test_the_conversation_plans_from_the_brief_and_helpers_do_not(bundle: Path) -> None:
+def test_the_conversation_reads_the_brief_and_helpers_do_not(bundle: Path) -> None:
     # Named in the allow list, so the Conversation always has them up front (ADR 0027).
     muse = yaml.safe_load((bundle / "config.yaml").read_text())["tools"]["allow"]
     assert {"render_card", "context_brief"} <= set(muse)
@@ -176,9 +176,11 @@ def test_the_conversation_plans_from_the_brief_and_helpers_do_not(bundle: Path) 
         assert "context_brief" not in allow, helper
     prompt = (bundle / "AGENTS.md").read_text()
     section = prompt.split("## How a turn runs", 1)[1].split("\n## ", 1)[0]
-    for term in ("`context_brief`", "`active`", "`owner`", "`done_when`", "`artifact_outline`"):
+    for term in ("`context_brief`", "`artifact_outline`", "under eighty words"):
         assert term in section, term
-    assert "Never mark a step done" in section and "under eighty words" in section
+    # The plan machinery is gone (ADR 0029): nothing asks for a plan card or its steps.
+    for term in ("`plan` card", "`done_when`", "render the plan"):
+        assert term not in prompt, term
 
 
 @pytest.mark.parametrize("bundle", [CLAUDE, PI], ids=["claude", "pi"])

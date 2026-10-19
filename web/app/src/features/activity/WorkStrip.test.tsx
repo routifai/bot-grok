@@ -122,9 +122,7 @@ import { activity, helper } from "./activityTestKit";
 import { resetConversationFiles } from "./conversationFiles";
 import { RoundStrip } from "./RoundStrip";
 import { resetRounds } from "./rounds";
-import { setStepComment, stepCommentNow } from "./stepComment";
 import { WorkStrip } from "./WorkStrip";
-import type { PlanStep } from "./workPlan";
 import type { StripHelper, StripTurn } from "./workStripState";
 
 const mounted: Array<() => void> = [];
@@ -139,7 +137,6 @@ afterEach(() => {
   rpcMock.pauseHelpers.mockReset();
   rpcMock.resumeHelpers.mockReset();
   rpcMock.streams.clear();
-  setStepComment(null);
   resetConversationFiles();
 });
 
@@ -507,123 +504,24 @@ it("puts the quiet meta line under a reply given while the work continues", asyn
   expect(lines[0]?.textContent).toBe("Answered while the work continues");
 });
 
-describe("the plan in the strip (ADR 0023)", () => {
-  const step = (text: string, status: PlanStep["status"], added = false): PlanStep => ({
-    text,
-    status,
-    added,
-  });
-  const PLAN = [
-    step("Read the file", "done"),
-    step("Build the slides", "doing"),
-    step("Check the figures", "todo"),
-  ];
-  const running = (plan: PlanStep[]): StripTurn => ({
-    plan,
-    live: true,
-    startedAt: Date.now() - 42_000,
-    endedAt: null,
-  });
-  const steps = (container: HTMLElement) =>
-    [...container.querySelectorAll("[data-testid=work-plan-step]")].map((li) => [
-      li.textContent,
-      li.getAttribute("data-status"),
-    ]);
-
-  it("draws each step by its status, the current one with the latest progress sentence", async () => {
-    const { container } = await mount(
-      [deckHelper],
-      [
-        helper("h-deck", {
-          status: "in_progress",
-          startedAt: ago(30_000),
-          finishedAt: null,
-          steps: [toolStep("report_progress", "Slide 3 of 6 written", 1)],
-        }),
-      ],
-      running(PLAN),
-    );
-    // Live, the strip stops at the current step and names the next one under it.
-    expect(steps(container)).toEqual([
-      ["Read the file", "done"],
-      ["Build the slidesSlide 3 of 6 writtenThen: Check the figures", "doing"],
-    ]);
-    expect(container.querySelector("[data-testid=work-plan-then]")?.textContent).toBe(
-      "Then: Check the figures",
-    );
-    expect(container.querySelector("[data-testid=work-strip-now]")?.textContent).toBe(
-      "Build the slides",
-    );
-    expect(container.querySelector("[data-testid=work-plan-progress]")?.textContent).toBe(
-      "Slide 3 of 6 written",
-    );
-    expect(
-      container.querySelector("[data-testid=work-strip-progress]")?.getAttribute("aria-valuenow"),
-    ).toBe("1");
-    expect(container.querySelector("[data-testid=work-strip-clock]")?.textContent).toMatch(
-      /^0:4[23]$/,
-    );
-    // The plan replaces the per-Helper lines.
-    expect(container.querySelector("[data-testid=work-strip-line]")).toBeNull();
-  });
-
-  it("updates in place when the plan is rendered again, marking an added step", async () => {
-    const { container, render } = await mount([], [], running(PLAN));
-    const strip = container.querySelector("[data-testid=work-strip]");
-    await render(
-      [],
-      running([
-        step("Read the file", "done"),
-        step("Build the slides", "done"),
-        step("Note the cut-off", "doing", true),
-        step("Check the figures", "todo"),
-      ]),
-    );
-    expect(container.querySelectorAll("[data-testid=work-strip]")).toHaveLength(1);
-    expect(container.querySelector("[data-testid=work-strip]")).toBe(strip);
-    expect(steps(container).map(([, status]) => status)).toEqual(["done", "done", "doing"]);
-    const added = container.querySelectorAll("[data-added]");
-    expect(added).toHaveLength(1);
-    expect(added[0]?.textContent).toBe("Note the cut-offThen: Check the figures");
-  });
-
+describe("the strip's motion (ADR 0023)", () => {
   it("is lit while the work runs, without any Helper, and goes still when it settles", async () => {
-    const { container, render } = await mount([], [], running(PLAN));
+    const turnActivity = activity({ id: "turn:conv:r1", summaryLine: "Read your files" });
+    const turn: StripTurn = {
+      activityId: "turn:conv:r1",
+      live: true,
+      startedAt: Date.now() - 42_000,
+      endedAt: null,
+    };
+    const { container, render } = await mount([], [turnActivity], turn);
     const strip = () => container.querySelector("[data-testid=work-strip]");
     expect(strip()?.hasAttribute("data-live")).toBe(true);
     expect(strip()?.className).toContain("sc-work");
     expect(container.querySelector("[data-testid=superchat-orb]")).not.toBeNull();
-    await render([], { ...running(PLAN), live: false, endedAt: Date.now() });
+    await render([], { ...turn, live: false, endedAt: Date.now() });
     expect(strip()?.hasAttribute("data-live")).toBe(false);
     expect(strip()?.getAttribute("data-state")).toBe("settled");
     expect(container.querySelector("[data-testid=work-strip-still]")).not.toBeNull();
-    expect(container.querySelector("[data-testid=work-strip-progress]")).toBeNull();
-  });
-
-  it("settles to one line, the plan behind a Plan toggle that starts closed", async () => {
-    const started = Date.now() - 150_000;
-    const { container } = await mount([], [], {
-      plan: PLAN,
-      live: false,
-      startedAt: started,
-      endedAt: started + 150_000,
-    });
-    // The step running when the work finished counts as done; the one never started does not.
-    expect(container.querySelector("[data-testid=work-strip-settled]")?.textContent).toBe(
-      "2 of 3 done",
-    );
-    expect(container.querySelector("[data-testid=work-strip-clock]")?.textContent).toBe("2:30");
-    expect(container.querySelector("[data-testid=work-plan]")).toBeNull();
-    const toggle = container.querySelector<HTMLButtonElement>(
-      "[data-testid=work-strip-plan-toggle]",
-    );
-    expect(toggle?.textContent).toBe("Plan");
-    expect(toggle?.getAttribute("aria-expanded")).toBe("false");
-    await act(async () => toggle?.click());
-    expect(toggle?.getAttribute("aria-expanded")).toBe("true");
-    expect(steps(container).map(([, status]) => status)).toEqual(["done", "done", "todo"]);
-    await act(async () => toggle?.click());
-    expect(container.querySelector("[data-testid=work-plan]")).toBeNull();
   });
 
   it("stops the turning edge, the glow, the shimmer and every slide under reduced motion", () => {
@@ -670,62 +568,6 @@ it("takes no draft from a file's studio turn, even one that saved", async () => 
 });
 
 describe("the engine's display (ADR 0027)", () => {
-  const engineStep = (text: string, status: PlanStep["status"], active?: string): PlanStep => ({
-    text,
-    status,
-    added: false,
-    engine: true,
-    ...(active ? { active } : {}),
-  });
-
-  it("keeps the engine's reading once settled: a step left doing is not ticked", async () => {
-    const started = Date.now() - 60_000;
-    const { container } = await mount([], [], {
-      plan: [engineStep("Build", "done"), engineStep("Check", "not_checked")],
-      live: false,
-      startedAt: started,
-      endedAt: started + 60_000,
-    });
-    expect(container.querySelector("[data-testid=work-strip-settled]")?.textContent).toBe(
-      "1 of 2 done",
-    );
-  });
-
-  it("heads the live strip with the current step's present tense", async () => {
-    const { container } = await mount([], [], {
-      plan: [
-        engineStep("Build the deck", "doing", "Building the deck"),
-        engineStep("Check", "todo"),
-      ],
-      live: true,
-      startedAt: Date.now() - 5_000,
-      endedAt: null,
-    });
-    expect(container.querySelector("[data-testid=work-strip-now]")?.textContent).toBe(
-      "Building the deck",
-    );
-  });
-
-  it("puts a step in the composer from Comment, naming the plan card", async () => {
-    const { container } = await mount([], [], {
-      plan: [engineStep("Read", "done"), engineStep("Build", "doing")],
-      planId: "plan-1",
-      live: true,
-      startedAt: Date.now() - 5_000,
-      endedAt: null,
-    });
-    const buttons = container.querySelectorAll<HTMLButtonElement>(
-      "[data-testid=work-plan-comment]",
-    );
-    await act(async () => buttons[0]?.click());
-    expect(stepCommentNow()).toEqual({
-      botId: "bot-1",
-      cardId: "plan-1",
-      stepIndex: 0,
-      text: "Read",
-    });
-  });
-
   it("says what the work did under the settled reply, and unfolds its steps in place", async () => {
     const turnActivity = activity({
       id: "turn:conv:r1",
@@ -741,7 +583,6 @@ describe("the engine's display (ADR 0027)", () => {
     });
     const started = Date.now() - 60_000;
     const { container } = await mount([], [other, turnActivity], {
-      plan: [engineStep("Build", "done")],
       activityId: "turn:conv:r1",
       live: false,
       startedAt: started,
@@ -766,7 +607,6 @@ describe("the engine's display (ADR 0027)", () => {
   it("has no summary line without the reply's Activity", async () => {
     const started = Date.now() - 60_000;
     const { container } = await mount([], [activity({ summaryLine: "Read your files" })], {
-      plan: [engineStep("Build", "done")],
       live: false,
       startedAt: started,
       endedAt: started + 60_000,
@@ -780,17 +620,15 @@ describe("the engine's display (ADR 0027)", () => {
       fileRow("a2", "older.md", "conv", "ai"),
     ]);
     const started = Date.now() - 60_000;
-    const { container } = await mount([], [], {
-      plan: [engineStep("Build", "done")],
+    const turnActivity = activity({ id: "turn:conv:r1", summaryLine: "Created a file" });
+    const { container } = await mount([], [turnActivity], {
+      activityId: "turn:conv:r1",
       files: ["a1"],
       live: false,
       startedAt: started,
       endedAt: started + 60_000,
     });
     await act(async () => undefined);
-    await act(async () =>
-      container.querySelector<HTMLButtonElement>("[data-testid=work-strip-plan-toggle]")?.click(),
-    );
     expect(
       [...container.querySelectorAll("[data-testid=file-thumb]")].map((thumb) => thumb.textContent),
     ).toEqual(["rbc.deck.html v1"]);
@@ -854,9 +692,8 @@ describe("the engine's display (ADR 0027)", () => {
     expect(container.querySelector("[data-testid=work-strip-paused]")).not.toBeNull();
   });
 
-  it("draws nothing for a settled reply with no plan, no Helper and no steps", async () => {
+  it("draws nothing for a settled reply with no Helper and no steps", async () => {
     const { container } = await mount([], [], {
-      plan: null,
       activityId: "turn:conv:r9",
       live: false,
       startedAt: Date.now() - 5_000,
@@ -867,7 +704,6 @@ describe("the engine's display (ADR 0027)", () => {
 
   it("offers no Pause without a running Helper", async () => {
     const { container } = await mount([], [], {
-      plan: [engineStep("Build", "doing")],
       live: true,
       startedAt: Date.now() - 5_000,
       endedAt: null,

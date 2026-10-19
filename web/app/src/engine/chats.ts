@@ -269,7 +269,7 @@ export async function sendToChat(input: {
   const images = await readTurnImages(client, NO_EMAIL, sessionId, text);
   const context = input.context;
   await onSuperChat(
-    context?.openArtifact || context?.cardAnswer || context?.stepComment
+    context?.openArtifact || context?.cardAnswer
       ? postOmnigentMessage(
           client,
           NO_EMAIL,

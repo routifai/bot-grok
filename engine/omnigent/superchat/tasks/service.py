@@ -27,24 +27,17 @@ from omnigent.superchat.tasks.decisions import record_decision
 from omnigent.superchat.tasks.record import (
     ACTIVE,
     BUILDING,
+    CHECK_TOOLS,
     DONE,
-    EVIDENCE_KINDS,
     OPEN,
     STALE_AFTER,
     Task,
     best_match,
-    comment_step,
     decision_line,
-    helper_ids,
     kind_for_brief,
     kind_for_name,
     parse_card_answer,
-    parse_step_comment,
-    plan_views,
-    plans_from_items,
     record_answer,
-    replay,
-    tick,
 )
 from omnigent.superchat.tasks.store import SqlAlchemyTaskStore
 
@@ -65,25 +58,8 @@ _SETTLED = "helper_settled"
 _ENDED = "helper_turn_ended"
 #: Seconds a Helper's end waits to look again at a Conversation turn that was still running.
 IDLE_RECHECK = 3.0
-#: The plan the task keeps (ADR 0027), ticked by :func:`~omnigent.superchat.tasks.record.tick`.
-_PLAN = "plan"
 #: Done tasks a read lists (``done``), newest first: what the context brief reads.
 RECENT_DONE = 3
-#: The person's latest comment on a plan step (``{item_id, step, text}``): the turn its message
-#: opens reads it.
-_COMMENT = "step_comment"
-
-
-def _tick(task: Task, event: Mapping[str, Any]) -> bool:
-    """Apply one evidence event to the task's plan, if it has one; whether it changed."""
-    plan = task.fields.get(_PLAN)
-    if not isinstance(plan, dict):
-        return False
-    ticked = tick(plan, event)
-    if ticked is None or ticked == plan:
-        return False
-    task.fields[_PLAN] = ticked
-    return True
 
 
 @dataclass(frozen=True)
@@ -183,14 +159,6 @@ class TaskService:
         answer = self.store.answer(conversation_id, item_id) if item_id and by_person else None
         tasks = self._active(conversation_id)
         settle = bool(self._settle_helpers(tasks))
-        comment = next(
-            (
-                {"step": c["step"], "text": c["text"]}
-                for t in (self.store.list(conversation_id) if item_id and by_person else ())
-                if isinstance(c := t.fields.get(_COMMENT), dict) and c.get("item_id") == item_id
-            ),
-            None,
-        )
         return {
             "conversation_id": conversation_id,
             "is_helper": place.is_helper,
@@ -199,7 +167,6 @@ class TaskService:
             "by_person": by_person and not place.is_helper,
             "answer": answer.to_wire() if answer else None,
             "settle": settle,
-            "comment": comment,
             "tasks": [t.to_wire() for t in tasks if t.status in ACTIVE],
             "done": [t.to_wire() for t in self.recent_done(conversation_id, RECENT_DONE)],
         }
@@ -207,33 +174,6 @@ class TaskService:
     def recent_done(self, conversation_id: str, n: int) -> list[Task]:
         """The Conversation's last *n* done tasks, newest first (each with its decision line)."""
         return [t for t in self.store.list(conversation_id) if t.status == DONE][:n]
-
-    def plans(self, conversation_id: str) -> dict[str, dict[str, Any]]:
-        """The plans the Conversation's tasks keep, by id (a newer task's plan wins)."""
-        found: dict[str, dict[str, Any]] = {}
-        for task in self.store.list(conversation_id):
-            plan = task.fields.get(_PLAN)
-            if isinstance(plan, dict) and isinstance(plan.get("id"), str):
-                found.setdefault(plan["id"], plan)
-        return found
-
-    def plan_views(
-        self, conversation_id: str, items: list[Mapping[str, Any]]
-    ) -> dict[str, list[dict[str, Any]]]:
-        """Every plan *items* show, projected with the engine's states: the one projection the
-        transcript and the activity read (:func:`~omnigent.superchat.tasks.record.plan_views`).
-
-        The plan a task keeps wins over the one the items show; the Conversation is running when
-        its turn is mid-flight; each step's Helper is read now.
-        """
-        stored = self.plans(conversation_id)
-        conversation = self.conversations.get_conversation(conversation_id)
-        running = conversation is not None and (
-            conversation.live_status in _MID_TURN_LIVE_STATUSES
-        )
-        shown = plans_from_items(items)
-        helpers = self._helper_statuses(helper_ids([*stored.values(), *shown.values()]))
-        return plan_views(stored, items, running=running, helpers=helpers)
 
     def _active(self, conversation_id: str) -> list[Task]:
         """The Conversation's active tasks, newest first, without those left behind, each with
@@ -263,11 +203,11 @@ class TaskService:
 
     def _settle_helpers(self, tasks: list[Task]) -> list[Task]:
         """In memory: a task whose newest Helper finished since it was last settled is done when
-        it finished well, open again otherwise; each finished Helper settles the plan step it
-        was doing. Returns the tasks that changed (the caller saves them, or not for a read)."""
+        it finished well, open again otherwise. Returns the tasks that changed (the caller saves
+        them, or not for a read)."""
         changed: list[Task] = []
         for task in tasks:
-            moved = self._settle_plan(task)
+            moved = False
             last = task.helper_ids[-1] if task.helper_ids else None
             if last is not None and not task.helper_running and task.fields.get(_SETTLED) != last:
                 finished = self._task_helpers(task, [last]).get(last)
@@ -294,27 +234,6 @@ class TaskService:
             task.fields["decision"],
             extra={"session_id": task.conversation_id},
         )
-
-    def _settle_plan(self, task: Task) -> bool:
-        """Tick the plan items whose Helper finished (``helper_done``); whether any changed."""
-        plan = task.fields.get(_PLAN)
-        if not isinstance(plan, dict):
-            return False
-        doing = [
-            str(item["helper_id"])
-            for item in plan.get("items", ())
-            if item.get("evidence") == "doing" and item.get("helper_id")
-        ]
-        statuses = self._task_helpers(task, doing)
-        changed = False
-        for helper_id in doing:
-            status = statuses.get(helper_id)
-            if status is None or status == STATUS_IN_PROGRESS:
-                continue
-            ok = status == STATUS_DONE
-            event = {"kind": "helper_done", "helper_id": helper_id, "ok": ok}
-            changed = _tick(task, event) or changed
-        return changed
 
     # ------------------------------------------------------------------ writes
 
@@ -370,8 +289,6 @@ class TaskService:
         slides = event.get("slides")
         if isinstance(slides, int) and not isinstance(slides, bool) and slides > 0:
             task.fields["slides"] = slides
-        if event.get("written") is True:
-            _tick(task, {"kind": "built", "deliverable": "deck"})
         if task.status != DONE:
             task.status = BUILDING
         return self.store.save(task)
@@ -412,8 +329,6 @@ class TaskService:
                 task.status = BUILDING
         if group not in task.artifact_group_ids:
             task.artifact_group_ids.append(group)
-        artifact_id = event.get("artifact_id")
-        _tick(task, {"kind": "saved", "name": name, "title": title, "artifact_id": artifact_id})
         return self.store.save(task)
 
     def helper_started(self, session_id: str, event: Mapping[str, Any]) -> Task | None:
@@ -437,15 +352,14 @@ class TaskService:
         )
         if helper_id not in task.helper_ids:
             task.helper_ids.append(helper_id)
-            _tick(task, {"kind": "helper_started", "helper_id": helper_id})
         if task.status != DONE:
             task.status = BUILDING
         task.helper_running = True
         return self.store.save(task)
 
     def turn_started(self, session_id: str, _event: Mapping[str, Any]) -> list[Task]:
-        """A Conversation turn started: a Helper that finished since settles its task and plan
-        step (done when it finished well, open again otherwise). Answers with the tasks it
+        """A Conversation turn started: a Helper that finished since settles its task (done when
+        it finished well, open again otherwise). Answers with the tasks it
         closed."""
         place = self.place(session_id)
         if place is None or place.is_helper:
@@ -522,81 +436,29 @@ class TaskService:
         except Exception:  # the next turn settles it
             _logger.warning("tasks of %s not settled", conversation_id, exc_info=True)
 
-    def plan_rendered(self, session_id: str, event: Mapping[str, Any]) -> Task | None:
-        """A ``plan`` card was shown: the task the turn works on keeps it.
-
-        Only a task a deliverable event made or found (``deck_new``, ``artifact_save``,
-        ``start_helper``) keeps a plan: the runner sends the plan once its turn has one, so a
-        plan with no deliverable makes no task. A new plan id starts a new plan, with the
-        evidence the turn reported before it (``evidence``: the brief it read first); the same id
-        again adds or rewords items and never changes their evidence.
-        """
+    def checked(self, session_id: str, event: Mapping[str, Any]) -> Task | None:
+        """A check tool succeeded (``tool``), in the Conversation or one of its Helpers: the task
+        of the kind it checks reads ``checked`` (its decision line says so)."""
         place = self.place(session_id)
-        plan_id, items = event.get("id"), event.get("items")
-        if place is None or place.is_helper or not isinstance(plan_id, str) or not plan_id:
-            return None
-        if not isinstance(items, list):
+        tool = event.get("tool")
+        if place is None or tool not in CHECK_TOOLS.values():
             return None
         _conversation_id, active = self._start(place)
-        task = next((t for t in active if t.id == event.get("task_id")), None) or next(
-            (t for t in active if (t.fields.get(_PLAN) or {}).get("id") == plan_id), None
-        )
-        if task is None:
-            return None
-        render = {"kind": "plan", "id": plan_id, "items": items}
-        plan = task.fields.get(_PLAN)
-        if isinstance(plan, dict) and plan.get("id") == plan_id:
-            task.fields[_PLAN] = tick(plan, render)
-        else:
-            early = [e for e in event.get("evidence") or () if isinstance(e, Mapping)]
-            fresh = replay([*early, render])
-            task.fields[_PLAN] = {**fresh, "kind": task.kind} if fresh else None
-        return self.store.save(task)
-
-    def evidence(self, session_id: str, event: Mapping[str, Any]) -> Task | None:
-        """A tool result that ticks a plan step (``kind``: ``EVIDENCE_KINDS``), from the
-        Conversation or one of its Helpers, on the task the work is for; saved only when it
-        changed a step."""
-        place = self.place(session_id)
-        kind = event.get("kind")
-        if place is None or kind not in EVIDENCE_KINDS:
-            return None
-        _conversation_id, active = self._start(place)
-        planned = [t for t in active if isinstance(t.fields.get(_PLAN), dict)]
+        checks = [t for t in active if CHECK_TOOLS.get(t.kind) == tool]
         task = (
-            self._helpers_task(place, planned)
+            self._helpers_task(place, checks)
             if place.is_helper
-            else next((t for t in planned if t.id == event.get("task_id")), None)
-            or next(iter(planned), None)
+            else next((t for t in checks if t.id == event.get("task_id")), None)
+            or next(iter(checks), None)
         )
-        if task is None or not _tick(task, {"kind": kind, "tool": event.get("tool")}):
+        if task is None or task.fields.get("checked") is True:
             return None
+        task.fields["checked"] = True
         return self.store.save(task)
-
-    def message_context(self, session_id: str, item_id: str, context: Mapping[str, Any]) -> None:
-        """A person's message carried a ``context``: a card answer, a comment on a plan step."""
-        self.card_answered(session_id, item_id, context)
-        self.step_commented(session_id, item_id, context)
-
-    def step_commented(self, session_id: str, item_id: str, context: Mapping[str, Any]) -> None:
-        """A message carried ``context.step_comment``: keep it on the plan step it is about, and
-        on the task for the turn that message opens (its prefix names it)."""
-        comment = parse_step_comment(context)
-        if comment is None:
-            return
-        for task in self.store.list(session_id):
-            plan = task.fields.get(_PLAN)
-            commented = comment_step(plan, comment) if isinstance(plan, dict) else None
-            if commented is None:
-                continue
-            task.fields[_PLAN], step = commented
-            task.fields[_COMMENT] = {"item_id": item_id, "step": step, "text": comment.text}
-            self.store.save(task)
-            return
 
     def card_answered(self, session_id: str, item_id: str, context: Mapping[str, Any]) -> None:
-        """A message carried ``context.card_answer``: keep it on the message, and on the task
-        its card asked for."""
+        """A person's message carried ``context.card_answer``: keep it on the message, and on the
+        task its card asked for."""
         answer = parse_card_answer(context)
         if answer is None:
             return
@@ -606,7 +468,6 @@ class TaskService:
         if task is None or task.conversation_id != session_id or task.status not in ACTIVE:
             return
         record_answer(task, answer, item_id)
-        _tick(task, {"kind": "answered"})
         self.store.save(task)
 
     def _card_task(self, conversation_id: str, card_id: str) -> str | None:

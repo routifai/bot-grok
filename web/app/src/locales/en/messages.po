@@ -27,6 +27,7 @@ msgid "{0, plural, one {# failed attempt} other {# failed attempts}}"
 msgstr "{0, plural, one {# failed attempt} other {# failed attempts}}"
 
 #. placeholder {0}: tally.files
+#. placeholder {0}: view.files.length
 msgid "{0, plural, one {# file} other {# files}}"
 msgstr "{0, plural, one {# file} other {# files}}"
 
@@ -78,12 +79,6 @@ msgstr "{0} MB"
 
 msgid "{days}d ago"
 msgstr "{days}d ago"
-
-msgid "{done} of {total} done"
-msgstr "{done} of {total} done"
-
-msgid "{fold, plural, one {# earlier step} other {# earlier steps}}"
-msgstr "{fold, plural, one {# earlier step} other {# earlier steps}}"
 
 msgid "{hours}h ago"
 msgstr "{hours}h ago"
@@ -440,12 +435,6 @@ msgstr "Code"
 
 msgid "Color"
 msgstr "Color"
-
-msgid "Comment"
-msgstr "Comment"
-
-msgid "Comment on {words}"
-msgstr "Comment on {words}"
 
 msgid "Commitments"
 msgstr "Commitments"
@@ -923,9 +912,6 @@ msgstr "Hide"
 msgid "Hide activity"
 msgstr "Hide activity"
 
-msgid "Hide earlier steps"
-msgstr "Hide earlier steps"
-
 msgid "Hide hidden files"
 msgstr "Hide hidden files"
 
@@ -1219,9 +1205,6 @@ msgstr "No steps recorded"
 msgid "None"
 msgstr "None"
 
-msgid "Not checked"
-msgstr "Not checked"
-
 msgid "Not connected"
 msgstr "Not connected"
 
@@ -1381,9 +1364,6 @@ msgstr "Pick a time and I'll do this for you."
 msgid "pinned"
 msgstr "pinned"
 
-msgid "Plan"
-msgstr "Plan"
-
 msgid "Plan my week"
 msgstr "Plan my week"
 
@@ -1432,9 +1412,6 @@ msgstr "Private"
 
 msgid "Professional"
 msgstr "Professional"
-
-msgid "Progress"
-msgstr "Progress"
 
 msgid "Projects"
 msgstr "Projects"
@@ -1533,9 +1510,6 @@ msgstr "Remove folder {0}"
 
 msgid "Remove selection"
 msgstr "Remove selection"
-
-msgid "Remove step"
-msgstr "Remove step"
 
 msgid "Repeat"
 msgstr "Repeat"
@@ -1927,10 +1901,6 @@ msgstr "The model refused my key."
 
 msgid "Theme"
 msgstr "Theme"
-
-#. placeholder {0}: then.text
-msgid "Then: {0}"
-msgstr "Then: {0}"
 
 msgid "Things I do for you on a schedule."
 msgstr "Things I do for you on a schedule."

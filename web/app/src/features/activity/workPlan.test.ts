@@ -1,9 +1,7 @@
-import type { MessageBlock, ReplyCardBlock, ThreadMessage } from "@superchat/contracts";
+import type { MessageBlock, ThreadMessage } from "@superchat/contracts";
 import { expect, it } from "vitest";
 import { withRounds } from "./rounds";
-import { drawnOnlyMessageIds, markChanges, outcomeOf, transcriptWork } from "./workPlan";
-
-type Item = { text: string; status: "todo" | "doing" | "done" };
+import { drawnOnlyMessageIds, outcomeOf, transcriptWork } from "./workPlan";
 
 // The engine's order (engine/omnigent/superchat/transcript/blocks.py): each card is a message of
 // its own, in call order, and a turn keeps one text, its last, after its cards; the Helpers it
@@ -26,70 +24,36 @@ const helperBlock = (id: string): MessageBlock => ({
   title: `Helper ${id}`,
   status: "in_progress",
 });
-const planCard = (items: Item[], id: string | undefined = "plan-1"): MessageBlock => ({
-  kind: "reply_card",
-  card: "plan",
-  ...(id ? { id } : {}),
-  data: { items },
-  fallback: items.map((item) => item.text).join("\n"),
-});
 
-const v1: Item[] = [
-  { text: "Read the file", status: "doing" },
-  { text: "Build the slides", status: "todo" },
-];
-const v2: Item[] = [
-  { text: "Read the file", status: "done" },
-  { text: "Note the cut-off", status: "todo" },
-  { text: "Build the slides", status: "doing" },
-];
-const steps = (plan: { text: string; status: string }[] | null | undefined) =>
-  plan?.map((step) => [step.text, step.status]);
-
-it("draws the newest render of the reply's plan in one strip, under the reply", () => {
+it("draws the reply's Helpers in one strip, under the reply", () => {
   const messages = [
     message("ask", "user", [text("Make the deck")], 0),
-    message("card-1", "bot", [planCard(v1)], 2),
-    message("card-2", "bot", [planCard(v2)], 30),
+    message("started", "bot", [helperBlock("h1")], 2),
     message("reply", "bot", [text("The deck is ready.")], 31),
   ];
   const work = transcriptWork(messages);
   expect([...work.turns.keys()]).toEqual(["reply"]);
   const turn = work.turns.get("reply");
-  expect(steps(turn?.plan)).toEqual([
-    ["Read the file", "done"],
-    ["Note the cut-off", "todo"],
-    ["Build the slides", "doing"],
-  ]);
+  expect(turn?.helpers.map((helper) => helper.helperId)).toEqual(["h1"]);
   expect(turn?.last).toBe(true);
   expect(turn?.outcome).toBe("done");
   expect((turn?.endedAt ?? 0) - (turn?.startedAt ?? 0)).toBe(31_000);
   expect(work.runningSince).toBe(turn?.startedAt);
-  expect([...work.drawn]).toEqual(["card-1:0", "card-2:0"]);
-  // The plan cards leave no rows; the reply keeps its own.
-  expect([...drawnOnlyMessageIds(messages, work)]).toEqual(["card-1", "card-2"]);
+  expect([...work.drawn]).toEqual(["started:0"]);
 });
 
 it("sits where the work first showed while the reply is written, and under its text once it lands", () => {
   const ask = message("ask", "user", [text("Make the deck")], 0);
-  const card1 = message("card-1", "bot", [planCard(v1)], 2);
-  const card2 = message("card-2", "bot", [planCard(v2)], 30);
-  const streaming = transcriptWork([ask, card1]);
-  const more = transcriptWork([ask, card1, card2]);
-  const answered = transcriptWork([
-    ask,
-    card1,
-    card2,
-    message("reply", "bot", [text("Done.")], 40),
-  ]);
-  for (const work of [streaming, more]) expect([...work.turns.keys()]).toEqual(["card-1"]);
+  const started = message("started", "bot", [helperBlock("h1")], 2);
+  const streaming = transcriptWork([ask, started]);
+  const answered = transcriptWork([ask, started, message("reply", "bot", [text("Done.")], 40)]);
+  expect([...streaming.turns.keys()]).toEqual(["started"]);
   expect([...answered.turns.keys()]).toEqual(["reply"]);
 });
 
-it("sits where the Helpers are, and gives each reply its own plan", () => {
+it("sits where the Helpers are, and gives each reply its own strip", () => {
   const work = transcriptWork([
     message("ask-1", "user", [text("First")]),
-    message("card-a", "bot", [planCard(v1, "plan-a")]),
     message("reply-1", "bot", [text("Started."), helperBlock("h1")]),
     message("ask-2", "user", [text("Second")]),
     message("reply-2", "bot", [text("A one-step answer.")]),
@@ -99,10 +63,10 @@ it("sits where the Helpers are, and gives each reply its own plan", () => {
   expect(work.turns.get("reply-1")?.last).toBe(false);
 });
 
-it("leaves a reply without a plan or Helper alone, and a plan card that does not parse", () => {
+it("leaves a reply without a Helper alone, and an older chat's plan card is a card (ADR 0029)", () => {
   const work = transcriptWork([
     message("ask", "user", [text("Hi")]),
-    message("bad", "bot", [
+    message("old-plan", "bot", [
       { kind: "reply_card", card: "plan", id: "p", data: { items: [] }, fallback: "" },
     ]),
     message("reply", "bot", [text("Hello.")]),
@@ -127,7 +91,7 @@ it("leaves a later reply's strip alone when a Helper's wake narration arrives", 
     message("ask-1", "user", [text("Write the report")], 0),
     message("reply-1", "bot", [text("A Helper is on it."), helperBlock("h1")], 1),
     message("ask-2", "user", [text("And plan the offsite")], 10),
-    message("card-2", "bot", [planCard(v1, "plan-2")], 11),
+    message("started-2", "bot", [helperBlock("h2")], 11),
     message("reply-2", "bot", [text("Here is the offsite plan.")], 12),
     // The runtime's notice that h1 finished is dropped; its narration follows.
     message("wake", "bot", [text("The report is done.")], 60),
@@ -144,11 +108,10 @@ it("reads how the reply ended", () => {
   const outcome = (...replies: ThreadMessage[]) =>
     [...transcriptWork([message("ask", "user", [text("Go")]), ...replies]).turns.values()][0]
       ?.outcome;
-  const card = () => message(`card-${seq}`, "bot", [planCard(v1)]);
+  const card = () => message(`card-${seq}`, "bot", [helperBlock(`h-${seq}`)]);
   expect(outcome(card(), message("r", "bot", [text("Done.")]))).toBe("done");
-  // A plan, a Helper or a file is a reply too: no text is not a Stop (the work state says that).
+  // A Helper or a file is a reply too: no text is not a Stop (the work state says that).
   expect(outcome(card())).toBe("done");
-  expect(outcome(message("h", "bot", [helperBlock("h1")]))).toBe("done");
   expect(
     outcomeOf([
       message("f", "bot", [
@@ -175,70 +138,7 @@ it("reads how the reply ended", () => {
   ).toBe("asked");
 });
 
-it("marks a step added where it is new and changed where it was reworded", () => {
-  const plan = (...texts: string[]) =>
-    texts.map((value) => ({ text: value, status: "todo" as const, added: false }));
-  const marks = (next: string[], previous: string[]) =>
-    markChanges(plan(...next), plan(...previous)).map((step) =>
-      step.added ? "added" : step.changed ? "changed" : "same",
-    );
-  expect(marks(["A", "X", "B"], ["A", "B"])).toEqual(["same", "added", "same"]);
-  expect(marks(["A", "B2", "C"], ["A", "B", "C"])).toEqual(["same", "changed", "same"]);
-  // A repeated step is new, however its words match an earlier one.
-  expect(marks(["A", "A", "B"], ["A", "B"])).toEqual(["same", "added", "same"]);
-  expect(marks(["A", "C"], ["A", "B", "C"])).toEqual(["same", "same"]);
-  expect(marks(["A", "B", "D"], ["A", "B"])).toEqual(["same", "same", "added"]);
-  // Unchanged since the previous render: nothing to mark.
-  expect(marks(["A", "B2"], ["A", "B2"])).toEqual(["same", "same"]);
-
-  const work = transcriptWork([
-    message("ask", "user", [text("Make the deck")]),
-    message("card-1", "bot", [planCard(v1)]),
-    message("card-2", "bot", [planCard(v2)]),
-    message("reply", "bot", [text("On it.")]),
-  ]);
-  const newest = work.turns.get("reply")?.plan ?? [];
-  expect(newest.filter((step) => step.added).map((step) => step.text)).toEqual([
-    "Note the cut-off",
-  ]);
-});
-
-it("reads each step's engine state and present tense, and names the plan card (ADR 0027)", () => {
-  const card: MessageBlock = {
-    kind: "reply_card",
-    card: "plan",
-    id: "plan-9",
-    data: {
-      items: [
-        { text: "Brief", status: "done", state: "done" },
-        { text: "Build", status: "done", state: "claimed", active: "Building" },
-        { text: "Check", status: "todo", state: "not_checked" },
-      ],
-    },
-    fallback: "Brief\nBuild\nCheck",
-  };
-  const work = transcriptWork([
-    message("ask", "user", [text("Make the deck")], 0),
-    message("card", "bot", [card], 2),
-    message("reply", "bot", [text("Here it is.")], 3),
-  ]);
-  const turn = work.turns.get("reply");
-  expect(turn?.planId).toBe("plan-9");
-  expect(turn?.plan).toEqual([
-    { text: "Brief", status: "done", engine: true, added: false },
-    { text: "Build", status: "claimed", active: "Building", engine: true, added: false },
-    { text: "Check", status: "not_checked", engine: true, added: false },
-  ]);
-  // A plan card without an id is named by its block.
-  const plain = transcriptWork([
-    message("ask2", "user", [text("Again")], 0),
-    message("card2", "bot", [{ ...(planCard(v1) as ReplyCardBlock), id: undefined }], 1),
-  ]);
-  expect([...plain.turns.values()][0]?.planId).toBe("card2:0");
-});
-
-it("takes the engine's fold, the reply's Activity and the files its turn saved", () => {
-  const card: MessageBlock = { ...(planCard(v2) as ReplyCardBlock), fold: 1 };
+it("takes the reply's Activity and the files its turn saved", () => {
   const file: MessageBlock = {
     kind: "reply_card",
     card: "file",
@@ -248,30 +148,29 @@ it("takes the engine's fold, the reply's Activity and the files its turn saved",
   };
   const work = transcriptWork([
     message("ask", "user", [text("Make the deck")], 0),
-    { ...message("card", "bot", [card], 2), activityId: "turn:conv:r1" },
+    { ...message("started", "bot", [helperBlock("h1")], 2), activityId: "turn:conv:r1" },
     message("saved", "bot", [file], 3),
     { ...message("reply", "bot", [text("Here it is.")], 4), activityId: "turn:conv:r1" },
   ]);
   const turn = work.turns.get("reply");
-  expect(turn?.fold).toBe(1);
   expect(turn?.activityId).toBe("turn:conv:r1");
   expect(turn?.files).toEqual(["a1"]);
   const none = transcriptWork([
     message("ask2", "user", [text("Again")], 0),
-    message("card2", "bot", [planCard(v1)], 1),
+    message("started2", "bot", [helperBlock("h2")], 1),
   ]);
   const plain = [...none.turns.values()][0];
-  expect([plain?.fold, plain?.activityId, plain?.files]).toEqual([0, null, []]);
+  expect([plain?.activityId, plain?.files]).toEqual([null, []]);
 });
 
-it("leaves the work from the first Round on to the Rounds' strips, which draw its Helpers and plans", () => {
+it("leaves the work from the first Round on to the Rounds' strips, which draw its Helpers", () => {
   const ask = message("ask", "user", [text("Make the deck")], 10);
   const messages = withRounds(
     [
       message("ask-0", "user", [text("Read the notes")], 0),
       message("reply-0", "bot", [text("Read."), helperBlock("h0")], 1),
       ask,
-      message("card", "bot", [planCard(v1)], 11),
+      message("card", "bot", [helperBlock("h2")], 11),
       // Steered into the running Round: no Round of its own.
       message("steer", "user", [text("Use the blue theme")], 12),
       message("reply", "bot", [text("Building it in blue."), helperBlock("h1")], 13),

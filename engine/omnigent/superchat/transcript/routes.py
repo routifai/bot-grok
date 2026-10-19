@@ -31,7 +31,6 @@ from omnigent.superchat.family.tree import sub_agent_status
 from omnigent.superchat.lineage import session_lineage
 from omnigent.superchat.rounds.read import attach_round_files, round_files_on
 from omnigent.superchat.rounds.store import SqlAlchemyRoundStore
-from omnigent.superchat.tasks.record import PlanViews, plan_reader
 from omnigent.superchat.transcript.blocks import helper_session_ids, project_items
 from omnigent.superchat.transcript.reset import latest_reset_item
 
@@ -72,13 +71,11 @@ def read_transcript(
     before: str | None,
     limit: int,
     before_reset: bool = False,
-    plan_views: PlanViews | None = None,
     rounds: SqlAlchemyRoundStore | None = None,
     artifacts: SqlAlchemyArtifactStore | None = None,
 ) -> dict[str, Any]:
     """One page of a session's transcript, oldest message first.
 
-    :param plan_views: The tasks service's plan projection; without it a plan shows no states.
     :param rounds: The Round record; with :data:`~omnigent.superchat.rounds.read.ROUND_FILES_ENV`
         set, a Conversation's file cards are drawn from it (:func:`attach_round_files`).
     :param artifacts: Where those cards' titles and sizes are read.
@@ -128,7 +125,6 @@ def read_transcript(
         items,
         helper_statuses=statuses,
         keep_notices=is_artifact_chat(conversation.labels),
-        plan_views=plan_views(conversation.id, items) if plan_views else None,
         conversation_id=conversation.id,
     )
     if rounds is not None and conversation.kind != "sub_agent" and round_files_on():
@@ -227,7 +223,6 @@ def register_transcript_routes(
             before=before,
             limit=limit,
             before_reset=before_reset,
-            plan_views=plan_reader(request.app.state),
             rounds=round_store,
             artifacts=artifact_store,
         )

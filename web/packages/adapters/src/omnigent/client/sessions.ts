@@ -116,8 +116,6 @@ export interface OmnigentMessageContext {
   openArtifact?: { artifactId: string; version: number };
   /** The ask card option the message answers (ADR 0025). */
   cardAnswer?: { cardId: string; optionId: string; label: string };
-  /** The plan step the message comments on (ADR 0027). */
-  stepComment?: { cardId: string; stepIndex: number; text: string };
 }
 
 /** `POST /v1/sessions/{id}/events` with a `message` event carrying the user's turn text and,
@@ -147,7 +145,7 @@ export async function postOmnigentMessage(
       body: JSON.stringify({
         type: "message",
         data: { role: "user", content },
-        ...(context?.openArtifact || context?.cardAnswer || context?.stepComment
+        ...(context?.openArtifact || context?.cardAnswer
           ? {
               context: {
                 ...(context.openArtifact
@@ -164,15 +162,6 @@ export async function postOmnigentMessage(
                         card_id: context.cardAnswer.cardId,
                         option_id: context.cardAnswer.optionId,
                         label: context.cardAnswer.label,
-                      },
-                    }
-                  : {}),
-                ...(context.stepComment
-                  ? {
-                      step_comment: {
-                        card_id: context.stepComment.cardId,
-                        step_index: context.stepComment.stepIndex,
-                        text: context.stepComment.text,
                       },
                     }
                   : {}),

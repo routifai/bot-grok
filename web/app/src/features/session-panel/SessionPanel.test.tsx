@@ -34,15 +34,20 @@ const fake = vi.hoisted(() => {
     },
   };
 });
-vi.mock("../activity/useActivities", () => ({ activityFeedFor: () => fake.feed }));
+vi.mock("../activity/useActivities", () => ({
+  activityFeedFor: () => fake.feed,
+  useActivities: () => ({
+    state: fake.feed.getSnapshot().state,
+    loadEarlier: async () => undefined,
+    loadingEarlier: false,
+  }),
+}));
 const rpcMock = vi.hoisted(() => ({ list: vi.fn() }));
 vi.mock("../../lib/rpc", () => ({ rpc: { artifacts: { list: rpcMock.list } } }));
 vi.mock("../../lib/family-stream", () => ({ watchFamily: () => () => undefined }));
 
 import { activity, helper } from "../activity/activityTestKit";
 import { madeFiles, resetConversationFiles } from "../activity/conversationFiles";
-import { setStepComment, stepCommentNow } from "../activity/stepComment";
-import type { TurnStrip } from "../activity/turnStrips";
 import type { TranscriptWork, TurnWork } from "../activity/workPlan";
 import { SessionPanel } from "./SessionPanel";
 import {
@@ -66,7 +71,6 @@ beforeEach(() => {
 afterEach(() => {
   for (const unmount of mounted.splice(0)) unmount();
   rpcMock.list.mockReset();
-  setStepComment(null);
   stored.clear();
   resetConversationFiles();
 });
@@ -99,19 +103,6 @@ const file = (id: string, name: string, origin: string, createdAt: string): Arti
 
 const turn = (over: Partial<TurnWork> = {}): TurnWork => ({
   anchorId: "reply",
-  plan: [
-    { text: "Research the figures", status: "done", added: false, engine: true },
-    {
-      text: "Build the deck",
-      status: "doing",
-      active: "Building the deck",
-      added: false,
-      engine: true,
-    },
-    { text: "Check the figures", status: "todo", added: false, engine: true },
-  ],
-  planId: "plan-1",
-  fold: 0,
   activityId: null,
   files: [],
   helpers: [],
@@ -121,29 +112,10 @@ const turn = (over: Partial<TurnWork> = {}): TurnWork => ({
   ...over,
 });
 
-/** The panel's strip, as Shell hands it (`stripOf`): the reply's plan, live. */
-const strip = (over: Partial<TurnStrip["turn"]> = {}): TurnStrip => {
-  const found = turn();
-  return {
-    helpers: [],
-    lit: true,
-    turn: {
-      plan: found.plan,
-      planId: found.planId,
-      fold: found.fold,
-      live: true,
-      startedAt: null,
-      endedAt: null,
-      ...over,
-    },
-  };
-};
-
 describe("readings", () => {
-  it("follows the reply the newest messages belong to, never an older reply's plan", () => {
+  it("follows the reply the newest messages belong to, never an older one", () => {
     const older = turn({ anchorId: "a", last: false });
-    // The running reply showed no plan (a Helper only): still the one the panel follows.
-    const running = turn({ anchorId: "b", plan: null, last: true });
+    const running = turn({ anchorId: "b", last: true });
     const work: TranscriptWork = {
       turns: new Map([
         ["a", older],
@@ -152,7 +124,7 @@ describe("readings", () => {
       drawn: new Set(),
     };
     expect(newestTurn(work)).toBe(running);
-    // The newest reply has no strip at all: nothing, not the older plan.
+    // The newest reply has no strip at all: nothing, not the older one.
     expect(newestTurn({ turns: new Map([["a", older]]), drawn: new Set() })).toBeNull();
   });
 
@@ -234,24 +206,17 @@ describe("opening", () => {
 });
 
 describe("the panel", () => {
-  it("shows the plan in full, the outputs and the tools used", async () => {
+  it("shows the outputs and the tools used; the work itself is in its strip", async () => {
     rpcMock.list.mockResolvedValue([
       file("a", "notes.md", "ai", "2026-10-01T00:00:00Z"),
       file("b", "rbc.deck.html", "ai", "2026-10-02T00:00:00Z"),
     ]);
     fake.set([activity({ families: ["web", "files"] })]);
     const { container } = await mount(
-      <SessionPanel botId="bot-1" strip={strip()} open onClose={() => undefined} />,
+      <SessionPanel botId="bot-1" open onClose={() => undefined} />,
     );
     await act(async () => undefined);
-    const progress = container.querySelector("[data-testid=session-progress]");
-    expect(progress?.querySelector("h3")?.textContent).toBe("Progress");
-    expect(
-      [...(progress?.querySelectorAll("[data-testid=work-plan-step]") ?? [])].map((li) =>
-        li.getAttribute("data-status"),
-      ),
-    ).toEqual(["done", "doing", "todo"]);
-    expect(progress?.querySelector("[data-testid=work-plan-then]")).toBeNull();
+    expect(container.querySelector("[data-testid=session-progress]")).toBeNull();
     expect(
       [...container.querySelectorAll("[data-testid=session-output]")].map((row) => row.textContent),
     ).toEqual(["rbc.deck.htmlrbc.deck.html", "notes.mdnotes.md"]);
@@ -260,92 +225,18 @@ describe("the panel", () => {
         (chip) => chip.textContent,
       ),
     ).toEqual(["Web search", "Files"]);
-    // A comment on a step from the panel names the plan card.
-    await act(async () =>
-      progress?.querySelectorAll<HTMLButtonElement>("[data-testid=work-plan-comment]")[2]?.click(),
-    );
-    expect(stepCommentNow()).toEqual({
-      botId: "bot-1",
-      cardId: "plan-1",
-      stepIndex: 2,
-      text: "Check the figures",
-    });
   });
 
   it("draws nothing while closed, and closes from its button", async () => {
     rpcMock.list.mockResolvedValue([]);
     fake.set([]);
     const onClose = vi.fn();
-    const closed = await mount(
-      <SessionPanel botId="bot-1" strip={strip()} open={false} onClose={onClose} />,
-    );
+    const closed = await mount(<SessionPanel botId="bot-1" open={false} onClose={onClose} />);
     expect(closed.container.querySelector("[data-testid=session-panel]")).toBeNull();
-    const { container } = await mount(
-      <SessionPanel botId="bot-1" strip={null} open onClose={onClose} />,
-    );
-    expect(container.querySelector("[data-testid=session-progress]")).toBeNull();
+    const { container } = await mount(<SessionPanel botId="bot-1" open onClose={onClose} />);
     await act(async () =>
       container.querySelector<HTMLButtonElement>("[data-testid=session-panel-close]")?.click(),
     );
     expect(onClose).toHaveBeenCalled();
   });
-});
-
-it("folds the plan as the engine counts it", async () => {
-  rpcMock.list.mockResolvedValue([]);
-  fake.set([]);
-  const plan: TurnWork["plan"] = ["One", "Two", "Three", "Four"].map((text) => ({
-    text,
-    status: "done" as const,
-    added: false,
-    engine: true as const,
-  }));
-  const { container } = await mount(
-    <SessionPanel
-      botId="bot-1"
-      strip={strip({ plan, fold: 2, live: false })}
-      open
-      onClose={() => undefined}
-    />,
-  );
-  expect(container.querySelector("[data-testid=work-plan-fold]")?.textContent).toBe(
-    "2 earlier steps",
-  );
-});
-
-it("shows the running Helpers' lines when the running reply shows no plan", async () => {
-  rpcMock.list.mockResolvedValue([]);
-  fake.set([
-    helper("h1", {
-      title: "Build the deck",
-      status: "in_progress",
-      startedAt: new Date(Date.now() - 5_000).toISOString(),
-      finishedAt: null,
-      steps: [
-        {
-          itemId: "fc_1",
-          title: "Slide 2 of 4",
-          createdAt: new Date().toISOString(),
-          tool: "report_progress",
-        },
-      ],
-    }),
-  ]);
-  const { container } = await mount(
-    <SessionPanel
-      botId="bot-1"
-      strip={{
-        helpers: [{ helperId: "h1", title: "Build the deck", status: "in_progress" }],
-        lit: true,
-        turn: { plan: null, live: true, startedAt: null, endedAt: null },
-      }}
-      open
-      onClose={() => undefined}
-    />,
-  );
-  const progress = container.querySelector("[data-testid=session-progress]");
-  expect(progress?.querySelector("[data-testid=work-plan-step]")).toBeNull();
-  expect(progress?.querySelector("[data-testid=work-strip-line]")?.textContent).toContain(
-    "Slide 2 of 4",
-  );
 });

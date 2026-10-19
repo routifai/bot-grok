@@ -2,11 +2,11 @@ import type { Activity, ToolFamily } from "@superchat/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { TranscriptWork, TurnWork } from "../activity";
 
-// The session panel's readings (ADR 0027): which reply's plan it shows, the files the
-// Conversation made, the kinds of tool its work used, and whether the panel is open.
+// The session panel's readings (ADR 0027): whether the newest reply from before Rounds has work,
+// the kinds of tool the Conversation's work used, and whether the panel is open.
 
-/** The reply the panel follows: the one the newest messages belong to, never an older reply's
- * plan. Null when that reply has no strip (a Round's work is in its own strip). */
+/** The reply the newest messages belong to, never an older one. Null when that reply has no
+ * strip (a Round's work is in its own strip). */
 export function newestTurn(work: TranscriptWork): TurnWork | null {
   for (const turn of work.turns.values()) if (turn.last) return turn;
   return null;

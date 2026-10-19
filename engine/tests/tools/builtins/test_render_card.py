@@ -15,7 +15,6 @@ _CTX = ToolContext(task_id="", conversation_id="", agent_id="")
 _VALID: dict[str, dict] = {
     "sources": {"items": [{"title": "A", "url": "https://a.test", "snippet": "s"}]},
     "compare": {"columns": ["X", "Y"], "rows": [{"label": "Row", "cells": ["1", "2"]}]},
-    "plan": {"items": [{"text": "Do", "status": "doing"}]},
     "quote": {"symbol": "ACME", "price": 12.5, "changePct": -1.2},
     "person": {"name": "Ada"},
     "file": {"name": "report.pdf", "size": 1024},
@@ -27,23 +26,23 @@ def _call(**args: object) -> dict:
     return json.loads(RenderCardTool().invoke(json.dumps(args), _CTX))
 
 
-@pytest.mark.parametrize("kind", sorted(set(_VALID) - {"plan", "progress"}))
+@pytest.mark.parametrize("kind", sorted(set(_VALID) - {"progress"}))
 def test_terminal_card_tells_the_model_to_end_its_turn(kind: str) -> None:
     # A finished answer card: no trailing line repeating it.
     out = _call(card=kind, data=_VALID[kind], fallback="s")
     assert "end your turn" in out["note"]
 
 
-@pytest.mark.parametrize("kind", ["plan", "progress"])
-def test_living_card_does_not_end_the_turn(kind: str) -> None:
-    # Mid-work plan/progress cards are re-rendered under the same id; the Muse keeps going.
-    out = _call(card=kind, id="c1", data=_VALID[kind], fallback="s")
+def test_living_card_does_not_end_the_turn() -> None:
+    # A mid-work progress card is re-rendered under the same id; the Assistant keeps going.
+    out = _call(card="progress", id="c1", data=_VALID["progress"], fallback="s")
     assert "end your turn" not in out["note"]
 
 
 def test_chart_is_not_a_card_kind_any_more() -> None:
     # Charts are pages superchat-dashboard builds from files, never numbers the model types.
-    assert "chart" not in CARD_DATA_SCHEMAS
+    # The plan card went with the plan machinery (ADR 0029).
+    assert "chart" not in CARD_DATA_SCHEMAS and "plan" not in CARD_DATA_SCHEMAS
     out = _call(
         card="chart",
         data={"kind": "line", "x": ["a"], "series": [{"name": "s", "values": [1]}]},
@@ -97,11 +96,11 @@ def test_valid_card_returns_typed_payload(kind: str) -> None:
         ),
         (
             {
-                "card": "plan",
-                "data": {"items": [{"text": "a", "status": "later"}]},
+                "card": "progress",
+                "data": {"label": "a", "value": 1, "status": "later"},
                 "fallback": "x",
             },
-            "data.items[0].status must be one of",
+            "data.status must be one of",
         ),
         ({"card": "person", "data": {"name": "A", "age": 3}, "fallback": "x"}, "not allowed"),
         ({"card": "compare", "data": {"columns": [], "rows": []}, "fallback": "x"}, "items"),

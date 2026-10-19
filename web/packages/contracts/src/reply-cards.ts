@@ -9,26 +9,6 @@ import * as z from "zod";
 const Text = z.string().max(2000);
 const Url = z.string().max(2048);
 
-/** A plan step as the engine reads it (ADR 0027): `claimed` is the model's tick with nothing
- * behind it (not done), `not_checked` a check step nothing ran, `stopped` a step left doing once
- * nothing runs. */
-export const PlanStateSchema = z.enum([
-  "todo",
-  "doing",
-  "done",
-  "claimed",
-  "failed",
-  "not_checked",
-  "stopped",
-]);
-export type PlanState = z.infer<typeof PlanStateSchema>;
-
-/** What a plan item reads: the engine's `state`, else (a plan from before the engine read it)
- * the model's `status`. */
-export function planItemState(item: { status?: PlanState; state?: PlanState }): PlanState {
-  return item.state ?? item.status ?? "todo";
-}
-
 export const ReplyCardData = {
   sources: z.object({
     items: z
@@ -40,27 +20,6 @@ export const ReplyCardData = {
     columns: z.array(Text).min(1).max(8),
     rows: z
       .array(z.object({ label: Text, cells: z.array(Text).min(1).max(8) }))
-      .min(1)
-      .max(50),
-  }),
-  /** The living plan (ADR 0023, ADR 0027). `status` is the model's word at creation only; the
-   * engine's `state` (from the evidence it holds) is what the person reads. */
-  plan: z.object({
-    items: z
-      .array(
-        z.object({
-          text: Text,
-          status: z.enum(["todo", "doing", "done"]).optional(),
-          /** The step in the present tense, shown while it is doing ("Building the deck"). */
-          active: Text.optional(),
-          /** Lenient: an owner it does not know reads as "me". */
-          owner: z.enum(["me", "helper"]).optional().catch("me"),
-          /** The evidence that makes the step done (engine `tasks.record.DONE_WHEN`). */
-          done_when: Text.optional(),
-          /** Lenient: a state it does not know reads as to do, never a broken card. */
-          state: PlanStateSchema.optional().catch("todo"),
-        }),
-      )
       .min(1)
       .max(50),
   }),
@@ -173,8 +132,6 @@ export const ReplyCardBlock = z.object({
   data: z.record(z.string(), z.any()),
   fallback: z.string(),
   pending: z.boolean().optional(),
-  /** A `plan` card: how many leading done steps fold away, as the engine counts them (ADR 0027). */
-  fold: z.number().int().nonnegative().optional(),
 });
 export type ReplyCardBlock = z.infer<typeof ReplyCardBlock>;
 

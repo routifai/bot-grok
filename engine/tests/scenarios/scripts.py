@@ -39,7 +39,6 @@ SCENARIOS: tuple[Scenario, ...] = (
                 ("request", "Make a deck from sales.csv for Monday's review"),
                 ("reply", "Building the review deck from sales.csv."),
                 ("tool_call", "context_brief"),
-                ("plan", "brief,helper_done,check_ran"),
                 ("helper_started", ""),
             ),
             (
@@ -59,7 +58,6 @@ SCENARIOS: tuple[Scenario, ...] = (
                 ("request", "Create some presentation about RBC vs TD"),
                 ("reply", "Building the RBC vs TD comparison deck now."),
                 ("tool_call", "context_brief"),
-                ("plan", "brief,helper_done,check_ran"),
                 ("helper_started", ""),
             ),
             (
@@ -87,7 +85,6 @@ SCENARIOS: tuple[Scenario, ...] = (
                 ("answer", "Use mock numbers"),
                 ("reply", "Building the Q3 deck with mock numbers."),
                 ("tool_call", "context_brief"),
-                ("plan", "brief,helper_done,check_ran"),
                 ("helper_started", ""),
             ),
             (
@@ -106,9 +103,8 @@ SCENARIOS: tuple[Scenario, ...] = (
         (
             (
                 ("request", "Compare five CRM vendors and write it up"),
-                ("plan", "helper_done,check_ran"),
-                ("helper_started", ""),
                 ("reply", "I'm comparing the five vendors now."),
+                ("helper_started", ""),
             ),
             (
                 ("steer", "Include pricing too"),
@@ -169,9 +165,8 @@ SCENARIOS: tuple[Scenario, ...] = (
         (
             (
                 ("request", "Write a report on the EU AI Act obligations for our product"),
-                ("plan", "helper_done,check_ran"),
-                ("helper_started", ""),
                 ("reply", "I'm working through the obligations."),
+                ("helper_started", ""),
             ),
             (
                 ("notice", "flag"),
@@ -190,7 +185,6 @@ SCENARIOS: tuple[Scenario, ...] = (
                 ("request", "Build a market-sizing deck for meal kits"),
                 ("reply", "I'll size the meal-kit market and build the deck."),
                 ("tool_call", "context_brief"),
-                ("plan", "brief,helper_done,check_ran"),
                 ("helper_started", ""),
             ),
             (
@@ -217,7 +211,6 @@ SCENARIOS: tuple[Scenario, ...] = (
                 ("request", "Make a 20-slide deck on the history of banking"),
                 ("reply", "Building a 20-slide deck on the history of banking."),
                 ("tool_call", "context_brief"),
-                ("plan", "brief,helper_done,check_ran"),
                 ("cancelled", ""),
             ),
         ),
@@ -226,8 +219,8 @@ SCENARIOS: tuple[Scenario, ...] = (
 )
 
 
-#: ADR 0029's Round matrix: each Round from the person's message through settlement, with no
-#: plan card (the plan machinery goes). The live runner plays these after the ADR 0025 ten.
+#: ADR 0029's Round matrix: each Round from the person's message through settlement. The live
+#: runner plays these after the ADR 0025 ten.
 ROUNDS: tuple[Scenario, ...] = (
     Scenario(
         "round-deck-delegated",
