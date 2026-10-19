@@ -739,9 +739,8 @@ _CLAUDE_CODE_DISABLE_AUTO_MEMORY_ENV = "CLAUDE_CODE_DISABLE_AUTO_MEMORY"
 # ClaudeAgentOptions.agents); "Task" is its historical CLI name. Omnigent
 # sub-agents are Omnigent sessions (see ``sys_session_create``), never this.
 _SDK_BUILTIN_SUBAGENT_TOOLS = ("Agent", "Task")
-# The CLI's native checklist tools, off unless this env var opts the CLI in. A turn whose
-# config asks for a checklist gets them; their calls surface as ordinary tool events.
-_CLAUDE_CODE_ENABLE_TODO_TOOLS_ENV = "CLAUDE_CODE_ENABLE_TODO_TOOLS"
+# The CLI's native checklist tools. The model keeps its checklist with Omnigent's ``checklist``
+# tool on every harness, so these stay disallowed: one list, one tool.
 _CLI_TASK_TOOLS = ("TaskCreate", "TaskUpdate", "TaskList", "TaskGet")
 
 
@@ -936,7 +935,7 @@ def _launch_key(
         "instructions": system_prompt,
         "tools": tools,
         "effort": effort,
-        "mode": [cfg.extra.get("context_mode"), cfg.extra.get("max_turns"), cfg.checklist],
+        "mode": [cfg.extra.get("context_mode"), cfg.extra.get("max_turns")],
     }
     return {
         name: hashlib.sha256(
@@ -1845,9 +1844,8 @@ class ClaudeSDKExecutor(Executor):
             and launch_key is not None
             and state.launch_key.get("mode") != launch_key.get("mode")
         ):
-            # The mode (context mode, turn cap, checklist) is fixed in the CLI's env and base
-            # tools at launch; a warm CLI keeps the one it started with, so a turn that turns
-            # the checklist on would never get the task tools.
+            # The mode (context mode, turn cap) is fixed in the CLI's env and options at
+            # launch; a warm CLI keeps the one it started with.
             reason = "the turn's mode changed"
             await self._close_live_client(session_key)
             state = None
@@ -2739,9 +2737,6 @@ class ClaudeSDKExecutor(Executor):
             # Its Omnigent tools are few and every turn needs some: load their definitions
             # with the session instead of through a ToolSearch call before the first one.
             env[_CLAUDE_CODE_ENABLE_TOOL_SEARCH_ENV] = "false"
-        if cfg.checklist:
-            env[_CLAUDE_CODE_ENABLE_TODO_TOOLS_ENV] = "1"
-            allowed_tools.extend(_CLI_TASK_TOOLS)
         api_key_helper = env.pop(_CLAUDE_API_KEY_HELPER_ENV_KEY, None)
         # Teach Claude Code this gateway's spellings so no model surface routes
         # to an id the gateway rejects: pins for the family aliases, rewrites
@@ -2800,8 +2795,6 @@ class ClaudeSDKExecutor(Executor):
         # SDK's native Bash/Read/Edit/Write. Keep Skill and ToolSearch in
         # the base set so MCP definitions can be discovered on demand.
         base_tools: list[str] = ["Skill", "ToolSearch"]
-        if cfg.checklist:
-            base_tools.extend(_CLI_TASK_TOOLS)
         # Translate the spec's host-skill filter into the SDK
         # options. Falls back to ``"all"`` semantics when the
         # field is malformed (the parser already validates, so
@@ -2844,7 +2837,10 @@ class ClaudeSDKExecutor(Executor):
                 **({} if cfg.session_titles else {"name": "omnigent"}),
             },
             "max_buffer_size": 10 * 1024 * 1024,
-            "disallowed_tools": list(_SDK_BUILTIN_SUBAGENT_TOOLS) if is_superside_chat else [],
+            "disallowed_tools": [
+                *_CLI_TASK_TOOLS,
+                *(_SDK_BUILTIN_SUBAGENT_TOOLS if is_superside_chat else ()),
+            ],
         }
         # Only forward ``setting_sources`` when explicitly set.
         # ``None`` lets the SDK apply its default

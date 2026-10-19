@@ -86,9 +86,8 @@ class _ClosableIterator(Protocol):
 # Config
 # ---------------------------------------------------------------------------
 
-#: The Omnigent tool the model keeps its checklist with on a harness without native checklist
-#: tools. The engine offers it to a Conversation's turns only, so a turn that has it is one whose
-#: work the engine wants kept as a checklist (:attr:`ExecutorConfig.checklist`).
+#: The Omnigent tool the model keeps its checklist with, on every harness. The engine offers it to
+#: a Conversation's turns only.
 CHECKLIST_TOOL = "checklist"
 
 
@@ -107,8 +106,6 @@ class ExecutorConfig:
         model response.
     :param extra: Arbitrary executor-specific kwargs merged into the
         underlying SDK call, e.g. ``{"stepwise_internal_turns": True}``.
-    :param checklist: ``True`` when the engine wants the turn's work kept as a checklist;
-        an executor whose agent has native checklist tools opts into them.
     """
 
     model: str | None = None
@@ -116,7 +113,6 @@ class ExecutorConfig:
     session_titles: bool = False
     max_tokens: int = 100000
     extra: ExecutorExtra = field(default_factory=dict)
-    checklist: bool = False
 
 
 # ---------------------------------------------------------------------------

@@ -26,7 +26,6 @@ from omnigent.context.tool_digest import digest_tool_items
 from omnigent.debug_logging import phase_scope
 from omnigent.errors import ElicitationDeclinedError, ErrorPhase
 from omnigent.harnesses.executor import (
-    CHECKLIST_TOOL,
     CompactionComplete,
     CompactionStarted,
     Executor,
@@ -231,11 +230,7 @@ class ExecutorAdapter(HarnessApp):
             extra["context_mode"] = request.context_mode
         # model_override is the per-request override; takes precedence over the spec default.
         tools = _normalize_tool_schemas(request.tools or [])
-        config = ExecutorConfig(
-            model=request.model_override,
-            extra=extra,
-            checklist=any(t["name"] == CHECKLIST_TOOL for t in tools),
-        )
+        config = ExecutorConfig(model=request.model_override, extra=extra)
         system_prompt = request.instructions or ""
         # Install stable bridges once on first use — the SDK closure-captures them from the first
         # turn; per-turn rebinding would leave later tool calls dispatching into a dead ctx.
