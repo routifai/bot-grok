@@ -1,9 +1,10 @@
 """Stop stops (ADR 0026): the interrupt says whether it landed, holds through a relaunch,
-and reaches the Conversation's running Helpers."""
+and reaches the running Helpers of the Round it stops, and only those (ADR 0029)."""
 
 from __future__ import annotations
 
 import asyncio
+import json
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
@@ -14,13 +15,20 @@ from fastapi import FastAPI
 
 import omnigent.server.routes._sessions.orchestration as orchestration_mod
 import omnigent.server.routes.sessions.routes_events as routes_events_mod
+from omnigent.context.labels import CONTEXT_MODE_LABEL, ROUND_LABEL_KEY, SUPERSIDE_CHAT_MODE_VALUE
 from omnigent.entities import NewConversationItem
 from omnigent.entities.conversation import Conversation, ConversationItem
 from omnigent.server.routes.sessions import create_sessions_router
+from omnigent.superchat.rounds import record
+from omnigent.superchat.rounds.store import SqlAlchemyRoundStore
 
-_PARENT = "conv_stop_parent"
-_CHILD = "conv_stop_child"
-_DONE_CHILD = "conv_stop_done"
+_PARENT = "a" * 32
+_CHILD = "b" * 32
+_DONE_CHILD = "c" * 32
+#: A Helper still working for an earlier Round of the same Conversation.
+_OTHER_CHILD = "d" * 32
+#: The Conversation's running Round and an earlier one.
+_NOW, _OLD = "e" * 32, "f" * 32
 
 
 def _conv(conv_id: str, **extra: Any) -> Conversation:
@@ -43,6 +51,8 @@ class _Store:
             _DONE_CHILD: _conv(_DONE_CHILD, kind="sub_agent", parent_conversation_id=_PARENT),
         }
         self.appended: list[ConversationItem] = []
+        #: Helpers whose summary reads as working.
+        self.busy = {_CHILD}
 
     def get_conversation(self, session_id: str) -> Conversation | None:
         return self.convs.get(session_id)
@@ -79,6 +89,7 @@ class _Harness:
         self.wake_gate = asyncio.Event()
         self.dispatched: list[Any] = []
         self.interrupted: list[str] = []
+        self.interrupt_bodies: dict[str, Any] = {}
         # Which sessions have a runner bound (None: no runner at all).
         self.bound: set[str] = set()
         self.statuses: list[tuple[str, str]] = []
@@ -92,7 +103,9 @@ class _Harness:
             return SimpleNamespace(item_id="x", pending_id=None, turn=1)
 
         def handler(request: httpx.Request) -> httpx.Response:
-            self.interrupted.append(request.url.path.split("/")[3])
+            session_id = request.url.path.split("/")[3]
+            self.interrupted.append(session_id)
+            self.interrupt_bodies[session_id] = json.loads(request.content)
             return httpx.Response(204)
 
         runner = httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="http://r")
@@ -110,7 +123,7 @@ class _Harness:
                 SimpleNamespace(
                     id=child.id,
                     model_dump=lambda mode="json", child=child: {
-                        "busy": child.id == _CHILD,
+                        "busy": child.id in self.store.busy,
                         "current_task_status": "completed",
                     },
                 )
@@ -196,9 +209,73 @@ async def test_interrupt_during_a_relaunch_cancels_the_deferred_message(harness)
 
 @pytest.mark.asyncio
 async def test_interrupt_reaches_the_running_helpers(harness):
+    """Outside a Round, Stop reaches every running Helper and sends no Stop line."""
     harness.bound = {_PARENT, _CHILD, _DONE_CHILD}
 
     resp = await harness.stop()
 
     assert resp.json()["delivered"] is True
     assert sorted(harness.interrupted) == sorted([_PARENT, _CHILD])
+    assert harness.interrupt_bodies[_PARENT] == {"type": "interrupt"}
+
+
+@pytest.mark.asyncio
+async def test_stop_ends_its_round_and_leaves_the_other_rounds_helpers_alone(
+    harness, db_uri, monkeypatch
+):
+    """Stop records ``stop.requested`` on the Conversation's running Round, stops that Round's
+    Helper, sends the Stop line with the parent's interrupt, and drops the stopped Helper's late
+    wake; a Helper still working for an earlier Round keeps working, and its wake still lands."""
+    store = SqlAlchemyRoundStore(db_uri)
+    monkeypatch.setattr(record, "RECORDER", record.Recorder(store))
+    chat = {CONTEXT_MODE_LABEL: SUPERSIDE_CHAT_MODE_VALUE}
+    convs = harness.store.convs
+    convs[_PARENT].labels = {**chat, ROUND_LABEL_KEY: _NOW}
+    convs[_CHILD].labels = {**chat, ROUND_LABEL_KEY: _NOW}
+    convs[_CHILD].title = "Uruguay deck"
+    convs[_OTHER_CHILD] = _conv(
+        _OTHER_CHILD,
+        kind="sub_agent",
+        parent_conversation_id=_PARENT,
+        labels={**chat, ROUND_LABEL_KEY: _OLD},
+    )
+    harness.store.busy = {_CHILD, _OTHER_CHILD}
+    harness.bound = {_PARENT, _CHILD, _OTHER_CHILD}
+    # Each Round: the Assistant starts a Helper and ends its turn; the Helper still works.
+    for round_id, helper_id, title in (
+        (_OLD, _OTHER_CHILD, "Map"),
+        (_NOW, _CHILD, "Uruguay deck"),
+    ):
+        record.RECORDER.record(round_id, _PARENT, "round.opened", "person", text="x")
+        record.RECORDER.record(
+            round_id, _PARENT, "helper.started", "assistant", helper_id=helper_id, title=title
+        )
+        record.RECORDER.record(round_id, _PARENT, "turn.ended", "assistant", status="done")
+
+    resp = await harness.stop()
+
+    assert resp.json()["delivered"] is True
+    assert sorted(harness.interrupted) == sorted([_PARENT, _CHILD])
+    line = "Stopped. 'Uruguay deck' was still working; nothing was saved."
+    assert harness.interrupt_bodies[_PARENT] == {"type": "interrupt", "data": {"note": line}}
+    assert harness.interrupt_bodies[_CHILD] == {"type": "interrupt"}
+    await record.RECORDER.idle()
+    assert [e["kind"] for e in store.events(_NOW)][-1] == "stop.requested"
+    assert "stop.requested" not in [e["kind"] for e in store.events(_OLD)]
+
+    async def wake(helper_id: str) -> httpx.Response:
+        return await harness.client.post(
+            f"/sessions/{_PARENT}/events",
+            json={
+                "type": "message",
+                "data": {"role": "user", "is_system_notice": True, "content": []},
+                "context": {"helper_id": helper_id},
+            },
+        )
+
+    dropped = await wake(_CHILD)
+    assert dropped.json() == {"queued": False, "delivered": False}
+    assert harness.store.appended == []
+    landed = await wake(_OTHER_CHILD)
+    assert landed.json()["queued"] is True
+    assert len(harness.store.appended) == 1

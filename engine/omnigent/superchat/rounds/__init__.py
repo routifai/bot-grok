@@ -1,9 +1,10 @@
 """Rounds (ADR 0029): what happened to one message from the person, recorded as it happened.
 
 Layout: ``fold`` (the Round view, a pure fold over its events), ``store`` (the ``round_events``
-table), ``record`` (the Round rule and the writers, called where the engine sees each fact),
-``read`` (what reads a Round once its events are stored: the family stream's ``round.updated``
-and the development shadow diff), ``routes`` (the Round reads). No tool reads the record.
+table), ``record`` (the Round rule and the writers, called where the engine sees each fact,
+and Stop, which reads its Round back), ``read`` (what reads a Round once its events are stored:
+the family stream's ``round.updated`` and the development shadow diff), ``routes`` (the Round
+reads). No tool reads the record.
 """
 
 from __future__ import annotations

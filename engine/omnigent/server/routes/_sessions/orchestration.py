@@ -6375,6 +6375,12 @@ async def _relay_runner_stream_once(
                             ready.set()
                         continue
 
+                    # The terminal of a turn the engine stopped: recorded stopped, whatever
+                    # status the executor gave it (ADR 0029).
+                    stopped_turn = (
+                        evt_type in _TERMINAL_RESPONSE_EVENT_TYPES
+                        and session_id in _interrupt_fenced_sessions
+                    )
                     # Stopped turn: drop its trailing response.* output (no
                     # forward, no persist) but keep text_acc — the pre-stop
                     # narration the user watched persists at the terminal flush.
@@ -6541,7 +6547,7 @@ async def _relay_runner_stream_once(
                             current_model = _model
                         await turn_clock.start(conversation_store)
                     turn_clock.observe(event)
-                    await round_record.observe(event)
+                    await round_record.observe(event, stopped=stopped_turn)
                     if evt_type == rounds.TOOL_INPUT_DELTA:
                         continue  # recorded only; clients see the call when it is complete
 

@@ -350,6 +350,10 @@ async def test_interrupt_marker_instructs_model_to_disregard_abandoned_request()
     the interrupted request and to treat the next user message as current.
     A revert to the old "halted the agent response / may be incomplete"
     text (no disregard instruction) turns this test red.
+
+    The server's Stop line (ADR 0029) rides on the interrupt and is written into
+    that same marker; a Stop with no turn running writes the line alone, so the
+    next turn reads what was stopped either way.
     """
     import asyncio as _aio
 
@@ -378,16 +382,31 @@ async def test_interrupt_marker_instructs_model_to_disregard_abandoned_request()
         assert resp.status_code == 202
         await _aio.sleep(0.1)
 
+        line = "Stopped. Nothing was saved."
         int_resp = await client.post(
             f"/v1/sessions/{conv_id}/events",
-            json={"type": "interrupt"},
+            json={"type": "interrupt", "data": {"note": line}},
         )
         assert int_resp.status_code in (200, 204)
 
         gate.set()
         await _aio.sleep(0.2)
 
+        idle_line = "Stopped. 'Uruguay deck' was still working; nothing was saved."
+        idle_resp = await client.post(
+            f"/v1/sessions/{conv_id}/events",
+            json={"type": "interrupt", "data": {"note": idle_line}},
+        )
+        assert idle_resp.status_code in (200, 204)
+
     histories = _session_histories_ref.get(conv_id, [])
+    texts = [
+        b.get("text") or ""
+        for h in histories
+        if h.get("type") == "message" and h.get("role") == "user"
+        for b in h.get("content", [])
+    ]
+    assert texts[-1] == f"[System: stopped]\n{idle_line}"
     marker_texts = [
         b.get("text") or ""
         for h in histories
@@ -415,6 +434,7 @@ async def test_interrupt_marker_instructs_model_to_disregard_abandoned_request()
         f"Marker should still note the assistant message may be incomplete, "
         f"got: {marker_texts[0]!r}"
     )
+    assert marker_texts[0].endswith(f"\n{line}")
 
 
 class _WakeRecordingServerClient(NullServerClient):
