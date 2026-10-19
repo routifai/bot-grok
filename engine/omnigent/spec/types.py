@@ -372,16 +372,21 @@ class _PiRetryAdapter:
         jitter and ``Retry-After`` honoring; we configure the budget
         and shape.
 
+        ``retry.provider.timeoutMs`` bounds one model request the way
+        ``timeout_per_request_s`` does for the other harnesses; without it
+        Pi falls back to its own HTTP idle default.
+
         :returns: A dict matching Pi's settings shape.
         """
-        return {
-            "retry": {
-                "enabled": self.policy.max_retries > 0,
-                "maxRetries": self.policy.max_retries,
-                "baseDelayMs": int(self.policy.backoff_base_s * 1000),
-                "maxDelayMs": int(self.policy.backoff_max_s * 1000),
-            },
+        retry: dict[str, Any] = {  # type: ignore[explicit-any]
+            "enabled": self.policy.max_retries > 0,
+            "maxRetries": self.policy.max_retries,
+            "baseDelayMs": int(self.policy.backoff_base_s * 1000),
+            "maxDelayMs": int(self.policy.backoff_max_s * 1000),
         }
+        if self.policy.timeout_per_request_s is not None:
+            retry["provider"] = {"timeoutMs": int(self.policy.timeout_per_request_s * 1000)}
+        return {"retry": retry}
 
 
 @dataclass(frozen=True)
