@@ -2222,6 +2222,7 @@ async def _deliver_subagent_wake_post(
     notice: str,
     *,
     created_by: str | None = None,
+    helper_id: str | None = None,
 ) -> bool:
     """
     POST a sub-agent wake notice with a bounded retry on transient failure.
@@ -2239,6 +2240,7 @@ async def _deliver_subagent_wake_post(
     :param notice: The ``[System: ...]`` notice text to inject.
     :param created_by: Human actor that dispatched the completed child
         turn, if known.
+    :param helper_id: The child the wake is about; the notice joins its Round (ADR 0029).
     :returns: ``True`` if a 2xx was confirmed, ``False`` if every attempt
         failed (transport error, timeout, or non-2xx response).
     """
@@ -2259,6 +2261,7 @@ async def _deliver_subagent_wake_post(
                         if attribution_created_by is not None
                         else {}
                     ),
+                    **({"context": {"helper_id": helper_id}} if helper_id else {}),
                 },
                 # The server gates this injected wake at the parent's REQUEST
                 # phase, which can PARK on a human ASK (e.g. session_cost_budget)
@@ -5733,6 +5736,7 @@ def create_runner_app(
                     parent,
                     f"{title} was paused for 30 minutes and stopped.",
                     if_running=False,
+                    helper_id=conv_id,
                 )
         except Exception:
             _logger.warning(
@@ -6018,7 +6022,7 @@ def create_runner_app(
         journal_result: tuple[str, str] | None = None,
     ) -> None:
         delivered = await _deliver_subagent_wake_post(
-            server_client, parent_id, notice, created_by=created_by
+            server_client, parent_id, notice, created_by=created_by, helper_id=child_id
         )
         if delivered:
             forget_saved_files(child_id, _subagent_children)

@@ -247,6 +247,7 @@ from omnigent.stores.host_store import host_is_live
 from omnigent.stores.permission_store import PermissionStore
 from omnigent.superchat.lineage import is_super_chat_helper
 from omnigent.superchat.models.org import refuse_if_suspended
+from omnigent.superchat.rounds import record as rounds
 from omnigent.superchat.subagents import is_live_child_row
 from omnigent.telemetry import emit as _tel_emit
 from omnigent.telemetry.anon import anon_user_id as _tel_anon_user_id
@@ -1363,6 +1364,7 @@ def register_events_routes(
             return wake_conv, _client
 
         if body.type == _INTERRUPT_TYPE:
+            rounds.stop_requested(conv)  # the person's Stop ends the Round (ADR 0029)
             delivered = await _interrupt_session(session_id)
             _logger.info("interrupt session=%s delivered=%s", session_id, delivered)
             return {"queued": False, "delivered": delivered}

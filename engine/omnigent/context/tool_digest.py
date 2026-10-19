@@ -67,7 +67,7 @@ def _short_name(name: Any) -> str:
     return text.split("__", 2)[2] if text.startswith("mcp__") and text.count("__") >= 2 else text
 
 
-def _short_arguments(arguments: Any) -> str:
+def short_arguments(arguments: Any) -> str:
     """The arguments that name what the call acted on, as ``key=value`` pairs.
 
     Falls back to the first short text argument; empty when there is none.
@@ -130,7 +130,7 @@ def tool_digest_line(name: Any, arguments: Any, output: Any) -> str:
         result clipped to :data:`RESULT_LIMIT` characters.
     """
     head = " ".join(
-        part for part in (_short_name(name) or "tool", _short_arguments(arguments)) if part
+        part for part in (_short_name(name) or "tool", short_arguments(arguments)) if part
     )
     result = _clip(_result_text(output), RESULT_LIMIT) if output is not None else "(no result)"
     return f"{FRAMING} {head} → {result or '(empty)'}"

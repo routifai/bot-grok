@@ -65,6 +65,14 @@ def is_artifact_chat(labels: Mapping[str, str] | None) -> bool:
 #: system-authored prompt, so memory upkeep never treats it as the person's words.
 SCHEDULED_FIRE_LABEL_KEY = "omnigent.scheduled_task_id"
 
+#: Labels the server stamps on a run no person started (a schedule, a Goal's cadence, a pass).
+BACKGROUND_LABELS = (SCHEDULED_HELPER_LABEL_KEY, ADHOC_HELPER_LABEL_KEY, SCHEDULED_FIRE_LABEL_KEY)
+
+#: The Round a session's work belongs to now (ADR 0029). On the Conversation it moves when a
+#: person's message opens a Round or a Helper's wake brings one back; a Helper gets its parent's
+#: at creation and keeps it.
+ROUND_LABEL_KEY = "omnigent.superchat.round_id"
+
 #: Prefix of the session labels that hold pending ``state_close`` requests: one label per tag
 #: (``<prefix><tag id>``), the value being the reason. Consumed by the next checkpoint, which
 #: sets each to an empty string.

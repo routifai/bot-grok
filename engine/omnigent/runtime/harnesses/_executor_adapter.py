@@ -38,6 +38,8 @@ from omnigent.harnesses.executor import (
     TextChunk,
     ToolCallComplete,
     ToolCallRequest,
+    ToolCallStarted,
+    ToolInputChunk,
     TurnCancelled,
     TurnComplete,
 )
@@ -56,6 +58,7 @@ from omnigent.server.schemas import (
     ReasoningStartedEvent,
     ReasoningSummaryTextDeltaEvent,
     ReasoningTextDeltaEvent,
+    ToolInputDeltaEvent,
 )
 
 _logger = logging.getLogger(__name__)
@@ -793,6 +796,18 @@ class ExecutorAdapter(HarnessApp):
                         type="response.reasoning_text.delta",
                         delta=event.delta,
                     ),
+                )
+        elif isinstance(event, (ToolCallStarted, ToolInputChunk)):
+            # A call still being written: the relay records it, clients never see it.
+            call_id = _call_id_from_metadata(event.metadata)
+            if call_id:
+                ctx.emit(
+                    ToolInputDeltaEvent(
+                        type="response.function_call_arguments.delta",
+                        call_id=call_id,
+                        name=_strip_mcp_tool_prefix(event.name),
+                        delta=event.delta if isinstance(event, ToolInputChunk) else "",
+                    )
                 )
         elif isinstance(event, ToolCallRequest):
             # Emit observed function_call INLINE (interleaved with text). Queue the tool_use_id

@@ -47,7 +47,9 @@ def posted(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     async def _info(_client: Any, helper_id: str) -> HelperInfo:
         return HelperInfo(parent_id=PARENT, name=f"Helper {helper_id[:1]}", started_at=0.0)
 
-    async def _post(_client: Any, parent_id: str, notice: str, *, if_running: bool) -> str:
+    async def _post(
+        _client: Any, parent_id: str, notice: str, *, if_running: bool, helper_id: str | None
+    ) -> str:
         state["posts"].append((parent_id, notice, if_running))
         return notices.TAKEN if state["running"] or not if_running else notices.IDLE
 
