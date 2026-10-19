@@ -1,7 +1,7 @@
 """Where the runner's context brief reads: the engine over HTTP, the host's index in process.
 
-Artifacts come from ``GET /v1/artifacts`` (the owner's, newest version each); task records from
-``GET /v1/sessions/{id}/tasks`` (its ``active`` and recent ``done`` lists); the plan from the
+Artifacts come from ``GET /v1/artifacts`` (the owner's, newest version each); the Rounds still
+working from ``GET /v1/sessions/{id}/tasks`` (its ``rounds``); the plan from the
 shared per-message plan (one planner call per message, none with recall off); earlier work and
 files from ``recall_search`` over the host's index.
 """
@@ -41,14 +41,8 @@ class RunnerSources:
     async def artifacts(self) -> list[dict[str, Any]]:
         return await self._get(f"/v1/artifacts?limit={_ARTIFACTS_LISTED}", "artifacts")
 
-    async def tasks(self, session_id: str) -> list[dict[str, Any]]:
-        resp = await self._client.get(f"/v1/sessions/{session_id}/tasks", timeout=_TIMEOUT)
-        resp.raise_for_status()
-        view = resp.json()
-        # ``tasks`` is the active list's name until the tasks view names it ``active``.
-        active = view.get("active", view.get("tasks")) or []
-        rows = [*active, *(view.get("done") or [])]
-        return [r for r in rows if isinstance(r, dict)]
+    async def rounds(self, session_id: str) -> list[dict[str, Any]]:
+        return await self._get(f"/v1/sessions/{session_id}/tasks", "rounds")
 
     async def plan(self, session_id: str, message: str) -> TurnPlan:
         return await turn_plan(self._client, session_id, message)

@@ -1,11 +1,13 @@
-"""Tasks (ADR 0025): one engine-kept record per deliverable in progress in a Conversation.
+"""Tasks: the lines in front of the person's message and the picks on cards.
 
-Layout: ``record`` (the task, its line, the card answer, the one stall rule, the plan's evidence
-rule of ADR 0027; pure), ``store``
-(the ``tasks`` and ``card_answers`` tables),
-``service`` (server side: applies the engine's events), ``routes`` (``/v1/sessions/{id}/tasks``),
-``runtime`` (runner side: the turn's lines, tool and turn-end events, the stall log). No tools:
-the model never writes a task. Conversation-only: a Helper's turn reads no task lines.
+ADR 0025 kept one record per deliverable in progress; ADR 0029 moved that to the Round record.
+What the turn reads is now the Rounds still working and the pick the Round's message carried.
+
+Layout: ``record`` (the lines, the card answer, the one stall rule, the plan's evidence rule of
+ADR 0027; pure), ``store`` (the ``tasks`` table, read only, and ``card_answers``), ``service``
+(server side: the view a turn reads), ``routes`` (``/v1/sessions/{id}/tasks``), ``runtime``
+(runner side: the turn's lines, the plan events, the stall log). No tools. Conversation-only: a
+Helper's turn reads no task lines.
 """
 
 from __future__ import annotations
@@ -31,13 +33,18 @@ def _install(app: FastAPI, deps: InstallDeps) -> None:
         ON_MESSAGE_CONTEXT,
         ON_SESSION_DELETED,
     )
+    from omnigent.superchat.rounds.store import SqlAlchemyRoundStore
     from omnigent.superchat.tasks.routes import create_tasks_router
     from omnigent.superchat.tasks.service import TaskService
     from omnigent.superchat.tasks.store import SqlAlchemyTaskStore
 
     if deps.storage_location is None:
         return
-    service = TaskService(SqlAlchemyTaskStore(deps.storage_location), deps.conversation_store)
+    service = TaskService(
+        SqlAlchemyTaskStore(deps.storage_location),
+        deps.conversation_store,
+        SqlAlchemyRoundStore(deps.storage_location),
+    )
     ON_MESSAGE_CONTEXT["tasks"] = service.message_context
     ON_SESSION_DELETED["tasks"] = service.conversation_deleted
     # The transcript and the activity project plans through the one service (``plan_views``).

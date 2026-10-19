@@ -105,9 +105,7 @@ The contract for the plan card and the display the engine writes from it ([ADR 0
 - `deck_check` after `deck_new` wrote a deck or a file was saved: the first `check_ran` step;
 - the person's answer to the task's question card: the first `answered` step.
 
-Only a structured error (`{"error": …}`) makes a result a failure. A check step is needed only for a deliverable with a check tool (decks, `deck_check`); a plan for any other kind ends on a `read` or `saved` step and never reads "Not checked". A finished Helper settles its task at the latest when the Conversation turn that handles the hand-back ends (`turn_end`): at that turn's start when the read already sees it finished (the read says `settle: true` and the runner posts `turn_start`), at its end otherwise, and at the Helper's own `turn_end` when no Conversation turn runs. A Helper whose turn ended reads finished even while its live status still says running. A read (`GET .../tasks`) never changes a task. `turn_start` and `turn_end` answer with every task they closed (`closed`).
-
-**Decision.** A task that closes composes one line, `fields.decision`: `<title> (<kind>): look <look>, data <data>, <n> slides, checked|not checked` (the check word only for a kind with a check tool). The server writes it verbatim as the Conversation's `d-` working-list entry; the runner journals it from the event's reply; each once per task. `GET .../tasks` lists the last three done tasks as `done`, decision included.
+Only a structured error (`{"error": …}`) makes a result a failure. A check step is needed only for a deliverable with a check tool (decks, `deck_check`); a plan for any other kind ends on a `read` or `saved` step and never reads "Not checked". No event creates or settles a task any more (ADR 0029): a plan is kept only on a task recorded before, and a read (`GET .../tasks`) never changes one.
 
 **Step comment.** A person's message may carry `context.step_comment {card_id, step_index, text}` beside it, sent like `card_answer`. The engine keeps the text on that step (`comments`) and the turn the message opens reads one line before its task lines: `About the step "<step text>": <comment>`.
 

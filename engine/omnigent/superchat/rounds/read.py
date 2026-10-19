@@ -3,6 +3,10 @@
 * :class:`Announcer` folds a Round whose record grew and sends its summary as ``round.updated``
   on the Conversation's family stream, at most once per :data:`ANNOUNCE_EVERY` seconds per Round
   and only while a family stream is open.
+* :func:`item_rounds` cuts a run of a Conversation's items into the Rounds they are in, which
+  :func:`attach_round_ids` puts on each transcript message (``round_id``) and the Activity rows
+  read; :func:`open_rounds` lists the Rounds whose Helpers still work (the turn prefix and the
+  context brief).
 * :func:`attach_round_files`, on when :data:`ROUND_FILES_ENV` is set, draws a transcript
   page's file cards from each Round's view instead of from the save calls on the page.
 * :func:`shadow_diff`, on when :data:`SHADOW_ENV` is set, folds a Round after a turn of it ends
@@ -30,6 +34,7 @@ from omnigent.superchat.family.tree import (
     sub_agent_status,
 )
 from omnigent.superchat.rounds.fold import TURN_ENDED, fold, summary
+from omnigent.superchat.rounds.record import round_of
 from omnigent.superchat.rounds.store import RoundEvent, SqlAlchemyRoundStore
 from omnigent.superchat.transcript.blocks import file_block, helper_session_ids, project_items
 
@@ -52,6 +57,8 @@ _START_SLACK = 2.0
 ROUND_FILES_ENV = "OMNIGENT_ROUND_FILES"
 #: Messages searched back from a page for the Round its first items are in.
 _OPENER_LOOKBACK = 50
+#: Latest Rounds :func:`open_rounds` looks through for the ones still working.
+_OPEN_LOOKBACK = 10
 #: Today's statuses (an Activity's, a Helper's) as the fold names them.
 _OLD_STATUS = {STATUS_IN_PROGRESS: "running", STATUS_CANCELLED: "stopped"}
 
@@ -127,55 +134,132 @@ class _Views:
         return self._views[round_id]
 
 
-def _opener_before(
-    conv_store: ConversationStore, conversation_id: str, item_id: str, views: _Views
+def _round_before(
+    store: SqlAlchemyRoundStore, conv_store: ConversationStore, conversation_id: str, item_id: str
 ) -> str | None:
-    """The Round the items after *item_id* are in: the newest Round opened before them."""
+    """The Round the items after *item_id* are in: that of the newest message before them that
+    opened or woke one."""
     page = conv_store.list_items(
         conversation_id, limit=_OPENER_LOOKBACK, after=item_id, order="desc", type="message"
     )
-    for item in page.data:
-        data = item.data
-        if data.role == "user" and not is_system_notice(data) and views(item.id) is not None:
-            return item.id
-    return None
+    ids = [item.id for item in page.data]
+    known = store.item_rounds(conversation_id, ids)
+    return next((known[i] for i in ids if i in known), None)
+
+
+def item_rounds(
+    store: SqlAlchemyRoundStore,
+    conv_store: ConversationStore,
+    conversation_id: str,
+    item_ids: Sequence[str],
+) -> list[str | None]:
+    """The Round each of a Conversation's *item_ids* (oldest first, one run of its items) is in.
+
+    A person's message that opened a Round starts it and a Helper's notice joins the Round of
+    that Helper; every other item (a steer, a reply, a tool call) is in the Round of the last of
+    those before it, looked up before the first item when the run starts inside a Round. An item
+    before any recorded Round is in none (``None``).
+    """
+    known = store.item_rounds(conversation_id, item_ids)
+    current = None
+    if item_ids and item_ids[0] not in known:
+        current = _round_before(store, conv_store, conversation_id, item_ids[0])
+    out: list[str | None] = []
+    for item_id in item_ids:
+        current = known.get(item_id, current)
+        out.append(current)
+    return out
+
+
+def attach_round_ids(
+    store: SqlAlchemyRoundStore,
+    conv_store: ConversationStore,
+    conversation: Any,
+    items: Sequence[Mapping[str, Any]],
+    messages: list[dict[str, Any]],
+) -> None:
+    """Give each transcript message the ``round_id`` of the Round it is in, in place.
+
+    A Conversation's *items* (the page's, oldest first: a hidden notice still moves the Round)
+    are cut by :func:`item_rounds`, and a message is in the Round of the item it was drawn from;
+    every message of a Helper is in the Round the Helper was started in. ``None`` outside any
+    Round.
+    """
+    if conversation.kind == "sub_agent":
+        own = round_of(conversation.labels)
+        for message in messages:
+            message["round_id"] = own
+        return
+    ids = [str(item["id"]) for item in items]
+    by_item = dict(zip(ids, item_rounds(store, conv_store, conversation.id, ids), strict=True))
+    for message in messages:
+        message["round_id"] = by_item.get(message["id"])
+
+
+def open_rounds(
+    store: SqlAlchemyRoundStore, conv_store: ConversationStore, conversation_id: str
+) -> list[dict[str, Any]]:
+    """The Conversation's Rounds still working, newest first: unsettled in the record, opened
+    by the person, and with a Helper whose session still runs.
+
+    A Round whose record never settled (its process ended mid-turn) and whose Helpers all ended
+    is not working, so nothing reads as working once its work is gone.
+
+    :returns: ``[{"round_id", "ask", "helpers": [{"id", "title"}]}]``, at most from the
+        :data:`_OPEN_LOOKBACK` latest Rounds.
+    """
+    rows: list[dict[str, Any]] = []
+    for round_id in store.recent(conversation_id, _OPEN_LOOKBACK):
+        view = fold(store.events(round_id, conversation_id), round_id)
+        if view["settled_at"] is not None or view["hidden"]:
+            continue
+        running = [h for h in view["helpers"].values() if h["status"] == "running"]
+        live = conv_store.get_conversations([h["id"] for h in running]) if running else {}
+        working = [
+            h
+            for h in running
+            if h["id"] in live and sub_agent_status(live[h["id"]]) == STATUS_IN_PROGRESS
+        ]
+        if working:
+            rows.append(
+                {
+                    "round_id": round_id,
+                    "ask": view["ask"],
+                    "helpers": [{"id": h["id"], "title": h["title"]} for h in working],
+                }
+            )
+    return rows
 
 
 def attach_round_files(
     store: SqlAlchemyRoundStore,
-    conv_store: ConversationStore,
     conversation_id: str,
     messages: list[dict[str, Any]],
     *,
-    first_item_id: str | None,
-    newer_item_id: str | None,
+    newer_round_id: str | None,
     artifacts: SqlAlchemyArtifactStore | None = None,
 ) -> None:
     """Draw each recorded Round's file cards from its view, in place on transcript *messages*.
 
-    The page is cut into Rounds at the person's messages that opened one; a steer stays in the
-    Round it joined, and the messages before the page's first opener are in the Round opened
-    before the page. A recorded Round's cards are its view's files in order, the Assistant's and
-    its Helpers', as ``file`` blocks after the words of its last assistant message; the cards its
-    save calls drew are dropped. A Round that goes on past the page (*newer_item_id*, the
-    oldest item of the page after this one, is not an opener) draws its cards on the page that
+    The messages are in the Rounds their ``round_id`` names (:func:`attach_round_ids`). A
+    recorded Round's cards are its view's files in order, the Assistant's and its Helpers', as
+    ``file`` blocks after the words of its last assistant message; the cards its save calls drew
+    are dropped. A Round that goes on past the page (*newer_round_id*, the Round of the oldest
+    item of the page after this one, is the page's last Round) draws its cards on the page that
     holds its end, so a page's size never moves a card. A Round with no record keeps the cards
     its calls drew.
 
-    :param first_item_id: The oldest item of the page, ``None`` for an empty page.
-    :param newer_item_id: The oldest item of the page after this one; ``None`` on the newest.
+    :param newer_round_id: The Round of the oldest item of the page after this one; ``None`` on
+        the newest page.
     :param artifacts: Where a card's title and size are read; without it a card has neither.
     """
     views = _Views(store, conversation_id)
-    rounds: list[tuple[str | None, list[dict[str, Any]]]] = [(None, [])]
+    rounds: list[tuple[str | None, list[dict[str, Any]]]] = []
     for message in messages:
-        if message["role"] == "user" and views(message["id"]) is not None:
-            rounds.append((message["id"], []))
+        round_id = message.get("round_id")
+        if not rounds or rounds[-1][0] != round_id:
+            rounds.append((round_id, []))
         rounds[-1][1].append(message)
-    if rounds[0][1] and first_item_id is not None:
-        opener = _opener_before(conv_store, conversation_id, first_item_id, views)
-        rounds[0] = (opener, rounds[0][1])
-    ends_later = newer_item_id is not None and views(newer_item_id) is None
     saved = (
         artifacts.for_rounds(conversation_id, [r for r, _ in rounds if r is not None])
         if artifacts is not None
@@ -190,7 +274,7 @@ def attach_round_files(
         replies = [m for m in mine if m["role"] == "assistant"]
         closing = next((m for m in reversed(replies) if m["blocks"]), None)
         closing = closing or (replies[-1] if replies else None)
-        if closing is None or (index == len(rounds) - 1 and ends_later):
+        if closing is None or (index == len(rounds) - 1 and newer_round_id == round_id):
             continue
         rows = {a.id: a for a in saved.get(round_id, [])}
         for f in view["files"]:
@@ -241,16 +325,13 @@ def _round_cards(
     items: list[Any],
 ) -> dict[str, list[tuple[str, int | None]]]:
     """The Round's file cards drawn from its *items*, with :data:`ROUND_FILES_ENV` off and on."""
-    messages = project_items([item.to_api_dict() for item in items])
+    flat = [item.to_api_dict() for item in items]
+    messages = project_items(flat)
     off = cards(messages)
-    attach_round_files(
-        store,
-        conv_store,
-        conversation_id,
-        messages,
-        first_item_id=items[0].id,
-        newer_item_id=None,
-    )
+    conversation = conv_store.get_conversation(conversation_id)
+    if conversation is not None:
+        attach_round_ids(store, conv_store, conversation, flat, messages)
+    attach_round_files(store, conversation_id, messages, newer_round_id=None)
     return {"off": off, "on": cards(messages)}
 
 

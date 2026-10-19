@@ -1,16 +1,16 @@
-"""Server side of tasks: applies what happened to a Conversation's task records (ADR 0025).
+"""Server side of tasks: what a turn reads in front of the person's message, and the picks on
+the cards that asked.
 
-Every write comes from an event the engine saw (``deck_new`` returned, a file was saved, a Helper
-started, a card was answered, a turn ended), never from the model's word. A Helper's events land
-on the Conversation that started it, on the task the Helper was started for. The lifecycle is in
-:mod:`omnigent.superchat.tasks.record`.
+The Round record is the source (ADR 0029): the work still under way is the Conversation's
+Rounds whose Helpers still run (:func:`~omnigent.superchat.rounds.read.open_rounds`), and a card
+answer is kept on the message that carried it, the opener of its Round. Nothing creates or
+settles a task record any more (no Helper's start or finish, no save, no turn): the ``tasks``
+table is read, and only the plan a task already keeps is still written.
 """
 
 from __future__ import annotations
 
-import json
 import logging
-import threading
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -18,31 +18,23 @@ from typing import Any
 from omnigent.context.labels import BACKGROUND_LABELS
 from omnigent.context.rollover import _MID_TURN_LIVE_STATUSES
 from omnigent.db.utils import now_epoch
-from omnigent.entities import Conversation, FunctionCallData, FunctionCallOutputData, MessageData
-from omnigent.server.auth import RESERVED_USER_LOCAL
+from omnigent.entities import Conversation, MessageData
 from omnigent.stores import ConversationStore
 from omnigent.superchat.artifacts.links import is_person_message
 from omnigent.superchat.family.tree import STATUS_DONE, STATUS_IN_PROGRESS, sub_agent_status
-from omnigent.superchat.tasks.decisions import record_decision
+from omnigent.superchat.rounds.read import open_rounds
+from omnigent.superchat.rounds.record import round_of
+from omnigent.superchat.rounds.store import SqlAlchemyRoundStore
 from omnigent.superchat.tasks.record import (
-    ACTIVE,
-    BUILDING,
-    DONE,
     EVIDENCE_KINDS,
-    OPEN,
     STALE_AFTER,
     Task,
-    best_match,
     comment_step,
-    decision_line,
     helper_ids,
-    kind_for_brief,
-    kind_for_name,
     parse_card_answer,
     parse_step_comment,
     plan_views,
     plans_from_items,
-    record_answer,
     replay,
     tick,
 )
@@ -54,21 +46,11 @@ _logger = logging.getLogger(__name__)
 _MAX_HOPS = 4
 #: Newest items read to find the person's latest message.
 _LOOKBACK = 20
-#: Newest card results searched for the card an answer names.
-_CARD_LOOKBACK = 50
-#: A Conversation turn saved this task; its ``turn_end`` closes it (popped there).
-_SAVED = "saved_this_turn"
-#: The last Helper whose finish was read onto the task, so it is read once.
-_SETTLED = "helper_settled"
 #: The Helper whose turn ended well (its own ``turn_end``): finished, even while its live status
 #: still says running.
 _ENDED = "helper_turn_ended"
-#: Seconds a Helper's end waits to look again at a Conversation turn that was still running.
-IDLE_RECHECK = 3.0
 #: The plan the task keeps (ADR 0027), ticked by :func:`~omnigent.superchat.tasks.record.tick`.
 _PLAN = "plan"
-#: Done tasks a read lists (``done``), newest first: what the context brief reads.
-RECENT_DONE = 3
 #: The person's latest comment on a plan step (``{item_id, step, text}``): the turn its message
 #: opens reads it.
 _COMMENT = "step_comment"
@@ -94,11 +76,14 @@ class Place:
     :param helpers: The Helper sessions from this one up to the Conversation (empty for the
         Conversation itself).
     :param background: A schedule or an ad-hoc pass started this work, not a person.
+    :param round_id: The Round the session is in (a Helper's: the one it was started in), else
+        ``None``.
     """
 
     conversation: Conversation
     helpers: tuple[str, ...]
     background: bool
+    round_id: str | None = None
 
     @property
     def is_helper(self) -> bool:
@@ -119,9 +104,15 @@ def _message_text(data: MessageData) -> str:
 class TaskService:
     """Reads and writes a Conversation's tasks from the engine's own events."""
 
-    def __init__(self, store: SqlAlchemyTaskStore, conversations: ConversationStore) -> None:
+    def __init__(
+        self,
+        store: SqlAlchemyTaskStore,
+        conversations: ConversationStore,
+        rounds: SqlAlchemyRoundStore,
+    ) -> None:
         self.store = store
         self.conversations = conversations
+        self.rounds = rounds
 
     # ------------------------------------------------------------------ where
 
@@ -144,10 +135,7 @@ class TaskService:
             background = background or any(key in root.labels for key in BACKGROUND_LABELS)
         if conv.kind == "sub_agent" and not helpers:
             helpers.append(conv.id)
-        return Place(root, tuple(helpers), background)
-
-    def _owner(self, conversation_id: str) -> str:
-        return self.conversations.get_session_owner(conversation_id) or RESERVED_USER_LOCAL
+        return Place(root, tuple(helpers), background, round_of(conv.labels))
 
     def _latest_message(self, conversation_id: str) -> tuple[str | None, str, bool]:
         """``(item id, text, by a person)`` of the newest user-role message in the Conversation;
@@ -168,21 +156,26 @@ class TaskService:
     # ------------------------------------------------------------------ reads
 
     def view(self, session_id: str) -> dict[str, Any] | None:
-        """What a turn and ``deck_new`` read: the active tasks, the person's latest message,
-        whether a person opened this turn and, when that message answers a card, the answer.
-
-        A read changes nothing: a Helper that finished since the last ``turn_start`` already
-        reads as it will be settled (done when it finished, open again when it failed), and
-        ``turn_start`` settles it. ``done`` lists the last :data:`RECENT_DONE` done tasks.
+        """What a turn and ``deck_new`` read: the person's latest message, whether a person
+        opened this turn, the Round the session is in (``round_id``), the card answer that
+        Round's message carried, and the Conversation's Rounds still working (``rounds``,
+        :func:`~omnigent.superchat.rounds.read.open_rounds`). A read changes nothing.
         """
         place = self.place(session_id)
         if place is None:
             return None
         conversation_id = place.conversation.id
         item_id, message, by_person = self._latest_message(conversation_id)
-        answer = self.store.answer(conversation_id, item_id) if item_id and by_person else None
-        tasks = self._active(conversation_id)
-        settle = bool(self._settle_helpers(tasks))
+        round_id = place.round_id
+        # The pick is on the message that opened the Round; a pick sent as a steer is on its own.
+        answer = next(
+            (
+                found
+                for at in (round_id, item_id if by_person else None)
+                if at and (found := self.store.answer(conversation_id, at)) is not None
+            ),
+            None,
+        )
         comment = next(
             (
                 {"step": c["step"], "text": c["text"]}
@@ -197,16 +190,11 @@ class TaskService:
             "background": place.background,
             "message": message,
             "by_person": by_person and not place.is_helper,
+            "round_id": round_id,
             "answer": answer.to_wire() if answer else None,
-            "settle": settle,
             "comment": comment,
-            "tasks": [t.to_wire() for t in tasks if t.status in ACTIVE],
-            "done": [t.to_wire() for t in self.recent_done(conversation_id, RECENT_DONE)],
+            "rounds": open_rounds(self.rounds, self.conversations, conversation_id),
         }
-
-    def recent_done(self, conversation_id: str, n: int) -> list[Task]:
-        """The Conversation's last *n* done tasks, newest first (each with its decision line)."""
-        return [t for t in self.store.list(conversation_id) if t.status == DONE][:n]
 
     def plans(self, conversation_id: str) -> dict[str, dict[str, Any]]:
         """The plans the Conversation's tasks keep, by id (a newer task's plan wins)."""
@@ -261,61 +249,6 @@ class TaskService:
             statuses[ended] = STATUS_DONE
         return statuses
 
-    def _settle_helpers(self, tasks: list[Task]) -> list[Task]:
-        """In memory: a task whose newest Helper finished since it was last settled is done when
-        it finished well, open again otherwise; each finished Helper settles the plan step it
-        was doing. Returns the tasks that changed (the caller saves them, or not for a read)."""
-        changed: list[Task] = []
-        for task in tasks:
-            moved = self._settle_plan(task)
-            last = task.helper_ids[-1] if task.helper_ids else None
-            if last is not None and not task.helper_running and task.fields.get(_SETTLED) != last:
-                finished = self._task_helpers(task, [last]).get(last)
-                if finished is not None:
-                    task.fields[_SETTLED] = last
-                    if finished == STATUS_DONE:
-                        task.status = DONE
-                    else:
-                        task.status = OPEN
-                    moved = True
-            if moved:
-                changed.append(task)
-        return changed
-
-    def _close(self, task: Task) -> None:
-        """The task is done: its decision line (ADR 0027) is composed once, kept on the record
-        for the brief and put in the working list (the runner journals it from the reply)."""
-        task.status = DONE
-        task.fields["decision"] = decision_line(task)
-        record_decision(self.conversations, task)
-        _logger.info(
-            "task %s closed: %s",
-            task.id,
-            task.fields["decision"],
-            extra={"session_id": task.conversation_id},
-        )
-
-    def _settle_plan(self, task: Task) -> bool:
-        """Tick the plan items whose Helper finished (``helper_done``); whether any changed."""
-        plan = task.fields.get(_PLAN)
-        if not isinstance(plan, dict):
-            return False
-        doing = [
-            str(item["helper_id"])
-            for item in plan.get("items", ())
-            if item.get("evidence") == "doing" and item.get("helper_id")
-        ]
-        statuses = self._task_helpers(task, doing)
-        changed = False
-        for helper_id in doing:
-            status = statuses.get(helper_id)
-            if status is None or status == STATUS_IN_PROGRESS:
-                continue
-            ok = status == STATUS_DONE
-            event = {"kind": "helper_done", "helper_id": helper_id, "ok": ok}
-            changed = _tick(task, event) or changed
-        return changed
-
     # ------------------------------------------------------------------ writes
 
     def _sweep(self, conversation_id: str) -> None:
@@ -332,195 +265,6 @@ class TaskService:
         """The task a Helper (or the Helper above it) was started for."""
         chain = set(place.helpers)
         return next((t for t in tasks if chain & set(t.helper_ids)), None)
-
-    def _new(self, conversation_id: str, kind: str, title: str) -> Task:
-        return self.store.create(self._owner(conversation_id), conversation_id, kind, title)
-
-    def deck_built(self, session_id: str, event: Mapping[str, Any]) -> Task | None:
-        """``deck_new`` returned a deck (or its layout menu): the deck task, building.
-
-        The deck's file finds its task among all of the Conversation's, so an event that arrives
-        after the file was saved updates the done task instead of opening a second one, and
-        never moves it back to building.
-        """
-        place = self.place(session_id)
-        title = event.get("title")
-        if place is None or not isinstance(title, str) or not title.strip():
-            return None
-        conversation_id, active = self._start(place)
-        name = str(event.get("file") or "")
-        task = (
-            next(
-                (
-                    t
-                    for t in self.store.list(conversation_id)
-                    if name and t.kind == "deck" and t.fields.get("file") == name
-                ),
-                None,
-            )
-            or self._helpers_task(place, active)
-            or best_match(active, "deck", title, name)
-            or self._new(conversation_id, "deck", title)
-        )
-        if not place.is_helper:
-            task.title = title.strip()[:256]
-        for key in ("look", "look_id", "look_from", "file"):
-            if isinstance(event.get(key), str) and event[key]:
-                task.fields[key] = event[key]
-        slides = event.get("slides")
-        if isinstance(slides, int) and not isinstance(slides, bool) and slides > 0:
-            task.fields["slides"] = slides
-        if event.get("written") is True:
-            _tick(task, {"kind": "built", "deliverable": "deck"})
-        if task.status != DONE:
-            task.status = BUILDING
-        return self.store.save(task)
-
-    def saved(self, session_id: str, event: Mapping[str, Any]) -> Task | None:
-        """A file was saved with ``artifact_save``.
-
-        In the Conversation it delivers its task (or, with no open task, opens one), closed when
-        the turn ends. A Helper's save is a draft of the task it was started for.
-        """
-        place = self.place(session_id)
-        name, group = event.get("name"), event.get("group_id")
-        if place is None or not isinstance(name, str) or not isinstance(group, str):
-            return None
-        conversation_id, active = self._start(place)
-        title = str(event.get("title") or name)
-        kind = kind_for_name(name)
-        task = next(
-            (t for t in self.store.list(conversation_id) if group in t.artifact_group_ids), None
-        )
-        if place.is_helper:
-            task = (
-                task or self._helpers_task(place, active) or best_match(active, kind, title, name)
-            )
-            if task is None:
-                return None
-        else:
-            task = (
-                task
-                or best_match(active, kind, title, name)
-                or next((t for t in active if t.kind == kind), None)
-            )
-            if task is None:
-                task = self._new(conversation_id, kind, title)
-                task.fields["file"] = name
-            task.fields[_SAVED] = True
-            if task.status != DONE:
-                task.status = BUILDING
-        if group not in task.artifact_group_ids:
-            task.artifact_group_ids.append(group)
-        artifact_id = event.get("artifact_id")
-        _tick(task, {"kind": "saved", "name": name, "title": title, "artifact_id": artifact_id})
-        return self.store.save(task)
-
-    def helper_started(self, session_id: str, event: Mapping[str, Any]) -> Task | None:
-        """A Helper was started: it works on the task it was started for.
-
-        That is the starting Helper's own task, else the newest active task of the kind its
-        brief names (any kind when the brief names none), else a new task.
-        """
-        place = self.place(session_id)
-        helper_id = event.get("helper_id")
-        if place is None or not isinstance(helper_id, str) or not helper_id:
-            return None
-        conversation_id, active = self._start(place)
-        brief = str(event.get("title") or "")
-        kind = kind_for_brief(brief)
-        task = (
-            self._helpers_task(place, active)
-            or next((t for t in active if t.kind == kind), None)
-            or (active[0] if active and kind == "file" else None)
-            or self._new(conversation_id, kind, brief or kind)
-        )
-        if helper_id not in task.helper_ids:
-            task.helper_ids.append(helper_id)
-            _tick(task, {"kind": "helper_started", "helper_id": helper_id})
-        if task.status != DONE:
-            task.status = BUILDING
-        task.helper_running = True
-        return self.store.save(task)
-
-    def turn_started(self, session_id: str, _event: Mapping[str, Any]) -> list[Task]:
-        """A Conversation turn started: a Helper that finished since settles its task and plan
-        step (done when it finished well, open again otherwise). Answers with the tasks it
-        closed."""
-        place = self.place(session_id)
-        if place is None or place.is_helper:
-            return []
-        return self._settle(place.conversation.id)
-
-    def _settle(self, conversation_id: str) -> list[Task]:
-        """Save what finished Helpers did to their tasks; the tasks it closed."""
-        closed: list[Task] = []
-        for task in self._settle_helpers(self._active(conversation_id)):
-            if task.status == DONE:
-                self._close(task)
-                closed.append(task)
-            self.store.save(task)
-        return closed
-
-    def turn_ended(self, session_id: str, _event: Mapping[str, Any]) -> list[Task]:
-        """A turn ended. Answers with every task it closed (their decision lines are in the
-        working list; the runner journals them).
-
-        A Conversation's turn settles what finished Helpers did (as ``turn_start``); then a task
-        it saved is done, unless a Helper of it still runs, and a task it was building and no
-        Helper runs for is open again. A Helper's turn is its finish: the newest Helper of a
-        task reads done from now on, and settles the task at once when no Conversation turn
-        runs; one that runs settles it at its own end, and the task is looked at once more
-        after :data:`IDLE_RECHECK` in case that turn had already ended.
-        """
-        place = self.place(session_id)
-        if place is None:
-            return []
-        conversation_id = place.conversation.id
-        if place.is_helper:
-            return self._helper_ended(place)
-        closed = self._settle(conversation_id)
-        for task in self._active(conversation_id):
-            saved = task.fields.pop(_SAVED, False)
-            if task.helper_running:
-                if saved:
-                    self.store.save(task)
-                continue
-            if saved:
-                self._close(task)
-                closed.append(task)
-                self.store.save(task)
-            elif task.status != OPEN:
-                task.status = OPEN
-                self.store.save(task)
-        return closed
-
-    def _helper_ended(self, place: Place) -> list[Task]:
-        helper_id = place.helpers[0]
-        task = self._helpers_task(place, self._active(place.conversation.id))
-        if task is None or task.helper_ids[-1] != helper_id:
-            return []
-        task.fields[_ENDED] = helper_id
-        self.store.save(task)
-        conversation_id = place.conversation.id
-        if place.conversation.live_status not in _MID_TURN_LIVE_STATUSES:
-            return self._settle(conversation_id)
-        # The running turn settles it at its end; look once more in case it already ended.
-        again = threading.Timer(IDLE_RECHECK, self._settle_if_idle, (conversation_id,))
-        again.daemon = True
-        again.start()
-        return []
-
-    def _settle_if_idle(self, conversation_id: str) -> None:
-        """Settle finished Helpers when no Conversation turn runs. Never raises."""
-        try:
-            conversation = self.conversations.get_conversation(conversation_id)
-            if conversation is not None and (
-                conversation.live_status not in _MID_TURN_LIVE_STATUSES
-            ):
-                self._settle(conversation_id)
-        except Exception:  # the next turn settles it
-            _logger.warning("tasks of %s not settled", conversation_id, exc_info=True)
 
     def plan_rendered(self, session_id: str, event: Mapping[str, Any]) -> Task | None:
         """A ``plan`` card was shown: the task the turn works on keeps it.
@@ -595,54 +339,11 @@ class TaskService:
             return
 
     def card_answered(self, session_id: str, item_id: str, context: Mapping[str, Any]) -> None:
-        """A message carried ``context.card_answer``: keep it on the message, and on the task
-        its card asked for."""
+        """A message carried ``context.card_answer``: keep it on that message (the opener of the
+        Round it starts), where the turn prefix and ``deck_new`` read it."""
         answer = parse_card_answer(context)
-        if answer is None:
-            return
-        task_id = self._card_task(session_id, answer.card_id)
-        self.store.save_answer(session_id, item_id, answer, task_id)
-        task = self.store.get(task_id) if task_id else None
-        if task is None or task.conversation_id != session_id or task.status not in ACTIVE:
-            return
-        record_answer(task, answer, item_id)
-        _tick(task, {"kind": "answered"})
-        self.store.save(task)
-
-    def _card_task(self, conversation_id: str, card_id: str) -> str | None:
-        """The task id the card *card_id* recorded, else ``None``.
-
-        The web sends the engine's own card id (the transcript's ``card_id``, the card's ``id``);
-        an older client sends ``<call item id>:<block>``, matched by the call's result.
-        """
-        outputs = self.conversations.list_items(
-            conversation_id, limit=_CARD_LOOKBACK, order="desc", type="function_call_output"
-        ).data
-        call_id = self._call_id(conversation_id, card_id.split(":", 1)[0])
-        for item in outputs:
-            data = item.data
-            if not isinstance(data, FunctionCallOutputData):
-                continue
-            try:
-                card = json.loads(data.output)
-            except ValueError:
-                continue
-            if not isinstance(card, dict) or card.get("type") != "card":
-                continue
-            if card.get("id") == card_id or (call_id is not None and data.call_id == call_id):
-                task_id = card.get("task_id")
-                return task_id if isinstance(task_id, str) and task_id else None
-        return None
-
-    def _call_id(self, conversation_id: str, item_id: str) -> str | None:
-        """The ``call_id`` of the function call stored as *item_id*, else ``None``."""
-        try:
-            call = self.conversations.get_item(conversation_id, item_id)
-        except Exception:  # noqa: BLE001 - a malformed id from the client is no call
-            return None
-        if call is None or not isinstance(call.data, FunctionCallData):
-            return None
-        return call.data.call_id
+        if answer is not None:
+            self.store.save_answer(session_id, item_id, answer)
 
     def conversation_deleted(self, session_id: str) -> None:
         """A deleted Conversation's tasks and card answers go with it."""

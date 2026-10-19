@@ -13,6 +13,7 @@ for step/detail projection rather than re-implementing it.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
@@ -24,6 +25,7 @@ from omnigent.context.labels import (
     ADHOC_HELPER_LABEL_KEY,
     ARTIFACT_CHAT_LABEL_KEY,
     PAUSED_LABEL_KEY,
+    ROUND_LABEL_KEY,
     SCHEDULED_HELPER_LABEL_KEY,
     is_artifact_chat,
 )
@@ -64,6 +66,8 @@ from omnigent.util.session_lifecycle import title_without_closed_marker
 if TYPE_CHECKING:
     from omnigent.server.background_session_titles import BackgroundSessionTitleCoordinator
 
+_logger = logging.getLogger(__name__)
+
 KIND_TURN = "turn"
 KIND_SUB_AGENT = "sub_agent"
 
@@ -82,6 +86,9 @@ SOURCE_STUDIO = "studio"
 #: The file's name for a studio's group id (``None`` when unknown), filled in by the artifacts
 #: capability: the activity read has the conversation store only.
 FILE_NAMES: dict[str, Callable[[str], str | None]] = {}
+#: ``(conversation id, its item ids oldest first) -> the Round each item is in``, filled in by
+#: the rounds capability (``rounds.read.item_rounds``): a turn's row carries its Round.
+ROUND_IDS: dict[str, Callable[[str, list[str]], list[str | None]]] = {}
 #: A conversation turn is shown only when it did real work beyond a quick answer.
 _MIN_TURN_STEPS = 3
 _MIN_TURN_SECONDS = 60
@@ -187,6 +194,8 @@ class Activity:
     :param fold: How many of the plan's leading done steps fold away (``tasks.record.fold``).
     :param paused: For a Helper, whether it is paused (its ``superchat.paused`` label is set);
         ``None`` for a turn.
+    :param round_id: The Round the work is in (ADR 0029): a turn's, from the record; a Helper's,
+        the Round it was started in. ``None`` outside any Round.
     """
 
     id: str
@@ -208,6 +217,7 @@ class Activity:
     plan: list[dict[str, Any]] | None = None
     fold: int = 0
     paused: bool | None = None
+    round_id: str | None = None
 
 
 #: The families of tools a step belongs to (:func:`step_family`).
@@ -772,6 +782,7 @@ def _sub_agent_activity(
         parent_chat_id=conversation.parent_conversation_id,
         summary_line=_calls_line(calls),
         paused=bool((conversation.labels or {}).get(PAUSED_LABEL_KEY)),
+        round_id=(conversation.labels or {}).get(ROUND_LABEL_KEY) or None,
     )
 
 
@@ -812,6 +823,7 @@ def _activities_for_conversation(
             )
         ]
     groups = _group_items_by_response(items)
+    rounds = _item_rounds(conversation.id, items) if not studio else {}
     stored_labels = conv_store.get_activity_labels([group[0].response_id for group in groups])
     plans = {} if studio else _turn_plans(plan_views, conversation, items)
     activities: list[Activity] = []
@@ -836,11 +848,23 @@ def _activities_for_conversation(
             plan=plans.get(group[0].response_id),
         )
         if activity is not None:
-            activities.append(activity)
+            activities.append(replace(activity, round_id=rounds.get(group[0].id)))
     if studio:
         artifact = _studio_file(conversation)
         return [replace(a, source=SOURCE_STUDIO, artifact=artifact) for a in activities]
     return activities
+
+
+def _item_rounds(conversation_id: str, items: list[ConversationItem]) -> dict[str, str | None]:
+    """``item id -> the Round it is in`` (:data:`ROUND_IDS`); empty without the rounds
+    capability or when its read fails (a row is never lost for its Round)."""
+    ids = [item.id for item in items]
+    for read in ROUND_IDS.values():
+        try:
+            return dict(zip(ids, read(conversation_id, ids), strict=True))
+        except Exception:
+            _logger.warning("rounds of %s not read", conversation_id, exc_info=True)
+    return {}
 
 
 def _studio_file(conversation: Conversation) -> dict[str, str]:
@@ -1132,4 +1156,5 @@ def activity_to_dict(activity: Activity, tz: str | None = None) -> dict[str, Any
         **({"paused": activity.paused} if activity.paused is not None else {}),
         "fold": activity.fold,
         "plan": activity.plan,
+        "round_id": activity.round_id,
     }

@@ -10,10 +10,12 @@ from omnigent.context.state_file import (
     Entry,
     close_journal_line,
     entries,
+    entry_label_key,
     fit_budget,
     normalize_tag,
     parse,
     pending_closes,
+    pending_entries,
     reconcile,
     render,
     split_journal,
@@ -95,6 +97,21 @@ def test_pending_closes_read_from_labels_skip_cleared_ones() -> None:
     }
     assert pending_closes(labels) == {"t-a": "wrong"}
     assert pending_closes(None) == {}
+
+
+def test_a_pending_entry_lands_in_the_working_list() -> None:
+    labels = {entry_label_key("d-rbc-vs-td"): "RBC vs TD (deck): checked", "other": "x"}
+    adds = pending_entries(labels)
+    assert adds == {"d-rbc-vs-td": "RBC vs TD (deck): checked"}
+    previous = (
+        "Working list\n- [t-budget · 2026-10-01] Spring budget\n- [d-rbc-vs-td · 2026-10-01] old"
+    )
+    out = reconcile(previous, previous, adds=adds, today=TODAY, count=len)
+    entry = entries(parse(out.text))["d-rbc-vs-td"]
+    assert entry.body == "RBC vs TD (deck): checked" and entry.date == TODAY
+    assert "t-budget" in entries(parse(out.text))
+    fresh = reconcile(None, "Working list", adds=adds, today=TODAY, count=len)
+    assert f"- [d-rbc-vs-td · {TODAY}] RBC vs TD (deck): checked" in fresh.text
 
 
 # ── repair ─────────────────────────────────────────────────────────────────

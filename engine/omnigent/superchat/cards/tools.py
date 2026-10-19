@@ -455,14 +455,13 @@ def _option_ids(
 
 
 def build_clarification(
-    args: dict[str, Any], task_id: str | None = None, card_id: str | None = None
+    args: dict[str, Any], round_id: str | None = None, card_id: str | None = None
 ) -> dict[str, Any]:
     """
     Validate ``ask_clarification`` arguments and build its ``ask`` card payload.
 
     :param args: Parsed tool arguments: ``question`` and 2-5 short, distinct ``options``.
-    :param task_id: The open task the card asks about (ADR 0025), kept in the stored payload so
-        the answer finds its task by the card.
+    :param round_id: The Round the card asks in (ADR 0029), kept in the stored payload.
     :param card_id: The engine's id for the card: the transcript's ``card_id``, which the web
         sends back with the pick.
     :returns: A ``{"type": "card", "card": "ask", ...}`` payload shaped like ``render_card``'s,
@@ -509,8 +508,8 @@ def build_clarification(
             "arrives as their next message."
         )
         out[ENDS_TURN_KEY] = True
-        if task_id:
-            out["task_id"] = task_id
+        if round_id:
+            out["round_id"] = round_id
     return out
 
 

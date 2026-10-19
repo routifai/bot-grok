@@ -21664,7 +21664,7 @@
     },
     "/v1/sessions/{session_id}/tasks": {
       "get": {
-        "description": "The Conversation's active tasks, the person's latest message and a card answer.",
+        "description": "The person's latest message, the session's Round, its card answer and the Rounds\nstill working.",
         "operationId": "read_tasks_v1_sessions__session_id__tasks_get",
         "parameters": [
           {
@@ -21754,7 +21754,7 @@
     },
     "/v1/sessions/{session_id}/transcript": {
       "get": {
-        "description": "A session's transcript as typed blocks (``text``, ``card``, ``helper``, ``file``,\n``secure_entry``, ``error``).\n\n:param session_id: Any session the caller can READ (same gate as ``.../items``).\n:param limit: Items per page, newest page first.\n:param before: Cursor: the ``older_cursor`` of the page after this one.\n:param before_reset: Page the history before the latest reset instead (empty when the\n    session was never reset).\n:returns: ``{\"data\": [message], \"has_more\", \"older_cursor\", \"lineage\", \"reset\", \"live\"}``:\n    ``reset`` is ``{\"item_id\", \"created_at\"}`` of the latest reset or ``None``; ``live``\n    is whether a turn is in flight. A user message still waiting behind the running\n    turn has ``delivered: \"queued\"`` (from the runner's live queue). A person's message\n    linked to an artifact has ``artifact`` (``{artifact_id, name, version, how}``, or\n    ``None`` when the person said it is about none).\n:raises OmnigentError: 403 without READ; 404 if no session exists.",
+        "description": "A session's transcript as typed blocks (``text``, ``card``, ``helper``, ``file``,\n``secure_entry``, ``error``).\n\n:param session_id: Any session the caller can READ (same gate as ``.../items``).\n:param limit: Items per page, newest page first.\n:param before: Cursor: the ``older_cursor`` of the page after this one.\n:param before_reset: Page the history before the latest reset instead (empty when the\n    session was never reset).\n:returns: ``{\"data\": [message], \"has_more\", \"older_cursor\", \"lineage\", \"reset\", \"live\"}``:\n    ``reset`` is ``{\"item_id\", \"created_at\"}`` of the latest reset or ``None``; ``live``\n    is whether a turn is in flight. A user message still waiting behind the running\n    turn has ``delivered: \"queued\"`` (from the runner's live queue). A person's message\n    linked to an artifact has ``artifact`` (``{artifact_id, name, version, how}``, or\n    ``None`` when the person said it is about none). Every message has ``round_id``: the\n    Round it is in (the id of the person's message that opened it), ``None`` outside\n    any Round.\n:raises OmnigentError: 403 without READ; 404 if no session exists.",
         "operationId": "get_session_transcript_v1_sessions__session_id__transcript_get",
         "parameters": [
           {

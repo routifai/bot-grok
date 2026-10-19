@@ -1,10 +1,9 @@
-"""The ``tasks`` and ``card_answers`` tables: a Conversation's deliverables in progress, and the
-picks on the cards that asked about them (ADR 0025)."""
+"""The ``tasks`` and ``card_answers`` tables: the deliverable records of ADR 0025, read only
+since the Round record took their place (ADR 0029), and the picks on the cards that asked."""
 
 from __future__ import annotations
 
 import json
-import uuid
 from typing import Any
 
 from sqlalchemy import delete, select, update
@@ -62,19 +61,6 @@ class SqlAlchemyTaskStore:
             self._engine, query_name_prefix="omnigent.task_store", immediate=True
         )
 
-    def create(self, owner: str, conversation_id: str, kind: str, title: str) -> Task:
-        """A new open task, not yet stored (:meth:`save` stores it)."""
-        now = now_epoch()
-        return Task(
-            id=uuid.uuid4().hex,
-            owner=owner,
-            conversation_id=conversation_id,
-            kind=kind,
-            title=title[:256],
-            created_at=now,
-            updated_at=now,
-        )
-
     def save(self, task: Task) -> Task:
         """Insert or update *task*; its ``updated_at`` becomes now."""
         task.updated_at = now_epoch()
@@ -127,15 +113,7 @@ class SqlAlchemyTaskStore:
 
         run_write_transaction(self._session_immediate, "task_drop_stale", write)
 
-    def get(self, task_id: str) -> Task | None:
-        """One task by id, or ``None``."""
-        with self._session("get_task") as session:
-            row = session.get(SqlTask, (current_workspace_id(), task_id))
-            return _to_entity(row) if row is not None else None
-
-    def save_answer(
-        self, conversation_id: str, item_id: str, answer: CardAnswer, task_id: str | None
-    ) -> None:
+    def save_answer(self, conversation_id: str, item_id: str, answer: CardAnswer) -> None:
         """Keep *answer* on the person's message *item_id* (once; a repeat replaces it)."""
 
         def write(session: Session) -> None:
@@ -146,7 +124,6 @@ class SqlAlchemyTaskStore:
             row.card_id = answer.card_id
             row.option_id = answer.option_id
             row.label = answer.label
-            row.task_id = task_id
             row.created_at = now_epoch()
 
         run_write_transaction(self._session_immediate, "card_answer_save", write)
