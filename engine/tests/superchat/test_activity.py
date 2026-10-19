@@ -24,6 +24,7 @@ from omnigent.entities import (
 from omnigent.superchat.activity.derive import (
     ITEMS_SCAN_LIMIT_ENV,
     ROUND_IDS,
+    ROUND_VIEWS,
     STATUS_CANCELLED,
     STATUS_DONE,
     STATUS_FAILED,
@@ -34,6 +35,7 @@ from omnigent.superchat.activity.derive import (
     step_title_for_call,
 )
 from omnigent.superchat.family.tree import sub_agent_status
+from omnigent.superchat.rounds.fold import fold
 
 
 def _conv(
@@ -495,31 +497,81 @@ def test_flagged_notice_without_the_legacy_prefix_is_still_system_started() -> N
     assert activities[0].title == "Here is the result"
 
 
-def test_turn_titled_by_request_stored_outside_its_response_group(
+def test_a_rounds_rows_read_its_view_not_the_chats_title(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The request carried forward names the turn, and the turn's row is in the Round its first
-    item is in (the rounds capability reads it from the record)."""
-    conv = _conv(title="Main chat")
+    """A recorded Round is one row read from its folded view: its ask names it (never the
+    chat's title), its status and outcome are the Round's, and its Helper's row reads the
+    Round's Helper; with no Round each turn keeps the request, or the chat's title."""
+    conv = _conv(title="Uruguay Five-Slide Presentation")
     items = [
-        _msg("u1", "user", "check the Q4 totals", created_at=1, response_id="resp_user"),
-        _call("fc1", "memory_search", {"query": "q4"}, created_at=2, response_id="resp_2"),
+        _msg("u1", "user", "make a history of jazz deck\nfive slides", response_id="resp_user"),
+        _call("fc1", "memory_search", {"query": "jazz"}, created_at=2, response_id="resp_2"),
         _call_output("fo1", "found", created_at=3, response_id="resp_2"),
-        _msg("a1", "assistant", "Totals match", created_at=4, response_id="resp_2"),
+        _msg("a1", "assistant", "Started a writer", created_at=4, response_id="resp_2"),
+        _msg("n1", "user", "[System: writer finished]", created_at=5, is_system_notice=True),
+        _call("fc2", "sys_read_inbox", {}, call_id="c2", created_at=6, response_id="resp_3"),
+        _call_output("fo2", "{}", call_id="c2", created_at=7, response_id="resp_3"),
+        _msg("a2", "assistant", "{}", created_at=8, response_id="resp_3"),
     ]
-    activities = _activities_for_conversation(
-        _FakeItemsStore(items), conv, include_step_detail=False
-    )
-    assert activities[0].title == "Check the Q4 totals"
-    assert activities[0].round_id is None  # no rounds capability: no Round
+    legacy = _activities_for_conversation(_FakeItemsStore(items), conv, include_step_detail=False)
+    assert [a.title for a in legacy] == [
+        "Make a history of jazz deck five slides",
+        "Uruguay Five-Slide Presentation",
+    ]
+    assert legacy[0].round_id is None  # no rounds capability: no Round
+
+    events = [
+        {
+            "t": 1,
+            "kind": "round.opened",
+            "actor": "person",
+            "text": items[0].data.content[0]["text"],
+        },
+        {
+            "t": 2,
+            "kind": "helper.started",
+            "actor": "assistant",
+            "helper_id": "h1",
+            "title": "Draft the deck",
+        },
+        {"t": 4, "kind": "turn.ended", "actor": "assistant"},
+        {"t": 9, "kind": "stop.requested", "actor": "person"},
+    ]
+    view = fold([{**e, "round_id": "u1"} for e in events], "u1")
 
     def read(conversation_id: str, item_ids: list[str]) -> list[str | None]:
-        assert conversation_id == conv.id and item_ids == ["u1", "fc1", "fo1", "a1"]
+        assert conversation_id == conv.id and item_ids[0] == "u1"
         return ["u1"] * len(item_ids)  # the person's message opened the Round
 
     monkeypatch.setitem(ROUND_IDS, "rounds", read)
+    monkeypatch.setitem(ROUND_VIEWS, "rounds", lambda _c, ids: dict.fromkeys(ids, view))
     [row] = _activities_for_conversation(_FakeItemsStore(items), conv, include_step_detail=False)
-    assert row.round_id == "u1"
+    assert (row.title, row.status, row.round_id) == (
+        "Make a history of jazz deck",
+        STATUS_CANCELLED,
+        "u1",
+    )
+    assert row.summary == view["stop_line"] and row.finished_at == 9
+    assert [s.tool for s in row.steps] == ["memory_search", "sys_read_inbox"]
+    assert row.title_round_id == "u1" and "history of jazz" in (row.title_prompt or "")
+
+    # The Round's model-written title, stored once under its id, names it.
+    store = _FakeItemsStore(items, titles={"u1": "Build a jazz history deck", "resp_2": "Old"})
+    [titled] = _activities_for_conversation(store, conv, include_step_detail=False)
+    assert (titled.title, titled.title_prompt) == ("Build a jazz history deck", None)
+
+    helper = _conv(
+        "h1",
+        kind="sub_agent",
+        title="worker:h-1",
+        labels={ROUND_LABEL_KEY: "u1"},
+        live_status="running",
+    )
+    [helper_row] = _activities_for_conversation(
+        _FakeItemsStore([]), helper, include_step_detail=False
+    )
+    assert (helper_row.title, helper_row.status) == ("Draft the deck", STATUS_CANCELLED)
 
 
 # ── model-written titles, sources, summaries ─────────────────────────────

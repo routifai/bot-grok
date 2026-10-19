@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, tzinfo
 from typing import TYPE_CHECKING, Any
@@ -88,6 +88,17 @@ FILE_NAMES: dict[str, Callable[[str], str | None]] = {}
 #: ``(conversation id, its item ids oldest first) -> the Round each item is in``, filled in by
 #: the rounds capability (``rounds.read.item_rounds``): a turn's row carries its Round.
 ROUND_IDS: dict[str, Callable[[str, list[str]], list[str | None]]] = {}
+#: ``(conversation id, round ids) -> {round id: its folded view}`` (``rounds.fold.fold``), filled
+#: in by the rounds capability: a row in a recorded Round reads that view (ADR 0029).
+ROUND_VIEWS: dict[str, Callable[[str, list[str]], dict[str, dict[str, Any]]]] = {}
+#: A Round's status, and one of its Helpers', as an Activity status.
+_ROUND_STATUS = {
+    "idle": STATUS_IN_PROGRESS,
+    "running": STATUS_IN_PROGRESS,
+    "done": STATUS_DONE,
+    "failed": STATUS_FAILED,
+    "stopped": STATUS_CANCELLED,
+}
 #: A conversation turn is shown only when it did real work beyond a quick answer.
 _MIN_TURN_STEPS = 3
 _MIN_TURN_SECONDS = 60
@@ -190,6 +201,8 @@ class Activity:
         ``"Created 2 files, searched the web, and 12 more steps"``; ``None`` with no steps.
     :param paused: For a Helper, whether it is paused (its ``superchat.paused`` label is set);
         ``None`` for a turn.
+    :param title_round_id: For a row named by its Round's ask, that Round: the model-written
+        title is stored once per Round, under this id.
     :param round_id: The Round the work is in (ADR 0029): a turn's, from the record; a Helper's,
         the Round it was started in. ``None`` outside any Round.
     """
@@ -212,6 +225,7 @@ class Activity:
     summary_line: str | None = None
     paused: bool | None = None
     round_id: str | None = None
+    title_round_id: str | None = None
 
 
 #: The families of tools a step belongs to (:func:`step_family`).
@@ -635,6 +649,86 @@ def _turn_activity(
     )
 
 
+def _ask_title(ask: str) -> str:
+    """A Round's ask as a row title: its first line, tidied, else clipped."""
+    line = next((line.strip() for line in ask.splitlines() if line.strip()), ask)
+    return tidy_request_title(line) or truncate(line, _TITLE_MAX_CHARS)
+
+
+def _round_activity(
+    conversation: Conversation,
+    items: list[ConversationItem],
+    round_id: str,
+    view: Mapping[str, Any],
+    *,
+    include_step_detail: bool,
+    stored_title: str | None,
+) -> Activity | None:
+    """One Round's row, read from its folded *view*: the ask names it, the Round's status and
+    outcome are its own, and its steps are every tool call the Round's turns made. ``None``
+    when the Round called no tool (a quick answer)."""
+    calls = [item for item in items if item.type == "function_call"]
+    if not calls:
+        return None
+    outputs_by_call_id = {
+        item.data.call_id: item  # type: ignore[union-attr]
+        for item in items
+        if item.type == "function_call_output"
+    }
+    # A turn's error is stored as an item only; the record has no failed Round.
+    failed = any(item.type == "error" for item in items)
+    status = STATUS_FAILED if failed else _ROUND_STATUS.get(view["status"], STATUS_IN_PROGRESS)
+    said = [words for words in view["words"] if words.strip()]
+    if status == STATUS_FAILED:
+        outcome = _first_error_message(items) or "Could not complete the request"
+    elif status == STATUS_CANCELLED:
+        outcome = view["stop_line"] or "Stopped"
+    elif status == STATUS_DONE:
+        outcome = (one_line_summary(said[-1]) if said else None) or "Done"
+    else:
+        outcome = None
+    steps = _steps_for_calls(
+        calls,
+        outputs_by_call_id,
+        include_detail=include_step_detail,
+        live=status == STATUS_IN_PROGRESS,
+    )
+    settled_at = view["settled_at"]
+    return Activity(
+        id=turn_activity_id(conversation.id, items[0].response_id),
+        kind=KIND_TURN,
+        chat_id=conversation.id,
+        title=stored_title or _ask_title(view["ask"]),
+        outcome=outcome,
+        status=status,
+        started_at=int(view["started_at"]),
+        finished_at=None
+        if status == STATUS_IN_PROGRESS or settled_at is None
+        else int(settled_at),
+        steps=steps,
+        source=SOURCE_TURN,
+        summary=outcome,
+        title_prompt=None if stored_title else _turn_title_prompt(view["ask"], steps),
+        summary_line=_calls_line(calls),
+        round_id=round_id,
+        title_round_id=round_id,
+    )
+
+
+def _round_views(conversation_id: str, round_ids: Iterable[str | None]) -> dict[str, Any]:
+    """The folded view of each recorded Round a person opened (:data:`ROUND_VIEWS`); empty
+    without the rounds capability or when its read fails (a row then reads as before)."""
+    wanted = list(dict.fromkeys(r for r in round_ids if r))
+    for read in ROUND_VIEWS.values() if wanted else ():
+        try:
+            views = read(conversation_id, wanted)
+        except Exception:
+            _logger.warning("round views of %s not read", conversation_id, exc_info=True)
+            return {}
+        return {r: v for r, v in views.items() if v["ask"] and not v["hidden"]}
+    return {}
+
+
 def _calls_line(calls: list[ConversationItem]) -> str | None:
     return summary_line(
         [(call.data.name, call.data.arguments) for call in calls]  # type: ignore[union-attr]
@@ -696,9 +790,18 @@ def _sub_agent_activity(
     *,
     include_step_detail: bool,
     stored_summary: str | None = None,
+    helper: Mapping[str, Any] | None = None,
 ) -> Activity:
+    """A Helper's row; one started in a recorded Round reads its status, title and result from
+    the Round's view (*helper*), else from its session."""
     _agent, display_title = _split_sub_agent_title(conversation)
-    status = sub_agent_status(conversation, items)
+    if helper is not None:
+        display_title = helper["title"] or display_title
+    status = (
+        _ROUND_STATUS.get(helper["status"], STATUS_IN_PROGRESS)
+        if helper is not None
+        else sub_agent_status(conversation, items)
+    )
     source = _sub_agent_source(conversation)
     title, title_prompt = _sub_agent_title(
         conversation, display_title, _person_request(_first_user_message(items)), source
@@ -721,10 +824,14 @@ def _sub_agent_activity(
         )
     elif status == STATUS_CANCELLED:
         outcome = "Cancelled before finishing"
+    elif helper is not None and helper["result"]:
+        outcome = _reply_outcome(helper["result"])
     else:
         outcome = _reply_outcome(last_assistant_text(items))
     started_at = items[0].created_at if items else conversation.created_at
     finished_at = items[-1].created_at if items and status != STATUS_IN_PROGRESS else None
+    if helper is not None and status != STATUS_IN_PROGRESS and helper["finished_at"]:
+        finished_at = int(helper["finished_at"])
     return Activity(
         id=f"{KIND_SUB_AGENT}:{conversation.id}",
         kind=KIND_SUB_AGENT,
@@ -778,18 +885,43 @@ def _activities_for_conversation(
         _title, summary = conv_store.get_activity_labels([conversation.id]).get(
             conversation.id, (None, None)
         )
+        round_id = (conversation.labels or {}).get(ROUND_LABEL_KEY) or None
+        view = _round_views(conversation.root_conversation_id or conversation.id, [round_id]).get(
+            round_id or ""
+        )
         return [
             _sub_agent_activity(
                 conversation,
                 items,
                 include_step_detail=include_step_detail,
                 stored_summary=summary,
+                helper=view["helpers"].get(conversation.id) if view else None,
             )
         ]
     groups = _group_items_by_response(items)
     rounds = _item_rounds(conversation.id, items) if not studio else {}
-    stored_labels = conv_store.get_activity_labels([group[0].response_id for group in groups])
+    views = _round_views(conversation.id, rounds.values())
+    stored_labels = conv_store.get_activity_labels(
+        [group[0].response_id for group in groups] + list(views)
+    )
     activities: list[Activity] = []
+    # A recorded Round is one row read from its view, whatever turns it took.
+    in_round: dict[str, list[ConversationItem]] = {}
+    for group in groups:
+        round_id = rounds.get(group[0].id)
+        if round_id in views:
+            in_round.setdefault(round_id, []).extend(group)
+    for round_id, round_items in in_round.items():
+        row = _round_activity(
+            conversation,
+            round_items,
+            round_id,
+            views[round_id],
+            include_step_detail=include_step_detail,
+            stored_title=stored_labels.get(round_id, (None, None))[0],
+        )
+        if row is not None:
+            activities.append(row)
     # The user message that started a turn is usually stored outside its
     # response group, so carry the latest one forward.
     request: str | None = None
@@ -800,6 +932,9 @@ def _activities_for_conversation(
             asked = _person_request(first)
             if asked is not None or not studio:
                 request = asked
+        round_id = rounds.get(group[0].id)
+        if round_id in views:
+            continue
         activity = _turn_activity(
             conversation,
             group,
@@ -810,7 +945,8 @@ def _activities_for_conversation(
             stored_summary=stored_labels.get(group[0].response_id, (None, None))[1],
         )
         if activity is not None:
-            activities.append(replace(activity, round_id=rounds.get(group[0].id)))
+            activities.append(replace(activity, round_id=round_id))
+    activities.sort(key=lambda activity: activity.started_at)
     if studio:
         artifact = _studio_file(conversation)
         return [replace(a, source=SOURCE_STUDIO, artifact=artifact) for a in activities]
@@ -982,6 +1118,8 @@ def schedule_missing_titles(
         fallback = activity.summary if activity.status == STATUS_DONE else None
         is_turn = activity.kind == KIND_TURN
         key = label_key = activity.id.rsplit(":", 1)[-1] if is_turn else chat_id
+        # A Round's row is titled once per Round, under the Round's id.
+        key = label_key = activity.title_round_id or key
 
         def save(
             label: str,
