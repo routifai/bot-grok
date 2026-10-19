@@ -1888,9 +1888,10 @@ class TestStreamEventStreaming(unittest.TestCase):
             # leakage. It was dropped because bare mode also kills
             # CLAUDE.md auto-discovery, plugin sync, and skill loading —
             # which the spec's ``skills:`` field is the proper knob for.
+            # ``--name`` names the session, so the CLI makes no title call of its own.
             self.assertEqual(
                 query_calls[0]["extra_args"],
-                {"no-session-persistence": None, "replay-user-messages": None},
+                {"no-session-persistence": None, "replay-user-messages": None, "name": "omnigent"},
             )
             # Skill remains available for configured skills; ToolSearch
             # keeps large MCP definitions deferred until they are needed.

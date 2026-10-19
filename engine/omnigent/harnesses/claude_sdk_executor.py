@@ -2778,7 +2778,13 @@ class ClaudeSDKExecutor(Executor):
             # ``replay-user-messages`` makes the CLI echo each user message it takes
             # up (with the uuid we sent), which is how a mid-turn steer is seen to
             # have been consumed -- see ``steer_session_message``.
-            "extra_args": {"no-session-persistence": None, "replay-user-messages": None},
+            # A named session skips the CLI's own title call, a model call over the
+            # whole first prompt that nothing here reads.
+            "extra_args": {
+                "no-session-persistence": None,
+                "replay-user-messages": None,
+                **({} if cfg.session_titles else {"name": "omnigent"}),
+            },
             "max_buffer_size": 10 * 1024 * 1024,
             "disallowed_tools": list(_SDK_BUILTIN_SUBAGENT_TOOLS) if is_superside_chat else [],
         }

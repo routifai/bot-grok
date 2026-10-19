@@ -6,6 +6,7 @@ In a rollover session each native CLI compacts its own context at
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Mapping
 from datetime import UTC, datetime
@@ -404,6 +405,9 @@ def select_recent(
     ]
     if not turn_starts:
         return []
+    # A token is at least one byte, so a tail this small fits without loading a tokenizer.
+    if len(json.dumps(items, ensure_ascii=False).encode()) <= keep_tokens:
+        return items[turn_starts[0] :]
     selected_start = turn_starts[-1]
     for start in reversed(turn_starts[:-1]):
         if count_tokens(items[start:], model) > keep_tokens:
