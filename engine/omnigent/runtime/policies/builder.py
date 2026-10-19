@@ -491,8 +491,8 @@ def build_policy_engine(
     # no other guardrails are declared (the noop-engine path below
     # is no longer reachable since all_policy_specs is never empty).
     all_policy_specs.append(_ASK_ON_ADD_POLICY_SPEC)
-    # The product's session policies (``runtime/policies/hooks.py``), e.g. Superchat's approvals
-    # and step limit, each on the sessions its predicate covers.
+    # The product's session policies (``runtime/policies/hooks.py``), e.g. Superchat's approvals,
+    # each on the sessions its predicate covers.
     all_policy_specs.extend(
         policy.spec for policy in session_policies() if policy.applies(conv, tree)
     )

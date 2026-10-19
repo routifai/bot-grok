@@ -3,9 +3,9 @@
 ADR 0025 kept one record per deliverable in progress; ADR 0029 moved that to the Round record.
 What the turn reads is now the Rounds still working and the pick the Round's message carried.
 
-Layout: ``record`` (the lines, the card answer, the one stall rule; pure), ``store``
-(``card_answers``), ``service`` (server side: the view a turn reads), ``routes``
-(``/v1/sessions/{id}/tasks``), ``runtime`` (runner side: the turn's lines, the stall log). No
+Layout: ``record`` (the lines, the card answer, the rule for a turn that ends well; pure),
+``store`` (``card_answers``), ``service`` (server side: the view a turn reads), ``routes``
+(``/v1/sessions/{id}/tasks``), ``runtime`` (runner side: the turn's lines and its Round). No
 tools. Conversation-only: a Helper's turn reads no task lines.
 """
 
@@ -15,7 +15,7 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 from omnigent.superchat.feature import Feature, InstallDeps, ToolManagerCtx
-from omnigent.superchat.tasks.runtime import message_prefix, on_result, tool_denied, turn_ended
+from omnigent.superchat.tasks.runtime import message_prefix, turn_ended
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -58,10 +58,8 @@ def _install(app: FastAPI, deps: InstallDeps) -> None:
 FEATURE = Feature(
     name="tasks",
     tools=_tools,
-    on_result=on_result,
     message_prefix=message_prefix,
     conversation_only=True,
     on_turn_end=turn_ended,
-    on_tool_denied=tool_denied,
     install=_install,
 )

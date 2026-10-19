@@ -1,13 +1,11 @@
-"""ADR 0025 scenarios and ADR 0029 Rounds, offline: no turn stalls, asks stay bounded, the step
-limit hands off, no reply names the machinery."""
+"""ADR 0025 scenarios and ADR 0029 Rounds, offline: no turn stalls, asks stay bounded, no reply
+names the machinery."""
 
 from __future__ import annotations
 
 import pytest
 
-from omnigent.superchat.step_limit.policy import LIMIT_ENV
 from omnigent.superchat.tasks import record
-from tests.scenarios.harness import run
 from tests.scenarios.rules import (
     Event,
     as_turn,
@@ -24,9 +22,9 @@ from tests.scenarios.scripts import ROUNDS, SCENARIOS, Scenario
 _ALL = SCENARIOS + ROUNDS
 
 
-@pytest.fixture(autouse=True)
-def _default_limit(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv(LIMIT_ENV, "3")
+def run(scenario: Scenario) -> list[list[Event]]:
+    """A scenario's turns as the scripted model plays them."""
+    return [list(turn) for turn in scenario.turns]
 
 
 def test_the_adrs_name_ten_scenarios_and_six_rounds() -> None:
@@ -54,8 +52,6 @@ def test_scenario_never_stalls(scenario: Scenario) -> None:
     asked = asks(turns)
     assert len(asked) <= scenario.max_asks
     assert len(asked) == len(set(asked)), f"asked again: {asked}"
-    refused = [detail for turn in turns for kind, detail in turn if kind == "refused"]
-    assert len(refused) == scenario.refusals
 
 
 @pytest.mark.parametrize(
@@ -135,7 +131,7 @@ def test_the_adr_transcript_stalls_gives_up_and_asks_again() -> None:
 
 def test_the_scenarios_judge_a_turn_with_the_engines_rule() -> None:
     turn = as_turn([("answer", "Nord"), ("reply", "Noted.")])
-    assert record.is_stall(turn) and not ends_well([("answer", "Nord"), ("reply", "Noted.")])
+    assert not record.ends_well(turn) and not ends_well([("answer", "Nord"), ("reply", "Noted.")])
 
 
 # The turn in ADR 0026's opening: the first output was the deck_new call, no word for 182 s.
@@ -159,7 +155,7 @@ def test_the_adr_0026_transcript_does_not_speak_first() -> None:
         ("Here is the RBC vs TD comparison.", []),
         ("I started a Helper to build the deck.", ["helper"]),
         ("Two sub-agents and a worker are on it.", ["sub-agents", "worker"]),
-        ("The step limit stopped context_brief.", ["step limit", "context_brief"]),
+        ("The harness stopped context_brief.", ["harness", "context_brief"]),
         ("Our helpers' coworker is helpful.", ["helpers"]),
     ],
 )
@@ -185,7 +181,7 @@ def test_speaks_first(turn: list[Event], spoken: bool) -> None:
 @pytest.mark.parametrize(
     ("turn", "well"),
     [
-        # a request opens no task until its work does: only its refusals can stall it
+        # a request opens no task until its work does, so it never stalls
         ([("request", "a deck"), ("reply", "Working on it.")], True),
         ([("request", "a deck"), ("save", "")], True),
         ([("answer", "Nord"), ("save", "")], True),
@@ -196,26 +192,8 @@ def test_speaks_first(turn: list[Event], spoken: bool) -> None:
         ([("steer", "add pricing"), ("message_helper", ""), ("reply", "Noted.")], True),
         ([("message", "what time is it?"), ("reply", "9 pm.")], True),
         ([("notice", "progress"), ("reply", "Two sources read.")], True),
-        ([("notice", "result"), ("refused", "web_search"), ("reply", "Busy.")], True),
         ([("request", "a deck"), ("tool_call", "sys_os_bash"), ("cancelled", "")], True),
-        ([("request", "a sheet"), ("refused", "browser_navigate"), ("save", "")], False),
-        ([("message", "look it up"), ("refused", "web_search"), ("reply", "Busy.")], False),
-        ([("request", "a sheet"), ("refused", "web_search"), ("helper_started", "")], True),
     ],
 )
 def test_ends_well(turn: list[Event], well: bool) -> None:
     assert ends_well(turn) is well
-
-
-def test_the_step_limit_turns_the_fourth_work_call_into_a_refusal() -> None:
-    (turn,) = run(next(s for s in SCENARIOS if s.name == "step-limit"))
-    assert [kind for kind, _ in turn] == [
-        "request",
-        "reply",
-        "tool_call",
-        "tool_call",
-        "tool_call",
-        "refused",
-        "helper_started",
-        "reply",
-    ]

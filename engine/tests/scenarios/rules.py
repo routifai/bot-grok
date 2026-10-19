@@ -16,8 +16,8 @@ A turn is a list of events, ``(kind, detail)`` pairs. The first event opens the 
 
 What follows is what the assistant did: ``tool_call`` (detail: the tool name), ``card`` (a
 question card; detail: what it asks about), ``helper_started``, ``message_helper``,
-``save``, ``reply`` (detail: the text), and what the engine adds: ``refused`` (the step limit
-refused a call; detail: the tool name), ``cancelled`` (the person stopped the turn), and the
+``save``, ``reply`` (detail: the text), and what the engine adds: ``cancelled`` (the person
+stopped the turn), and the
 work a Helper reported while it ran: ``helper_save`` (it saved a draft) and ``check`` (it ran a
 check; detail: the tool).
 """
@@ -62,7 +62,6 @@ MECHANISM_WORDS = (
     "subagents",
     "worker",
     "harness",
-    "step limit",
     "tool call",
     "start_helper",
     "message_helper",
@@ -124,7 +123,6 @@ def as_turn(turn_events: Sequence[Event]) -> Turn:
         saved="save" in kinds,
         asked="card" in kinds,
         helper_started="helper_started" in kinds,
-        refused="refused" in kinds,
     )
 
 

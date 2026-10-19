@@ -133,8 +133,8 @@ from omnigent.runtime.prompt import (
 from omnigent.spec.skill_sources import resolve_session_skills
 from omnigent.spec.types import AgentSpec, LocalToolInfo, SkillSpec
 from omnigent.superchat.artifacts.studio import STUDIO_TYPE
-from omnigent.superchat.feature import HandlerCtx, is_helper, is_super_chat
-from omnigent.superchat.features import notify_denied, notify_turn_end
+from omnigent.superchat.feature import is_helper, is_super_chat
+from omnigent.superchat.features import notify_turn_end
 from omnigent.superchat.helpers.notices import take_waiting_progress
 from omnigent.superchat.helpers.saved_files import (
     collect_saved_files,
@@ -698,13 +698,6 @@ async def _evaluate_policy_via_omnigent(
             _default_action,
             exc_info=True,
             extra={"session_id": conversation_id},
-        )
-
-    if phase == "PHASE_TOOL_CALL" and verdict_action == "POLICY_ACTION_DENY" and verdict_reason:
-        # A harness-native tool the policy refused (Feature.on_tool_denied; e.g. the step limit).
-        _denied_tool = str(data.get("name") or "")
-        notify_denied(
-            HandlerCtx(_denied_tool, server_client, conversation_id), _denied_tool, verdict_reason
         )
 
     # Post the verdict back to the harness as a policy_verdict event.

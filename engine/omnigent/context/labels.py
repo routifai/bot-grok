@@ -51,7 +51,7 @@ ADHOC_HELPER_LABEL_KEY = "omnigent.subagent.adhoc"
 
 #: Stamped on a file's studio session (ADR 0024, a ``sub_agent`` of helper type ``editor``); its
 #: value is the artifact group id. The studio is outside the Conversation's Helpers, activity,
-#: listings, caps and step limit; its turns get the file's own prefix.
+#: listings and caps; its turns get the file's own prefix.
 ARTIFACT_CHAT_LABEL_KEY = "superchat.artifact_chat"
 
 

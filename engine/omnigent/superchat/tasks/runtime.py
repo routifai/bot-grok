@@ -1,16 +1,10 @@
-"""Runner side of tasks: the turn's lines and the stall count.
+"""Runner side of tasks: the turn's lines and its Round.
 
 * :func:`message_prefix` reads the server's view and writes, in front of the person's message,
   "They picked ..." when the message answers a card, then one line per Round still working
-  (:func:`~omnigent.superchat.tasks.record.round_line`). It opens the turn's
-  :class:`~omnigent.superchat.tasks.record.Turn` and keeps the turn's Round, which an ``ask``
-  card names (:func:`current_round`).
-* :func:`on_result` notes what a tool did on the turn. No tool result is reported: the Round
-  record has every tool's result from the relay.
-* :func:`tool_denied` notes a step-limit refusal (:data:`STEP_LIMIT_REFUSAL`, the policy's own
-  text) on the turn: the denied call never ran, so ``on_result`` never sees it.
-* :func:`turn_ended` counts a **stall** by :func:`~omnigent.superchat.tasks.record.is_stall`. It
-  only counts; it changes nothing.
+  (:func:`~omnigent.superchat.tasks.record.round_line`). It keeps the turn's Round, which an
+  ``ask`` card names (:func:`current_round`), until :func:`turn_ended`. No tool result is
+  reported: the Round record has every tool's result from the relay.
 
 The read is metadata, bounded per ADR 0026: a 2 s budget (:data:`BUDGET`), never blocking the
 turn.
@@ -19,47 +13,24 @@ turn.
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 from collections.abc import Sequence
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import httpx
 
 from omnigent.entities.conversation import is_system_notice_text
-from omnigent.superchat.step_limit.policy import REFUSAL as STEP_LIMIT_REFUSAL
-from omnigent.superchat.tasks.record import CardAnswer, Turn, is_stall, prefix_lines
-
-if TYPE_CHECKING:
-    from omnigent.superchat.feature import HandlerCtx
+from omnigent.superchat.tasks.record import CardAnswer, prefix_lines
 
 _logger = logging.getLogger(__name__)
 
-SAVE, ASK, HELPER = "artifact_save", "ask_clarification", "start_helper"
-#: The tools that end a turn on a deliverable well: a save, a question, a started Helper.
-TURN_ENDINGS = frozenset({SAVE, ASK, HELPER})
 #: The budget of the read from the server (ADR 0026).
 BUDGET = 2.0
 _TIMEOUT = httpx.Timeout(BUDGET, connect=1.0)
 
 
-@dataclass
-class _Live:
-    """A Conversation turn in flight.
-
-    :param round_id: The Round it is in (an ``ask`` card names it).
-    :param turn: What it is and did, judged by :func:`is_stall` when it ends.
-    """
-
-    round_id: str | None
-    turn: Turn
-
-
-#: ``Conversation id -> the turn in flight``, for every Conversation turn.
-_turns: dict[str, _Live] = {}
-#: Stalls counted since the process started.
-STALLS = 0
+#: ``Conversation id -> the Round of the turn in flight``, for every Conversation turn.
+_turns: dict[str, str | None] = {}
 
 
 async def read_tasks(client: httpx.AsyncClient | None, session_id: str | None) -> dict | None:
@@ -105,56 +76,16 @@ async def message_prefix(
         is_system_notice_text(text) for text in texts
     )
     round_id = view.get("round_id") if isinstance(view.get("round_id"), str) else None
-    turn = Turn(by_person=by_person, helper_running=bool(rounds))
-    _turns[conversation_id] = _Live(round_id, turn)
+    _turns[conversation_id] = round_id
     lines = prefix_lines(rounds, _answer(view) if by_person else None)
     return ["\n".join(lines)] if lines else []
 
 
 def current_round(conversation_id: str | None) -> str | None:
     """The Round the Conversation's running turn is in, or ``None``."""
-    live = _turns.get(conversation_id or "")
-    return live.round_id if live is not None else None
-
-
-def _ok(output: str | None) -> bool:
-    """Whether a tool's output reads as success: some output, and not a JSON ``{"error"}``."""
-    if not output or not output.strip():
-        return False
-    try:
-        data = json.loads(output)
-    except ValueError:
-        return True
-    return not (isinstance(data, dict) and "error" in data)
-
-
-def on_result(ctx: HandlerCtx, output: str) -> None:
-    """A feature tool ran: note what it did on the Conversation's turn."""
-    live = _turns.get(ctx.conversation_id or "")
-    tool = ctx.tool_name
-    if live is None or tool not in TURN_ENDINGS or not _ok(output):
-        return
-    if tool == ASK:
-        live.turn.asked = True
-    elif tool == SAVE:
-        live.turn.saved = True
-    else:
-        live.turn.helper_started = True
-
-
-def tool_denied(ctx: HandlerCtx, _tool_name: str, reason: str) -> None:
-    """A TOOL_CALL policy denied a call (``Feature.on_tool_denied``): a step-limit refusal is
-    noted on the Conversation's turn, so ending it without a Helper is a stall."""
-    live = _turns.get(ctx.conversation_id or "")
-    if live is not None and STEP_LIMIT_REFUSAL in reason:
-        live.turn.refused = True
+    return _turns.get(conversation_id or "")
 
 
 def turn_ended(conversation_id: str) -> None:
-    """A turn ended (``Feature.on_turn_end``): count it when it is a stall."""
-    global STALLS
-    live = _turns.pop(conversation_id, None)
-    if live is None or not is_stall(live.turn):
-        return
-    STALLS += 1
-    _logger.info("stall for %s", conversation_id, extra={"session_id": conversation_id})
+    """A turn ended (``Feature.on_turn_end``): it has no Round any more."""
+    _turns.pop(conversation_id, None)

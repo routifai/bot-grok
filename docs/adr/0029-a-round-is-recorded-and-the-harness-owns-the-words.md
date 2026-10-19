@@ -1,6 +1,6 @@
 # A Round is recorded and the harness owns the words
 
-> **Status:** Accepted 2026-10-18. Supersedes ADR 0028, which was built on branch `wave4` and never merged. Amends [ADR 0027](0027-super-chat-is-an-agentic-layer.md) (context is pulled, not ordered; the evidence-ticked plan goes), [ADR 0023](0023-the-plan-is-visible-and-the-work-is-alive.md) (the strip shows facts, not a plan) and [ADR 0022](0022-the-orchestrator-narrates-while-helpers-work.md) (the engine stops hiding and writing the Assistant's words).
+> **Status:** Accepted 2026-10-18. Supersedes ADR 0028, which was built on branch `wave4` and never merged. Amends [ADR 0007](0007-the-muse-delegates-multi-step-work.md) (the step limit goes; delegation is judgement), [ADR 0027](0027-super-chat-is-an-agentic-layer.md) (context is pulled, not ordered; the evidence-ticked plan goes), [ADR 0023](0023-the-plan-is-visible-and-the-work-is-alive.md) (the strip shows facts, not a plan) and [ADR 0022](0022-the-orchestrator-narrates-while-helpers-work.md) (the engine stops hiding and writing the Assistant's words).
 
 ADR 0027 had the engine tick a plan from evidence, and ADR 0028 replaced its tables with a `steps` tool, a ledger that credits every call to the active step, a refusal of `start_helper` while no plan exists, and an engine-written hand-back when a wake turn said nothing. In use, each piece became a place where the engine guessed: which request a wake turn belonged to by matching titles, which text was a working note by counting words, which step a call served, and what the Assistant meant to say when it was silent. Each guess could be wrong in a way the person saw: a strip that relit, a stopped run that read done, a reply hidden because it was short, a hand-back the model never wrote. What was missing was a record of what happened to one message from the person, written as it happened, and a view of it that nothing has to infer.
 
@@ -34,7 +34,7 @@ The evidence is from live runs on both harnesses, their events folded offline by
 
 **The checklist is the model's own words.** On Claude the native task tools are turned on; on pi an Omnigent `checklist` tool takes the same subject, active form and status. Both fold to one `checklist.*` event. A checklist is never bound to a Helper and drives nothing: no state, no refusal, no tick. ADR 0028 rejected a model-ticked plan because a ticked step claims work happened. A checklist claims nothing; the facts beside it come from the record, so the two cannot be confused.
 
-**Delegation is judgement.** One deliverable that fits in one turn is done directly. Work in another folder, long work and parallel work go to Helpers. This is a line in the prompt. The engine adds no rule and refuses nothing for it.
+**Delegation is judgement.** One deliverable that fits in one turn is done directly. Work in another folder, long work and parallel work go to Helpers. This is a line in the prompt. The engine adds no rule and refuses nothing for it: the step limit of [ADR 0007](0007-the-muse-delegates-multi-step-work.md) and its refusal are deleted.
 
 **The plan machinery goes, with no compatibility layer.** The `steps` tool, the ledger, the refusal while no plan exists, the plan text in briefs, the binding of Helpers to steps and the web's merge by plan id are deleted. The check line stays, recomputed from the Helper's own calls.
 
