@@ -138,6 +138,17 @@ export type OmnigentFamilyEvent =
   | { type: "chats.changed"; root_id: string }
   | { type: "activities.changed"; root_id: string }
   | { type: "artifacts.changed"; root_id: string; group_id: string }
+  | {
+      type: "round.updated";
+      root_id: string;
+      round_id: string;
+      status: string;
+      started_at: number | null;
+      live: string | null;
+      helpers: number;
+      files: number;
+      steps: number;
+    }
   | { type: "session.heartbeat" };
 
 /** `GET /v1/sessions/{root}/family/stream` — one SSE stream for a Conversation and its
@@ -162,6 +173,7 @@ export async function* streamOmnigentFamily(
       frame.type === "chats.changed" ||
       frame.type === "activities.changed" ||
       frame.type === "artifacts.changed" ||
+      frame.type === "round.updated" ||
       frame.type === "session.heartbeat"
     ) {
       yield frame as unknown as OmnigentFamilyEvent;

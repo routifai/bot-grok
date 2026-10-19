@@ -126,6 +126,17 @@ describe("chats.watch", () => {
       yield { type: "turn.done", chat_id: "c1", status: "completed" };
       yield { type: "chats.changed" };
       yield { type: "activities.changed" };
+      yield {
+        type: "round.updated",
+        root_id: "conv_super",
+        round_id: "r1",
+        status: "running",
+        started_at: 1.5,
+        live: "name=deck",
+        helpers: 1,
+        files: 0,
+        steps: 2,
+      };
       yield { type: "session.heartbeat" };
     });
     expect(await collect()).toEqual([
@@ -136,6 +147,16 @@ describe("chats.watch", () => {
       { type: "turnDone", chatId: "c1", status: "completed" },
       { type: "chatsChanged" },
       { type: "activitiesChanged" },
+      {
+        type: "roundUpdated",
+        roundId: "r1",
+        status: "running",
+        startedAt: 1.5,
+        live: "name=deck",
+        helpers: 1,
+        files: 0,
+        steps: 2,
+      },
       { type: "heartbeat" },
     ]);
   });

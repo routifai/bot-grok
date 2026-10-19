@@ -23,6 +23,18 @@ export const FamilyEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("activitiesChanged") }),
   /** A version of a file was saved (`groupId`: the file, `Artifact.groupId`). */
   z.object({ type: z.literal("artifactsChanged"), groupId: z.string() }),
+  /** A Round's record grew: its status, the running tool's words (`live`) and its counts. The
+   * full view is the engine's `GET /v1/sessions/{id}/rounds/{roundId}`. */
+  z.object({
+    type: z.literal("roundUpdated"),
+    roundId: z.string(),
+    status: z.string(),
+    startedAt: z.number().nullable(),
+    live: z.string().nullable(),
+    helpers: z.number(),
+    files: z.number(),
+    steps: z.number(),
+  }),
   z.object({ type: z.literal("heartbeat") }),
 ]);
 export type FamilyEvent = z.infer<typeof FamilyEventSchema>;

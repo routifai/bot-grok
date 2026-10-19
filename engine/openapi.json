@@ -4906,6 +4906,553 @@
         "title": "RetryEvent",
         "type": "object"
       },
+      "RoundChecklistItem": {
+        "description": "One item of the checklist the model wrote in a Round.\n\n:param id: The item's id.\n:param subject: What it is.\n:param active_form: How it reads while in progress.\n:param status: ``pending``, ``in_progress`` or ``completed``.",
+        "properties": {
+          "active_form": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Form"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "RoundChecklistItem",
+        "type": "object"
+      },
+      "RoundFile": {
+        "description": "A file saved in a Round (a re-save replaces it).\n\n:param name: The file's name.\n:param kind: Its kind, e.g. ``\"html\"``.\n:param artifact_id: The saved version's artifact id.\n:param version: The version number.\n:param helper_id: The Helper that saved it, or ``None`` for the Assistant.",
+        "properties": {
+          "artifact_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifact Id"
+          },
+          "helper_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Helper Id"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "title": "RoundFile",
+        "type": "object"
+      },
+      "RoundHelper": {
+        "description": "A Helper started in a Round.\n\n:param id: The Helper session.\n:param title: Its title.\n:param folder: The folder it works in.\n:param status: ``running``, ``done``, ``failed`` or ``stopped``.\n:param started_at: Epoch seconds.\n:param finished_at: Epoch seconds, or ``None`` while it runs.\n:param result: The start of its last words.",
+        "properties": {
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "double",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "folder": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Folder"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "started_at": {
+            "format": "double",
+            "title": "Started At",
+            "type": "number"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "started_at"
+        ],
+        "title": "RoundHelper",
+        "type": "object"
+      },
+      "RoundList": {
+        "description": "Response for ``GET /v1/sessions/{session_id}/rounds``.\n\n:param object: Discriminator; always ``\"list\"``.\n:param data: The Conversation's latest Rounds, newest first.",
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/RoundSummary"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "object": {
+            "const": "list",
+            "default": "list",
+            "title": "Object",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "RoundList",
+        "type": "object"
+      },
+      "RoundStep": {
+        "description": "One finished tool call of a Round.\n\n:param t: Epoch seconds it finished.\n:param actor: ``assistant`` or ``helper``.\n:param helper_id: The Helper session, or ``None`` for the Assistant.\n:param name: The tool.\n:param digest: Its arguments in a few words.\n:param ok: Its output reads as success.",
+        "properties": {
+          "actor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor"
+          },
+          "digest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Digest"
+          },
+          "helper_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Helper Id"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "t": {
+            "format": "double",
+            "title": "T",
+            "type": "number"
+          }
+        },
+        "required": [
+          "t"
+        ],
+        "title": "RoundStep",
+        "type": "object"
+      },
+      "RoundSummary": {
+        "description": "One Round in a list, and the fields ``round.updated`` carries on the family stream.\n\n:param round_id: The Round.\n:param status: ``idle``, ``running``, ``done`` or ``stopped``.\n:param started_at: Epoch seconds, or ``None``.\n:param live: The running tool's digest, else its name, else ``None``.\n:param helpers: How many Helpers it started.\n:param files: How many files it saved.\n:param steps: How many tool calls finished.",
+        "properties": {
+          "files": {
+            "format": "int64",
+            "title": "Files",
+            "type": "integer"
+          },
+          "helpers": {
+            "format": "int64",
+            "title": "Helpers",
+            "type": "integer"
+          },
+          "live": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Live"
+          },
+          "round_id": {
+            "title": "Round Id",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "double",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "steps": {
+            "format": "int64",
+            "title": "Steps",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "round_id",
+          "status",
+          "helpers",
+          "files",
+          "steps"
+        ],
+        "title": "RoundSummary",
+        "type": "object"
+      },
+      "RoundTool": {
+        "description": "The tool an actor of a Round is running now.\n\n:param actor: ``assistant`` or ``helper``.\n:param helper_id: The Helper session, or ``None`` for the Assistant.\n:param call_id: The call's id.\n:param name: The tool, e.g. ``\"artifact_save\"``.\n:param since: Epoch seconds the call started.\n:param bytes: Size of the arguments written so far.\n:param digest: The arguments in a few words once complete, e.g. ``\"name=deck\"``.",
+        "properties": {
+          "actor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor"
+          },
+          "bytes": {
+            "default": 0,
+            "format": "int64",
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "call_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Call Id"
+          },
+          "digest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Digest"
+          },
+          "helper_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Helper Id"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "since": {
+            "format": "double",
+            "title": "Since",
+            "type": "number"
+          }
+        },
+        "required": [
+          "since"
+        ],
+        "title": "RoundTool",
+        "type": "object"
+      },
+      "RoundView": {
+        "description": "Response for ``GET /v1/sessions/{session_id}/rounds/{round_id}``: the Round's events folded\n(``omnigent.superchat.rounds.fold``).\n\n:param round_id: The Round: the id of the person's message that opened it.\n:param status: ``idle``, ``running``, ``done`` or ``stopped``.\n:param hidden: A run no person started.\n:param started_at: Epoch seconds, or ``None`` before it opened.\n:param settled_at: Epoch seconds, or ``None`` while it runs.\n:param elapsed: Seconds from start to settlement, or to its last event.\n:param ask: The person's message.\n:param stop_line: What Stop stopped, once stopped.\n:param now: The tool running now, or ``None``.\n:param trail: Finished tool calls, in order.\n:param helpers: Helpers by session id.\n:param files: Files saved.\n:param chips: The follow-up suggestions.\n:param checklist: The model's checklist.\n:param words: The Assistant's text, one entry per finished turn.\n:param live_words: The running turn's text so far.\n:param failed_helper: A Helper failed.",
+        "properties": {
+          "ask": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ask"
+          },
+          "checklist": {
+            "items": {
+              "$ref": "#/components/schemas/RoundChecklistItem"
+            },
+            "title": "Checklist",
+            "type": "array"
+          },
+          "chips": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Chips",
+            "type": "array"
+          },
+          "elapsed": {
+            "format": "double",
+            "title": "Elapsed",
+            "type": "number"
+          },
+          "failed_helper": {
+            "title": "Failed Helper",
+            "type": "boolean"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/RoundFile"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "helpers": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RoundHelper"
+            },
+            "title": "Helpers",
+            "type": "object"
+          },
+          "hidden": {
+            "title": "Hidden",
+            "type": "boolean"
+          },
+          "live_words": {
+            "title": "Live Words",
+            "type": "string"
+          },
+          "now": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RoundTool"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "round_id": {
+            "title": "Round Id",
+            "type": "string"
+          },
+          "settled_at": {
+            "anyOf": [
+              {
+                "format": "double",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Settled At"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "double",
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "stop_line": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Line"
+          },
+          "trail": {
+            "items": {
+              "$ref": "#/components/schemas/RoundStep"
+            },
+            "title": "Trail",
+            "type": "array"
+          },
+          "words": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Words",
+            "type": "array"
+          }
+        },
+        "required": [
+          "round_id",
+          "status",
+          "hidden",
+          "elapsed",
+          "trail",
+          "helpers",
+          "files",
+          "chips",
+          "checklist",
+          "words",
+          "live_words",
+          "failed_helper"
+        ],
+        "title": "RoundView",
+        "type": "object"
+      },
       "RoutingDecisionData": {
         "description": "Data payload for an intelligent model-router decision item.\n\nEmitted by the server-side smart routing path at the START of an\nadvised turn and persisted\nas a display-only transcript item so the model the router chose shows\nin the conversation flow the moment the turn begins. Listed in\n:data:`NON_CONTENT_ITEM_TYPES` so the agent loop's history filter\nskips it \u2014 the brain never sees (or answers) its own router note. The\nrunner's harness-input builder also drops every non\nmessage/function_call type, a second guarantee it stays out of the\nmodel's context.\n\n:param model: The concrete brain model the router chose, e.g.\n    ``\"databricks-claude-opus-4-8\"``.\n:param applied: ``True`` when the brain actually ran on\n    :attr:`model` this turn (optimize mode, no user pin); ``False``\n    when the router only WOULD have picked it (advise/shadow mode, or\n    a user model pin won) \u2014 the UI renders \"would have picked\".\n:param rationale: The router's one-line explanation, shown as muted\n    secondary text, e.g. ``\"Multi-file refactor needs deep\n    reasoning.\"``.\n:param harness: Harness the decision applies to, e.g.\n    ``\"claude-native\"`` or ``\"codex\"``. ``None`` when the decision\n    picked a model only (no harness dimension).\n:param scope: What the decision governs \u2014 ``\"session\"`` (auto-harness\n    session routing), ``\"turn\"`` (per-turn routing), ``\"child_session\"``\n    (an Omnigent-spawned sub-agent) or ``\"native_subagent\"`` (a Task /\n    ``spawn_agent`` spawn routed inside the harness). Defaults to\n    ``\"turn\"`` so rows persisted before this field deserialize.\n:param decision_id: Router decision identifier, e.g.\n    ``\"3f1c\u2026\"``. Correlates the transcript item with the routing\n    telemetry event and the child-sessions API row. ``None`` for\n    decisions made before decision ids existed.\n:param raw_model: The router-vocabulary pick before resolution to a\n    servable catalog id, e.g. ``\"gpt-5-6-sol\"``. ``None`` when the\n    pick needed no resolution.\n:param attempted_override: Model the spawning agent asked for and the\n    router overrode, e.g. ``\"databricks-gpt-5-5\"`` \u2014 an LLM-supplied\n    ``args.model`` on a child session, or a native spawn's own\n    ``requested_model``. ``None`` when nothing was asked for, or when\n    the router's pick names the same arm as the ask.\n:param router_source: Which router produced the decision \u2014\n    ``\"databricks-aigw\"`` for the external AI-Gateway ``task_v1``\n    service, ``\"oss-llm\"`` for the built-in judge. Deliberately a\n    plain ``str`` rather than a ``Literal``: a source added later\n    must still round-trip through stored rows and the wire instead\n    of failing validation. ``None`` on rows written before the\n    field existed.\n:param task_description: Human label of the task/spawn this decision\n    governed, e.g. ``\"Research auth flows\"`` \u2014 what ties a fan-out's\n    decision to its sub-agent when every spawn shares one\n    :attr:`agent` type. ``None`` when the spawn carried none, and on\n    rows written before the field existed.",
         "properties": {
@@ -17611,7 +18158,7 @@
     },
     "/v1/sessions/{session_id}/family/stream": {
       "get": {
-        "description": "Subscribe to the events of a Super Chat and its Helpers.\n\n:param session_id: The Super Chat.\n:returns: SSE frames: ``message.done``, ``message.delivery``, ``turn.done``,\n    ``chat.reset``, ``chats.changed``, ``activities.changed``, ``session.heartbeat``.\n    Ids only; the client refetches.\n:raises OmnigentError: 403 without READ on ``session_id``; 404 if it is not a\n    Super Chat family.",
+        "description": "Subscribe to the events of a Super Chat and its Helpers.\n\n:param session_id: The Super Chat.\n:returns: SSE frames: ``message.done``, ``message.delivery``, ``turn.done``,\n    ``chat.reset``, ``chats.changed``, ``activities.changed``, ``artifacts.changed``,\n    ``round.updated``, ``session.heartbeat``.\n    Ids only; the client refetches.\n:raises OmnigentError: 403 without READ on ``session_id``; 404 if it is not a\n    Super Chat family.",
         "operationId": "stream_family_v1_sessions__session_id__family_stream_get",
         "parameters": [
           {
@@ -20855,6 +21402,113 @@
         "summary": "Get Session Resource",
         "tags": [
           "sessions"
+        ]
+      }
+    },
+    "/v1/sessions/{session_id}/rounds": {
+      "get": {
+        "description": "The Conversation's latest Rounds, newest first, each with its status.\n\n:raises OmnigentError: 403 without READ on ``session_id``; 404 if it does not exist.",
+        "operationId": "list_rounds_v1_sessions__session_id__rounds_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoundList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Rounds",
+        "tags": [
+          "rounds"
+        ]
+      }
+    },
+    "/v1/sessions/{session_id}/rounds/{round_id}": {
+      "get": {
+        "description": "One Round of the Conversation, folded from its events.\n\n:raises OmnigentError: 403 without READ on ``session_id``; 404 if it does not exist or\n    the Round is not one of its Conversation's.",
+        "operationId": "get_round_v1_sessions__session_id__rounds__round_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "round_id",
+            "required": true,
+            "schema": {
+              "title": "Round Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoundView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Round",
+        "tags": [
+          "rounds"
         ]
       }
     },

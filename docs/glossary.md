@@ -34,7 +34,7 @@ them; where code still uses one, the entry says so.
 - **Helper type**: what a helper is configured as: `worker`, `subworker` or `notes` (`engine/agents/templates/agents/`).
 - **Host**: a person's execution environment, today a Docker container the engine starts (`superchat-host-<key>`, labelled `omnigent.host.owner`); runs `omnigent host`. Replaces Computer, sandbox (as a provider), managed host. In copy it is "your machine".
 - **Host provider**: how a host is launched; `docker` today (`engine/omnigent/hosts/docker.py`), set by the server config's `hosts:` block and `OMNIGENT_HOST_PROVIDER`.
-- **Journal**: dated lines under `~/workspace/memory/journal/` in the host, written by code from checkpoints, helper results and one entry per settled Round ([ADR 0029](adr/0029-a-round-is-recorded-and-the-harness-owns-the-words.md)); a copy for search, never read back as state.
+- **Journal**: dated lines under `~/workspace/memory/journal/` in the host, written by code from checkpoints, hand edits and one entry per settled Round ([ADR 0029](adr/0029-a-round-is-recorded-and-the-harness-owns-the-words.md)); a copy for search, never read back as state.
 - **Kept tail**: the most recent whole turns a checkpoint keeps word for word (up to 16,000 tokens).
 - **Knowledge index**: the search index in the host (SQLite with FTS5 and sqlite-vec) over the person's files, the journal and retired conversation turns; behind the `files_*` tools and `recall`.
 - **Launch token**: the per-launch credential a host uses for its tunnel and its harness uses at the model proxy; the engine stores only its digest.

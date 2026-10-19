@@ -9,7 +9,7 @@ Helper and events that arrive after settlement are cases of the fold, not rules 
   for the Assistant turn that reads it. Settlement is checked after every event and never moves
   once set.
 * **Stop** settles the Round at once: every running Helper reads stopped, and the Stop line
-  names what was stopped. It never says nothing was saved when a file was.
+  (:func:`stop_line`) names what was still working and what was saved.
 * After settlement an event is kept in ``after_settle`` and changes nothing, except a
   ``turn.ended`` (it commits the words streamed before it) and a ``helper.finished`` (it keeps
   the late result on its Helper).
@@ -66,6 +66,34 @@ def _new_helper(helper_id: str, t: float) -> dict[str, Any]:
         "finished_at": None,
         "result": None,
     }
+
+
+def _listed(names: Sequence[str]) -> str:
+    quoted = [f"'{n}'" for n in names]
+    return quoted[0] if len(quoted) == 1 else f"{', '.join(quoted[:-1])} and {quoted[-1]}"
+
+
+def stop_line(working: Sequence[str | None], saved: Sequence[str]) -> str:
+    """The Stop line: the one line the engine writes (ADR 0029), from a fixed template and only
+    the Round's record, never a model call. It goes in the Conversation's history, so the
+    Assistant's next turn can say honestly what finished, e.g.
+    ``"Stopped. 'Uruguay deck' was still working; nothing was saved."``
+
+    :param working: Titles of the Helpers still running at Stop.
+    :param saved: Names of the files the Round saved.
+    """
+    clauses = []
+    if working:
+        titled = [t for t in working if t]
+        named = len(titled) == len(working)
+        who = _listed(titled) if named else "the work"
+        clauses.append(f"{who} {'were' if named and len(titled) > 1 else 'was'} still working")
+    if saved:
+        clauses.append(f"{_listed(saved)} {'was' if len(saved) == 1 else 'were'} saved")
+    else:
+        clauses.append("nothing was saved")
+    text = "; ".join(clauses)
+    return f"Stopped. {text[0].upper()}{text[1:]}."
 
 
 def fold(events: Sequence[Mapping[str, Any]], round_id: str | None = None) -> dict[str, Any]:
@@ -220,11 +248,8 @@ def fold(events: Sequence[Mapping[str, Any]], round_id: str | None = None) -> di
             live.pop(ASSISTANT, None)
         elif kind == STOP_REQUESTED and not settled:
             v.update(status="stopped", settled_at=t)
-            running = [h["title"] for h in _running(v["helpers"])]
-            saved = "" if v["files"] else " Nothing was saved."
-            v["stop_line"] = (
-                f"You stopped '{running[0]}'.{saved}" if running else "You stopped the work."
-            )
+            working = [h["title"] for h in _running(v["helpers"])]
+            v["stop_line"] = stop_line(working, [f["name"] for f in v["files"]])
             for h in _running(v["helpers"]):
                 h.update(status="stopped", finished_at=t)
         if (
@@ -243,3 +268,20 @@ def fold(events: Sequence[Mapping[str, Any]], round_id: str | None = None) -> di
     end = v["settled_at"] if v["settled_at"] is not None else (mine[-1]["t"] if mine else 0)
     v["elapsed"] = round(end - (v["started_at"] or 0), 1) if v["started_at"] is not None else 0
     return v
+
+
+def summary(view: Mapping[str, Any]) -> dict[str, Any]:
+    """The few fields of a Round *view* a list row or a live signal carries.
+
+    :returns: ``status``, ``started_at``, ``live`` (the live tool's digest, else its name, else
+        ``None``), and how many ``helpers``, ``files`` and finished ``steps`` it has.
+    """
+    now = view.get("now")
+    return {
+        "status": view["status"],
+        "started_at": view["started_at"],
+        "live": (now.get("digest") or now.get("name")) if now else None,
+        "helpers": len(view["helpers"]),
+        "files": len(view["files"]),
+        "steps": len(view["trail"]),
+    }
