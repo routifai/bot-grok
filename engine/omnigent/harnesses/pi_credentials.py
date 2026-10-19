@@ -439,24 +439,45 @@ def _gateway_pi_model_entry(
     ):
         entry["reasoning"] = True
 
-    # Determine context window and max output tokens.
-    context_window = configured_context_window
-    max_output_tokens = configured_max_output_tokens
-
-    # Fall back to a catalog fuzzy match when the user hasn't configured limits.
-    if context_window is None or max_output_tokens is None:
-        catalog_entry = _catalog_entry_for_model(model_id)
-        if catalog_entry is not None:
-            if context_window is None and catalog_entry.metadata.context_window is not None:
-                context_window = catalog_entry.metadata.context_window
-            if max_output_tokens is None and catalog_entry.metadata.max_output_tokens is not None:
-                max_output_tokens = catalog_entry.metadata.max_output_tokens
-
+    context_window, max_output_tokens = pi_model_limits(
+        model_id,
+        configured_context_window=configured_context_window,
+        configured_max_output_tokens=configured_max_output_tokens,
+    )
     if context_window is not None:
         entry["contextWindow"] = context_window
     if max_output_tokens is not None:
         entry["maxTokens"] = max_output_tokens
     return entry
+
+
+def pi_model_limits(
+    model_id: str,
+    *,
+    configured_context_window: int | None = None,
+    configured_max_output_tokens: int | None = None,
+) -> tuple[int | None, int | None]:
+    """Return the context window and max output tokens known for *model_id*.
+
+    A configured value wins per field; otherwise the model catalog's limits
+    fill it. ``None`` means unknown: the caller leaves Pi's ``contextWindow`` /
+    ``maxTokens`` unset and Pi falls back to its 128k / 16k defaults.
+
+    :param model_id: The model id Pi will run, e.g. ``"claude-opus-4-7"``.
+    :param configured_context_window: Provider-config context limit, or ``None``.
+    :param configured_max_output_tokens: Provider-config output limit, or ``None``.
+    :returns: ``(context_window, max_output_tokens)``, each ``None`` when unknown.
+    """
+    context_window = configured_context_window
+    max_output_tokens = configured_max_output_tokens
+    if context_window is None or max_output_tokens is None:
+        catalog_entry = _catalog_entry_for_model(model_id)
+        if catalog_entry is not None:
+            if context_window is None:
+                context_window = catalog_entry.metadata.context_window
+            if max_output_tokens is None:
+                max_output_tokens = catalog_entry.metadata.max_output_tokens
+    return context_window, max_output_tokens
 
 
 def _catalog_entry_for_model(model_id: str) -> model_catalog.ModelEntry | None:
