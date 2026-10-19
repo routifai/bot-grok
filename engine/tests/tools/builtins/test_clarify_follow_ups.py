@@ -83,7 +83,7 @@ def test_non_object_arguments_are_rejected() -> None:
         assert "error" in json.loads(tool.invoke("{", _CTX))
 
 
-def test_schemas_bound_the_counts_and_carry_the_muse_rules() -> None:
+def test_schemas_bound_the_counts_and_say_when_to_use_them() -> None:
     ask = AskClarificationTool().get_schema()["function"]
     options = ask["parameters"]["properties"]["options"]
     assert (options["minItems"], options["maxItems"]) == (2, 5)
@@ -92,7 +92,10 @@ def test_schemas_bound_the_counts_and_carry_the_muse_rules() -> None:
     follow = SuggestFollowUpsTool().get_schema()["function"]
     suggestions = follow["parameters"]["properties"]["suggestions"]
     assert (suggestions["minItems"], suggestions["maxItems"]) == (1, 3)
-    assert "generic filler" in follow["description"]
+    # Shown as quiet chips under the answer; no "last step" (ADR 0029: chips end no turn).
+    assert "quiet chips under your answer" in follow["description"]
+    assert "never for filler" in follow["description"]
+    assert "last step" not in follow["description"]
 
 
 def test_dispatch_and_registration_follow_render_card() -> None:

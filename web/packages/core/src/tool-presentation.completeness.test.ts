@@ -80,7 +80,6 @@ const NOT_YET_PRESENTED = new Set([
   "sys_session_close",
   "sys_session_get_info",
   "sys_session_list",
-  "vault_fill",
 ]);
 
 describe("tool presentation registry completeness", () => {
