@@ -7,6 +7,7 @@ import asyncio
 import copy
 import json
 import random
+import time
 import types
 from collections.abc import Callable
 from pathlib import Path
@@ -22,6 +23,7 @@ from omnigent.context.labels import (
     SCHEDULED_HELPER_LABEL_KEY,
     SUPERSIDE_CHAT_MODE_VALUE,
 )
+from omnigent.entities.conversation import ConversationItem, MessageData
 from omnigent.superchat.rounds import record
 from omnigent.superchat.rounds.fold import fold
 from omnigent.superchat.rounds.store import SqlAlchemyRoundStore
@@ -550,10 +552,27 @@ def test_assign_round(
 
 # ------------------------------------------------------------------ the writers
 class _Conversations:
-    """The two calls the writers make on the conversation store."""
+    """The calls the writers make on the conversation store."""
 
     def __init__(self, *rows: types.SimpleNamespace) -> None:
         self.rows = {row.id: row for row in rows}
+        self.replies: dict[str, list[str]] = {}
+
+    def list_items(self, conversation_id: str, **_page: Any) -> types.SimpleNamespace:
+        """The session's stored assistant messages, newest first."""
+        data = MessageData(role="assistant", content=[], agent="a")
+        items = [
+            ConversationItem(
+                id=f"m{i}",
+                type="message",
+                status="completed",
+                response_id="resp",
+                created_at=int(time.time()),
+                data=data.model_copy(update={"content": [{"type": "output_text", "text": t}]}),
+            )
+            for i, t in enumerate(self.replies.get(conversation_id, []))
+        ]
+        return types.SimpleNamespace(data=items[::-1])
 
     def get_conversation(self, conversation_id: str) -> types.SimpleNamespace | None:
         return self.rows.get(conversation_id)
@@ -693,3 +712,73 @@ def test_a_round_is_written_from_the_message_the_relay_and_the_save(
     # A scheduled Helper and a file's studio are not in their parent's Round.
     assert record.helper_labels(IN_ROUND, {SCHEDULED_HELPER_LABEL_KEY: "s1"}) == {}
     assert record.helper_labels(IN_ROUND, {ARTIFACT_CHAT_LABEL_KEY: "g1"}) == {}
+
+
+@pytest.mark.parametrize(
+    ("by", "stored"),
+    [
+        pytest.param("relay", True, id="relay-idle-stored"),
+        pytest.param("sweep", False, id="sweep-nothing-stored"),
+        pytest.param("helper", True, id="sweep-helper"),
+    ],
+)
+def test_a_turn_the_relay_lost_ends_from_the_store(
+    db_uri: str, monkeypatch: pytest.MonkeyPatch, by: str, stored: bool
+) -> None:
+    """The relay's stream is cut after ``turn.started`` (the runner tunnel dropped mid-turn) and
+    the session goes idle. The turn ends from what the session stored: the stored reply past the
+    streamed words and ``done``, or ``failed`` with reason "relay lost" when nothing was stored.
+    The Round settles, the relay's late terminal ends nothing twice, and a second pass is a
+    no-op. The sweep closes a Helper's lost turn the same way, with its last reply as its
+    result, which then waits for the wake turn that reads it."""
+    store = SqlAlchemyRoundStore(db_uri)
+    monkeypatch.setattr(record, "RECORDER", record.Recorder(store))
+    monkeypatch.setattr(record, "LOST_AFTER", 0.0)
+    root, item, helper_id = "a" * 32, "b" * 32, "c" * 32
+    convs = _Conversations(_row(root, SUPER))
+    msg = {"role": "user", "content": [{"type": "input_text", "text": "Two things."}]}
+    if stored:
+        convs.replies[root] = ["Both are ", "finished."]
+
+    async def idle(_session_id: str) -> bool:
+        return True
+
+    async def run() -> None:
+        await record.note_message(convs, convs.rows[root], item, msg, None, turn_running=False)
+        assistant = record.RelayRound(root, convs)
+        await assistant.observe({"type": "response.in_progress"})
+        await assistant.observe({"type": "response.output_text.delta", "delta": "Both "})
+        if by == "helper":
+            child = _row(helper_id, {**SUPER, ROUND_LABEL_KEY: item}, root)
+            convs.rows[helper_id] = child
+            record.helper_created(child)
+            convs.replies[helper_id] = ["Saved the page."]
+            await record.RelayRound(helper_id, convs).observe({"type": "response.in_progress"})
+        assert record.RECORDER is not None
+        await record.RECORDER.idle()
+        await asyncio.sleep(0.002)  # the turns started before the pass reads them as lost
+        for _ in range(2):
+            if by == "relay":
+                assistant.lost()
+                await asyncio.gather(*record._CHECKS)
+            else:
+                await record.Sweep(store, convs, idle).once()
+        await assistant.observe({"type": "response.completed"})  # a late terminal: ended already
+        await record.RECORDER.idle()
+        assert item not in record.RECORDER.turned or by == "relay"
+
+    asyncio.run(run())
+    events = store.events(item)
+    ended = [e for e in events if e["kind"] == "turn.ended"]
+    assert len(ended) == (2 if by == "helper" else 1)
+    mine = next(e for e in ended if e["actor"] == "assistant")
+    assert mine["status"] == ("done" if stored else "failed")
+    assert mine.get("reason") == (None if stored else record.RELAY_LOST)
+    view = fold(events, item)
+    assert view["words"] == (["Both are finished."] if stored else ["Both "])
+    if by == "helper":
+        assert view["helpers"][helper_id]["status"] == "done"
+        assert view["helpers"][helper_id]["result"] == "Saved the page."
+        assert view["status"] == "running"  # settlement waits for the wake turn
+    else:
+        assert view["settled_at"] is not None and view["status"] == "done"

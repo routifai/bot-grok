@@ -7,10 +7,12 @@ the family stream's ``round.updated``, the Round each transcript message and Act
 the Rounds still working and the development shadow diff), ``routes`` (the Round reads). A
 settled Round's journal entry goes to the host through the relay op :data:`JOURNAL_OP`, which
 writes it with :func:`omnigent.runner.memory.sync.record_round`. No tool reads the record.
+The :class:`~omnigent.superchat.rounds.record.Sweep` job ends the turns a relay lost.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from collections.abc import Mapping, Sequence
@@ -18,6 +20,7 @@ from typing import TYPE_CHECKING, Any
 
 from omnigent.superchat.feature import (
     RELAY_MARK,
+    BackgroundJob,
     Feature,
     HandlerCtx,
     InstallDeps,
@@ -55,7 +58,10 @@ def _install(app: FastAPI, deps: InstallDeps) -> None:
     from fastapi import APIRouter
 
     from omnigent.server.routes._sessions.common import get_server_runner_router
-    from omnigent.server.routes._sessions.helpers import _get_runner_client
+    from omnigent.server.routes._sessions.helpers import (
+        _get_runner_client,
+        _session_status_from_cache,
+    )
     from omnigent.server.routes._sessions.orchestration import ON_SESSION_DELETED
     from omnigent.superchat.activity.derive import ROUND_IDS
     from omnigent.superchat.rounds import record
@@ -100,6 +106,15 @@ def _install(app: FastAPI, deps: InstallDeps) -> None:
         store, deps.conversation_store, conversation_id, item_ids
     )
     ON_SESSION_DELETED["rounds"] = store.delete_conversation
+
+    async def idle(session_id: str) -> bool:
+        """Whether the session runs no turn, as its relay last reported."""
+        conv = await asyncio.to_thread(deps.conversation_store.get_conversation, session_id)
+        if conv is None:
+            return True
+        return _session_status_from_cache(session_id, conv.live_status) != "running"
+
+    app.state.round_sweep = record.Sweep(store, deps.conversation_store, idle)
     router = APIRouter()
     register_round_routes(
         router,
@@ -111,10 +126,16 @@ def _install(app: FastAPI, deps: InstallDeps) -> None:
     app.include_router(router, prefix="/v1", tags=["rounds"])
 
 
+def _jobs(app: FastAPI) -> list[BackgroundJob]:
+    sweep = getattr(app.state, "round_sweep", None)
+    return [sweep] if sweep is not None else []
+
+
 FEATURE = Feature(
     name="rounds",
     tools=_tools,
     handlers={JOURNAL_OP: _journal_round},
     relay_ops=frozenset({JOURNAL_OP}),
     install=_install,
+    jobs=_jobs,
 )

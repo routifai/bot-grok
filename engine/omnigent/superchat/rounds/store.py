@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from sqlalchemy import and_, delete, func, or_, select
+from sqlalchemy import and_, case, delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -17,7 +17,7 @@ from omnigent.db.utils import (
     make_named_managed_session_maker,
     run_write_transaction,
 )
-from omnigent.superchat.rounds.fold import ROUND_OPENED, WAKE
+from omnigent.superchat.rounds.fold import ROUND_OPENED, TURN_ENDED, TURN_STARTED, WAKE
 
 #: Attempts at an append whose sequence numbers another writer took first.
 _APPEND_ATTEMPTS = 3
@@ -134,6 +134,24 @@ class SqlAlchemyRoundStore:
                     .limit(limit)
                 ).scalars()
             )
+
+    def open_turn_rounds(self, since_ms: int) -> list[tuple[str, str]]:
+        """``(round id, conversation id)`` of each Round with more turns started than ended
+        among its turn events since *since_ms* (epoch ms)."""
+        started = func.sum(case((SqlRoundEvent.kind == TURN_STARTED, 1), else_=0))
+        ended = func.sum(case((SqlRoundEvent.kind == TURN_ENDED, 1), else_=0))
+        with self._session("round_events_open_turns") as session:
+            rows = session.execute(
+                select(SqlRoundEvent.round_id, SqlRoundEvent.conversation_id)
+                .where(
+                    SqlRoundEvent.workspace_id == current_workspace_id(),
+                    SqlRoundEvent.kind.in_([TURN_STARTED, TURN_ENDED]),
+                    SqlRoundEvent.at_ms >= since_ms,
+                )
+                .group_by(SqlRoundEvent.round_id, SqlRoundEvent.conversation_id)
+                .having(started > ended)
+            ).all()
+        return [(round_id, conversation_id) for round_id, conversation_id in rows]
 
     def item_rounds(self, conversation_id: str, item_ids: Sequence[str]) -> dict[str, str]:
         """The Round each of *item_ids* opened or woke: ``{item id: round id}``.
