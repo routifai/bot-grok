@@ -44,10 +44,11 @@ from omnigent.context.labels import (
     is_artifact_chat,
     is_superside_chat,
 )
-from omnigent.context.tool_digest import short_arguments
+from omnigent.context.tool_digest import call_digest
 from omnigent.entities.session_project import project_slug_from_workspace
 from omnigent.runner.tool_starts import STOPPED_OUTPUT
 from omnigent.superchat.artifact_kinds import is_deck_name
+from omnigent.superchat.projects.card import workspace_root
 from omnigent.superchat.rounds.fold import (
     ASSISTANT,
     CHECKLIST_CREATED,
@@ -72,6 +73,7 @@ from omnigent.superchat.rounds.fold import (
     fold,
 )
 from omnigent.superchat.rounds.store import RoundEvent, SqlAlchemyRoundStore
+from omnigent.superchat.subagents import helper_folder
 from omnigent.superchat.tasks.record import CHECK_TOOLS
 from omnigent.superchat.titles import clip, one_line_summary
 
@@ -103,7 +105,8 @@ _SETTLING = frozenset({TURN_ENDED, HELPER_FINISHED, STOP_REQUESTED})
 ASK_LIMIT = 120
 #: Settled Rounds remembered, so a late event does not fold a settled Round again.
 _SETTLED_KEPT = 4096
-_IN_WORKSPACE = re.compile(r"(?:^|/)workspace/(.+)$")
+#: An agent name a Helper's stored title may open with (``worker`` in ``worker:Q3 deck``).
+_AGENT_NAME = re.compile(r"[a-z][a-z0-9_-]*")
 
 #: ``(conversation id, journal entry) -> None``: where a settled Round's entry goes.
 Settled = Callable[[str, dict[str, Any]], Awaitable[None]]
@@ -207,7 +210,6 @@ def journal_entry(round_id: str, view: Mapping[str, Any]) -> dict[str, Any] | No
     said = [w for w in view.get("words") or [] if w.strip()]
     helpers = list(view["helpers"].values())
     folders = list(dict.fromkeys(h["folder"] for h in helpers if h.get("folder")))
-    shown = [m.group(1) if (m := _IN_WORKSPACE.search(f)) else f for f in folders]
     files = [f for f in view["files"] if f.get("name")]
     return {
         "round_id": round_id,
@@ -217,7 +219,7 @@ def journal_entry(round_id: str, view: Mapping[str, Any]) -> dict[str, Any] | No
         "stopped": view["status"] == "stopped",
         "files": [f["name"] for f in files],
         "helpers": [h["title"] for h in helpers if h.get("title")],
-        "folder": ", ".join(shown),
+        "folder": ", ".join(folders),
         "seconds": view["elapsed"],
         "checked": checked(view),
         "refs": {
@@ -226,8 +228,11 @@ def journal_entry(round_id: str, view: Mapping[str, Any]) -> dict[str, Any] | No
                 for f in files
                 if f.get("artifact_id") and f.get("version")
             ],
+            # A folder is relative to the workspace (``projects/q3``).
             "project": list(
-                dict.fromkeys(p for f in folders if (p := project_slug_from_workspace(f)))
+                dict.fromkeys(
+                    p for f in folders if (p := project_slug_from_workspace(f"/workspace/{f}"))
+                )
             ),
             "helpers": [h["id"] for h in helpers],
         },
@@ -512,15 +517,27 @@ def helper_created(conversation: Any) -> None:
     round_id = round_of(conversation.labels)
     if round_id is None or conversation.parent_conversation_id is None:
         return
+    agent, title = _agent_title(conversation)
     _record(
         round_id,
         conversation.root_conversation_id or conversation.id,
         HELPER_STARTED,
         ASSISTANT,
         helper_id=conversation.id,
-        title=conversation.title,
-        folder=conversation.workspace,
+        title=title,
+        agent=agent,
+        folder=helper_folder(conversation.workspace, workspace_root()),
     )
+
+
+def _agent_title(conversation: Any) -> tuple[str | None, str | None]:
+    """A Helper's agent and the title its model gave, from a stored ``<agent>:<title>``."""
+    title = conversation.title or ""
+    agent = getattr(conversation, "sub_agent_name", None)
+    head, colon, rest = title.partition(":")
+    if colon and (head == agent or (agent is None and _AGENT_NAME.fullmatch(head))):
+        return head, rest.strip() or None
+    return agent, title or None
 
 
 def file_saved(saver: Any, artifact: Any) -> None:
@@ -968,7 +985,7 @@ class RelayRound:
                 args = _args(item.get("arguments"))
                 self._calls[call_id] = (name, args)
                 self._emit(
-                    turn, TOOL_CALLED, call_id=call_id, name=name, digest=short_arguments(args)
+                    turn, TOOL_CALLED, call_id=call_id, name=name, digest=call_digest(name, args)
                 )
             turn.text.clear()  # the words before a call are not the turn's last text
         elif item.get("type") == "function_call_output":

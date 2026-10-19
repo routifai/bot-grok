@@ -18,7 +18,7 @@ import { formatClock } from "./workStripState";
 
 // The strip under a person's message that opened a Round (ADR 0029): the engine's record of the
 // Round, folded, and nothing inferred. While it runs: the tool running now, the time since the
-// Round began, one row per Helper with its own latest tool and folder, the model's checklist if
+// Round began, one row per Helper with its folder and its own latest tool, the model's checklist if
 // it wrote one, and the files as they land; never a fraction or a count of steps as progress.
 // Settled, one line (the files it saved, or how it ended, and how long it took) that unfolds to
 // the trail. The Stop line is in the transcript where the engine wrote it, not here.
@@ -43,7 +43,8 @@ function ToolWords({ tool }: { tool: Tool }) {
 
 type Helper = RoundView["helpers"][number];
 
-/** One Helper: its title, its own latest tool while it runs (else how it ended), its folder. */
+/** One Helper: its title and folder, beneath them its own latest tool while it runs (else how it
+ * ended). */
 function HelperRow({ helper, tool }: { helper: Helper; tool: Tool | undefined }) {
   const { t } = useLingui();
   const running = helper.status === "running";
@@ -51,26 +52,27 @@ function HelperRow({ helper, tool }: { helper: Helper; tool: Tool | undefined })
     helper.status === "failed" ? t`Didn't finish` : helper.status === "stopped" ? t`Stopped` : null;
   return (
     <div data-testid="round-helper" data-status={helper.status} className="flex min-w-0 flex-col">
-      <div className="flex min-w-0 items-center gap-2">
-        <span className="max-w-[55%] shrink-0 truncate font-[560] text-foreground" dir="auto">
+      <span data-testid="round-helper-title" className="min-w-0 truncate" dir="auto">
+        <span className="font-[560] text-foreground">
           {presentActivityTitle(helper.title ?? "")}
         </span>
-        {running ? (
-          <span className="min-w-0 flex-1 truncate text-ink-2" aria-live="polite">
-            <Shimmer>{tool ? <ToolWords tool={tool} /> : t`Working`}</Shimmer>
+        {helper.folder ? (
+          <span data-testid="round-helper-folder" className="text-ink-3">
+            {" · "}
+            {helper.folder}
           </span>
-        ) : ended ? (
-          <span className="min-w-0 flex-1 truncate text-ink-2">{ended}</span>
         ) : null}
-      </div>
-      {helper.folder ? (
+      </span>
+      {running ? (
         <span
-          data-testid="round-helper-folder"
-          className="truncate text-[12px] text-ink-3"
-          dir="auto"
+          data-testid="round-helper-live"
+          className="min-w-0 truncate text-[12.5px] text-ink-2"
+          aria-live="polite"
         >
-          {helper.folder}
+          <Shimmer>{tool ? <ToolWords tool={tool} /> : t`Working`}</Shimmer>
         </span>
+      ) : ended ? (
+        <span className="min-w-0 truncate text-[12.5px] text-ink-2">{ended}</span>
       ) : null}
     </div>
   );

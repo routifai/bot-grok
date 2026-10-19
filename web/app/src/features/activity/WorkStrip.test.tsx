@@ -727,14 +727,14 @@ describe("the Round's strip (ADR 0029)", () => {
     settledAt: null,
     elapsedMs: 12_000,
     stopLine: null,
-    now: { actor: "assistant", helperId: null, name: "web_search", digest: "query=banks" },
+    now: { actor: "assistant", helperId: null, name: "web_search", digest: "banks" },
     trail: [
       {
         actor: "helper",
         helperId: "h1",
         at: Date.now(),
         name: "artifact_save",
-        digest: "name=deck",
+        digest: "deck",
         ok: true,
       },
     ],
@@ -742,7 +742,7 @@ describe("the Round's strip (ADR 0029)", () => {
       {
         id: "h1",
         title: "Write the deck",
-        folder: "decks/q3",
+        folder: "projects/q3",
         status: "running",
         startedAt: Date.now() - 10_000,
         finishedAt: null,
@@ -773,12 +773,11 @@ describe("the Round's strip (ADR 0029)", () => {
     const container = await mountRound();
     expect(rpcMock.round).toHaveBeenCalledWith({ botId: "bot-1", roundId: "r1" });
     expect(q(container, "round-strip")?.getAttribute("data-state")).toBe("working");
-    expect(q(container, "round-strip-now")?.textContent).toContain("query=banks");
+    expect(q(container, "round-strip-now")?.textContent).toMatch(/ · banks$/);
     expect(q(container, "round-strip-clock")?.textContent).toBe("0:12");
-    // A Helper's row: its title, its own latest tool, its folder.
-    expect(q(container, "round-helper")?.textContent).toContain("Write the deck");
-    expect(q(container, "round-helper")?.textContent).toContain("name=deck");
-    expect(q(container, "round-helper-folder")?.textContent).toBe("decks/q3");
+    // A Helper's row: its title and folder, its own latest tool beneath.
+    expect(q(container, "round-helper-title")?.textContent).toBe("Write the deck · projects/q3");
+    expect(q(container, "round-helper-live")?.textContent).toMatch(/ · deck$/);
     // The model's checklist in its words, each item by its own status.
     const items = [...container.querySelectorAll("[data-testid=round-checklist] li")];
     expect(items.map((item) => [item.textContent, item.getAttribute("data-status")])).toEqual([
@@ -807,7 +806,7 @@ describe("the Round's strip (ADR 0029)", () => {
           helperId: null,
           at: Date.now(),
           name: "web_search",
-          digest: "query=fees",
+          digest: "fees",
           ok: false,
         },
       ],
@@ -837,6 +836,10 @@ describe("the Round's strip (ADR 0029)", () => {
     expect(line?.getAttribute("aria-expanded")).toBe("true");
     const trail = [...container.querySelectorAll("[data-testid=round-trail] li")];
     expect(trail.map((step) => step.getAttribute("data-ok"))).toEqual(["true", "false"]);
-    expect(q(container, "round-helper")?.textContent).toContain("Write the deck");
+    // Each step is its title and its digest, nothing else.
+    expect(trail.map((step) => step.textContent?.split(" · ")[1])).toEqual(["deck", "fees"]);
+    expect(trail.every((step) => step.textContent?.split(" · ").length === 2)).toBe(true);
+    expect(q(container, "round-helper-title")?.textContent).toBe("Write the deck · projects/q3");
+    expect(q(container, "round-helper-live")).toBeNull();
   });
 });

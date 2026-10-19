@@ -20,6 +20,7 @@ from omnigent.superchat.subagents import (
     folder_fact,
     format_subagent_wake_notice_with_result,
     helper_brief,
+    helper_folder,
     is_live_child_row,
     refuse_subagent_concurrency,
     refuse_subagent_dispatch_override,
@@ -241,16 +242,27 @@ def test_helper_brief_appends_the_facts_after_the_brief() -> None:
 
 
 @pytest.mark.parametrize(
-    ("folder", "fact"),
+    ("folder", "fact", "row"),
     [
-        ("/home/u/workspace", "workspace"),
-        ("/home/u/workspace/reports", "workspace/reports"),
-        ("/srv/elsewhere", "/srv/elsewhere"),
-        (None, None),
+        ("/home/u/workspace", "workspace", "workspace"),
+        ("/home/u/workspace/reports", "workspace/reports", "reports"),
+        # A host whose home is not the engine's: read by its workspace segment.
+        ("/home/superchat/workspace", "workspace", "workspace"),
+        (
+            "/home/superchat/workspace/projects/morocco",
+            "workspace/projects/morocco",
+            "projects/morocco",
+        ),
+        ("/srv/elsewhere", "/srv/elsewhere", "/srv/elsewhere"),
+        (None, None, None),
     ],
 )
-def test_folder_fact_is_relative_to_the_workspace(folder: str | None, fact: str | None) -> None:
+def test_folder_fact_is_relative_to_the_workspace(
+    folder: str | None, fact: str | None, row: str | None
+) -> None:
+    """The brief's fact and the Helper row's folder, from the one rule."""
     assert folder_fact(folder, Path("/home/u/workspace")) == fact
+    assert helper_folder(folder, Path("/home/u/workspace")) == row
 
 
 # ── format_subagent_wake_notice_with_result ─────────────────────────────────

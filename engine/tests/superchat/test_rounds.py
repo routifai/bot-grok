@@ -588,9 +588,25 @@ def _row(cid: str, labels: dict[str, str], parent: str | None = None) -> types.S
         parent_conversation_id=parent,
         kind="sub_agent" if parent else "default",
         labels=dict(labels),
-        title="Deck",
-        workspace="/workspace",
+        title="worker:Deck" if parent else "Deck",
+        sub_agent_name="worker" if parent else None,
+        workspace="/home/someone/workspace/projects/q3" if parent else "/home/someone/workspace",
     )
+
+
+#: The Helper's tool calls in the recorded Round, and the digest each one is recorded with.
+_HELPER_CALLS = [
+    ("sys_os_shell", '{"command": "cd ~/workspace/your_files; ls; grep -r deck ."}', "ls"),
+    ("Write", '{"file_path": "your_files/notes.md", "content": "Faroe notes"}', "notes.md"),
+    (
+        "deck_new",
+        '{"path": "your_files/faroe.deck.html", "title": "Faroe Islands"}',
+        "Faroe Islands",
+    ),
+    ("deck_theme_set", '{"path": "your_files/faroe.deck.html", "theme_id": "ink"}', "faroe"),
+    ("mcp__omnigent__web_search", '{"query": "Faroe Islands", "limit": 5}', "Faroe Islands"),
+    ("deck_export", '{"artifact_id": "v1", "format": "pdf"}', None),
+]
 
 
 def _done(item: dict[str, Any]) -> dict[str, Any]:
@@ -635,13 +651,18 @@ def test_a_round_is_written_from_the_message_the_relay_and_the_save(
         convs.rows[helper_id] = child
         record.helper_created(child)
         call = {"type": "function_call", "call_id": "t1", "name": "start_helper"}
-        await assistant.observe(_done({**call, "arguments": '{"title": "Deck"}'}))
+        brief = '{"title": "Deck", "task": "Build a 6-slide deck on the Faroe Islands."}'
+        await assistant.observe(_done({**call, "arguments": brief}))
         out = {"type": "function_call_output", "call_id": "t1", "output": '{"started": true}'}
         await assistant.observe(_done(out))
         await assistant.observe({"type": "response.completed"})
         helper = record.RelayRound(helper_id, convs)
         await helper.observe({"type": "response.in_progress"})
         await helper.observe({"type": "response.output_text.delta", "delta": "Saved the deck."})
+        for n, (tool, args, _) in enumerate(_HELPER_CALLS):
+            fn = {"type": "function_call", "call_id": f"h{n}", "name": tool, "arguments": args}
+            await helper.observe(_done(fn))
+            await helper.observe(_done({"type": "function_call_output", "call_id": f"h{n}"}))
         record.file_saved(
             child, types.SimpleNamespace(name="deck", kind="html", id="v1", version=1)
         )
@@ -667,7 +688,12 @@ def test_a_round_is_written_from_the_message_the_relay_and_the_save(
         await record.RECORDER.idle()
 
     asyncio.run(run())
-    events = store.events(item)[:14]
+    tools = [
+        e for e in store.events(item) if e["actor"] == "helper" and e["kind"] == "tool.called"
+    ]
+    assert [e.get("digest") for e in tools] == [digest for *_, digest in _HELPER_CALLS]
+    events = [e for e in store.events(item) if e["actor"] != "helper" or "tool" not in e["kind"]]
+    events = events[:14]
     assert [(e["kind"], e["actor"]) for e in events] == [
         ("round.opened", "person"),
         ("turn.started", "assistant"),
@@ -684,10 +710,17 @@ def test_a_round_is_written_from_the_message_the_relay_and_the_save(
         ("turn.ended", "helper"),
         ("helper.finished", "helper"),
     ]
-    assert [e["seq"] for e in events] == list(range(1, 15))
+    seqs = [e["seq"] for e in store.events(item)]
+    assert seqs == list(range(1, len(seqs) + 1))
     stored = [e["kind"] for e in store.events(item)]
     assert [e.kind for e in written if e.round_id == item] == stored  # handed on once stored
-    assert events[2]["text"] == "On it." and events[5]["digest"] == "title=Deck"
+    assert events[2]["text"] == "On it." and events[5]["digest"] == "Deck"
+    # The Helper's model title, its agent beside it, its folder relative to the workspace.
+    assert {k: events[4][k] for k in ("title", "agent", "folder")} == {
+        "title": "Deck",
+        "agent": "worker",
+        "folder": "projects/q3",
+    }
     assert events[13]["status"] == "stopped" and events[13]["helper_id"] == helper_id
     view = fold(events, item)
     assert view["status"] == "stopped" and view["ask"] == "Make a deck."
@@ -704,7 +737,8 @@ def test_a_round_is_written_from_the_message_the_relay_and_the_save(
         "files": ["deck"],
         "helpers": ["Deck"],
     }
-    assert entry["refs"] == {"artifacts": ["v1@v1"], "project": [], "helpers": [helper_id]}
+    assert entry["folder"] == "projects/q3"
+    assert entry["refs"] == {"artifacts": ["v1@v1"], "project": ["q3"], "helpers": [helper_id]}
     assert entry["checked"] is None  # no deck saved, no check run
     hidden_view = fold(store.events("f" * 32))
     assert hidden_view["hidden"] is True and hidden_view["settled_at"] is not None

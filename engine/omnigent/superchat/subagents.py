@@ -19,6 +19,7 @@ from pathlib import Path
 
 from omnigent.context.labels import is_artifact_chat
 from omnigent.superchat.models.tiers import CATEGORIES, category_of
+from omnigent.superchat.projects.card import workspace_folder
 from omnigent.util.session_lifecycle import is_session_closed
 
 # ── Default concurrency cap (across all Sub-agent Types, per tree) ────────
@@ -360,16 +361,37 @@ PREFERENCES_FACT = "Preferences that apply:"
 MAX_FILES_IN_PLAY = 5
 
 
-def folder_fact(folder: str | None, root: Path) -> str | None:
-    """*folder* as the Helper reads it: under the workspace *root* as ``workspace/...``."""
-    if not folder:
-        return None
+def workspace_relative(folder: str, root: Path) -> str | None:
+    """*folder* relative to the workspace *root*: ``""`` at the root, ``"projects/q3"`` below it,
+    ``None`` outside it. A host's home the engine does not share (``/home/<user>/workspace``) is
+    read by its ``workspace`` segment.
+    """
     path = Path(folder)
     for base in (root, root.resolve()):
         if path.is_relative_to(base):
             rel = path.relative_to(base).as_posix()
-            return "workspace" if rel == "." else f"workspace/{rel}"
-    return folder
+            return "" if rel == "." else rel
+    if (below := workspace_folder(folder)) is not None:
+        return below
+    return "" if folder.rstrip("/").endswith("/workspace") else None
+
+
+def folder_fact(folder: str | None, root: Path) -> str | None:
+    """*folder* as the Helper reads it: under the workspace *root* as ``workspace/...``."""
+    if not folder:
+        return None
+    rel = workspace_relative(folder, root)
+    if rel is None:
+        return folder
+    return f"workspace/{rel}" if rel else "workspace"
+
+
+def helper_folder(folder: str | None, root: Path) -> str | None:
+    """*folder* as a Helper's row shows it: ``workspace`` at the root, else ``projects/q3``."""
+    if not folder:
+        return None
+    rel = workspace_relative(folder, root)
+    return folder if rel is None else rel or "workspace"
 
 
 def helper_brief(
