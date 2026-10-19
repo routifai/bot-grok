@@ -1,7 +1,7 @@
 """Built-in ``render_card`` tool: show the person a structured card instead of prose.
 
-The model *decides* when a card reads better than text (numbers to compare, a quote, a plan
-it will update, sources it read). The tool validates the input
+The model *decides* when a card reads better than text (numbers to compare, a quote, sources
+it read). The tool validates the input
 against one small JSON schema per card kind and returns a typed ``{"type": "card", ...}``
 payload that clients render with their own component catalog; the required ``fallback``
 markdown rides along so the model's history (and any client without the catalog) has text.
@@ -71,9 +71,8 @@ def _kind_hints() -> str:
 # from the person's files, so the model never types data values. Old transcripts keep their chart
 # cards; clients still draw them.
 
-# Kinds that are the answer itself. ``plan`` and ``progress`` are living cards the Muse
-# re-renders (same ``id``) while it works, so they never end the reply; ``ask`` waits on
-# the person's pick.
+# Kinds that are the answer itself. ``progress`` is a living card the Assistant re-renders (same
+# ``id``) while it works, so it never ends the reply; ``ask`` waits on the person's pick.
 _TERMINAL_CARDS = frozenset({"sources", "compare", "ask", "person", "file", "quote"})
 
 
@@ -108,24 +107,6 @@ CARD_DATA_SCHEMAS: dict[str, dict[str, Any]] = {
         ["columns", "rows"],
         columns=_arr(_STR, max_items=8),
         rows=_arr(_obj(["label", "cells"], label=_STR, cells=_arr(_STR, max_items=8))),
-    ),
-    "plan": _obj(
-        ["items"],
-        items=_arr(
-            _obj(
-                ["text"],
-                text=_STR,
-                # The model's status is read when the plan is first shown; the engine ticks
-                # each item from evidence after that (ADR 0027).
-                status={"type": "string", "enum": ["todo", "doing", "done"]},
-                active=_STR,
-                owner={"type": "string", "enum": ["me", "helper"]},
-                done_when={
-                    "type": "string",
-                    "enum": ["brief", "helper_done", "check_ran", "saved", "read", "answered"],
-                },
-            )
-        ),
     ),
     "quote": _obj(
         ["symbol", "price"],
@@ -203,7 +184,7 @@ def card_catalog() -> list[dict[str, Any]]:
     The render_card catalog: every card kind with the JSON schema of its ``data``.
 
     :returns: ``[{"kind", "ends_reply", "data_schema"}]`` in catalog order; ``ends_reply`` is
-        true for answer cards and false for living cards (plan, progress) updated in place.
+        true for answer cards and false for living cards (progress) updated in place.
     """
     return [
         {"kind": kind, "ends_reply": kind in _TERMINAL_CARDS, "data_schema": schema}
@@ -241,7 +222,7 @@ def _build_card(args: dict[str, Any], schemas: dict[str, dict[str, Any]]) -> dic
     out["data"] = args["data"]
     out["fallback"] = fallback.strip()
     # The model reacts to a tool result; without this it adds a line repeating the card.
-    # Plan/progress cards are updated in place mid-work, so they must not stop the turn.
+    # Progress cards are updated in place mid-work, so they must not stop the turn.
     if card in _TERMINAL_CARDS:
         out["note"] = (
             "Shown to the person. Add no more text; only `suggest_follow_ups` may still follow, "
@@ -265,7 +246,7 @@ class RenderCardTool(Tool):
         """:returns: Human-readable description of the tool."""
         return (
             "Show the person a card instead of prose, only when it reads better than text: "
-            "numbers to compare (compare), a market quote (quote), a plan (plan), "
+            "numbers to compare (compare), a market quote (quote), "
             "sources you read (sources), a contact "
             "(person), a file (file), long-running work (progress). For a chart or a "
             "dashboard build a page with `superchat-dashboard` from the data files, never a card "
@@ -275,9 +256,7 @@ class RenderCardTool(Tool):
             "`fallback` is a complete markdown summary of the card, used where it cannot be "
             "drawn and kept in your history; never repeat the card's content in your reply, "
             "add one line of context at most, before the card; after it add no more text "
-            "(only `suggest_follow_ups` may follow). "
-            "Render the plan once; re-render it with the same `id` only to add, drop or reword a "
-            "step; the engine ticks the steps."
+            "(only `suggest_follow_ups` may follow)."
         )
 
     def get_schema(self) -> dict[str, Any]:

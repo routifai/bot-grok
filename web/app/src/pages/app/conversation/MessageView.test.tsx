@@ -43,18 +43,8 @@ const turnWork = vi.hoisted(() => ({
   drawn: new Set<string>(),
 }));
 vi.mock("../../../features/activity", () => ({
-  WorkStrip: ({
-    helpers,
-    turn,
-  }: {
-    helpers: Array<{ helperId: string }>;
-    turn?: { plan: unknown[] | null };
-  }) => (
-    <div
-      data-testid="work-strip"
-      data-helpers={helpers.map((h) => h.helperId).join(",")}
-      data-plan-steps={turn?.plan?.length ?? 0}
-    />
+  WorkStrip: ({ helpers }: { helpers: Array<{ helperId: string }> }) => (
+    <div data-testid="work-strip" data-helpers={helpers.map((h) => h.helperId).join(",")} />
   ),
   drawnKey: (messageId: string, index: number) => `${messageId}:${index}`,
 }));
@@ -338,7 +328,7 @@ it("attaches one work strip for the Helpers a reply started, after its text", as
   ];
   turnWork.strips.set("b1", {
     helpers,
-    turn: { plan: null, live: true, startedAt: null, endedAt: null },
+    turn: { live: true, startedAt: null, endedAt: null },
     lit: true,
   });
   turnWork.drawn.add("b1:1").add("b1:2");
@@ -367,7 +357,7 @@ it("attaches one work strip for the Helpers a reply started, after its text", as
 it("draws the reply still streaming as a reply, with its lit strip under it", async () => {
   turnWork.strips.set("live:s1", {
     helpers: [{ helperId: "h1", title: "Research", status: "in_progress" }],
-    turn: { plan: null, live: true, startedAt: null, endedAt: null },
+    turn: { live: true, startedAt: null, endedAt: null },
     lit: true,
   });
   const host = await mount({
@@ -384,55 +374,4 @@ it("draws the reply still streaming as a reply, with its lit strip under it", as
     strip?.previousElementSibling?.querySelector('[data-testid="message-bot-bubble"]'),
   ).not.toBeNull();
   turnWork.strips.clear();
-});
-
-it("draws the reply's plan in its work strip, never as a card of its own", async () => {
-  turnWork.strips.set("b2", {
-    helpers: [],
-    turn: {
-      plan: [
-        { text: "Split the rows", status: "done", added: false },
-        { text: "Compare each region", status: "doing", added: false },
-      ],
-      live: true,
-      startedAt: null,
-      endedAt: null,
-    },
-    lit: false,
-  });
-  turnWork.drawn.add("b2:1");
-  try {
-    const host = await mount({
-      id: "b2",
-      threadId: "s1",
-      seq: 3,
-      role: "bot",
-      blocks: [
-        { kind: "text", text: "I'll split the rows by quarter and compare each region." },
-        {
-          kind: "reply_card",
-          card: "plan",
-          id: "plan-1",
-          data: { items: [{ text: "Split the rows", status: "doing" }] },
-          fallback: "Split the rows",
-        },
-        {
-          kind: "reply_card",
-          card: "sources",
-          data: { items: [{ title: "Q3", url: "https://example.com" }] },
-          fallback: "Q3",
-        },
-      ],
-      createdAt: "2026-10-01T10:00:00.000Z",
-    });
-    const cards = host.querySelectorAll('[data-testid="reply-card"]');
-    expect([...cards].map((card) => card.getAttribute("data-card"))).toEqual(["sources"]);
-    const strips = host.querySelectorAll('[data-testid="work-strip"]');
-    expect(strips).toHaveLength(1);
-    expect(strips[0]?.getAttribute("data-plan-steps")).toBe("2");
-    expect(strips[0]?.getAttribute("data-helpers")).toBe("");
-  } finally {
-    turnWork.strips.clear();
-    turnWork.drawn.clear();
-  }
 });

@@ -12,7 +12,6 @@ from tests.scenarios.scripts import Scenario
 _CHAT = {CONTEXT_MODE_LABEL: SUPERSIDE_CHAT_MODE_VALUE}
 #: The tool behind each assistant event that is not a plain ``tool_call``.
 _TOOL = {
-    "plan": "render_card",
     "card": "ask_clarification",
     "helper_started": "start_helper",
     "message_helper": "message_helper",

@@ -341,7 +341,7 @@ describe("the running turn's Activity on the status (ADR 0027)", () => {
 });
 
 describe("the engine's display (ADR 0027)", () => {
-  it("carries a reply's Activity id and a plan card's fold", () => {
+  it("carries a reply's Activity id", () => {
     const message = mapTranscriptMessage("conv", {
       id: "m1",
       role: "assistant",
@@ -350,14 +350,13 @@ describe("the engine's display (ADR 0027)", () => {
       blocks: [
         {
           type: "card",
-          card_id: "plan-1",
-          card: { card: "plan", id: "plan-1", data: { items: [] }, fallback: "" },
-          fold: 2,
+          card_id: "progress-1",
+          card: { card: "progress", id: "progress-1", data: {}, fallback: "" },
         },
       ],
     });
     expect(message.activityId).toBe("turn:conv:resp_1");
-    expect(message.blocks[0]).toEqual(expect.objectContaining({ id: "plan-1", fold: 2 }));
+    expect(message.blocks[0]).toEqual(expect.objectContaining({ id: "progress-1" }));
     const plain = mapTranscriptMessage("conv", {
       id: "m2",
       role: "user",

@@ -1,6 +1,5 @@
 import { useLingui } from "@lingui/react/macro";
 import type { ReplyCardDataOf, ReplyCardKind } from "@superchat/contracts";
-import { planItemState } from "@superchat/contracts";
 import {
   Badge,
   Button,
@@ -24,7 +23,6 @@ import {
   Phone,
 } from "lucide-react";
 import { type ReactNode, useRef, useState } from "react";
-import { PlanSteps } from "../../features/activity";
 import { useAskPreviews, useReplyCardSend } from "./context";
 import { hostOf, mailtoHref, safeHttpUrl, telHref } from "./links";
 
@@ -168,22 +166,6 @@ function Compare({ title, data }: Props<"compare">) {
           </tbody>
         </table>
       </div>
-    </Frame>
-  );
-}
-
-function Plan({ title, data }: Props<"plan">) {
-  // The engine's reading of each step (ADR 0027), drawn as the work strip draws it.
-  const steps = data.items.map((item) => ({
-    text: item.text,
-    status: planItemState(item),
-    ...(item.active ? { active: item.active } : {}),
-    added: false,
-  }));
-  const done = steps.filter((step) => step.status === "done").length;
-  return (
-    <Frame title={title} action={`${done}/${steps.length}`}>
-      <PlanSteps plan={steps} progress={null} />
     </Frame>
   );
 }
@@ -508,7 +490,7 @@ function Progress({ title, data }: Props<"progress">) {
 
 /** Shape-matched placeholder while the tool call has no result yet. */
 export function CardSkeleton({ card }: { card: string }) {
-  const rows = card === "compare" || card === "sources" || card === "plan" ? 3 : 1;
+  const rows = card === "compare" || card === "sources" ? 3 : 1;
   return (
     <Frame>
       <div aria-busy="true" className="flex flex-col gap-2.5">
@@ -524,7 +506,6 @@ export function CardSkeleton({ card }: { card: string }) {
 export const catalog = {
   sources: Sources,
   compare: Compare,
-  plan: Plan,
   ask: Ask,
   follow_ups: FollowUps,
   quote: Quote,

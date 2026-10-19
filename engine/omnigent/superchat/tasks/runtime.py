@@ -7,9 +7,8 @@
   has a task to settle (``settle``), it reports the turn's start (``turn_start``): the server
   settles the task then, never on a read.
 * :func:`on_result` reports what a tool did (``deck_new``, ``artifact_save``, ``start_helper``)
-  to the server, in order per session, and notes it on the turn. It also reports a ``plan`` card
-  and the results that are evidence for a plan step (ADR 0027: a brief, a read, a check), once
-  a deliverable event of the turn names its task (:func:`_plan_evidence`).
+  to the server, in order per session, and notes it on the turn. It also reports a check tool
+  that succeeded (``check``), from the Conversation or a Helper.
 * :func:`tool_denied` notes a step-limit refusal (:data:`STEP_LIMIT_REFUSAL`, the policy's own
   text) on the turn: the denied call never ran, so ``on_result`` never sees it.
 * :func:`turn_ended` reports the end of a Conversation turn (the server settles finished Helpers,
@@ -35,7 +34,7 @@ import contextlib
 import json
 import logging
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -45,17 +44,12 @@ from omnigent.superchat.step_limit.policy import REFUSAL as STEP_LIMIT_REFUSAL
 from omnigent.superchat.tasks.decisions import journal_decision
 from omnigent.superchat.tasks.record import (
     ACTIVE,
-    BRIEF,
-    EVIDENCE_KINDS,
-    READ,
+    CHECK_TOOLS,
     CardAnswer,
     Task,
     Turn,
-    evidence_for,
     is_stall,
     prefix_lines,
-    replay,
-    tick,
     watched,
 )
 
@@ -65,8 +59,6 @@ if TYPE_CHECKING:
 _logger = logging.getLogger(__name__)
 
 SAVE, ASK, HELPER, DECK = "artifact_save", "ask_clarification", "start_helper", "deck_new"
-#: The events a deliverable makes; the task one answers with is the task the turn's plan joins.
-DELIVERABLES = frozenset({SAVE, HELPER, DECK})
 #: The tools that end a turn on a task well: a deliverable, a question, a started Helper.
 TURN_ENDINGS = frozenset({SAVE, ASK, HELPER})
 #: The budget of one metadata call to the server (ADR 0026).
@@ -83,23 +75,12 @@ class _Live:
         made (an ``ask`` card records it).
     :param turn: What it is and did, judged by :func:`is_stall` when it ends.
     :param reported: It reported a task event (so its end matters to the server).
-    :param plans: The plan card ids it showed.
-    :param early: Evidence a person's turn gathered before its first plan (sent with it).
-    :param plan: Its plan as it stands here (a read is sent only when it ticks a step).
-    :param delivered: The task its own deliverable event made or found: its plan joins that task
-        (a plan with no deliverable joins none).
-    :param waiting: Plan events held until the turn has :attr:`delivered`.
     """
 
     client: httpx.AsyncClient | None
     task_id: str | None
     turn: Turn
     reported: bool = False
-    plans: set[str] = field(default_factory=set)
-    early: list[dict[str, Any]] = field(default_factory=list)
-    plan: dict[str, Any] | None = None
-    delivered: str | None = None
-    waiting: list[dict[str, Any]] = field(default_factory=list)
 
 
 #: ``Conversation id -> the turn in flight``, for every Conversation turn.
@@ -221,8 +202,7 @@ async def message_prefix(
     if client is not None and view.get("settle") is True:
         # A Helper of a task finished: the server settles it at the turn's start (a read never).
         _post(client, conversation_id, {"event": "turn_start"})
-    comment = view.get("comment") if isinstance(view.get("comment"), dict) else None
-    lines = prefix_lines(tasks, _answer(view), comment)
+    lines = prefix_lines(tasks, _answer(view))
     return ["\n".join(lines)] if lines else []
 
 
@@ -260,11 +240,8 @@ def _event(tool: str, data: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
-def _note_task(
-    client: httpx.AsyncClient, session_id: str, body: dict[str, Any], resp: httpx.Response
-) -> None:
-    """The task an event made or changed becomes the running turn's task (a card names it); a
-    deliverable's task is the one the turn's plan joins, and the plan events held for it go."""
+def _note_task(session_id: str, resp: httpx.Response) -> None:
+    """The task an event made or changed becomes the running turn's task (a card names it)."""
     live = _turns.get(session_id)
     if live is None:
         return
@@ -274,11 +251,6 @@ def _note_task(
             return
         if task.get("status") in ACTIVE:
             live.task_id = str(task["id"])
-        if body["event"] in DELIVERABLES and live.delivered is None:
-            live.delivered = str(task["id"])
-            for held in live.waiting:
-                _post(client, session_id, {**held, "task_id": live.delivered})
-            live.waiting = []
 
 
 #: A connection that dropped under the post (a keep-alive the server closed during a long tool):
@@ -313,7 +285,7 @@ async def _send(
         if resp.status_code >= 400:
             _logger.warning("task event %s refused: %s", body["event"], resp.status_code)
         else:
-            _note_task(client, session_id, body, resp)
+            _note_task(session_id, resp)
             if body["event"] in ("turn_start", "turn_end"):
                 with contextlib.suppress(ValueError, AttributeError):
                     _journal(session_id, resp.json().get("closed"))
@@ -378,96 +350,19 @@ async def flush_unsent(client: httpx.AsyncClient) -> None:
             )
 
 
-def _plan_evidence(ctx: HandlerCtx, live: _Live | None, output: str) -> None:
-    """Report a ``plan`` card, or a result that is evidence for a plan step (ADR 0027).
-
-    A person's turn keeps the evidence it gathers before its first plan and sends it with that
-    plan, so a brief read first ticks the plan's brief step and never an older plan's. A turn's
-    plan events wait until a deliverable event of the turn names its task. A read (``brief``,
-    ``read``) is sent only when it ticks a step of the turn's plan; a check always is (a
-    Helper's check ticks the plan of the task it works for).
-    """
-    session_id = ctx.conversation_id or ""
-    event = evidence_for(ctx.tool_name, output)
-    if event is None or ctx.server_client is None:
-        return
-    if event["kind"] == "plan":
-        if live is None:
-            return
-        body = {**event, "event": "plan"}
-        del body["kind"]
-        if event["id"] not in live.plans:
-            live.plans.add(event["id"])
-            body["evidence"], live.early = live.early, []
-            live.plan = replay([*body["evidence"], event])
-        else:
-            live.plan = tick(live.plan, event)
-        _send_plan(ctx.server_client, session_id, live, body)
-        return
-    if event["kind"] == "helper_started":
-        if live is not None:
-            _started(live, event)
-        return
-    if event["kind"] not in EVIDENCE_KINDS:
-        return
-    if event["kind"] in (BRIEF, READ):
-        if live is None:
-            return
-        if live.plan is None:
-            if live.turn.by_person:
-                live.early.append(event)
-            return
-        ticked = tick(live.plan, event)
-        if ticked == live.plan:
-            return
-        live.plan = ticked
-        _send_plan(ctx.server_client, session_id, live, {"event": "evidence", **event})
-        return
-    task_id = live.delivered or live.task_id if live is not None else None
-    if live is None:
-        _loose[session_id] = ctx.server_client
-    _post(ctx.server_client, session_id, {"event": "evidence", **event, "task_id": task_id})
-
-
-def _started(live: _Live, event: dict[str, Any]) -> None:
-    """A Helper the turn started takes its plan's Helper step.
-
-    Before the plan, or while the plan waits for its deliverable (this start's own reply
-    releases it), the start goes with the plan as its evidence, after the brief and reads the
-    turn gathered first; a plan the server already has is ticked by the ``start_helper`` event.
-    """
-    if live.plan is None:
-        live.early.append(event)
-        return
-    fresh = next((b for b in live.waiting if b["event"] == "plan" and "evidence" in b), None)
-    if fresh is not None:
-        fresh["evidence"] = [*fresh["evidence"], event]
-        live.plan = tick(live.plan, event)
-
-
-def _send_plan(
-    client: httpx.AsyncClient, session_id: str, live: _Live, body: dict[str, Any]
-) -> None:
-    """Send a plan event once the turn's deliverable named its task; hold it until then."""
-    live.reported = True
-    if live.delivered is None:
-        live.waiting.append(body)
-        return
-    _post(client, session_id, {**body, "task_id": live.delivered})
-
-
 def on_result(ctx: HandlerCtx, output: str) -> None:
     """A feature tool ran: report its task event and note it on the watched turn."""
     session_id = ctx.conversation_id
     if not session_id:
         return
     live = _turns.get(session_id)
-    tool = ctx.tool_name
-    _plan_evidence(ctx, live, output)
-    data = _ok(output) if tool in (DECK, *TURN_ENDINGS) else None
+    tool = ctx.tool_name.rsplit("__", 1)[-1]
+    checks = tool in CHECK_TOOLS.values()
+    data = _ok(output) if checks or tool in (DECK, *TURN_ENDINGS) else None
     if data is None:
         return
-    event = _event(tool, data)
+    task_id = live.task_id if live is not None else None
+    event = {"event": "check", "tool": tool, "task_id": task_id} if checks else _event(tool, data)
     turn = live.turn if live is not None else None
     if turn is not None:
         if tool == ASK:
@@ -478,7 +373,7 @@ def on_result(ctx: HandlerCtx, output: str) -> None:
             turn.helper_started = True
     if event is not None and ctx.server_client is not None:
         if live is not None:
-            live.reported = True
+            live.reported = live.reported or not checks  # a check alone changes no status
         else:
             _loose[session_id] = ctx.server_client
         _post(ctx.server_client, session_id, event)

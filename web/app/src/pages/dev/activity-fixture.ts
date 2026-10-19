@@ -377,31 +377,10 @@ export const HELPER_MESSAGES: Record<string, ThreadMessage[]> = {
   ],
 };
 
-// The plan in the work strip (ADR 0023): the assistant's living `plan` card, rendered again with
-// the same id as steps start and finish. Each scenario is a reply as the transcript holds it (the
-// person's message, the reply's text, its plan renders), read by the real `transcriptWork`.
+// The deck reply as the transcript holds it (the person's message, the reply's text with its
+// Helper), read by the real `transcriptWork`, and its Helper at each stage of its work.
 
-type PlanItem = { text: string; status: "todo" | "doing" | "done" };
-
-const READ = "Read mock_markets.csv";
-const SHARES = "Work out shares and the trend";
-const BUILD = "Build six slides";
-const NOTE = "Note the 16 October cut-off on the trend slide";
-const CHECK = "Check every figure against the file";
-
-const plan = (...items: Array<[string, PlanItem["status"]]>): PlanItem[] =>
-  items.map(([text, status]) => ({ text, status }));
-
-/** The deck reply's plan as it evolves: the third render adds a step after a flag. */
-export const DECK_PLAN_RENDERS: PlanItem[][] = [
-  plan([READ, "doing"], [SHARES, "todo"], [BUILD, "todo"], [CHECK, "todo"]),
-  plan([READ, "done"], [SHARES, "doing"], [BUILD, "todo"], [CHECK, "todo"]),
-  plan([READ, "done"], [SHARES, "done"], [BUILD, "doing"], [NOTE, "todo"], [CHECK, "todo"]),
-  plan([READ, "done"], [SHARES, "done"], [BUILD, "done"], [NOTE, "doing"], [CHECK, "todo"]),
-  plan([READ, "done"], [SHARES, "done"], [BUILD, "done"], [NOTE, "done"], [CHECK, "done"]),
-];
-
-/** What the deck Helper has reported by each render. */
+/** What the deck Helper has reported at each stage. */
 const DECK_PROGRESS = [
   "Reading 8 tickers across 3 regions",
   "Europe 38.3%, North America 37.1%, Asia 24.7%",
@@ -411,27 +390,9 @@ const DECK_PROGRESS = [
 ];
 const DECK_FLAG = "The data ends on 16 October, not 20 October as the file name says.";
 
-export const PLAN_HELPER_CHAT_ID = "helper-plan-deck";
-const PLAN_ASKED = minutesAgo(1.4);
-
-function planCard(id: string, items: PlanItem[], seq: number, at: string): ThreadMessage {
-  return {
-    id: `card-${id}-${seq}`,
-    threadId: "conv-1",
-    seq,
-    role: "bot",
-    blocks: [
-      {
-        kind: "reply_card",
-        card: "plan",
-        id,
-        data: { items },
-        fallback: items.map((item) => item.text).join("\n"),
-      },
-    ],
-    createdAt: at,
-  };
-}
+export const DECK_STAGES = DECK_PROGRESS.length;
+const MARKETS_HELPER_CHAT_ID = "helper-markets-deck";
+const DECK_ASKED = minutesAgo(1.4);
 
 function ask(id: string, text: string, at: string): ThreadMessage {
   return {
@@ -444,16 +405,14 @@ function ask(id: string, text: string, at: string): ThreadMessage {
   };
 }
 
-/** The deck reply after `renders` plan renders, with its Helper. */
-export function deckPlanMessages(renders: number): ThreadMessage[] {
-  const shown = DECK_PLAN_RENDERS.slice(0, Math.max(1, renders));
+/** The deck reply, with its Helper. */
+export function deckMessages(): ThreadMessage[] {
   return [
     ask(
       "ask-deck",
       "Make a presentation from mock_markets.csv: volume by region and the trend, about six slides with charts I can edit.",
-      PLAN_ASKED,
+      DECK_ASKED,
     ),
-    ...shown.map((items, index) => planCard("plan-deck", items, index + 1, PLAN_ASKED)),
     {
       id: "reply-deck",
       threadId: "conv-1",
@@ -466,40 +425,38 @@ export function deckPlanMessages(renders: number): ThreadMessage[] {
         },
         {
           kind: "helper",
-          helperId: PLAN_HELPER_CHAT_ID,
+          helperId: MARKETS_HELPER_CHAT_ID,
           title: "Build the markets deck",
           status: "in_progress",
         },
       ],
-      createdAt: PLAN_ASKED,
+      createdAt: DECK_ASKED,
     },
   ];
 }
 
-/** The deck Helper as the feed lists it after `renders` renders: running until the last. */
-export function deckPlanHelper(renders: number): Activity {
-  const done = renders >= DECK_PLAN_RENDERS.length;
-  const steps: ActivityStep[] = DECK_PROGRESS.slice(0, Math.max(1, renders)).map(
-    (title, index) => ({
-      itemId: `plan-deck-${index}`,
-      title,
-      createdAt: minutesAgo(1.3 - index * 0.2),
-      tool: "report_progress",
-    }),
-  );
-  if (renders >= 3) {
+/** The deck Helper as the feed lists it at `stage`: running until the last. */
+export function deckHelper(stage: number): Activity {
+  const done = stage >= DECK_STAGES;
+  const steps: ActivityStep[] = DECK_PROGRESS.slice(0, Math.max(1, stage)).map((title, index) => ({
+    itemId: `markets-deck-${index}`,
+    title,
+    createdAt: minutesAgo(1.3 - index * 0.2),
+    tool: "report_progress",
+  }));
+  if (stage >= 3) {
     steps.splice(2, 0, {
-      itemId: "plan-deck-flag",
+      itemId: "markets-deck-flag",
       title: `Flagged: ${DECK_FLAG}`,
       createdAt: minutesAgo(0.8),
       tool: "raise_flag",
     });
   }
   return {
-    id: "act-helper-plan-deck",
+    id: "act-helper-markets-deck",
     kind: "sub_agent",
     source: "background",
-    chatId: PLAN_HELPER_CHAT_ID,
+    chatId: MARKETS_HELPER_CHAT_ID,
     parentChatId: "conv-1",
     title: "Build the markets deck",
     outcome: done ? "Six slides, every chart editable." : null,
@@ -507,41 +464,7 @@ export function deckPlanHelper(renders: number): Activity {
     status: done ? "done" : "in_progress",
     startedAt: minutesAgo(1.35),
     finishedAt: done ? new Date(Date.parse(minutesAgo(1.35)) + 101_000).toISOString() : null,
-    date: dateOf(PLAN_ASKED),
+    date: dateOf(DECK_ASKED),
     steps,
   };
 }
-
-const SOLO_ASKED = minutesAgo(0.3);
-
-/** A reply the assistant works on alone, still running: a plan and no Helper. */
-export const SOLO_PLAN_MESSAGES: ThreadMessage[] = [
-  ask(
-    "ask-solo",
-    "Compare Q2 and Q3 volumes in mock_markets.csv and tell me what changed.",
-    SOLO_ASKED,
-  ),
-  {
-    id: "reply-solo",
-    threadId: "conv-1",
-    seq: 1,
-    role: "bot",
-    blocks: [
-      {
-        kind: "text",
-        text: "I'll split the rows by quarter, compare each region, and tell you the two or three changes that matter.",
-      },
-    ],
-    createdAt: SOLO_ASKED,
-  },
-  planCard(
-    "plan-solo",
-    plan(
-      ["Split the rows into Q2 and Q3", "done"],
-      ["Compare each region", "doing"],
-      ["Pick what matters", "todo"],
-    ),
-    2,
-    SOLO_ASKED,
-  ),
-];
