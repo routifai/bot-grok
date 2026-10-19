@@ -63,6 +63,7 @@ from omnigent.superchat.artifacts.studio import (
 )
 from omnigent.superchat.decks.outline import deck_outline
 from omnigent.superchat.family.signals import notify_item_updated
+from omnigent.superchat.rounds.record import file_saved
 from omnigent.superchat.transcript.blocks import project_items
 
 #: Steers the running turn of a session with one line; ``True`` when the turn took it.
@@ -477,6 +478,10 @@ def create_artifacts_router(
                 _logger.warning(
                     "artifacts: could not link %s to its message", item.id, exc_info=True
                 )
+            if saver is not None:
+                saving = await asyncio.to_thread(conversation_store.get_conversation, saver)
+                if saving is not None:
+                    file_saved(saving, item)
         return artifact_to_response(item, versions=item.version)
 
     @router.get("/artifacts")

@@ -327,6 +327,7 @@ from omnigent.stores.permission_store import PermissionStore
 from omnigent.stores.project_store import ProjectStore
 from omnigent.superchat.approvals.policy import remember_browser_snapshot
 from omnigent.superchat.feature import is_super_chat
+from omnigent.superchat.rounds import record as rounds
 from omnigent.superchat.transcript.blocks import turn_activity_id
 from omnigent.telemetry import emit as _tel_emit
 from omnigent.telemetry.anon import anon_user_id as _tel_anon_user_id
@@ -4962,6 +4963,15 @@ async def _persist_user_event_item(
     item = _build_new_item(body, f"turn_{uuid.uuid4().hex}", created_by=created_by)
     persisted_items = await asyncio.to_thread(conversation_store.append, session_id, [item])
     await _seed_missing_title_from_user_message(conv, item, conversation_store)
+    if body.type == "message":
+        await rounds.note_message(
+            conversation_store,
+            conv,
+            persisted_items[0].id,
+            body.data,
+            body.context,
+            turn_running=_session_status_cache.get(session_id) in ("running", "waiting"),
+        )
     if body.type == "message" and body.context:
         for hook in list(ON_MESSAGE_CONTEXT.values()):
             try:
@@ -6296,6 +6306,8 @@ async def _relay_runner_stream_once(
     tool_call_response_ids: dict[str, str] = {}
     # The person's wait per turn, from their message (ADR 0026).
     turn_clock = TurnClock(session_id)
+    # What the turns of a Superchat session do, recorded as their Round's events (ADR 0029).
+    round_record = rounds.RelayRound(session_id, conversation_store)
     _logger.info(
         "Relay: connecting to runner GET /stream for session=%s",
         session_id,
@@ -6529,6 +6541,9 @@ async def _relay_runner_stream_once(
                             current_model = _model
                         await turn_clock.start(conversation_store)
                     turn_clock.observe(event)
+                    await round_record.observe(event)
+                    if evt_type == rounds.TOOL_INPUT_DELTA:
+                        continue  # recorded only; clients see the call when it is complete
 
                     # Accumulate response-scoped (scaffold) text deltas for
                     # persistence. Native message-scoped deltas (with a
@@ -8309,6 +8324,8 @@ async def _create_session_from_existing_agent(
         from omnigent.context.labels import LAUNCHING_LABEL_KEY
 
         initial_labels[LAUNCHING_LABEL_KEY] = "true"
+        if _parent_for_routing is not None:
+            initial_labels.update(rounds.helper_labels(_parent_for_routing.labels, initial_labels))
     if created_worktree_path is not None:
         from omnigent.server.routes._host_worktree import (
             WORKTREE_ROOT_LABEL_KEY,
@@ -8409,6 +8426,7 @@ async def _create_session_from_existing_agent(
 
     session_created(conv.id, conv.runner_id)
     telemetry.set_session_id(conv.id)
+    rounds.helper_created(conv)
 
     # Emit session.created exactly once at creation time.
     # Best-effort: skip if the host opted out via HostHelloFrame.

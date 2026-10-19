@@ -60,6 +60,7 @@ def _load() -> list[Feature]:
     from omnigent.superchat.models import FEATURE as models
     from omnigent.superchat.projects import FEATURE as projects
     from omnigent.superchat.recall_hint import FEATURE as recall_hint
+    from omnigent.superchat.rounds import FEATURE as rounds
     from omnigent.superchat.sheets import FEATURE as sheets
     from omnigent.superchat.state_file import FEATURE as state_file
     from omnigent.superchat.step_limit import FEATURE as step_limit
@@ -92,6 +93,7 @@ def _load() -> list[Feature]:
         transcript,
         family,
         system_jobs,
+        rounds,
     ]
 
 

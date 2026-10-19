@@ -1,0 +1,245 @@
+"""The Round view is a fold over the Round's events (ADR 0029, principle 3). Pure: no store, no
+clock, no I/O, and the view it returns shares nothing with the events it was given.
+
+An event is a flat mapping: ``t`` (seconds), ``kind``, ``actor``, ``round_id`` and the kind's
+fields (:mod:`omnigent.superchat.rounds.record` writes them). Settlement, Stop, a failed
+Helper and events that arrive after settlement are cases of the fold, not rules beside it:
+
+* A Round is **settled** when no Assistant turn runs, no Helper runs and no Helper result waits
+  for the Assistant turn that reads it. Settlement is checked after every event and never moves
+  once set.
+* **Stop** settles the Round at once: every running Helper reads stopped, and the Stop line
+  names what was stopped. It never says nothing was saved when a file was.
+* After settlement an event is kept in ``after_settle`` and changes nothing, except a
+  ``turn.ended`` (it commits the words streamed before it) and a ``helper.finished`` (it keeps
+  the late result on its Helper).
+* Each actor has one live slot (the Assistant, or one Helper by its id): the newest tool it
+  started. ``now`` is the slot started last; a settled Round has none.
+"""
+
+from __future__ import annotations
+
+import copy
+from collections.abc import Mapping, Sequence
+from typing import Any
+
+#: Event kinds (ADR 0029). ``record`` writes them; the fold reads them.
+ROUND_OPENED = "round.opened"
+TURN_STARTED, TURN_ENDED = "turn.started", "turn.ended"
+WORDS = "words"
+TOOL_STARTED, TOOL_INPUT, TOOL_CALLED, TOOL_RESULT = (
+    "tool.started",
+    "tool.input",
+    "tool.called",
+    "tool.result",
+)
+HELPER_STARTED, HELPER_FINISHED = "helper.started", "helper.finished"
+FILE_SAVED = "file.saved"
+CHIPS = "chips"
+CHECKLIST_CREATED, CHECKLIST_UPDATED = "checklist.created", "checklist.updated"
+WAKE = "wake"
+STOP_REQUESTED = "stop.requested"
+
+#: Actors.
+PERSON, SYSTEM, ASSISTANT, HELPER = "person", "system", "assistant", "helper"
+
+#: Events that still apply to a settled Round.
+_AFTER_SETTLE = frozenset({TURN_ENDED, HELPER_FINISHED})
+
+
+def _slot(ev: Mapping[str, Any]) -> str:
+    """The live slot an event belongs to: the Assistant's, or its Helper's."""
+    return str(ev.get("helper_id") or ev.get("actor") or ASSISTANT)
+
+
+def _running(helpers: Mapping[str, Mapping[str, Any]]) -> list[Mapping[str, Any]]:
+    return [h for h in helpers.values() if h["status"] == "running"]
+
+
+def _new_helper(helper_id: str, t: float) -> dict[str, Any]:
+    return {
+        "id": helper_id,
+        "title": None,
+        "folder": None,
+        "status": "running",
+        "started_at": t,
+        "finished_at": None,
+        "result": None,
+    }
+
+
+def fold(events: Sequence[Mapping[str, Any]], round_id: str | None = None) -> dict[str, Any]:
+    """The view of one Round.
+
+    :param events: Events in record order; only those of *round_id* are read.
+    :param round_id: The Round to fold; ``None`` folds the Round of the last event.
+    :returns: ``status`` (``idle``, ``running``, ``done`` or ``stopped``), ``hidden`` (a run no
+        person started), ``started_at``, ``settled_at``, ``elapsed``, ``ask``, ``stop_line``,
+        ``now`` (the live tool or ``None``), ``trail``, ``helpers`` by id, ``files``, ``chips``,
+        ``checklist``, ``words`` (one entry per finished Assistant turn), ``live_words`` (the
+        running turn's text so far), ``failed_helper`` and ``after_settle``.
+    """
+    if round_id is None and events:
+        round_id = events[-1].get("round_id")
+    mine = [copy.deepcopy(dict(e)) for e in events if e.get("round_id") == round_id]
+    v: dict[str, Any] = {
+        "status": "idle",
+        "hidden": False,
+        "started_at": None,
+        "settled_at": None,
+        "ask": None,
+        "stop_line": None,
+        "now": None,
+        "trail": [],
+        "helpers": {},
+        "files": [],
+        "chips": [],
+        "checklist": [],
+        "words": [],
+        "live_words": "",
+        "after_settle": [],
+        "failed_helper": False,
+    }
+    assistant_running = False
+    unconsumed: set[str] = set()
+    cur_words: list[str] | None = None
+    live: dict[str, dict[str, Any]] = {}
+    for ev in mine:
+        kind, t, actor = ev["kind"], ev["t"], ev.get("actor")
+        settled = v["settled_at"] is not None
+        if settled:
+            v["after_settle"].append(ev)
+            if kind not in _AFTER_SETTLE:
+                continue
+        if kind == ROUND_OPENED:
+            if v["status"] == "idle":
+                v.update(
+                    status="running", started_at=t, hidden=actor == SYSTEM, ask=ev.get("text")
+                )
+                assistant_running, cur_words = True, []
+        elif kind == WORDS:
+            if actor == ASSISTANT:
+                if cur_words is None:  # a late chunk of the turn that just ended
+                    if v["words"]:
+                        v["words"][-1] += ev["text"]
+                    else:
+                        v["words"].append(ev["text"])
+                else:
+                    cur_words.append(ev["text"])
+        elif kind in (TOOL_STARTED, TOOL_CALLED):
+            slot = _slot(ev)
+            cur = live.get(slot)
+            if kind == TOOL_STARTED or cur is None or cur["call_id"] != ev.get("call_id"):
+                live.pop(slot, None)  # the newest tool of an actor supersedes its last one
+                cur = live[slot] = {
+                    "actor": actor,
+                    "helper_id": ev.get("helper_id"),
+                    "call_id": ev.get("call_id"),
+                    "name": ev.get("name"),
+                    "since": t,
+                    "bytes": 0,
+                    "digest": None,
+                }
+            if kind == TOOL_CALLED:
+                cur["digest"] = ev.get("digest")
+        elif kind == TOOL_INPUT:
+            cur = live.get(_slot(ev))
+            if cur and cur["call_id"] == ev.get("call_id"):
+                cur["bytes"] = ev.get("bytes") or 0
+        elif kind == TOOL_RESULT:
+            slot = _slot(ev)
+            cur = live.get(slot)
+            digest = None
+            if cur and cur["call_id"] == ev.get("call_id"):
+                digest = cur["digest"]
+                del live[slot]
+            v["trail"].append(
+                {
+                    "t": t,
+                    "actor": actor,
+                    "helper_id": ev.get("helper_id"),
+                    "name": ev.get("name"),
+                    "digest": digest,
+                    "ok": bool(ev.get("ok", True)),
+                }
+            )
+        elif kind == FILE_SAVED:
+            name = ev.get("name")
+            v["files"] = [f for f in v["files"] if f["name"] != name]  # a re-save replaces it
+            v["files"].append(
+                {
+                    "name": name,
+                    "kind": ev.get("file_kind"),
+                    "artifact_id": ev.get("artifact_id"),
+                    "version": ev.get("version"),
+                    "helper_id": ev.get("helper_id"),
+                }
+            )
+        elif kind == CHIPS:
+            v["chips"] = list(ev.get("items") or [])
+        elif kind == CHECKLIST_CREATED:
+            item_id = ev.get("item_id")
+            v["checklist"] = [i for i in v["checklist"] if i["id"] != item_id]
+            v["checklist"].append(
+                {
+                    "id": item_id,
+                    "subject": ev.get("subject"),
+                    "active_form": ev.get("active_form"),
+                    "status": ev.get("status") or "pending",
+                }
+            )
+        elif kind == CHECKLIST_UPDATED:
+            for item in v["checklist"]:
+                if item["id"] == ev.get("item_id"):
+                    item.update(
+                        {k: ev[k] for k in ("subject", "active_form", "status") if ev.get(k)}
+                    )
+            v["checklist"] = [i for i in v["checklist"] if i["status"] != "deleted"]
+        elif kind == HELPER_STARTED:
+            h = v["helpers"].setdefault(ev["helper_id"], _new_helper(ev["helper_id"], t))
+            h["title"] = ev.get("title") or h["title"]  # never reopens a finished Helper
+            h["folder"] = ev.get("folder") or h["folder"]
+        elif kind == HELPER_FINISHED:
+            h = v["helpers"].get(ev["helper_id"])
+            if settled:
+                if h:
+                    h["result"] = ev.get("result")
+            elif h is None or h["status"] == "running":  # unknown id: finished arrived first
+                h = v["helpers"].setdefault(ev["helper_id"], _new_helper(ev["helper_id"], t))
+                h.update(status=ev.get("status") or "done", finished_at=t, result=ev.get("result"))
+                unconsumed.add(ev["helper_id"])
+                live.pop(ev["helper_id"], None)
+        elif kind == TURN_STARTED and actor == ASSISTANT:
+            assistant_running, cur_words = True, []
+            unconsumed = set()  # an Assistant turn reads the results that woke it
+        elif kind == TURN_ENDED and actor == ASSISTANT:
+            assistant_running = False
+            if cur_words:
+                v["words"].append("".join(cur_words))
+            cur_words = None
+            live.pop(ASSISTANT, None)
+        elif kind == STOP_REQUESTED and not settled:
+            v.update(status="stopped", settled_at=t)
+            running = [h["title"] for h in _running(v["helpers"])]
+            saved = "" if v["files"] else " Nothing was saved."
+            v["stop_line"] = (
+                f"You stopped '{running[0]}'.{saved}" if running else "You stopped the work."
+            )
+            for h in _running(v["helpers"]):
+                h.update(status="stopped", finished_at=t)
+        if (
+            v["settled_at"] is None
+            and v["status"] == "running"
+            and not assistant_running
+            and not _running(v["helpers"])
+            and not unconsumed
+        ):
+            failed = any(h["status"] == "failed" for h in v["helpers"].values())
+            v.update(status="done", settled_at=t, failed_helper=failed)
+        if v["settled_at"] is not None:
+            live = {}  # nothing is live on a settled Round
+        v["now"] = copy.deepcopy(list(live.values())[-1]) if live else None
+        v["live_words"] = "".join(cur_words or []) if v["settled_at"] is None else ""
+    end = v["settled_at"] if v["settled_at"] is not None else (mine[-1]["t"] if mine else 0)
+    v["elapsed"] = round(end - (v["started_at"] or 0), 1) if v["started_at"] is not None else 0
+    return v

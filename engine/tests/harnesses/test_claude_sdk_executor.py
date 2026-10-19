@@ -1734,10 +1734,12 @@ class TestSupersideChatEngineOptions(unittest.TestCase):
         self.assertEqual(len(captured_options), 1)
         return captured_options[0]
 
-    def test_superside_chat_disables_auto_compact_and_auto_memory(self):
+    def test_superside_chat_disables_auto_compact_auto_memory_and_tool_search(self):
         options = self._run_turn_with_context_mode("superside-chat")
         self.assertEqual(options.env.get("DISABLE_AUTO_COMPACT"), "1")
         self.assertEqual(options.env.get("CLAUDE_CODE_DISABLE_AUTO_MEMORY"), "1")
+        # Its tool definitions load with the session: no ToolSearch before the first call.
+        self.assertEqual(options.env.get("ENABLE_TOOL_SEARCH"), "false")
 
     def test_superside_chat_disables_filesystem_settings(self):
         options = self._run_turn_with_context_mode("superside-chat")
@@ -1778,6 +1780,7 @@ class TestSupersideChatEngineOptions(unittest.TestCase):
         self.assertEqual(options.tools, ["Skill", "ToolSearch"])
         self.assertNotIn("DISABLE_AUTO_COMPACT", options.env)
         self.assertNotIn("CLAUDE_CODE_DISABLE_AUTO_MEMORY", options.env)
+        self.assertEqual(options.env.get("ENABLE_TOOL_SEARCH"), "true")
         self.assertEqual(options.disallowed_tools, [])
         self.assertNotEqual(getattr(options, "setting_sources", "unset-sentinel"), [])
 

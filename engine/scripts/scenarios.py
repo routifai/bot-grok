@@ -1,4 +1,5 @@
-"""Run the ADR 0025 scenarios against a live engine and report stalls and waits.
+"""Run the ADR 0025 scenarios and ADR 0029's Round matrix against a live engine and report
+stalls, waits and replies that name the machinery.
 
 Sends each scenario's person messages to a freshly reset conversation, waits for each turn to
 settle, and records per scenario: time to the first saved file, asks per deliverable, stalls
@@ -13,8 +14,15 @@ those waits are labelled coarse and count as over budget only past a whole secon
 ``OMNIGENT_SCENARIO_ENGINE_LOG`` names the engine's log file, the first visible event and the
 first word come from the engine's own lines instead (sub-second, from its acceptance of the
 message).
-Exits non-zero on a stall, a silent turn or a wait over the budget. ``OMNIGENT_SCENARIO_BUDGET``
-picks the budget: ``warm`` (default), ``cold`` or ``off``.
+Exits non-zero on a stall, a silent turn, a reply that names the machinery
+(``tests.scenarios.rules.mechanism_words``) or a wait over the budget.
+``OMNIGENT_SCENARIO_BUDGET`` picks the budget: ``warm`` (default), ``cold`` or ``off``. A Round
+scenario (``tests.scenarios.scripts.ROUNDS``) is held to ADR 0029's warm first words instead
+(``tests.scenarios.rules.first_words_in_time``), only under ``warm``.
+
+``--record DIR`` writes the conversation's live engine event stream (``GET
+/v1/sessions/{id}/stream``) for each scenario to ``DIR/<scenario>.jsonl``, one
+``{"t": seconds, "event": ...}`` line per event.
 
 It resets and writes into the conversation of whichever account owns the token, so it refuses
 to run unless ``OMNIGENT_SCENARIO_ALLOW_ACCOUNT=1`` is set, and names that account first.
@@ -23,15 +31,18 @@ Runs only when ``OMNIGENT_SCENARIO_MODEL_KEY`` is set (the engine itself holds t
 connection; the key's presence says a model is wired up), against
 ``OMNIGENT_SCENARIO_ENGINE_URL`` with ``OMNIGENT_SCENARIO_TOKEN`` as a bearer token:
 
-    cd engine && uv run python scripts/scenarios.py [scenario-name ...]
+    cd engine && uv run python scripts/scenarios.py [--record DIR] [scenario-name ...]
 """
 
 from __future__ import annotations
 
+import argparse
+import http.client
 import json
 import os
 import re
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -40,8 +51,17 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from tests.scenarios.rules import Event, asks, ends_well, is_deliverable_turn, speaks_first
-from tests.scenarios.scripts import SCENARIOS, Scenario
+from tests.scenarios.rules import (
+    FIRST_WORDS_WARM,
+    Event,
+    asks,
+    ends_well,
+    first_words_in_time,
+    is_deliverable_turn,
+    mechanism_words,
+    speaks_first,
+)
+from tests.scenarios.scripts import ROUNDS, SCENARIOS, Scenario
 
 _PERSON = frozenset({"request", "answer", "message", "steer"})
 #: Tool names that map to a rule event; any other call is a plain ``tool_call``.
@@ -108,6 +128,65 @@ class Engine:
 
     def interrupt(self, session_id: str) -> None:
         self.call("POST", f"/v1/sessions/{session_id}/events", {"type": "interrupt", "data": {}})
+
+    def stream(self, session_id: str) -> http.client.HTTPResponse:
+        """The session's live SSE stream, open."""
+        request = urllib.request.Request(
+            f"{self.base_url}/v1/sessions/{session_id}/stream",
+            headers={"Authorization": f"Bearer {self.token}", "Accept": "text/event-stream"},
+        )
+        return urllib.request.urlopen(request, timeout=60)
+
+
+class Recorder:
+    """Writes a conversation's live engine events to a JSONL file while a scenario plays.
+
+    A context manager: entering opens the stream on a thread and waits until it is connected,
+    leaving closes it. A stream that drops is opened again.
+    """
+
+    def __init__(self, engine: Engine, session_id: str, path: Path) -> None:
+        self.engine = engine
+        self.session_id = session_id
+        self.path = path
+        self._start = time.monotonic()
+        self._connected = threading.Event()
+        self._stop = threading.Event()
+        self._response: http.client.HTTPResponse | None = None
+        self._thread = threading.Thread(target=self._run, daemon=True)
+
+    def __enter__(self) -> Recorder:
+        self._start = time.monotonic()
+        self._thread.start()
+        self._connected.wait(timeout=10)
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self._stop.set()
+        if self._response is not None:
+            self._response.close()  # unblocks the reading thread
+        self._thread.join(timeout=5)
+
+    def _run(self) -> None:
+        with self.path.open("w", encoding="utf-8") as out:
+            while not self._stop.is_set():
+                try:
+                    self._response = self.engine.stream(self.session_id)
+                    self._connected.set()
+                    for raw in self._response:
+                        data = raw.decode("utf-8", "replace").strip()
+                        if not data.startswith("data:") or data == "data: [DONE]":
+                            continue
+                        try:
+                            event = json.loads(data[5:])
+                        except ValueError:
+                            continue
+                        at = round(time.monotonic() - self._start, 3)
+                        out.write(json.dumps({"t": at, "event": event}) + "\n")
+                        out.flush()
+                except (OSError, ValueError, AttributeError, http.client.HTTPException):
+                    pass  # closed by __exit__, timed out or dropped: open it again unless stopped
+                self._stop.wait(_POLL)
 
 
 def _fields(item: dict[str, Any]) -> dict[str, Any]:
@@ -291,10 +370,26 @@ def play_turn(
 
 
 def play(
-    engine: Engine, session_id: str, scenario: Scenario, log: EngineLog | None = None
+    engine: Engine,
+    session_id: str,
+    scenario: Scenario,
+    log: EngineLog | None = None,
+    record: Path | None = None,
 ) -> dict[str, Any]:
-    """Play one scenario on a reset conversation and measure it."""
+    """Play one scenario on a reset conversation and measure it.
+
+    With *record*, the conversation's live events go to ``record/<scenario>.jsonl``.
+    """
     engine.call("POST", f"/v1/sessions/{session_id}/reset", {})
+    if record is None:
+        return _play(engine, session_id, scenario, log)
+    with Recorder(engine, session_id, record / f"{scenario.name}.jsonl"):
+        return _play(engine, session_id, scenario, log)
+
+
+def _play(
+    engine: Engine, session_id: str, scenario: Scenario, log: EngineLog | None
+) -> dict[str, Any]:
     start = time.monotonic()
     first_file: float | None = None
     turns: list[list[Event]] = []
@@ -333,14 +428,27 @@ def play(
         "asks": len(asks(turns)) / max(deliverables, 1),
         "stalls": sum(1 for turn in turns if not ends_well(turn)),
         "silent": sum(1 for turn in turns if not speaks_first(turn)),
+        "mechanism": sum(
+            len(mechanism_words(text)) for turn in turns for kind, text in turn if kind == "reply"
+        ),
         "visible": _worst([w["visible"] for w in turn_waits]),
         "word": _worst([w["word"] for w in turn_waits]),
         "deck": deck if is_deck else None,
     }
 
 
+_ROUND_NAMES = frozenset(scenario.name for scenario in ROUNDS)
+
+
 def over_budget(row: dict[str, Any], budget: str) -> list[str]:
-    """Which of a row's waits exceed the named budget (``off`` checks nothing)."""
+    """Which of a row's waits exceed the named budget (``off`` checks nothing).
+
+    A Round scenario is held to ADR 0029's first words only, and only under ``warm``.
+    """
+    if row["name"] in _ROUND_NAMES:
+        if budget != "warm" or first_words_in_time(row["word"]):
+            return []
+        return [f"word {row['word']:.1f}s > {FIRST_WORDS_WARM:.0f}s"]
     limits = BUDGETS.get(budget)
     if limits is None:
         return []
@@ -358,18 +466,23 @@ def _seconds(value: float | None) -> str:
 def _table(rows: list[dict[str, Any]]) -> str:
     lines = [
         f"{'scenario':<28} {'first file':>10} {'asks/deliv':>10} {'stalls':>6} {'silent':>6} "
-        f"{'visible':>7} {'word':>5} {'deck':>5}"
+        f"{'mech':>4} {'visible':>7} {'word':>5} {'deck':>5}"
     ]
     for row in rows:
         lines.append(
             f"{row['name']:<28} {_seconds(row['first_file']):>10} {row['asks']:>10.1f} "
-            f"{row['stalls']:>6} {row['silent']:>6} {_seconds(row['visible']):>7} "
+            f"{row['stalls']:>6} {row['silent']:>6} {row['mechanism']:>4} "
+            f"{_seconds(row['visible']):>7} "
             f"{_seconds(row['word']):>5} {_seconds(row['deck']):>5}"
         )
     return "\n".join(lines)
 
 
 def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(description="Play the scenarios against a live engine.")
+    parser.add_argument("names", nargs="*", help="scenario names; all when none")
+    parser.add_argument("--record", type=Path, help="write each scenario's events here")
+    args = parser.parse_args(argv)
     url = os.environ.get("OMNIGENT_SCENARIO_ENGINE_URL")
     token = os.environ.get("OMNIGENT_SCENARIO_TOKEN")
     if not os.environ.get("OMNIGENT_SCENARIO_MODEL_KEY") or not url or not token:
@@ -382,8 +495,10 @@ def main(argv: list[str]) -> int:
     if budget not in {*BUDGETS, "off"}:
         print("scenarios: OMNIGENT_SCENARIO_BUDGET is warm, cold or off", file=sys.stderr)
         return 2
-    wanted = set(argv)
-    chosen = [s for s in SCENARIOS if not wanted or s.name in wanted]
+    wanted = set(args.names)
+    chosen = [s for s in SCENARIOS + ROUNDS if not wanted or s.name in wanted]
+    if args.record is not None:
+        args.record.mkdir(parents=True, exist_ok=True)
     engine = Engine(url, token)
     log_path = os.environ.get("OMNIGENT_SCENARIO_ENGINE_LOG")
     log = EngineLog(log_path) if log_path else None
@@ -397,7 +512,7 @@ def main(argv: list[str]) -> int:
             )
             return 2
         session_id = str(engine.call("GET", "/v1/me/muse")["session_id"])
-        rows = [play(engine, session_id, scenario, log) for scenario in chosen]
+        rows = [play(engine, session_id, scenario, log, args.record) for scenario in chosen]
     except urllib.error.URLError as exc:
         print(f"scenarios: engine unreachable: {exc}", file=sys.stderr)
         return 2
@@ -416,6 +531,10 @@ def main(argv: list[str]) -> int:
     silent = sum(row["silent"] for row in rows)
     if silent:
         print(f"scenarios: {silent} turn(s) worked before a word", file=sys.stderr)
+        failed = True
+    mechanism = sum(row["mechanism"] for row in rows)
+    if mechanism:
+        print(f"scenarios: {mechanism} machinery word(s) in replies", file=sys.stderr)
         failed = True
     for row in rows:
         over = over_budget(row, budget)

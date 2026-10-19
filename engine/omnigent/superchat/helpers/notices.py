@@ -233,12 +233,18 @@ async def _helper_info(client: httpx.AsyncClient, helper_id: str) -> HelperInfo 
 
 
 async def post_notice(
-    client: httpx.AsyncClient, parent_id: str, notice: str, *, if_running: bool
+    client: httpx.AsyncClient,
+    parent_id: str,
+    notice: str,
+    *,
+    if_running: bool,
+    helper_id: str | None = None,
 ) -> str:
     """Post *notice* to the parent as a runtime notice, through the engine's message path.
 
     Without *if_running* it is steered into the parent's running turn or starts one (the wake);
-    with it, only a running turn takes it (409 ``not_running`` otherwise, nothing kept).
+    with it, only a running turn takes it (409 ``not_running`` otherwise, nothing kept). The
+    notice names the Helper it is from, so it joins that Helper's Round (ADR 0029).
 
     :returns: :data:`TAKEN`, :data:`IDLE` (no turn runs to take it) or :data:`FAILED`.
     """
@@ -253,6 +259,7 @@ async def post_notice(
                     "content": [{"type": "input_text", "text": notice}],
                 },
                 **({"if_running": True} if if_running else {}),
+                **({"context": {"helper_id": helper_id}} if helper_id else {}),
             },
             timeout=_POST_TIMEOUT,
         )
@@ -297,7 +304,10 @@ async def _wake_with_progress(client: httpx.AsyncClient, parent_id: str) -> None
     if not items:
         return
     body = "\n".join(notice for _, notice in items)
-    if await post_notice(client, parent_id, body, if_running=False) == FAILED:
+    if (
+        await post_notice(client, parent_id, body, if_running=False, helper_id=items[0][0])
+        == FAILED
+    ):
         return  # kept; the next progress, flag or completion tries again
     NOTICES.woke(parent_id)
     for helper_id, notice in items:
@@ -324,7 +334,9 @@ async def _deliver_progress(client: httpx.AsyncClient, helper_id: str, info: Hel
     notice = NOTICES.waiting(info.parent_id, helper_id)
     if notice is None:
         return
-    result = await post_notice(client, info.parent_id, notice, if_running=True)
+    result = await post_notice(
+        client, info.parent_id, notice, if_running=True, helper_id=helper_id
+    )
     if result == TAKEN:
         _log_first_progress(info.parent_id, helper_id, notice)
     elif result == IDLE:
@@ -362,7 +374,9 @@ async def report(ctx: HandlerCtx, kind: str, args: Mapping[str, Any]) -> str:
         # A flag wakes the parent; progress waiting for that wake rides along.
         items = NOTICES.waiting_items(info.parent_id)
         body = "\n".join([*(line for _, line in items), notice])
-        result = await post_notice(ctx.server_client, info.parent_id, body, if_running=False)
+        result = await post_notice(
+            ctx.server_client, info.parent_id, body, if_running=False, helper_id=helper_id
+        )
         if result != FAILED:
             NOTICES.woke(info.parent_id)
             for other_id, line in items:

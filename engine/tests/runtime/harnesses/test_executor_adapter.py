@@ -1224,11 +1224,27 @@ def test_translate_event_mcp_tool_call_request_emits_observed_with_bare_name() -
     Pinning the bare-name contract here keeps the adapter's
     emission consistent with the rest of the Omnigent wire path.
     """
-    from omnigent.harnesses.executor import ToolCallRequest
+    from omnigent.harnesses.executor import ToolCallRequest, ToolCallStarted, ToolInputChunk
     from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
 
     adapter = ExecutorAdapter(executor_factory=lambda: _StubExecutor())
     ctx = _RecordingTurnContext(response_id="resp_test")
+
+    # The call as it is being written: its start and each piece of its arguments, by call_id
+    # and bare name, for the server's Round record only.
+    name, meta = "mcp__omnigent__sys_terminal_launch", {"call_id": "tool_use_abc123"}
+    adapter._translate_event(ToolCallStarted(name=name, metadata=meta), ctx)  # type: ignore[arg-type]
+    adapter._translate_event(ToolInputChunk(name=name, delta='{"term', metadata=meta), ctx)  # type: ignore[arg-type]
+    assert [(e.type, e.call_id, e.name, e.delta) for e in ctx.emitted] == [
+        ("response.function_call_arguments.delta", "tool_use_abc123", "sys_terminal_launch", ""),
+        (
+            "response.function_call_arguments.delta",
+            "tool_use_abc123",
+            "sys_terminal_launch",
+            '{"term',
+        ),
+    ]
+    ctx.emitted.clear()
 
     event = ToolCallRequest(
         name="mcp__omnigent__sys_terminal_launch",

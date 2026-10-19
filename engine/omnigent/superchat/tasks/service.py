@@ -15,11 +15,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from omnigent.context.labels import (
-    ADHOC_HELPER_LABEL_KEY,
-    SCHEDULED_FIRE_LABEL_KEY,
-    SCHEDULED_HELPER_LABEL_KEY,
-)
+from omnigent.context.labels import BACKGROUND_LABELS
 from omnigent.context.rollover import _MID_TURN_LIVE_STATUSES
 from omnigent.db.utils import now_epoch
 from omnigent.entities import Conversation, FunctionCallData, FunctionCallOutputData, MessageData
@@ -54,8 +50,6 @@ from omnigent.superchat.tasks.store import SqlAlchemyTaskStore
 
 _logger = logging.getLogger(__name__)
 
-#: Labels the server stamps on a run no person started (a schedule, a Goal's cadence, a pass).
-BACKGROUND_LABELS = (SCHEDULED_HELPER_LABEL_KEY, ADHOC_HELPER_LABEL_KEY, SCHEDULED_FIRE_LABEL_KEY)
 #: Helpers nest one level (a worker's subworker); a deeper chain is not followed.
 _MAX_HOPS = 4
 #: Newest items read to find the person's latest message.

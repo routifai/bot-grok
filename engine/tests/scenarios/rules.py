@@ -1,4 +1,5 @@
-"""When a turn ends well (ADR 0025) and speaks first (ADR 0026).
+"""When a turn ends well (ADR 0025), speaks first (ADR 0026) and keeps the machinery out of
+its words (ADR 0029).
 
 Pure functions for the offline harness and the live runner. Whether a turn ends well is the
 engine's own rule (:func:`omnigent.superchat.tasks.record.ends_well`); this module only reads a
@@ -25,6 +26,7 @@ check; detail: the tool).
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Sequence
 from typing import Any
 
@@ -60,10 +62,60 @@ GIVING_UP = (
 )
 
 
+#: Words that name the machinery instead of the work; a reply to the person says none of them.
+MECHANISM_WORDS = (
+    "helper",
+    "helpers",
+    "sub-agent",
+    "sub-agents",
+    "subagent",
+    "subagents",
+    "worker",
+    "harness",
+    "step limit",
+    "tool call",
+    "start_helper",
+    "message_helper",
+    "context_brief",
+    "recall_get",
+    "artifact_save",
+    "render_card",
+    "ask_clarification",
+)
+_MECHANISM = re.compile(
+    r"(?<![\w-])(?:" + "|".join(re.escape(word) for word in MECHANISM_WORDS) + r")(?![\w-])",
+    re.IGNORECASE,
+)
+#: ADR 0029's budget, warm: seconds from the person's message to the Assistant's first words.
+FIRST_WORDS_WARM = 5.0
+
+
 def gives_up(text: str) -> bool:
     """Whether a reply tells the person to nudge the assistant instead of the work going on."""
     lowered = text.lower()
     return any(phrase in lowered for phrase in GIVING_UP)
+
+
+def mechanism_words(text: str) -> list[str]:
+    """The machinery words a reply says, lowercased, in order."""
+    return [match.group(0).lower() for match in _MECHANISM.finditer(text)]
+
+
+def first_words_in_time(seconds: float | None, budget: float = FIRST_WORDS_WARM) -> bool:
+    """Whether the first words came within *budget*; a turn with no measured words passes."""
+    return seconds is None or seconds <= budget
+
+
+def ends_own_turn_after_spawn(round_events: Sequence[dict[str, Any]]) -> bool:
+    """Whether the model itself ended its turn after starting a Helper, with no hook ending it."""
+    del round_events
+    raise NotImplementedError("needs Round events (recorded from PR 3); asserted from PR 8")
+
+
+def helper_cwd_is_folder(round_events: Sequence[dict[str, Any]], folder: str) -> bool:
+    """Whether each Helper of the Round ran in *folder*."""
+    del round_events, folder
+    raise NotImplementedError("needs the Helper's folder on its record (PR 12)")
 
 
 def is_deliverable_turn(turn_events: Sequence[Event]) -> bool:

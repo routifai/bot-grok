@@ -4739,8 +4739,30 @@ class PolicyEvaluationRequestEvent(_SSEEventBase):
     data: dict[str, Any]
 
 
+class ToolInputDeltaEvent(_SSEEventBase):
+    """
+    Runner-internal: a tool call the model is still writing, and the next piece of its
+    arguments.
+
+    Emitted by the executor adapter when the model opens a call (``delta`` empty) and for each
+    fragment of its arguments. The server's relay records it as the call's start and input
+    size (ADR 0029) and never relays it to clients: they see the call once it is complete.
+
+    :param type: Always ``"response.function_call_arguments.delta"``.
+    :param call_id: The call's id, the same as the later ``function_call``'s.
+    :param name: The tool's name, e.g. ``"artifact_save"``.
+    :param delta: The next piece of the arguments' JSON text, e.g. ``'{"name": "dec'``.
+    """
+
+    type: Literal["response.function_call_arguments.delta"]
+    call_id: str
+    name: str
+    delta: str
+
+
 HarnessStreamEvent = (
     ServerStreamEvent
+    | ToolInputDeltaEvent
     | InjectionConsumedEvent
     | InjectionRefusedEvent
     | InjectionOfferedEvent

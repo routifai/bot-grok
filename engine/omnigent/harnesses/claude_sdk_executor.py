@@ -2724,6 +2724,9 @@ class ClaudeSDKExecutor(Executor):
         if is_superside_chat:
             env[_CLAUDE_CODE_DISABLE_AUTO_COMPACT_ENV] = "1"
             env[_CLAUDE_CODE_DISABLE_AUTO_MEMORY_ENV] = "1"
+            # Its Omnigent tools are few and every turn needs some: load their definitions
+            # with the session instead of through a ToolSearch call before the first one.
+            env[_CLAUDE_CODE_ENABLE_TOOL_SEARCH_ENV] = "false"
         if cfg.checklist:
             env[_CLAUDE_CODE_ENABLE_TODO_TOOLS_ENV] = "1"
             allowed_tools.extend(_CLI_TASK_TOOLS)
