@@ -319,6 +319,29 @@ def _refuse_unseen_manual_edit(
         )
 
 
+def _unchanged_head(
+    store: SqlAlchemyArtifactStore,
+    owner: str | None,
+    parent_session_id: str,
+    name: str,
+    data: bytes,
+    base_version: int | None,
+) -> Artifact | None:
+    """The newest version when *data* is byte-identical to it, else ``None``.
+
+    A save of the same bytes is no edit: it must not mint a version that claims a change (a
+    save read before the edit landed looked exactly like this). A stale ``base_version`` is
+    left to the store's conflict check.
+    """
+    group = store.versions_of(user_id=owner, parent_session_id=parent_session_id, name=name)
+    head = group[0] if group else None
+    if head is None or head.size != len(data):
+        return None
+    if base_version is not None and head.version != base_version:
+        return None
+    return head if store.read(head) == data else None
+
+
 def _studio_saving_its_file(
     store: SqlAlchemyArtifactStore,
     owner: str | None,
@@ -394,6 +417,7 @@ def create_artifacts_router(
     @router.post("/artifacts", status_code=201)
     async def create_artifact(
         request: Request,
+        response: Response,
         parent_session_id: str = Query(),
         name: str = Query(min_length=1, max_length=512),
         title: str | None = Query(default=None, max_length=256),
@@ -407,7 +431,8 @@ def create_artifacts_router(
         the version records it and its turn (:func:`producing_turn`). A file's studio saving
         its own file must name the ``base_version`` it edited (ADR 0024): a stale one is an
         ``artifact_stale`` 409, and the version links to the studio's own message, not to one
-        of the Conversation's.
+        of the Conversation's. Bytes identical to the newest version make no version: the
+        answer is that version with ``unchanged: true`` (200).
         """
         owner = _owner(request)
         check_id(parent_session_id, "parent_session_id")
@@ -454,6 +479,12 @@ def create_artifacts_router(
         if kind == "html" and not is_deck_name(clean_name):
             # A page is editable by hand only where it has ids; don't leave that to the author.
             data = await asyncio.to_thread(name_elements, data)
+        same = await asyncio.to_thread(
+            _unchanged_head, store, owner, parent_session_id, clean_name, data, base_version
+        )
+        if same is not None:
+            response.status_code = 200  # nothing was created
+            return {**artifact_to_response(same, versions=same.version), "unchanged": True}
         saving = await asyncio.to_thread(
             saving_chat, conversation_store, parent_session_id, chat_id
         )

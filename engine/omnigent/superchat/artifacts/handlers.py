@@ -107,6 +107,8 @@ async def handle_artifact_tool(ctx: HandlerCtx, args: dict[str, Any]) -> str:
 
 #: The engine's code for a save whose ``base_version`` is no longer the newest.
 STALE_CODE = "artifact_stale"
+#: A save or patch whose bytes equal the newest version's: no version was made.
+UNCHANGED_CODE = "artifact_unchanged"
 
 
 def _error_code(resp: Any) -> str | None:
@@ -183,6 +185,20 @@ async def _save(client: Any, chat_id: str, args: dict[str, Any], saver: str | No
     if resp.status_code >= 400:
         return finish(resp)
     saved = resp.json()
+    if saved.get("unchanged"):
+        # Not an artifact result: no file card, and no "saved" the model could repeat.
+        version = saved.get("version")
+        return json.dumps(
+            {
+                "error": UNCHANGED_CODE,
+                "unchanged": True,
+                "version": version,
+                "message": (
+                    f"{file.name} is identical to v{version}; nothing was saved. Check that "
+                    "your edit was written to the file, then save again."
+                ),
+            }
+        )
     # source_path lets the file search follow a saved file (knowledge's on_result listener).
     return json.dumps({"type": "artifact", **saved, "source_path": str(file)})
 
@@ -230,6 +246,19 @@ async def _patch(client: Any, studio_id: str, args: dict[str, Any]) -> str:
     if resp.status_code >= 400:
         return finish(resp)
     saved = resp.json()
+    if saved.get("unchanged"):
+        version = saved.get("version")
+        return json.dumps(
+            {
+                "error": UNCHANGED_CODE,
+                "unchanged": True,
+                "version": version,
+                "message": (
+                    f"The patches left the file exactly as v{version}; nothing was saved. Check "
+                    "the element ids and values against the file, then patch again."
+                ),
+            }
+        )
     source = saved.get("source_path")
     if isinstance(source, str) and source and saved.get("summary"):
         file = resolve_workspace_file(source, workspace_roots())
