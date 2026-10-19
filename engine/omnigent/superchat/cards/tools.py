@@ -536,8 +536,7 @@ def build_follow_ups(args: dict[str, Any]) -> dict[str, Any]:
         "card": "follow_ups",
         "data": {"suggestions": suggestions},
         "fallback": "\n".join(f"- {s}" for s in suggestions),
-        "note": "Shown as quiet chips under your answer. Your turn ends here.",
-        ENDS_TURN_KEY: True,
+        "note": "Shown as quiet chips under your answer.",
     }
 
 

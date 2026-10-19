@@ -636,14 +636,16 @@ def classify_tool_result(
 
 
 #: A card tool's result carrying ``"ends_turn": true`` ends the turn once its tool batch has
-#: answered: the harness makes no further model call, so the card (a question, chips) is the
-#: turn's last word and the person's reply starts the next turn. Each executor maps it to its
-#: own stop primitive (Pi's ``terminate``, the Claude CLI's ``PostToolBatch`` hook).
+#: answered: the harness makes no further model call, so the question is the turn's last word
+#: and the person's answer starts the next turn. Each executor maps it to its own stop
+#: primitive (Pi's ``terminate``, the Claude CLI's ``PostToolBatch`` hook).
 ENDS_TURN_KEY = "ends_turn"
-#: The only tools whose result may end the turn: Omnigent's own card tools that opt in, and
-#: ``deck_new`` when it returns the "Which look?" card instead of a deck. Any other tool's output
-#: (a file, a web page, shell output) is content, never a stop signal.
-ENDS_TURN_TOOLS = frozenset({"ask_clarification", "suggest_follow_ups", "deck_new"})
+#: The only tools whose result may end the turn: the two that ask the person something,
+#: ``ask_clarification`` and ``deck_new`` when it returns the "Which look?" card instead of a
+#: deck. Every other turn ends when the model ends it, also after ``start_helper`` or
+#: ``suggest_follow_ups`` (ADR 0029). Any other tool's output (a file, a web page, shell
+#: output) is content, never a stop signal.
+ENDS_TURN_TOOLS = frozenset({"ask_clarification", "deck_new"})
 #: The MCP server name Omnigent's own tools are exposed under (``mcp__omnigent__<tool>``).
 _OMNIGENT_MCP_PREFIX = "mcp__omnigent__"
 
