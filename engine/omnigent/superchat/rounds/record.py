@@ -46,8 +46,10 @@ from omnigent.context.labels import (
 )
 from omnigent.context.tool_digest import short_arguments
 from omnigent.entities.session_project import project_slug_from_workspace
+from omnigent.harnesses.executor import CHECKLIST_TOOL
 from omnigent.runner.tool_starts import STOPPED_OUTPUT
 from omnigent.superchat.artifact_kinds import is_deck_name
+from omnigent.superchat.rounds.checklist import STATUSES
 from omnigent.superchat.rounds.fold import (
     ASSISTANT,
     CHECKLIST_CREATED,
@@ -92,7 +94,7 @@ _TERMINAL = {
     "response.incomplete": "failed",
     "response.cancelled": "stopped",
 }
-#: Native checklist tools (Claude's task tools; the pi ``checklist`` tool reuses the shape).
+#: Native checklist tools (Claude's task tools); the ``checklist`` tool writes the same events.
 _CHECKLIST_CREATE, _CHECKLIST_UPDATE = "TaskCreate", "TaskUpdate"
 _TASK_NUMBER = re.compile(r"#(\d+)")
 #: The tool whose arguments are the follow-up chips.
@@ -1002,6 +1004,16 @@ class RelayRound:
                 status=args.get("status"),
                 subject=args.get("subject"),
                 active_form=args.get("activeForm"),
+            )
+        elif name == CHECKLIST_TOOL:
+            item_id = args.get("item_id")
+            self._emit(
+                turn,
+                CHECKLIST_UPDATED if item_id else CHECKLIST_CREATED,
+                item_id=str(item_id or _args(output).get("item_id") or "") or None,
+                status=STATUSES.get(str(args.get("status"))),
+                subject=args.get("subject"),
+                active_form=args.get("active_form"),
             )
 
     def _end(self, turn: _Turn, status: str) -> None:

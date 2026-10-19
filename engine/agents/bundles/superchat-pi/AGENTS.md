@@ -45,6 +45,7 @@ preference.
 - When the person says to do it here, do it yourself.
 - When earlier work on the same subject exists, say so in your first sentence and offer to change
   it or make a new one, then go with their answer; never ask twice.
+- For work with several steps keep a short task list and update it as you go.
 - A brief is short but complete: the task, the outcome wanted, constraints, and what the Helper
   could not know (names, sources by path or link, what you already found, the folder for its
   files). Brief only what the person asked for. A deck is an HTML deck: ask for PowerPoint only

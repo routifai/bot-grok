@@ -117,7 +117,7 @@ def test_spec_loader_loads_both_bundles(
 def test_the_muse_may_call_its_reply_tools(bundle: Path) -> None:
     # A feature tool missing from the Muse's allow list is invisible to it.
     allow = {line.strip().removeprefix("- ") for line in _lines(bundle / "config.yaml")}
-    for name in ("render_card", "ask_clarification", "suggest_follow_ups"):
+    for name in ("render_card", "ask_clarification", "suggest_follow_ups", "checklist"):
         assert name in allow, name
     # Charts and dashboards are pages built in the host; the retired JSON chart tools stay out.
     assert not {"display_chart", "display_dashboard"} & allow
@@ -236,6 +236,8 @@ def test_the_conversation_prompt_states_three_rules_once_and_stays_small(bundle:
     # A deck is HTML; PowerPoint only when asked, so briefs stop asking for one.
     assert "ask for PowerPoint only when the person did" in flat
     assert "`artifact_outline`" in prompt
+    # The checklist is asked for in words; the harness decides which tool keeps it.
+    assert "For work with several steps keep a short task list and update it as you go." in flat
 
 
 @pytest.mark.parametrize("bundle", [CLAUDE, PI], ids=["claude", "pi"])
@@ -247,7 +249,7 @@ def test_the_conversation_gets_its_tools_from_the_allow_list_only(bundle: Path) 
     labels = {"omnigent.context.mode": "superside-chat"}
     manager = ToolManager(parse(bundle), labels=labels, os_env_schema_only=True)
     names = set(manager.get_tool_names())
-    assert len(names) == 40
+    assert len(names) == 41
     assert not names & LEFT_OUT
     assert {"start_helper", "context_brief", "recall", "files_query", "files_status"} <= names
     for helper in HELPERS:

@@ -6,7 +6,8 @@ and Stop, which reads its Round back), ``read`` (what reads a Round once its eve
 the family stream's ``round.updated``, the Round each transcript message and Activity row is in,
 the Rounds still working and the development shadow diff), ``routes`` (the Round reads). A
 settled Round's journal entry goes to the host through the relay op :data:`JOURNAL_OP`, which
-writes it with :func:`omnigent.runner.memory.sync.record_round`. No tool reads the record.
+writes it with :func:`omnigent.runner.memory.sync.record_round`. No tool reads the record;
+``checklist`` (the model's own list on a harness without one) is recorded from its calls.
 The :class:`~omnigent.superchat.rounds.record.Sweep` job ends the turns a relay lost.
 """
 
@@ -18,6 +19,7 @@ import logging
 from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
+from omnigent.harnesses.executor import CHECKLIST_TOOL
 from omnigent.superchat.feature import (
     RELAY_MARK,
     BackgroundJob,
@@ -26,7 +28,9 @@ from omnigent.superchat.feature import (
     InstallDeps,
     ToolManagerCtx,
     is_helper,
+    is_super_chat,
 )
+from omnigent.superchat.rounds.checklist import ChecklistTool, handle_checklist
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -41,8 +45,9 @@ JOURNAL_OP = "round_journal"
 JOURNAL_TIMEOUT_S = 10.0
 
 
-def _tools(_labels: Mapping[str, str] | None, _ctx: ToolManagerCtx) -> list[Tool]:
-    return []
+def _tools(labels: Mapping[str, str] | None, _ctx: ToolManagerCtx) -> list[Tool]:
+    """``checklist`` for the Conversation itself, never a Helper."""
+    return [ChecklistTool()] if is_super_chat(labels) else []
 
 
 async def _journal_round(ctx: HandlerCtx, args: dict[str, Any]) -> str:
@@ -134,7 +139,7 @@ def _jobs(app: FastAPI) -> list[BackgroundJob]:
 FEATURE = Feature(
     name="rounds",
     tools=_tools,
-    handlers={JOURNAL_OP: _journal_round},
+    handlers={JOURNAL_OP: _journal_round, CHECKLIST_TOOL: handle_checklist},
     relay_ops=frozenset({JOURNAL_OP}),
     install=_install,
     jobs=_jobs,

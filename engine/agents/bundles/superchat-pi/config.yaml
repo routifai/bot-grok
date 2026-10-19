@@ -80,6 +80,7 @@ tools:
     - render_card
     - ask_clarification
     - suggest_follow_ups
+    - checklist
   # The Sub-agent Types this Assistant may launch, see agents/<dir>/. Each has its own
   # executor and max_sessions; a turn launches one by its declared `name`, never by naming a
   # model (docs/glossary.md "Sub-agent Type").

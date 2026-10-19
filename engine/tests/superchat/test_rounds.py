@@ -405,24 +405,6 @@ CASES: list[tuple[str, Callable[[], Any], Callable[[Any], bool]]] = [
         lambda v: v["hidden"] and v["status"] == "done",
     ),
     (
-        "the checklist is the model's words, beside the facts",
-        lambda: fold(
-            S()
-            .open()("checklist.created", item_id="1", subject="Deck", active_form="Building")(
-                "checklist.created", item_id="2", subject="Page"
-            )("checklist.updated", item_id="1", status="completed")(
-                "checklist.updated", item_id="2", status="deleted"
-            )
-            .end()
-            .ev
-        ),
-        lambda v: (
-            v["checklist"]
-            == [{"id": "1", "subject": "Deck", "active_form": "Building", "status": "completed"}]
-            and v["status"] == "done"
-        ),
-    ),
-    (
         "a deck is checked by its Helper's clean deck_check, the check line reads it",
         lambda: fold(
             S()
@@ -712,6 +694,85 @@ def test_a_round_is_written_from_the_message_the_relay_and_the_save(
     # A scheduled Helper and a file's studio are not in their parent's Round.
     assert record.helper_labels(IN_ROUND, {SCHEDULED_HELPER_LABEL_KEY: "s1"}) == {}
     assert record.helper_labels(IN_ROUND, {ARTIFACT_CHAT_LABEL_KEY: "g1"}) == {}
+
+
+class _Events:
+    """A recorder that keeps the events it is handed, in order."""
+
+    def __init__(self) -> None:
+        self.ev: list[dict[str, Any]] = []
+
+    def record(self, round_id: str, conversation_id: str, kind: str, actor: str, **body: Any):
+        body = {k: v for k, v in body.items() if v is not None}
+        self.ev.append(
+            {"t": len(self.ev), "kind": kind, "round_id": round_id, "actor": actor, **body}
+        )
+
+    def words(self, *_args: Any) -> None:
+        pass
+
+
+async def _native_checklist(_root: str) -> tuple[list[tuple[str, dict[str, Any], str]], list[str]]:
+    """Claude's task tools: the CLI numbers the items and names the number in its result."""
+    return [
+        ("TaskCreate", {"subject": "Deck", "activeForm": "Building"}, "Task #1 created: Deck"),
+        ("TaskCreate", {"subject": "Page"}, "Task #2 created: Page"),
+        ("TaskCreate", {"subject": "Old"}, "Task #3 created: Old"),
+        ("TaskUpdate", {"taskId": "1", "status": "completed"}, "Updated task #1 status"),
+        ("TaskUpdate", {"taskId": "2", "status": "in_progress"}, "Updated task #2 status"),
+        ("TaskUpdate", {"taskId": "3", "status": "deleted"}, "Updated task #3 deleted"),
+    ], ["1", "2"]
+
+
+async def _tool_checklist(root: str) -> tuple[list[tuple[str, dict[str, Any], str]], list[str]]:
+    """The ``checklist`` tool: the runner's handler names the items; a refused call adds none."""
+    from omnigent.superchat.feature import HandlerCtx
+    from omnigent.superchat.rounds.checklist import handle_checklist
+
+    ctx = HandlerCtx("checklist", None, root)
+    calls: list[tuple[str, dict[str, Any], str]] = []
+
+    async def call(args: dict[str, Any]) -> str:
+        output = await handle_checklist(ctx, args)
+        calls.append(("checklist", args, output))
+        return str(json.loads(output).get("item_id"))
+
+    deck = await call({"subject": "Deck", "active_form": "Building"})
+    page = await call({"subject": "Page"})
+    await call({"status": "doing"})  # no subject, no item: refused
+    await call({"item_id": deck, "status": "done"})
+    await call({"item_id": page, "status": "doing"})
+    return calls, [deck, page]
+
+
+@pytest.mark.parametrize("source", [_native_checklist, _tool_checklist], ids=["native", "tool"])
+def test_the_checklist_reads_the_same_from_either_tool(
+    source: Callable[..., Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The model's checklist is its words beside the facts: Claude's task tools and the
+    ``checklist`` tool are recorded as one event shape, so the view reads the same."""
+    events = _Events()
+    monkeypatch.setattr(record, "RECORDER", events)
+    root = "a" * 32
+    relay = record.RelayRound(root, _Conversations(_row(root, IN_ROUND)))
+
+    async def run() -> list[str]:
+        calls, ids = await source(root)
+        await relay.observe({"type": "response.in_progress"})
+        for n, (name, args, output) in enumerate(calls):
+            call = {"type": "function_call", "call_id": f"t{n}", "name": name}
+            await relay.observe(_done({**call, "arguments": json.dumps(args)}))
+            await relay.observe(
+                _done({"type": "function_call_output", "call_id": f"t{n}", "output": output})
+            )
+        await relay.observe({"type": "response.completed"})
+        return ids
+
+    deck, page = asyncio.run(run())
+    assert fold(events.ev, "r0")["checklist"] == [
+        {"id": deck, "subject": "Deck", "active_form": "Building", "status": "completed"},
+        {"id": page, "subject": "Page", "active_form": None, "status": "in_progress"},
+    ]
 
 
 @pytest.mark.parametrize(

@@ -1991,7 +1991,9 @@ async def test_executor_adapter_builds_config_from_request() -> None:
 async def test_executor_adapter_forwards_context_mode_to_config() -> None:
     """``request.context_mode`` (the runner's forwarded ``omnigent.context.
     mode`` label) reaches ``ExecutorConfig.extra`` so the claude-sdk
-    executor can tell a superside-chat turn apart from a plain one."""
+    executor can tell a superside-chat turn apart from a plain one, and a
+    turn offered the ``checklist`` tool (a Conversation's, never a Helper's)
+    asks for a checklist."""
     from omnigent.harnesses.executor import (
         Executor,
         ExecutorConfig,
@@ -2015,6 +2017,7 @@ async def test_executor_adapter_forwards_context_mode_to_config() -> None:
         ):
             assert config is not None
             captured["extra"] = dict(config.extra)
+            captured["checklist"] = config.checklist
             yield TurnComplete(response="ok")
 
     adapter = ExecutorAdapter(executor_factory=lambda: _CaptureExecutor())
@@ -2024,10 +2027,13 @@ async def test_executor_adapter_forwards_context_mode_to_config() -> None:
         response_id="resp_ctx_mode", event_queue=asyncio.Queue(), cancelled=asyncio.Event()
     )
     request = CreateResponseRequest(
-        model="my_coding_agent", input="hi", context_mode="superside-chat"
+        model="my_coding_agent",
+        input="hi",
+        context_mode="superside-chat",
+        tools=[{"type": "function", "function": {"name": "checklist", "parameters": {}}}],
     )
     await adapter.run_turn(request, ctx)
-    assert captured["extra"] == {"context_mode": "superside-chat"}
+    assert captured == {"extra": {"context_mode": "superside-chat"}, "checklist": True}
 
 
 @pytest.mark.asyncio
@@ -2057,6 +2063,7 @@ async def test_executor_adapter_omits_context_mode_when_unset() -> None:
         ):
             assert config is not None
             captured["extra"] = dict(config.extra)
+            captured["checklist"] = config.checklist
             yield TurnComplete(response="ok")
 
     adapter = ExecutorAdapter(executor_factory=lambda: _CaptureExecutor())
@@ -2068,6 +2075,7 @@ async def test_executor_adapter_omits_context_mode_when_unset() -> None:
     request = CreateResponseRequest(model="my_coding_agent", input="hi")
     await adapter.run_turn(request, ctx)
     assert "context_mode" not in captured["extra"]
+    assert captured["checklist"] is False
 
 
 @pytest.mark.asyncio

@@ -35,6 +35,7 @@ RISK: dict[str, str | None] = {
     "artifact_save": None,
     "artifact_stop_updating": None,
     "ask_clarification": None,
+    "checklist": None,
     "context_brief": None,
     "deck_check": None,
     "deck_export": None,
