@@ -1,4 +1,5 @@
-"""ADR 0025 scenarios, offline: no turn stalls, asks stay bounded, the step limit hands off."""
+"""ADR 0025 scenarios and ADR 0029 Rounds, offline: no turn stalls, asks stay bounded, the step
+limit hands off, no reply names the machinery."""
 
 from __future__ import annotations
 
@@ -15,10 +16,13 @@ from tests.scenarios.rules import (
     ends_well,
     gives_up,
     is_deliverable_turn,
+    mechanism_words,
     plan_spans,
     speaks_first,
 )
-from tests.scenarios.scripts import SCENARIOS, Scenario
+from tests.scenarios.scripts import ROUNDS, SCENARIOS, Scenario
+
+_ALL = SCENARIOS + ROUNDS
 
 
 @pytest.fixture(autouse=True)
@@ -26,11 +30,13 @@ def _default_limit(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(LIMIT_ENV, "3")
 
 
-def test_the_adr_names_ten_scenarios() -> None:
+def test_the_adrs_name_ten_scenarios_and_six_rounds() -> None:
     assert len({scenario.name for scenario in SCENARIOS}) == 10
+    assert len({scenario.name for scenario in ROUNDS}) == 6
+    assert len({scenario.name for scenario in _ALL}) == 16
 
 
-@pytest.mark.parametrize("scenario", SCENARIOS, ids=lambda s: s.name)
+@pytest.mark.parametrize("scenario", _ALL, ids=lambda s: s.name)
 def test_scenario_never_stalls(scenario: Scenario) -> None:
     turns = run(scenario)
     stalls = [index for index, turn in enumerate(turns) if not ends_well(turn)]
@@ -38,6 +44,14 @@ def test_scenario_never_stalls(scenario: Scenario) -> None:
     assert not [
         text for turn in turns for kind, text in turn if kind == "reply" and gives_up(text)
     ]
+    said = [
+        w
+        for turn in turns
+        for kind, text in turn
+        if kind == "reply"
+        for w in mechanism_words(text)
+    ]
+    assert said == [], said
     asked = asks(turns)
     assert len(asked) <= scenario.max_asks
     assert len(asked) == len(set(asked)), f"asked again: {asked}"
@@ -47,7 +61,7 @@ def test_scenario_never_stalls(scenario: Scenario) -> None:
 
 @pytest.mark.parametrize(
     "scenario",
-    [s for s in SCENARIOS if any(is_deliverable_turn(turn) for turn in s.turns)],
+    [s for s in _ALL if any(is_deliverable_turn(turn) for turn in s.turns)],
     ids=lambda s: s.name,
 )
 def test_deliverable_scenario_speaks_first(scenario: Scenario) -> None:
@@ -141,6 +155,20 @@ _RBC_VS_TD_SILENT: list[Event] = [
 def test_the_adr_0026_transcript_does_not_speak_first() -> None:
     assert ends_well(_RBC_VS_TD_SILENT)
     assert not speaks_first(_RBC_VS_TD_SILENT)
+
+
+@pytest.mark.parametrize(
+    ("text", "said"),
+    [
+        ("Here is the RBC vs TD comparison.", []),
+        ("I started a Helper to build the deck.", ["helper"]),
+        ("Two sub-agents and a worker are on it.", ["sub-agents", "worker"]),
+        ("The step limit stopped context_brief.", ["step limit", "context_brief"]),
+        ("Our helpers' coworker is helpful.", ["helpers"]),
+    ],
+)
+def test_mechanism_words(text: str, said: list[str]) -> None:
+    assert mechanism_words(text) == said
 
 
 @pytest.mark.parametrize(

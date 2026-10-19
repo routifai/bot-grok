@@ -1,4 +1,4 @@
-"""The ten scenarios of ADR 0025, as data.
+"""The ten scenarios of ADR 0025 and ADR 0029's Round matrix, as data.
 
 Each turn is the person's opener followed by what a well-behaved assistant does (the scripted
 model). The offline harness runs the assistant's calls through the step-limit policy; the live
@@ -219,6 +219,123 @@ SCENARIOS: tuple[Scenario, ...] = (
                 ("tool_call", "context_brief"),
                 ("plan", "brief,helper_done,check_ran"),
                 ("cancelled", ""),
+            ),
+        ),
+        deliverable="deck",
+    ),
+)
+
+
+#: ADR 0029's Round matrix: each Round from the person's message through settlement, with no
+#: plan card (the plan machinery goes). The live runner plays these after the ADR 0025 ten.
+ROUNDS: tuple[Scenario, ...] = (
+    Scenario(
+        "round-deck-delegated",
+        (
+            (
+                ("request", "Make a 5-slide deck about Uruguay"),
+                ("reply", "I'll put together a 5-slide deck on Uruguay."),
+                ("helper_started", ""),
+            ),
+            (
+                ("notice", "result"),
+                ("helper_save", ""),
+                ("check", "deck_check"),
+                ("reply", "Your Uruguay deck is ready: history, people, economy and football."),
+            ),
+        ),
+        deliverable="deck",
+    ),
+    Scenario(
+        "round-deck-direct",
+        (
+            (
+                ("request", "Make a 3-slide deck about Lisbon"),
+                ("reply", "Making a 3-slide deck on Lisbon now."),
+                ("tool_call", "deck_new"),
+                ("tool_call", "deck_check"),
+                ("save", ""),
+                ("reply", "Here is the Lisbon deck."),
+            ),
+        ),
+        deliverable="deck",
+    ),
+    Scenario(
+        "round-landing-page",
+        (
+            (
+                ("request", "Build a landing page for a coffee subscription"),
+                ("reply", "Building the coffee subscription landing page."),
+                ("helper_started", ""),
+            ),
+            (
+                ("notice", "result"),
+                ("helper_save", ""),
+                ("reply", "The landing page is ready, with plans, pricing and a sign-up form."),
+            ),
+        ),
+    ),
+    Scenario(
+        "round-two-deliverables",
+        (
+            (
+                ("request", "Make a deck on our Q3 numbers and a one-page summary of them"),
+                ("reply", "I'll make the Q3 deck and the one-page summary."),
+                ("helper_started", ""),
+                ("tool_call", "sys_os_bash"),
+                ("save", ""),
+                ("reply", "The summary is ready; the deck is on its way."),
+            ),
+            (
+                ("notice", "result"),
+                ("helper_save", ""),
+                ("check", "deck_check"),
+                ("reply", "The Q3 deck is ready too."),
+            ),
+        ),
+        deliverable="deck",
+    ),
+    Scenario(
+        "round-stop-follow-up",
+        (
+            (
+                ("request", "Make a 10-slide deck about the history of jazz"),
+                ("reply", "Starting a 10-slide deck on the history of jazz."),
+                ("helper_started", ""),
+                ("cancelled", ""),
+            ),
+            (
+                ("message", "Did it finish?"),
+                ("reply", "No. You stopped it before any slides were saved."),
+            ),
+        ),
+        deliverable="deck",
+    ),
+    Scenario(
+        "round-repeat-ask",
+        (
+            (
+                ("request", "Make a 5-slide deck about Uruguay"),
+                ("reply", "I'll put together a 5-slide deck on Uruguay."),
+                ("helper_started", ""),
+            ),
+            (
+                ("notice", "result"),
+                ("helper_save", ""),
+                ("check", "deck_check"),
+                ("reply", "Your Uruguay deck is ready."),
+            ),
+            (
+                ("request", "Make that Uruguay deck again, with a slide on football"),
+                ("reply", "Adding a football slide to the Uruguay deck from earlier."),
+                ("tool_call", "recall"),
+                ("helper_started", ""),
+            ),
+            (
+                ("notice", "result"),
+                ("helper_save", ""),
+                ("check", "deck_check"),
+                ("reply", "The Uruguay deck now has a football slide."),
             ),
         ),
         deliverable="deck",

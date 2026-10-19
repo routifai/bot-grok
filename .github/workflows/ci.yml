@@ -19,6 +19,8 @@ jobs:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
+          # The retired-words step diffs against the base branch.
+          fetch-depth: 0
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -33,6 +35,10 @@ jobs:
             echo "::error::Run 'pnpm --filter @superchat/web intl:extract' and commit the catalogs."
             exit 1
           }
+      - name: No retired words on added lines (ADR 0029)
+        env:
+          BASE: origin/${{ github.base_ref || 'main' }}
+        run: python3 engine/scripts/retired_words.py "$BASE"
 
   check:
     name: Typecheck
