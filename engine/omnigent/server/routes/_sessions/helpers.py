@@ -69,6 +69,7 @@ from omnigent.errors import (
     category_for_code,
     restart_on_stale_cursor,
 )
+from omnigent.inference_config import snapshot_runtime_config
 from omnigent.models.model_metadata import concrete_reported_model
 from omnigent.policies.types import EvaluationContext
 from omnigent.runner.identity import (
@@ -4059,9 +4060,7 @@ async def _launch_runner_on_host_locked(
                 # same configuration check it does at create-time launch. None
                 # (agent not resolvable) skips the host-side check — fail open.
                 harness=_resolve_harness(conv),
-                inference_config=(
-                    conv.inference_snapshot["runtime_config"] if conv.inference_snapshot else None
-                ),
+                inference_config=snapshot_runtime_config(conv.inference_snapshot),
             )
         )
         try:
