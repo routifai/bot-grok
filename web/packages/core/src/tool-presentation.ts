@@ -621,6 +621,30 @@ export const TOOL_PRESENTATION: Record<string, ToolPresentation> = {
     snippet: () => null,
   },
 
+  artifact_publish: {
+    icon: "generic",
+    title: () => "Published an app",
+    snippet: () => null,
+  },
+
+  artifact_keep_updated: {
+    icon: "generic",
+    title: () => "Set a file to stay updated",
+    snippet: () => null,
+  },
+
+  artifact_stop_updating: {
+    icon: "generic",
+    title: () => "Stopped updating a file",
+    snippet: () => null,
+  },
+
+  artifact_live_settings: {
+    icon: "generic",
+    title: () => "Checked how a file is updated",
+    snippet: () => null,
+  },
+
   display_chart: {
     icon: "generic",
     title: () => "Made a chart",
