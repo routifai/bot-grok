@@ -240,15 +240,25 @@ def test_the_conversation_prompt_states_three_rules_once_and_stays_small(bundle:
     assert "For work with several steps keep a short task list and update it as you go." in flat
 
 
-@pytest.mark.parametrize("bundle", [CLAUDE, PI], ids=["claude", "pi"])
-def test_the_conversation_gets_its_tools_from_the_allow_list_only(bundle: Path) -> None:
+def _conversation_tools(bundle: Path) -> set[str]:
     import omnigent.superchat.features  # noqa: F401  (registers the feature tools)
     from omnigent.spec import parse
     from omnigent.tools.manager import ToolManager
 
     labels = {"omnigent.context.mode": "superside-chat"}
     manager = ToolManager(parse(bundle), labels=labels, os_env_schema_only=True)
-    names = set(manager.get_tool_names())
+    return set(manager.get_tool_names())
+
+
+def test_the_conversation_has_the_same_tools_on_either_harness() -> None:
+    # The live matrix on pi (scripts/scenarios.py --harness pi) measures the same Assistant. No
+    # engine tool is harness-specific: a harness's own built-ins are its own, not the bundle's.
+    assert _conversation_tools(CLAUDE) == _conversation_tools(PI)
+
+
+@pytest.mark.parametrize("bundle", [CLAUDE, PI], ids=["claude", "pi"])
+def test_the_conversation_gets_its_tools_from_the_allow_list_only(bundle: Path) -> None:
+    names = _conversation_tools(bundle)
     assert len(names) == 41
     assert not names & LEFT_OUT
     assert {"start_helper", "context_brief", "recall", "files_query", "files_status"} <= names
