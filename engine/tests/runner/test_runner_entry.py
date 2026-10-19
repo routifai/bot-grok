@@ -11,6 +11,7 @@ import signal
 import sys
 import tarfile
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -1690,68 +1691,75 @@ def test_install_crash_logging_records_uncaught_exception(
     assert record.exc_info is not None, "traceback must be attached for diagnosis"
 
 
+def _capture_signal_handlers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> dict[int, tuple[Callable[..., None], tuple[object, ...]]]:
+    """Record the handlers ``_install_signal_handlers`` registers on the loop.
+
+    Tests fire the captured SIGTERM handler instead of signalling the
+    test process: a real ``os.kill(os.getpid(), SIGTERM)`` kills the
+    pytest worker outright whenever registration degraded or the handler
+    is not on the loop that receives the wakeup.
+
+    :param monkeypatch: Fixture used to patch the running loop.
+    :returns: Signal number mapped to its callback and arguments.
+    """
+    handlers: dict[int, tuple[Callable[..., None], tuple[object, ...]]] = {}
+
+    def _record(sig: int, callback: Callable[..., None], *args: object) -> None:
+        handlers[sig] = (callback, args)
+
+    monkeypatch.setattr(asyncio.get_running_loop(), "add_signal_handler", _record)
+    return handlers
+
+
 @pytest.mark.asyncio
-@pytest.mark.skipif(
-    not hasattr(signal, "SIGTERM") or sys.platform == "win32",
-    reason="POSIX signal delivery required",
-)
-async def test_install_signal_handlers_records_signal_reason() -> None:
+async def test_install_signal_handlers_records_signal_reason(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """A shutdown signal both sets the stop event and records its name.
 
     The recorded reason is what the exit-log line reports, so it must
     carry the specific signal (e.g. ``SIGTERM``) that stopped the runner
-    rather than a generic "shutdown requested". Delivers a real SIGTERM to
-    this process and waits for the loop handler to fire.
+    rather than a generic "shutdown requested".
 
     :returns: None.
     """
-    from omnigent.runner._entry import _install_signal_handlers
-
+    handlers = _capture_signal_handlers(monkeypatch)
     stop_event = asyncio.Event()
     reasons: list[str] = []
     _install_signal_handlers(stop_event, record_reason=reasons.append)
-    try:
-        os.kill(os.getpid(), signal.SIGTERM)
-        await asyncio.wait_for(stop_event.wait(), timeout=2.0)
-    finally:
-        loop = asyncio.get_running_loop()
-        for sig in (signal.SIGINT, signal.SIGTERM):
-            loop.remove_signal_handler(sig)
+    callback, args = handlers[signal.SIGTERM]
+    callback(*args)
 
+    assert stop_event.is_set()
     assert reasons == ["received SIGTERM"]
 
 
 @pytest.mark.asyncio
-@pytest.mark.skipif(
-    not hasattr(signal, "SIGTERM") or sys.platform == "win32",
-    reason="POSIX signal delivery required",
-)
-async def test_install_signal_handlers_marks_shutting_down() -> None:
+async def test_install_signal_handlers_marks_shutting_down(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """A shutdown signal marks the runner shutting-down state before teardown.
 
     ``_publish_terminal_exit`` reads this state to tell an intentional stop
     (SIGTERM/SIGINT, whose teardown races the terminal watcher) from a real
     terminal crash — it must be set as soon as the signal is handled, not
-    after any teardown. Delivers a real SIGTERM to this process.
+    after any teardown.
 
     :returns: None.
     """
-    from omnigent.runner._entry import _install_signal_handlers
-
+    handlers = _capture_signal_handlers(monkeypatch)
     stop_event = asyncio.Event()
     marked: list[bool] = []
     _install_signal_handlers(
         stop_event,
         mark_shutting_down=lambda: marked.append(True),
     )
-    try:
-        os.kill(os.getpid(), signal.SIGTERM)
-        await asyncio.wait_for(stop_event.wait(), timeout=2.0)
-    finally:
-        loop = asyncio.get_running_loop()
-        for sig in (signal.SIGINT, signal.SIGTERM):
-            loop.remove_signal_handler(sig)
+    callback, args = handlers[signal.SIGTERM]
+    callback(*args)
 
+    assert stop_event.is_set()
     assert marked == [True]
 
 

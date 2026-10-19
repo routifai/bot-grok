@@ -13,6 +13,8 @@ correctness change. See the comment on ``uvicorn.Config`` in ``omnigent/cli.py``
 from __future__ import annotations
 
 import importlib
+import importlib.util
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -27,7 +29,7 @@ from omnigent.util.tunnel_limits import (
     uvicorn_tunnel_kwargs,
 )
 
-_REPO_ROOT = Path(__file__).resolve().parents[1]
+_ENTRYPOINT = Path(__file__).resolve().parents[2] / "deployment" / "entrypoint.py"
 
 
 def test_max_message_bytes_is_100mb() -> None:
@@ -102,22 +104,26 @@ def test_deprecated_runner_path_reexports_the_same_objects() -> None:
         assert getattr(shim, name) is getattr(canonical, name), name
 
 
+def _load_entrypoint(monkeypatch: pytest.MonkeyPatch) -> Any:
+    """Load the image's ``deployment/entrypoint.py`` without running ``main()``."""
+    spec = importlib.util.spec_from_file_location("_entrypoint_under_test", _ENTRYPOINT)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    # Its dataclasses resolve annotations through sys.modules while loading.
+    monkeypatch.setitem(sys.modules, spec.name, module)
+    spec.loader.exec_module(module)
+    return module
+
+
 def test_docker_entrypoint_hands_the_tunnel_budget_to_uvicorn(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The OSS Docker image must serve tunnels with the 30 s/90 s budget.
+    """The engine image must serve tunnels with the 30 s/90 s budget.
 
     Regression: it passed ``ws_max_size`` alone, leaving uvicorn's 20 s keepalive
-    to close busy-but-healthy tunnels — and this image serves external runners
-    only, so every session rides one.
+    to close busy-but-healthy tunnels, and every session rides one.
     """
-    import sys
-
-    sys.path.insert(0, str(_REPO_ROOT))
-    try:
-        entrypoint = importlib.import_module("deploy.docker.entrypoint")
-    finally:
-        sys.path.remove(str(_REPO_ROOT))
+    entrypoint = _load_entrypoint(monkeypatch)
 
     captured: dict[str, Any] = {}
     built = entrypoint._BuiltApp(app=object(), host="0.0.0.0", port=8000)  # type: ignore[arg-type]
@@ -132,26 +138,3 @@ def test_docker_entrypoint_hands_the_tunnel_budget_to_uvicorn(
     assert captured, "main() never reached uvicorn.run"
     for key, value in uvicorn_tunnel_kwargs().items():
         assert captured.get(key) == value, key
-
-
-def test_every_deploy_entrypoint_spreads_the_budget_into_uvicorn() -> None:
-    """No in-repo launcher may serve the omnigent app on uvicorn's defaults.
-
-    Both deploy entrypoints call ``uvicorn.run`` behind ``if __name__ ==
-    "__main__"``, so this reads the call site rather than executing it (the
-    Docker one is driven for real in the test above). It exists because the
-    drift happened twice: the Docker entrypoint carried ``ws_max_size`` alone,
-    and the Databricks Apps entrypoint carried none of the three.
-    """
-    entrypoints = (
-        "deploy/docker/entrypoint.py",
-        "deploy/databricks/src/app.py",
-    )
-    for relative in entrypoints:
-        source = (_REPO_ROOT / relative).read_text()
-        run_call = source[source.index("uvicorn.run(") :]
-        run_call = run_call[: run_call.index(")\n")]
-        assert "uvicorn_tunnel_kwargs()" in run_call, (
-            f"{relative} calls uvicorn.run without spreading uvicorn_tunnel_kwargs(), "
-            "so it serves tunnels on uvicorn's 20 s keepalive and 16 MiB frame cap"
-        )

@@ -111,6 +111,18 @@ def _no_real_zygote(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _no_real_child_subreaper(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep ``HostProcess.run()`` from making the pytest worker a subreaper.
+
+    The prctl bit is process-wide and cannot be undone by monkeypatch. Once
+    set, every orphan any later test leaves behind reparents to the worker
+    and stays a zombie there, so a ``kill(pid, 0)`` liveness check on it
+    never turns false. The real call is exercised in a child process below.
+    """
+    monkeypatch.setattr("omnigent.host.connect._install_child_subreaper", lambda: False)
+
+
+@pytest.fixture(autouse=True)
 def _no_real_host_maintenance(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep host-loop tests from sweeping machine-global developer state."""
 
@@ -1914,15 +1926,28 @@ def test_install_child_subreaper_is_safe_to_call() -> None:
 
     ``True`` on Linux where ``prctl`` set the bit; ``False`` on non-Linux or
     when ``prctl`` is unavailable — both are acceptable, non-fatal outcomes.
+    Runs in a child process: the bit it sets is process-wide and would turn
+    this pytest worker into a subreaper for every later test.
     """
+    import subprocess
     import sys
 
-    from omnigent.host.connect import _install_child_subreaper
-
-    result = _install_child_subreaper()
-    assert isinstance(result, bool)
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from omnigent.host.connect import _install_child_subreaper;"
+            "print(_install_child_subreaper())",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    result = proc.stdout.strip()
+    assert result in ("True", "False")
     if sys.platform != "linux":
-        assert result is False
+        assert result == "False"
 
 
 def test_host_spawned_runner_has_parent_pid_env(
