@@ -100,12 +100,15 @@ class ExecutorConfig:
         model response.
     :param extra: Arbitrary executor-specific kwargs merged into the
         underlying SDK call, e.g. ``{"stepwise_internal_turns": True}``.
+    :param checklist: ``True`` when the engine wants the turn's work kept as a checklist;
+        an executor whose agent has native checklist tools opts into them.
     """
 
     model: str | None = None
     temperature: float = 0.0
     max_tokens: int = 100000
     extra: ExecutorExtra = field(default_factory=dict)
+    checklist: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -163,6 +166,37 @@ class ToolCallRequest(ExecutorEvent):
 
     name: str
     args: ToolArgs = field(default_factory=dict)
+    metadata: ToolCallMetadata = field(default_factory=dict)
+
+
+@dataclass
+class ToolCallStarted(ExecutorEvent):
+    """The LLM has begun writing a tool call; its arguments are still streaming.
+
+    Advisory: the matching :class:`ToolCallRequest` with the full args still follows.
+
+    :param name: The tool's registered name, e.g. ``"sql_query"``.
+    :param metadata: Per-call metadata; ``metadata["call_id"]`` matches the later
+        :class:`ToolCallRequest`.
+    """
+
+    name: str
+    metadata: ToolCallMetadata = field(default_factory=dict)
+
+
+@dataclass
+class ToolInputChunk(ExecutorEvent):
+    """A fragment of a tool call's arguments as the LLM streams them.
+
+    :param name: The tool's registered name, e.g. ``"sql_query"``.
+    :param delta: The next piece of the arguments' JSON text, e.g. ``'{"query": "SEL'``.
+        Fragments concatenate to the full JSON; one alone is not valid JSON.
+    :param metadata: Per-call metadata; ``metadata["call_id"]`` matches the
+        :class:`ToolCallStarted` that opened the call.
+    """
+
+    name: str
+    delta: str
     metadata: ToolCallMetadata = field(default_factory=dict)
 
 

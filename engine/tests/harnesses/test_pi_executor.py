@@ -25,7 +25,10 @@ from omnigent.harnesses.executor import (
     TextChunk,
     ToolCallComplete,
     ToolCallRequest,
+    ToolCallStarted,
     ToolCallStatus,
+    ToolInputChunk,
+    TurnCancelled,
     TurnComplete,
 )
 from omnigent.harnesses.pi_executor import (
@@ -3090,6 +3093,52 @@ def test_pi_thinking_and_text_delta_ordering_preserved() -> None:
     _run(_test())
 
 
+def test_pi_streams_tool_call_start_and_argument_deltas() -> None:
+    """
+    Pi's ``toolcall_start`` / ``toolcall_delta`` updates surface as ToolCallStarted and
+    ToolInputChunk with the call id that ``tool_execution_start`` later carries.
+    """
+
+    async def _test() -> None:
+        def _update(ame: dict[str, object]) -> str:
+            return json.dumps({"type": "message_update", "assistantMessageEvent": ame})
+
+        executor = _executor_with_scripted_rpc(
+            [
+                json.dumps({"type": "response", "success": True}),
+                _update(
+                    {"type": "toolcall_start", "contentIndex": 1, "id": "c1", "toolName": "bash"}
+                ),
+                _update({"type": "toolcall_delta", "contentIndex": 1, "delta": '{"command": '}),
+                _update({"type": "toolcall_delta", "contentIndex": 1, "delta": '"ls"}'}),
+                json.dumps(
+                    {
+                        "type": "tool_execution_start",
+                        "toolCallId": "c1",
+                        "toolName": "bash",
+                        "args": {"command": "ls"},
+                    }
+                ),
+                json.dumps({"type": "agent_end", "messages": []}),
+            ]
+        )
+
+        events = [
+            e async for e in executor.run_turn([{"role": "user", "content": "hi"}], [], "system")
+        ]
+        kinds = [type(e).__name__ for e in events if not isinstance(e, TurnComplete)]
+        assert kinds == ["ToolCallStarted", "ToolInputChunk", "ToolInputChunk", "ToolCallRequest"]
+        assert events[0] == ToolCallStarted(name="bash", metadata={"call_id": "c1"})
+        assert (
+            "".join(e.delta for e in events if isinstance(e, ToolInputChunk))
+            == '{"command": "ls"}'
+        )
+        tool_events = (ToolCallStarted, ToolInputChunk, ToolCallRequest)
+        assert all(e.metadata["call_id"] == "c1" for e in events if isinstance(e, tool_events))
+
+    _run(_test())
+
+
 # ---------------------------------------------------------------------------
 # PiExecutor session management tests
 # ---------------------------------------------------------------------------
@@ -5071,7 +5120,7 @@ class TestPiSteering(unittest.TestCase):
 
         _run(_test())
 
-    def test_a_turn_cut_short_with_steers_pending_drops_pi(self):
+    def test_an_aborted_turn_is_cancelled_and_drops_pi_with_steers_pending(self):
         async def _test():
             pi = _SteerablePi(cleared=[])
             executor = self._executor(pi)
@@ -5086,7 +5135,7 @@ class TestPiSteering(unittest.TestCase):
             )
             await asyncio.wait_for(task, 5)
 
-            self.assertIsInstance(events[-1], ExecutorError)
+            self.assertEqual(events[-1], TurnCancelled())
             self.assertEqual(self._outcomes(events), [])  # unreported: the caller refuses it
             self.assertTrue(pi.closed)  # Pi may still hold it; nothing answers it twice
             self.assertNotIn("s", executor._session_states)

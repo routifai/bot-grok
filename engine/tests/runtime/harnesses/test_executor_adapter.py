@@ -463,6 +463,34 @@ async def test_executor_error_preserves_only_explicitly_idle_sessions(
         executor.close.assert_awaited_once()
 
 
+@pytest.mark.asyncio
+async def test_traced_turn_survives_a_response_id_without_a_trace_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With tracing on, an id that is not ``resp_<hex>`` loses its trace context, not the turn."""
+    import asyncio
+    from unittest.mock import AsyncMock, Mock
+
+    from omnigent.harnesses import tracing
+    from omnigent.harnesses.executor import MockExecutor
+    from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
+    from omnigent.runtime.harnesses._scaffold import TurnContext
+    from omnigent.server.schemas import CreateResponseRequest
+
+    monkeypatch.setattr(tracing, "_tracing_enabled", True)
+    executor = MockExecutor()
+    executor.enqueue_response("done")
+    executor.close = AsyncMock()
+    adapter = ExecutorAdapter(executor_factory=Mock(return_value=executor))
+    ctx = TurnContext(
+        response_id="not_a_trace_id", event_queue=asyncio.Queue(), cancelled=asyncio.Event()
+    )
+
+    await adapter.run_turn(CreateResponseRequest(model="test-agent", input="hello"), ctx)
+
+    assert not ctx.cancelled.is_set()
+
+
 async def test_executor_error_usage_reaches_response_failed(
     use_error_with_usage: None,
     manager: HarnessProcessManager,
