@@ -24,6 +24,10 @@ from omnigent.onboarding.ambient import (
     detect_providers,
 )
 
+# The suite-wide ``_isolate_ambient_provider_discovery`` fixture swaps the
+# login check for a file-only stub; this module tests the real one.
+_REAL_CLAUDE_LOGIN_DETECTED = ambient._claude_login_detected
+
 # Every provider env var ambient may read — cleared in the base fixture so
 # the host's own keys don't leak into the deterministic detection tests.
 _PROVIDER_ENV_VARS = [
@@ -66,6 +70,7 @@ def clean_env(tmp_path, monkeypatch: pytest.MonkeyPatch):
     # Neutralize the macOS Keychain fallback by default (the file check already
     # sees no creds under the tmp HOME). The detected/absent tests override this.
     monkeypatch.setattr(harness_install, "harness_cli_logged_in", lambda key: False)
+    monkeypatch.setattr(ambient, "_claude_login_detected", _REAL_CLAUDE_LOGIN_DETECTED)
     return tmp_path
 
 

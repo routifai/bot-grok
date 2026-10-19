@@ -1396,7 +1396,6 @@ async def test_runner_subprocess_exits_on_sigterm(
         await manager.shutdown()
 
 
-@pytest.mark.flaky(reruns=2, reruns_delay=0)
 async def test_runner_subprocess_exits_when_spawning_parent_exits(
     short_tmp_parent: Path,
     register_test_harness: None,
@@ -1432,20 +1431,28 @@ async def test_runner_subprocess_exits_when_spawning_parent_exits(
         asyncio.run(main())
         """
     )
+    # The runner notices the parent within one watchdog poll, then exits
+    # gracefully or is hard-exited after its deadline. Pin both short so the
+    # wait below is bounded by the runner's own guarantee rather than by how
+    # long a graceful uvicorn shutdown takes on a loaded machine.
     proc = subprocess.run(
         [sys.executable, "-c", parent_script],
         check=True,
         text=True,
         capture_output=True,
         timeout=30,
-        env={**os.environ, "PYTHONPATH": os.getcwd()},
+        env={
+            **os.environ,
+            "PYTHONPATH": os.getcwd(),
+            "OMNIGENT_HARNESS_SHUTDOWN_TIMEOUT_S": "0.5",
+            "OMNIGENT_HARNESS_HARD_EXIT_TIMEOUT_S": "1.0",
+        },
     )
     runner_pid = int(proc.stdout.strip().splitlines()[-1])
 
     try:
-        for _ in range(60):
-            if not _pid_alive(runner_pid):
-                break
+        deadline = time.monotonic() + 20.0
+        while _pid_alive(runner_pid) and time.monotonic() < deadline:
             await asyncio.sleep(0.1)
         assert not _pid_alive(runner_pid)
     finally:

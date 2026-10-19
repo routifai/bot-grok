@@ -83,7 +83,8 @@ jobs:
   engine:
     name: Engine (Python)
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # The suite takes 30 to 44 minutes on a hosted runner; 45 cancelled green runs.
+    timeout-minutes: 60
     defaults:
       run:
         working-directory: engine

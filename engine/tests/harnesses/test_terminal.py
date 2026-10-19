@@ -3123,8 +3123,8 @@ def test_reap_orphaned_terminals_logs_reap_when_socket_is_already_gone(
 
 
 @pytest.mark.skipif(
-    sys.platform != "linux",
-    reason="the linux_bwrap sandbox backend only resolves on Linux",
+    sys.platform != "linux" or shutil.which("bwrap") is None,
+    reason="the linux_bwrap sandbox backend resolves only on Linux with bubblewrap installed",
 )
 def test_create_terminal_instance_denies_control_socket_but_keeps_private_dir_writable(
     tmp_path: Path,

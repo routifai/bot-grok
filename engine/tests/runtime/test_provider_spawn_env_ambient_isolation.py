@@ -105,16 +105,17 @@ def pytest_configure(config):
 """
 
 # Standalone control snippet: proves the injected Claude login is genuinely
-# surfaced by detection. Imports the harness_install chain BEFORE flipping
-# sys.platform for the same _scproxy reason as the plugin above.
+# surfaced by detection. Imports ambient and the harness_install chain BEFORE
+# flipping sys.platform for the same _scproxy reason as the plugin above
+# (ambient's own imports pull urllib.request).
 _CLAUDE_CONTROL_SNIPPET = (
     "import os, sys, tempfile;"
+    "import omnigent.onboarding.ambient as amb;"
     "import omnigent.onboarding.harness_install as hi;"
     "hi.harness_cli_logged_in=lambda *a, **k: True;"
     "sys.platform='darwin';"
     "os.environ['HOME']=tempfile.mkdtemp();"
     "os.environ.pop('ANTHROPIC_API_KEY', None);"
-    "import omnigent.onboarding.ambient as amb;"
     "print('claude' in [d.name for d in amb.detect_providers()])"
 )
 

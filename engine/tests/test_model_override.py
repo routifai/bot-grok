@@ -82,7 +82,6 @@ def test_validate_model_override_rejects_unsafe_values(value: str) -> None:
 @pytest.mark.parametrize(
     "harness",
     [
-        "claude-native",
         "claude-sdk",
         # The user-facing alias for claude-sdk must resolve too.
         "claude",
@@ -125,8 +124,8 @@ class TestModelFamilyMismatch:
     @pytest.mark.parametrize(
         ("harness", "model"),
         [
-            ("claude-native", "databricks-claude-sonnet-4-6"),
-            ("claude-sdk", "claude-opus-4-8"),
+            ("claude-sdk", "databricks-claude-sonnet-4-6"),
+            ("claude", "claude-opus-4-8"),
             ("codex-native", "databricks-gpt-5-4"),
             ("codex", "gpt-5.1-codex"),
             # The OpenAI family is matched as a substring, which is the only
@@ -156,11 +155,11 @@ class TestModelFamilyMismatch:
     @pytest.mark.parametrize(
         ("harness", "model", "expected_rule"),
         [
-            ("claude-native", "databricks-gpt-5-4", "only runs Claude models"),
-            ("native-claude", "gpt-5.4", "only runs Claude models"),
+            ("claude-sdk", "databricks-gpt-5-4", "only runs Claude models"),
+            ("claude", "gpt-5.4", "only runs Claude models"),
             ("claude-sdk", "databricks-meta-llama-3.3-70b-instruct", "only runs Claude models"),
             # GLM / Kimi are codex-runnable but not Claude-runnable.
-            ("claude-native", "databricks-glm-5-2", "only runs Claude models"),
+            ("claude-sdk", "databricks-glm-5-2", "only runs Claude models"),
             ("claude-sdk", "system.ai.glm-5-2", "only runs Claude models"),
             ("claude-sdk", "databricks-kimi-k2-6", "only runs Claude models"),
             (
@@ -183,7 +182,7 @@ class TestModelFamilyMismatch:
     ) -> None:
         """Cross-family and undeterminable ids are rejected with the rule named.
 
-        The alias case (``native-claude``) proves canonicalization is
+        The alias case (``claude``) proves canonicalization is
         applied before the family lookup; the llama cases prove an
         undeterminable family fails loud on single-vendor harnesses
         rather than passing through to a gateway error after spawn.
@@ -195,7 +194,7 @@ class TestModelFamilyMismatch:
 
     def test_rejection_names_the_multi_model_fallback(self) -> None:
         """Both single-vendor rejections name pi as the multi-model fallback."""
-        claude_msg = model_family_mismatch("claude-native", "databricks-gpt-5-4")
+        claude_msg = model_family_mismatch("claude-sdk", "databricks-gpt-5-4")
         codex_msg = model_family_mismatch("codex-native", "databricks-claude-sonnet-4-6")
         for msg in (claude_msg, codex_msg):
             assert msg is not None

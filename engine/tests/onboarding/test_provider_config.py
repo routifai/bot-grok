@@ -28,45 +28,26 @@ from omnigent.onboarding.provider_config import (
     "harness,expected",
     [
         ("claude-sdk", ANTHROPIC_FAMILY),
-        # Native CLI harnesses — the canonical spec spellings. These were
-        # missing from the family map, so a claude-native / codex-native
-        # agent's credential failed to resolve for the /model readout and the
-        # startup-header creds line (nessie's sub-agents use exactly these).
-        ("claude-native", ANTHROPIC_FAMILY),
-        ("codex-native", OPENAI_FAMILY),
-        # The reversed spellings are also accepted.
-        ("native-claude", ANTHROPIC_FAMILY),
-        ("native-codex", OPENAI_FAMILY),
         ("codex", OPENAI_FAMILY),
+        # Pi serves both families, so it has no single one.
+        ("pi", None),
         # An unknown harness has no family (caller falls back / shows nothing).
         ("some-unknown-harness", None),
     ],
 )
-def test_harness_family_maps_native_harness_spellings(harness: str, expected: str | None) -> None:
-    """``harness_family`` resolves both native-harness spellings to a family.
-
-    Proves the fix for the multi-vendor startup header / ``/model`` readout:
-    nessie's sub-agents declare ``claude-native`` / ``codex-native``, which
-    the family map previously didn't carry (it only had the reversed
-    ``native-claude`` / ``native-codex``), so the openai family went
-    undetected. A regression that drops the canonical spellings returns
-    ``None`` here and the creds line would silently omit Codex.
-    """
+def test_harness_family_maps_each_harness(harness: str, expected: str | None) -> None:
+    """``harness_family`` resolves each canonical harness id to the family it consumes."""
     assert harness_family(harness) == expected
 
 
 @pytest.mark.parametrize(
     "harness,expected",
     [
-        # Canonical ids keyed in the family map.
-        ("claude-native", ANTHROPIC_FAMILY),
-        ("codex-native", OPENAI_FAMILY),
         ("claude-sdk", ANTHROPIC_FAMILY),
         # Executor-type spellings AgentSpec.harness_kind returns for SDK
-        # harnesses — these are NOT keys in _HARNESS_FAMILY, so they only
-        # resolve via the executor-type alias map. A regression dropping the
-        # alias returns None and a same-family SDK fork would be misjudged
-        # cross-family (model settings + native carry wrongly reset).
+        # harnesses are NOT keys in _HARNESS_FAMILY, so they only resolve via
+        # the executor-type alias map. A regression dropping the alias returns
+        # None and a same-family SDK fork would be misjudged cross-family.
         ("claude_sdk", ANTHROPIC_FAMILY),
         # The "claude" shorthand canonicalizes to claude-sdk.
         ("claude", ANTHROPIC_FAMILY),
@@ -80,10 +61,8 @@ def test_provider_family_for_harness_accepts_executor_type_spellings(
     """``provider_family_for_harness`` resolves SDK executor-type spellings.
 
     The fork agent-switch reads ``AgentSpec.harness_kind``, which returns
-    executor types (``claude_sdk``) for SDK agents — not the canonical
-    ``claude-sdk`` key. This helper must
-    bridge both so a claude_sdk → claude-native switch is recognised as
-    same-family (anthropic) and carries history.
+    executor types (``claude_sdk``) for SDK agents, not the canonical
+    ``claude-sdk`` key. This helper must bridge both.
     """
     assert provider_family_for_harness(harness) == expected
 

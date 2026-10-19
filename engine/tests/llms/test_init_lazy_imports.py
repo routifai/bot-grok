@@ -17,6 +17,36 @@ from __future__ import annotations
 
 import importlib
 import sys
+from collections.abc import Iterator
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _restore_modules() -> Iterator[None]:
+    """Put the original modules back after each purge.
+
+    The fresh copies a purge imports carry their own classes and registries
+    (error types, usage observers). Left in ``sys.modules`` they split every
+    later test in the same worker between two copies of ``omnigent.llms``, so
+    an ``isinstance`` against the old class or a lookup in the old registry
+    fails depending on which tests ran first.
+    """
+    saved = dict(sys.modules)
+    yield
+    for name in [name for name in sys.modules if name not in saved]:
+        del sys.modules[name]
+        # A first import binds the submodule on its parent package too; drop
+        # that so a later ``from package import module`` imports it afresh.
+        parent, _, child = name.rpartition(".")
+        if parent in saved:
+            saved[parent].__dict__.pop(child, None)
+    sys.modules.update(saved)
+    # A re-import also rebinds the submodule attribute on its parent package.
+    for name, module in saved.items():
+        parent, _, child = name.rpartition(".")
+        if parent in saved and getattr(saved[parent], child, module) is not module:
+            setattr(saved[parent], child, module)
 
 
 def _purge(prefix: str) -> None:
