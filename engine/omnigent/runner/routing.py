@@ -356,7 +356,9 @@ class RunnerRouter:
         everywhere) would be mislabeled ``WRONG_REPLICA`` and trigger a
         pointless re-address. This mirrors the HTTP wrong-replica guards
         (send / stream / create). With no store wired, fall back to the
-        registry-only check — single-replica setups never misroute.
+        registry-only check. With one engine (:func:`multi_replica` off) there is
+        no other replica, so a miss is always genuinely offline: an ``"online"``
+        row then outlived its connection (an engine restart, a host that died).
 
         :param host_id: The session's routing host id (its own ``host_id``, or
             a sub-agent's host-bound ancestor — see :func:`routing_host_id`),
@@ -364,8 +366,11 @@ class RunnerRouter:
             offline when its tunnel drops.
         :returns: The error code string to raise.
         """
+        from omnigent.server.host_registry import multi_replica
+
         if (
             host_id
+            and multi_replica()
             and self._host_registry is not None
             and self._host_registry.get(host_id) is None
         ):

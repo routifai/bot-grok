@@ -19,6 +19,7 @@ from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.models.model_override import validate_model_override
 from omnigent.runtime.agent_cache import AgentCache
 from omnigent.server.auth import LEVEL_READ, RESERVED_USER_LOCAL, local_single_user_enabled
+from omnigent.server.host_registry import multi_replica
 from omnigent.server.routes._auth_helpers import require_access
 from omnigent.stores import AgentStore, ConversationStore, PermissionStore
 from omnigent.stores.host_store import host_is_live
@@ -295,7 +296,12 @@ async def _authorize_host_for_workspace(
     # code, not the status, is what tells the client to re-address rather
     # than give up. Safe to raise here: workspace validation runs BEFORE
     # create_conversation, so no orphan row is left.
-    if host_registry is not None and host_registry.get(host_id) is None and host_is_live(host):
+    if (
+        multi_replica()
+        and host_registry is not None
+        and host_registry.get(host_id) is None
+        and host_is_live(host)
+    ):
         raise OmnigentError(
             f"host {host.name or host_id!r} is on another replica; retry",
             code=ErrorCode.WRONG_REPLICA,

@@ -89,7 +89,7 @@ from omnigent.server.background_session_titles import (
     prepare_background_session_title,
     schedule_background_child_task_summary,
 )
-from omnigent.server.host_registry import HostRegistry, RunnerExitReports
+from omnigent.server.host_registry import HostRegistry, RunnerExitReports, multi_replica
 from omnigent.server.routes._auth_helpers import (
     attribution_user as _attribution_user,
 )
@@ -130,6 +130,7 @@ from omnigent.server.routes._sessions.common import (
     _EXTERNAL_SESSION_TITLE_TYPE,
     _EXTERNAL_SESSION_USAGE_TYPE,
     _EXTERNAL_TOOL_OUTPUT_DELTA_TYPE,
+    _HOST_RECONNECT_GRACE_S,
     _HOST_RELAUNCH_RUNNER_CONNECT_TIMEOUT_S,
     _INTERRUPT_TYPE,
     _MCP_ELICITATION_TYPE,
@@ -415,7 +416,7 @@ async def _raise_if_runner_on_another_replica(
     """
     host_registry = getattr(app_state, "host_registry", None)
     host_store = getattr(app_state, "host_store", None)
-    if host_registry is None or host_store is None:
+    if host_registry is None or host_store is None or not multi_replica():
         return
     host_id = await asyncio.to_thread(routing_host_id, conv, conversation_store)
     if host_id is None or host_registry.get(host_id) is not None:
@@ -1332,7 +1333,8 @@ def register_events_routes(
                 # is actually wakeable on another replica.
                 _host_store = getattr(_app_state, "host_store", None)
                 if (
-                    _host_reg is not None
+                    multi_replica()
+                    and _host_reg is not None
                     and _host_store is not None
                     and _host_reg.get(wake_conv.host_id) is None
                 ):
@@ -2282,6 +2284,17 @@ def register_events_routes(
             _host_reg = getattr(request.app.state, "host_registry", None)
             if runner_client is None and _host_reg is not None:
                 _host_conn = _host_reg.get(conv.host_id)
+                _row_store = getattr(request.app.state, "host_store", None)
+                if (
+                    _host_conn is None
+                    and not multi_replica()
+                    and _row_store is not None
+                    and await asyncio.to_thread(_row_store.is_online, conv.host_id)
+                ):
+                    # A fresh "online" row with no connection here: this engine just
+                    # restarted (or the tunnel just dropped) and the host is redialling.
+                    # Give it its reconnect window before treating it as gone.
+                    _host_conn = await _host_reg.wait_for(conv.host_id, _HOST_RECONNECT_GRACE_S)
                 if _host_conn is not None:
                     launch_attempt = await _launch_runner_on_host(
                         conv,
