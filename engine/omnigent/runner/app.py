@@ -3003,6 +3003,9 @@ def create_runner_app(
     _subagent_recovery_tasks: dict[str, asyncio.Task[None]] = {}
     _subagent_wake_pending: set[str] = set()
     _last_rewake_notice: dict[str, str] = {}
+    # Session -> the Stop line the server sent with an interrupt (ADR 0029), written into the
+    # history with the cancellation marker.
+    _stop_notes: dict[str, str] = {}
     # Parents whose wake POST exhausted its bounded retries while their inbox
     # still held a sub-agent result (typically: the server was down when the
     # child finished). The catch-up scan re-attempts these on tunnel reconnect.
@@ -4389,6 +4392,7 @@ def create_runner_app(
         _subagent_wake_pending.discard(session_id)
         _stranded_wake_parents.discard(session_id)
         _last_rewake_notice.pop(session_id, None)
+        _stop_notes.pop(session_id, None)
         _session_sub_agent_names.pop(session_id, None)
         unregister_child_session(session_id)
         unregister_subagent_work_for_session(session_id)
@@ -4701,7 +4705,15 @@ def create_runner_app(
         "message may be incomplete."
     )
 
-    def _append_cancellation_items(conv_id: str) -> None:
+    def _append_cancellation_items(conv_id: str, *, turn_interrupted: bool = True) -> None:
+        """Close the stopped turn's dangling calls and add the marker the next turn reads.
+
+        The marker carries the Stop line when the server sent one; with *turn_interrupted*
+        ``False`` (no turn was running) it is that line alone, and nothing without one.
+        """
+        note = _stop_notes.pop(conv_id, None)
+        if not turn_interrupted and note is None:
+            return
         history = _session_histories.get(conv_id, [])
 
         call_ids_with_output: set[str] = set()
@@ -4736,13 +4748,17 @@ def create_runner_app(
                 synthetic_items.append(synthetic_output)
                 items_to_persist.append(synthetic_output)
 
+        if not turn_interrupted:
+            marker_text = f"[System: stopped]\n{note}"
+        else:
+            marker_text = _CANCELLATION_MARKER_TEXT + (f"\n{note}" if note else "")
         marker: _JsonObject = {
             "type": "message",
             "role": "user",
             "content": [
                 {
                     "type": "input_text",
-                    "text": _CANCELLATION_MARKER_TEXT,
+                    "text": marker_text,
                 }
             ],
         }
@@ -5628,7 +5644,19 @@ def create_runner_app(
                 extra={"session_id": conv_id},
             )
 
-    async def _cancel_inprocess_turn(conv_id: str) -> None:
+    async def _write_stop_note(conv_id: str) -> None:
+        """No turn was left to stop: the Stop line still goes in the history, and the warm
+        harness session is dropped so the next turn replays that history and reads it."""
+        if conv_id not in _stop_notes:
+            return
+        _append_cancellation_items(conv_id, turn_interrupted=False)
+        _forget_superside_chat_prefix(conv_id)
+        await _forward_harness_interrupt(conv_id)
+
+    async def _cancel_inprocess_turn(conv_id: str, note: str | None = None) -> None:
+        """Stop *conv_id*'s turn. *note* is the Stop line, written into its history."""
+        if note:
+            _stop_notes[conv_id] = note
         # Distinguish "no live turn" (absent) from a stream-mode turn (present as
         # the None sentinel — driven by the AP request's consumption of
         # proxy_stream, so the runner owns no cancellable Task). Both a live Task
@@ -5646,6 +5674,7 @@ def create_runner_app(
                 extra={"session_id": conv_id},
             )
         if conv_id not in _active_turns:
+            await _write_stop_note(conv_id)
             return
         target = _active_turns.get(conv_id)
         if isinstance(target, asyncio.Task) and target.done():
@@ -5653,6 +5682,7 @@ def create_runner_app(
             # ``conv in _active_turns`` liveness check (the buffer gate would strand
             # later messages) — sweep it, tokens included.
             _sweep_dead_turn_slot(conv_id, target)
+            await _write_stop_note(conv_id)
             return
         _interrupted_sessions.add(conv_id)
         # The executor drops its client on an interrupt: the next turn starts cold.
@@ -8450,7 +8480,11 @@ def create_runner_app(
         if body_type == "interrupt":
             # A stop also drops the messages waiting behind the turn.
             _drop_message_buffer(conversation_id)
-            await _cancel_inprocess_turn(conversation_id)
+            data = body.get("data")
+            note = data.get("note") if isinstance(data, dict) else None
+            await _cancel_inprocess_turn(
+                conversation_id, note if isinstance(note, str) and note else None
+            )
             return Response(status_code=204)
 
         if body_type == "stop_session":

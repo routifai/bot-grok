@@ -2,7 +2,7 @@
 
 Layout: ``fold`` (the Round view, a pure fold over its events), ``store`` (the ``round_events``
 table), ``record`` (the Round rule and the writers, called where the engine sees each fact).
-Nothing reads the record yet: no tool, no route.
+Only Stop reads the record back so far; no tool, no route.
 """
 
 from __future__ import annotations

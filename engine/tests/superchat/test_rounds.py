@@ -121,7 +121,7 @@ def cuts_ok(events: list[dict[str, Any]], rid: str = "r1") -> dict[str, Any]:
     ],
 )
 def test_recorded_stream_folds_on_every_cut(
-    name: str, status: str, files: list[str], helper: str
+    name: str, status: str, files: list[str], helper: str, db_uri: str
 ) -> None:
     events = load(name)
     v = cuts_ok(events)
@@ -132,12 +132,31 @@ def test_recorded_stream_folds_on_every_cut(
     if status == "stopped":
         # The executor said the stopped Helper was done (Claude); the Round says stopped.
         title = v["helpers"]["h1"]["title"]
-        assert v["stop_line"] == f"You stopped '{title}'. Nothing was saved."
+        assert v["stop_line"] == f"Stopped. '{title}' was still working; nothing was saved."
         follow_up = fold(events, "r2")
         assert follow_up["status"] == "done" and follow_up["helpers"] == {}
     # Reconnecting mid-turn: the first turn's streamed words are in the view before it ends.
     first_end = next(i for i, e in enumerate(events) if e["kind"] == "turn.ended")
     assert "Uruguay" in fold(events[:first_end], "r1")["live_words"]
+    # Written through the Recorder into a real table and read back, each Round folds the same.
+    store = SqlAlchemyRoundStore(db_uri)
+    recorder = record.Recorder(store)
+    ids = {"r1": "1" * 32, "r2": "2" * 32}
+
+    async def write() -> None:
+        for e in events:
+            body = {k: v for k, v in e.items() if k not in ("t", "round_id", "kind", "actor")}
+            recorder.record(ids[e["round_id"]], "c" * 32, e["kind"], e["actor"], **body)
+        await recorder.idle()
+
+    asyncio.run(write())
+    for rid, stored_id in ids.items():
+        want, got = fold(events, rid), fold(store.events(stored_id), stored_id)
+        for key in ("status", "stop_line", "files", "chips", "words", "checklist"):
+            assert got[key] == want[key], (rid, key)
+        assert {h: x["status"] for h, x in got["helpers"].items()} == {
+            h: x["status"] for h, x in want["helpers"].items()
+        }
 
 
 # ------------------------------------------------------------------ the fold's cases
@@ -279,7 +298,7 @@ CASES: list[tuple[str, Callable[[], Any], Callable[[Any], bool]]] = [
         lambda: cuts_ok(
             S().open().words("I'll make").started("start_helper").stop().words(" a deck").end().ev
         ),
-        lambda v: v["stop_line"] == "You stopped the work." and v["words"] == ["I'll make"],
+        lambda v: v["stop_line"] == "Stopped. Nothing was saved." and v["words"] == ["I'll make"],
     ),
     (
         "a stopped Round shows nothing live",
@@ -299,7 +318,7 @@ CASES: list[tuple[str, Callable[[], Any], Callable[[Any], bool]]] = [
     (
         "the Stop line never says nothing was saved when a file was",
         lambda: fold(S().open().spawn("h1", "D").end().save("d", "h1").stop().ev),
-        lambda v: v["stop_line"] == "You stopped 'D'.",
+        lambda v: v["stop_line"] == "Stopped. 'D' was still working; 'd' was saved.",
     ),
     (
         "a reopen after Stop never runs again",
@@ -540,7 +559,9 @@ def test_a_round_is_written_from_the_message_the_relay_and_the_save(
     db_uri: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A person's message opens the Round, its Helper inherits it, the relayed streams of both
-    become events in order, the save and the Stop are recorded, and the fold reads them back."""
+    become events in order, the save and the Stop are recorded, and the fold reads them back.
+    The Helper the Stop interrupts reads stopped though its executor called the turn done, and
+    its late wake is a stopped Round's."""
     store = SqlAlchemyRoundStore(db_uri)
     monkeypatch.setattr(record, "RECORDER", record.Recorder(store))
     root = "a" * 32
@@ -573,13 +594,15 @@ def test_a_round_is_written_from_the_message_the_relay_and_the_save(
         record.file_saved(
             child, types.SimpleNamespace(name="deck", kind="html", id="v1", version=1)
         )
-        await helper.observe({"type": "response.completed"})
+        stopped = await record.stop_round(convs.rows[root], [child])
+        assert stopped == record.Stopped(
+            item, "Stopped. 'Deck' was still working; 'deck' was saved."
+        )
+        await helper.observe({"type": "response.completed"}, stopped=True)
         wake = {"role": "user", "is_system_notice": True, "content": []}
         notice = {"helper_id": helper_id}
-        await record.note_message(
-            convs, convs.rows[root], "d" * 32, wake, notice, turn_running=False
-        )
-        record.stop_requested(convs.rows[root])
+        assert await record.stopped_wake(convs, convs.rows[root], wake, notice)
+        assert not await record.stopped_wake(convs, convs.rows[root], msg, None)
         assert record.RECORDER is not None
         await record.RECORDER.idle()
 
@@ -597,14 +620,13 @@ def test_a_round_is_written_from_the_message_the_relay_and_the_save(
         ("turn.started", "helper"),
         ("words", "helper"),
         ("file.saved", "helper"),
+        ("stop.requested", "person"),
         ("turn.ended", "helper"),
         ("helper.finished", "helper"),
-        ("wake", "system"),
-        ("stop.requested", "person"),
     ]
-    assert [e["seq"] for e in events] == list(range(1, 16))
+    assert [e["seq"] for e in events] == list(range(1, 15))
     assert events[2]["text"] == "On it." and events[5]["digest"] == "title=Deck"
-    assert events[12]["result"] == "Saved the deck." and events[12]["helper_id"] == helper_id
+    assert events[13]["status"] == "stopped" and events[13]["helper_id"] == helper_id
     view = fold(events, item)
     assert view["status"] == "stopped" and view["ask"] == "Make a deck."
     assert [f["name"] for f in view["files"]] == ["deck"]
