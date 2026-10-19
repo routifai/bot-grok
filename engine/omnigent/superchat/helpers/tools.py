@@ -33,7 +33,9 @@ class StartHelperTool(Tool):
             "result arrives later as a message, so once the brief is sent, say in one sentence "
             "that the work started and end your turn. `task` is the whole brief (it does not see "
             "this conversation); call it once per Helper, several in one step to run them in "
-            "parallel, never twice for the same task."
+            "parallel, never twice for the same task. `project` or `path` sets the folder the "
+            "Helper works in; a job for a Project's folder must pass it, since a path inside the "
+            "brief does not move the Helper there."
         )
 
     def get_schema(self) -> dict[str, Any]:

@@ -166,7 +166,8 @@ def test_prompts_point_at_the_memory_folder(bundle: Path) -> None:
 
 THREE_RULES = (
     "1. Your first sentence says what you will make or look at, in the person's words, before "
-    "any tool call. Never a question.\n"
+    "any tool call. Never a question: when something you need is missing, say what you will "
+    "make first, then ask with `ask_clarification`.\n"
     "2. After a Helper's result, hand back in plain words in one or two sentences.\n"
     "3. Never name a tool or a mechanism to the person: no tool names, no file paths, no "
     "Helpers, no steps.\n"
@@ -229,6 +230,9 @@ def test_the_conversation_prompt_states_three_rules_once_and_stays_small(bundle:
     ):
         assert flat.count(line) == 1, line
     assert "go to a Helper." not in flat
+    # Earlier work on the subject is named and offered, not asked about each time.
+    reuse = "When earlier work on the same subject exists, say so in your first sentence"
+    assert reuse in " ".join(work.split())
     # A deck is HTML; PowerPoint only when asked, so briefs stop asking for one.
     assert "ask for PowerPoint only when the person did" in flat
     assert "`artifact_outline`" in prompt
