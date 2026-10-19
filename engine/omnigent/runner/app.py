@@ -10690,14 +10690,9 @@ def create_runner_app(
             connection_params=connection,
         )
         summary_text = extract_summary_text(resp)
-        import tiktoken
+        from omnigent.runtime.compaction import count_text_tokens
 
-        bare = model.split("/", 1)[-1] if "/" in model else model
-        try:
-            enc = tiktoken.encoding_for_model(bare)
-        except KeyError:
-            enc = tiktoken.get_encoding("cl100k_base")
-        token_count = len(enc.encode(summary_text))
+        token_count = count_text_tokens(summary_text, model)
         return JSONResponse(content={"text": summary_text, "token_count": token_count})
 
     @app.post("/v1/elicitations/{elicitation_id}")
