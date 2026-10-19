@@ -465,6 +465,19 @@ class SqlAlchemyArtifactStore:
                 .limit(1)
             ).scalar_one_or_none()
 
+    def group_round(self, group_id: str) -> str | None:
+        """The Round that created the deliverable ``group_id`` (its first version's), if any."""
+        with self._session("select_artifact_group_round") as session:
+            return session.execute(
+                select(SqlArtifact.round_id)
+                .where(
+                    SqlArtifact.workspace_id == current_workspace_id(),
+                    SqlArtifact.group_id == group_id,
+                )
+                .order_by(SqlArtifact.version)
+                .limit(1)
+            ).scalar_one_or_none()
+
     def get_in_session(self, artifact_id: str, session_id: str) -> Artifact | None:
         """The version ``artifact_id`` when it belongs to the Conversation ``session_id``."""
         with self._session("select_artifact_in_session") as session:

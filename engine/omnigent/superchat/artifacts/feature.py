@@ -78,7 +78,7 @@ _STUDIO_NOTICES: list[Any] = []
 def _install(app: FastAPI, deps: InstallDeps) -> None:
     from omnigent.runtime import get_artifact_store
     from omnigent.server.routes._sessions.orchestration import ON_MESSAGE_CONTEXT
-    from omnigent.superchat.activity.derive import FILE_NAMES
+    from omnigent.superchat.activity.derive import FILE_NAMES, FILE_ROUNDS
     from omnigent.superchat.artifacts import store as store_module
     from omnigent.superchat.artifacts.edit_routes import create_html_edit_router
     from omnigent.superchat.artifacts.links import record_open_artifact
@@ -116,6 +116,8 @@ def _install(app: FastAPI, deps: InstallDeps) -> None:
     register_target_namer("artifact", _name)
     # A studio turn's Activity names its file (ADR 0024).
     FILE_NAMES["artifacts"] = store.group_name
+    # ...and the Round that created it, so later edits sit under that request.
+    FILE_ROUNDS["artifacts"] = store.group_round
 
     def _open_artifact(session_id: str, item_id: str, context: dict[str, Any]) -> None:
         record_open_artifact(store, session_id, item_id, context)

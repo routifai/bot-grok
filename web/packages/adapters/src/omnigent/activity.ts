@@ -33,7 +33,7 @@ export interface OmnigentActivity {
   steps?: OmnigentActivityStep[];
   parent_chat_id?: string | null;
   /** A studio turn's file (ADR 0024). */
-  artifact?: { group_id: string; name: string } | null;
+  artifact?: { group_id: string; name: string; round_id?: string | null } | null;
   /** ADR 0027: the engine's one line of what the work did, and the kinds of tool it used. */
   summary_line?: string | null;
   families?: string[];
@@ -166,7 +166,13 @@ export function mapActivity(raw: OmnigentActivity): Activity {
     date: raw.date,
     parentChatId: raw.parent_chat_id ?? null,
     ...(raw.artifact
-      ? { artifact: { groupId: raw.artifact.group_id, name: raw.artifact.name } }
+      ? {
+          artifact: {
+            groupId: raw.artifact.group_id,
+            name: raw.artifact.name,
+            ...(raw.artifact.round_id ? { roundId: raw.artifact.round_id } : {}),
+          },
+        }
       : {}),
     steps: raw.steps?.map(mapActivityStep),
     summaryLine: typeof raw.summary_line === "string" && raw.summary_line ? raw.summary_line : null,
