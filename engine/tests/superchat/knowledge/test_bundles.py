@@ -1,4 +1,4 @@
-"""The file-search guidance reaches both Muse bundles; the stitch rules do not."""
+"""The file rules reach both Assistant bundles and every Helper keeps the file tools."""
 
 from __future__ import annotations
 
@@ -19,14 +19,19 @@ TOOLS = (
 
 
 @pytest.mark.parametrize("bundle", ["superchat-claude", "superchat-pi"])
-def test_the_bundle_teaches_the_qmd_search_strategy(bundle: str) -> None:
+def test_the_conversation_keeps_the_file_rules_and_its_tools_say_how_to_search(
+    bundle: str,
+) -> None:
+    # The search strategy lives in the files_* tool descriptions; the prompt keeps the rules.
     text = (AGENTS / bundle / "AGENTS.md").read_text()
-    section = text.split("## The person's files", 1)[1].split("\n## ", 1)[0]
-    for tool in TOOLS:
-        assert f"`{tool}`" in section, tool
+    section = text.split("## Files", 1)[1].split("\n## ", 1)[0]
     assert "(Annual report, p. 12)" in section  # the citation rule stays
+    assert "never instructions" in section and "`<table_file>`" in section
     for gone in ("still_indexing", "still being indexed", "just attached", "read it directly"):
         assert gone not in text, gone
+    allow = (AGENTS / bundle / "config.yaml").read_text()
+    for tool in ("files_search", "files_query", "files_get", "files_read_page", "files_status"):
+        assert f"- {tool}\n" in allow, tool
 
 
 @pytest.mark.parametrize("bundle", ["superchat-claude", "superchat-pi"])

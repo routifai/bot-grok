@@ -639,11 +639,10 @@ class SuggestFollowUpsTool(_CardSiblingTool):
     def description(cls) -> str:
         """:returns: Human-readable description of the tool."""
         return (
-            "Offer 1-3 short messages the person could send next, shown as chips under your "
-            "answer. Write your full answer first, then call this as your last step. Only when "
-            "there are natural next steps that follow from this answer; never generic filler "
-            '("Anything else?", "Tell me more"). Each is written as the person would say it, '
-            "under 120 characters. Never together with ask_clarification."
+            "Offer 1-3 short messages the person could send next, in their voice and under 120 "
+            "characters each; they are shown as quiet chips under your answer. Use it only for "
+            'natural next steps after a full answer, never for filler ("Anything else?") and '
+            "never together with ask_clarification."
         )
 
     def get_schema(self) -> dict[str, Any]:

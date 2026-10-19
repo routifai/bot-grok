@@ -30,10 +30,9 @@ class DeckExportTool(Tool):
     def description(cls) -> str:
         """:returns: Human-readable description of the tool."""
         return (
-            "Export a saved deck (a `.deck.html` file you saved with artifact_save) to an "
-            "editable PowerPoint (.pptx) or a vector PDF in the person's host, and save the "
-            "result as a new file in this chat. The person sees the file card automatically. "
-            "Use it when they ask for PowerPoint or PDF; the deck viewer also has Export buttons."
+            "Export a saved `.deck.html` deck to an editable PowerPoint (.pptx) or a vector PDF "
+            "and save it as a new file in this chat, which shows its own file card. A deck is an "
+            "HTML file; use this only when the person asks for PowerPoint or PDF."
         )
 
     def get_schema(self) -> dict[str, Any]:
@@ -78,11 +77,11 @@ class DeckNewTool(Tool):
 
         names = ", ".join(kit.templates())
         return (
-            "Create a slide deck file. You write only the slides (HTML sections); this assembles "
-            "the fixed 1920x1080 deck framework, the template's theme and embedded fonts around "
-            "them, writes the `.deck.html` file, and checks the layout in the host. "
-            f"Templates (themes; call deck_themes for what each is for): {names}. "
-            "Returns problems to fix, then save the file with artifact_save."
+            "Create a deck: an HTML `.deck.html` file of 1920x1080 slides, never a PowerPoint "
+            "(that is a separate export, deck_export). Without slides it returns the layouts and "
+            "chart recipes; with the slides (HTML sections) it adds the framework and theme, "
+            "writes the file and returns the layout problems to fix before artifact_save. "
+            f"Themes (deck_themes says what each is for): {names}."
         )
 
     def get_schema(self) -> dict[str, Any]:
@@ -153,9 +152,8 @@ class DeckCheckTool(Tool):
     def description(cls) -> str:
         """:returns: Human-readable description of the tool."""
         return (
-            "Check a deck file after you edit it: content past the slide or in the footer band, "
-            "clipped text, missing ids, headlines that are too long. Run it before saving a deck "
-            "and fix every error it lists."
+            "Check a deck file before you save it; returns every error to fix: content past the "
+            "slide or in the footer band, clipped text, missing ids, headlines that are too long."
         )
 
     def get_schema(self) -> dict[str, Any]:
@@ -192,10 +190,9 @@ class DeckThemesTool(Tool):
     def description(cls) -> str:
         """:returns: Human-readable description of the tool."""
         return (
-            "List the deck themes you can choose from: id, name, mood, category "
-            "(professional, editorial, bold, dark), light or dark mode, and what it is best for. "
-            "Call it before deck_new and pick the theme that fits the request instead of "
-            "relying on remembered ids."
+            "List the deck themes: id, name, mood, category (professional, editorial, bold, "
+            "dark), light or dark mode, and what each is best for. Use it when you choose a "
+            "theme yourself, instead of remembered ids."
         )
 
     def get_schema(self) -> dict[str, Any]:
@@ -222,16 +219,10 @@ class DeckThemeSetTool(Tool):
     def description(cls) -> str:
         """:returns: Human-readable description of the tool."""
         return (
-            "Switch a deck file to another theme: swaps its colours, type, theme CSS and embedded "
-            "fonts and leaves every slide's content alone. It does not check the layout; run "
-            "deck_check when you want one. Use it "
-            "when the person asks for a different look; the deck keeps its file, so save it "
-            "again with artifact_save. Custom CSS and token overrides the deck has outside the "
-            "theme markers (written after the closing marker) are kept. If something was edited "
-            "between the markers the call fails and says so, and the file is not changed. "
-            "Do not use it unless they asked for a new theme. If they asked for a different "
-            "look without naming a theme or mood, first offer 3 distinct themes other than the "
-            "current one with ask_clarification and switch only to the one they pick."
+            "Switch a deck file to another theme, only when the person asked for a new look: "
+            "swaps colours, type and fonts, and keeps every slide and any CSS after the theme "
+            "markers. Returns the change, or fails without touching the file when the theme "
+            "block was edited by hand; then run deck_check and save again with artifact_save."
         )
 
     def get_schema(self) -> dict[str, Any]:
