@@ -36,12 +36,29 @@ started and the longest Round's duration, from the Round view.
 It resets and writes into the conversation of whichever account owns the token, so it refuses
 to run unless ``OMNIGENT_SCENARIO_ALLOW_ACCOUNT=1`` is set, and names that account first.
 
+Which Conversation it plays on, and its harness (the table's ``harness`` column, read from
+``GET /v1/sessions/{id}``):
+
+* by default the account's one Conversation, ``GET /v1/me/muse``. That route takes no harness
+  preference or query: it finds the Conversation, or creates it on the server's default agent.
+* ``--harness claude-sdk|pi`` puts that Conversation on the harness first, the way the web does.
+  The web has no new-chat harness picker in this build (``harness_override`` on
+  ``POST /v1/sessions`` is not sent by it). Its one switch is Settings, "Runs on", which calls
+  ``PUT /v1/me/muse`` with the built-in Assistant bundle that runs the harness
+  (``superchat-claude`` or ``superchat-pi``, ``web/app/src/engine/models.ts``). The route finds
+  the Conversation, or creates it, and switches its agent in place (refused while a turn runs),
+  so it keeps its id and its Superchat labels (``omnigent.context.mode=superside-chat`` and the
+  account key) and every Superchat feature applies on either harness. The account stays on that
+  harness after the run, as if picked in Settings.
+* ``--session ID`` plays on that Conversation as it is. It should carry the Superchat labels, or
+  the Superchat tools and context do not apply.
+
 Runs only when ``OMNIGENT_SCENARIO_MODEL_KEY`` is set (the engine itself holds the model
 connection; the key's presence says a model is wired up), against
 ``OMNIGENT_SCENARIO_ENGINE_URL`` with ``OMNIGENT_SCENARIO_TOKEN`` as a bearer token:
 
     cd engine && uv run python scripts/scenarios.py [--round] [--deadline S] [--record DIR]
-        [scenario-name ...]
+        [--harness claude-sdk|pi | --session ID] [scenario-name ...]
 """
 
 from __future__ import annotations
@@ -60,6 +77,8 @@ import urllib.request
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
+
+import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -102,6 +121,16 @@ BUDGETS: dict[str, dict[str, float]] = {
     "cold": {"visible": 10.0, "word": 12.0, "deck": 75.0},
 }
 _POLL = 2.0
+_BUNDLES = Path(__file__).resolve().parents[1] / "agents" / "bundles"
+
+
+def harness_agents(bundles: Path = _BUNDLES) -> dict[str, str]:
+    """``{harness: bundle name}``: the built-in Assistant bundle that runs each harness."""
+    agents: dict[str, str] = {}
+    for config in sorted(bundles.glob("*/config.yaml")):
+        spec = yaml.safe_load(config.read_text())
+        agents[spec["executor"]["config"]["harness"]] = spec["name"]
+    return agents
 
 
 class Engine:
@@ -564,6 +593,24 @@ def over_budget(row: dict[str, Any], budget: str) -> list[str]:
     ]
 
 
+def target(engine: Engine, session: str | None, harness: str | None) -> tuple[str, str]:
+    """The Conversation to play on and the harness it runs: *session* as it is, else the
+    account's one Conversation, first put on *harness* (``PUT /v1/me/muse``) when one is named.
+
+    :raises ValueError: when the Conversation does not run *harness* after the switch.
+    """
+    if session is None and harness is not None:
+        body = {"agent": harness_agents()[harness]}
+        session = str(engine.call("PUT", "/v1/me/muse", body)["session_id"])
+    elif session is None:
+        session = str(engine.call("GET", "/v1/me/muse")["session_id"])
+    path = f"/v1/sessions/{session}?include_items=false&include_liveness=false"
+    runs = str(engine.call("GET", path).get("harness") or "")
+    if harness is not None and runs != harness:
+        raise ValueError(f"{session} runs on {runs or 'an unknown harness'}, not {harness}")
+    return session, runs
+
+
 def _seconds(value: float | None) -> str:
     return f"{value:.1f}s" if value is not None else "-"
 
@@ -571,14 +618,15 @@ def _seconds(value: float | None) -> str:
 def _table(rows: list[dict[str, Any]], with_round: bool = False) -> str:
     """The rows as a table; *with_round* adds the Round columns."""
     head = (
-        f"{'scenario':<28} {'first file':>10} {'asks/deliv':>10} {'stalls':>6} {'silent':>6} "
-        f"{'mech':>4} {'visible':>7} {'word':>5} {'deck':>5}"
+        f"{'scenario':<28} {'harness':<10} {'first file':>10} {'asks/deliv':>10} {'stalls':>6} "
+        f"{'silent':>6} {'mech':>4} {'visible':>7} {'word':>5} {'deck':>5}"
     )
     lines = [head + (f" {'settled':>7} {'helpers':>7} {'round':>6}" if with_round else "")]
     for row in rows:
         line = (
-            f"{row['name']:<28} {_seconds(row['first_file']):>10} {row['asks']:>10.1f} "
-            f"{row['stalls']:>6} {row['silent']:>6} {row['mechanism']:>4} "
+            f"{row['name']:<28} {row.get('harness') or '-':<10} "
+            f"{_seconds(row['first_file']):>10} {row['asks']:>10.1f} {row['stalls']:>6} "
+            f"{row['silent']:>6} {row['mechanism']:>4} "
             f"{_seconds(row['visible']):>7} "
             f"{_seconds(row['word']):>5} {_seconds(row['deck']):>5}"
         )
@@ -596,6 +644,13 @@ def main(argv: list[str]) -> int:
     parser.add_argument(
         "--deadline", type=float, default=DEADLINE, help="seconds before a scenario is stalled"
     )
+    where = parser.add_mutually_exclusive_group()
+    where.add_argument("--session", help="play on this Conversation instead of the account's")
+    where.add_argument(
+        "--harness",
+        choices=sorted(harness_agents()),
+        help="put the account's Conversation on this harness first",
+    )
     args = parser.parse_args(argv)
     url = os.environ.get("OMNIGENT_SCENARIO_ENGINE_URL")
     token = os.environ.get("OMNIGENT_SCENARIO_TOKEN")
@@ -610,9 +665,9 @@ def main(argv: list[str]) -> int:
         print("scenarios: OMNIGENT_SCENARIO_BUDGET is warm, cold or off", file=sys.stderr)
         return 2
     wanted = set(args.names)
-    token = secrets.token_hex(2)
+    run_token = secrets.token_hex(2)
     chosen = [
-        with_run_token(s, token) for s in SCENARIOS + ROUNDS if not wanted or s.name in wanted
+        with_run_token(s, run_token) for s in SCENARIOS + ROUNDS if not wanted or s.name in wanted
     ]
     if args.record is not None:
         args.record.mkdir(parents=True, exist_ok=True)
@@ -628,11 +683,17 @@ def main(argv: list[str]) -> int:
                 file=sys.stderr,
             )
             return 2
-        session_id = str(engine.call("GET", "/v1/me/muse")["session_id"])
+        session_id, harness = target(engine, args.session, args.harness)
         rows = [
-            play(engine, session_id, scenario, log, args.record, args.deadline)
+            {
+                **play(engine, session_id, scenario, log, args.record, args.deadline),
+                "harness": harness,
+            }
             for scenario in chosen
         ]
+    except ValueError as exc:
+        print(f"scenarios: {exc}", file=sys.stderr)
+        return 2
     except OSError as exc:  # URLError and timeouts
         print(f"scenarios: engine unreachable: {exc}", file=sys.stderr)
         return 2

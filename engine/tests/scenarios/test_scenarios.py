@@ -277,12 +277,30 @@ def test_the_runner_tries_a_hung_get_once_more(
     assert timeouts == [10.0] * calls
 
 
-def test_a_scenario_past_its_deadline_is_stalled(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize(
+    ("session", "harness", "calls", "runs"),
+    [
+        (None, None, [("GET", "/v1/me/muse", None)], "claude-sdk"),
+        (None, "pi", [("PUT", "/v1/me/muse", {"agent": "superchat-pi"})], "pi"),
+        ("s2", None, [], "pi"),
+    ],
+)
+def test_a_scenario_past_its_deadline_is_stalled_on_the_conversation_it_targets(
+    monkeypatch: pytest.MonkeyPatch,
+    session: str | None,
+    harness: str | None,
+    calls: list[tuple[str, str, dict[str, str] | None]],
+    runs: str,
+) -> None:
     class Hung:
-        """An engine whose turn never settles."""
+        """An engine whose turn never settles; the account's Conversation is ``s1``."""
 
-        def call(self, *args: object) -> None:
-            return None
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, str, dict[str, str] | None]] = []
+
+        def call(self, method: str, path: str, body: dict[str, str] | None = None) -> Any:
+            self.calls.append((method, path, body))
+            return {"session_id": "s1"} if path == "/v1/me/muse" else {"harness": runs}
 
         def items(self, session_id: str) -> list[dict[str, Any]]:
             return [{"id": "m1", "type": "message", "role": "user", "created_at": 1}]
@@ -299,6 +317,17 @@ def test_a_scenario_past_its_deadline_is_stalled(monkeypatch: pytest.MonkeyPatch
         def round(self, session_id: str, item_id: str | None) -> None:
             return None
 
+    engine = Hung()
+    # The harness comes from the bundles, the way the web maps it (engine/models.ts).
+    assert runner.harness_agents() == {"claude-sdk": "superchat-claude", "pi": "superchat-pi"}
+    session_id, harness_now = runner.target(engine, session, harness)  # type: ignore[arg-type]
+    assert session_id == (session or "s1") and harness_now == runs
+    assert engine.calls[:-1] == calls
+    assert engine.calls[-1][1].startswith(f"/v1/sessions/{session_id}?")
     monkeypatch.setattr(runner.time, "sleep", lambda seconds: None)
-    row = runner.play(Hung(), "s1", ROUNDS[0], deadline=0.0)  # type: ignore[arg-type]
+    row = runner.play(engine, session_id, ROUNDS[0], deadline=0.0)  # type: ignore[arg-type]
     assert row["stalled"] and row["settled"] == "0/0"
+    assert runs in runner._table([{**row, "harness": runs}]).splitlines()[1]
+    if runs == "pi":
+        with pytest.raises(ValueError, match="not claude-sdk"):
+            runner.target(engine, None, "claude-sdk")  # type: ignore[arg-type]
