@@ -21,17 +21,27 @@ from tests.runner.helpers import NullServerClient
 
 
 class _RecordingServerClient(NullServerClient):
-    """Fake server client: serves fixed session snapshots, records every POST."""
+    """Fake server client: serves fixed session snapshots and one parent's Helpers, records
+    every POST, and applies label PATCHes to those Helpers as the sessions API does."""
 
-    def __init__(self, *, snapshots: dict[str, dict[str, Any]] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        snapshots: dict[str, dict[str, Any]] | None = None,
+        children: dict[str, dict[str, Any]] | None = None,
+    ) -> None:
         self._snapshots = snapshots or {}
+        self.children = children or {}
         self.posts: list[tuple[str, dict[str, Any]]] = []
 
     async def get(self, url: str, **kwargs: Any) -> Any:
+        request = httpx.Request("GET", f"http://runner.test{url}")
         for session_id, snapshot in self._snapshots.items():
             if url == f"/v1/sessions/{session_id}":
-                request = httpx.Request("GET", f"http://runner.test{url}")
                 return httpx.Response(200, request=request, json=snapshot)
+        if url.endswith("/child_sessions"):
+            payload = {"data": list(self.children.values()), "has_more": False}
+            return httpx.Response(200, request=request, json=payload)
         return await super().get(url, **kwargs)
 
     async def post(self, url: str, **kwargs: Any) -> Any:
@@ -39,6 +49,13 @@ class _RecordingServerClient(NullServerClient):
         if isinstance(body, dict):
             self.posts.append((url, body))
         request = httpx.Request("POST", f"http://runner.test{url}")
+        return httpx.Response(200, request=request, json={})
+
+    async def patch(self, url: str, **kwargs: Any) -> Any:
+        child = self.children.get(url.rsplit("/", 1)[-1])
+        if child is not None:
+            child["labels"].update((kwargs.get("json") or {}).get("labels") or {})
+        request = httpx.Request("PATCH", f"http://runner.test{url}")
         return httpx.Response(200, request=request, json={})
 
 
@@ -54,14 +71,24 @@ def _notice_text(post: tuple[str, dict[str, Any]]) -> str:
 
 
 @pytest.mark.asyncio
-async def test_superside_chat_wake_inlines_result(_no_wake_backoff: list[float]) -> None:
-    """A ``superside_chat`` entry's wake carries the Result, not 'waiting in inbox'."""
+async def test_superside_chat_wake_inlines_result_once(_no_wake_backoff: list[float]) -> None:
+    """A ``superside_chat`` entry's wake carries the Result, not 'waiting in inbox', and
+    delivers it once: a runner restarted afterwards does not post it to the Conversation again.
+    """
     from omnigent.runner import app as runner_app
 
     parent_id = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"
     child_id = "b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5"
+    work_id = "subagent_a1b2c3d4e5f6"
     session_inbox: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
-    server_client = _RecordingServerClient()
+    child = {
+        "id": child_id,
+        "tool": "reviewer",
+        "session_name": "auth",
+        "current_task_status": "completed",
+        "labels": {runner_app.SUBAGENT_DISPATCH_ID_LABEL_KEY: work_id},
+    }
+    server_client = _RecordingServerClient(children={child_id: child})
     pm = _FakeProcessManager(_ScriptedHarnessClient([]))
     app = create_runner_app(
         process_manager=pm,  # type: ignore[arg-type]
@@ -74,15 +101,16 @@ async def test_superside_chat_wake_inlines_result(_no_wake_backoff: list[float])
         child_session_id=child_id,
         agent="reviewer",
         title="auth",
+        work_id=work_id,
         superside_chat=True,
     )
     try:
         async with _runner_client(app):
             _complete_child(app, child_id, "FINDINGS: the vault key rotated on March 3.")
             deadline = asyncio.get_running_loop().time() + 5.0
-            while not server_client.posts:
+            while runner_app.SUBAGENT_DELIVERED_ID_LABEL_KEY not in child["labels"]:
                 if asyncio.get_running_loop().time() > deadline:
-                    raise AssertionError("no wake POST observed within 5s")
+                    raise AssertionError("no delivered wake observed within 5s")
                 await asyncio.sleep(0.01)
 
         assert len(server_client.posts) == 1
@@ -97,16 +125,34 @@ async def test_superside_chat_wake_inlines_result(_no_wake_backoff: list[float])
         entry = runner_app.get_subagent_work(child_id)
         assert entry is not None
         assert entry.wake_inlined is True
+        # The Conversation holds the Result, so the receipt names this dispatch.
+        assert child["labels"][runner_app.SUBAGENT_DELIVERED_ID_LABEL_KEY] == work_id
+
+        # The host goes away while idle; a fresh runner starts with none of that memory.
+        runner_app.unregister_subagent_work(child_id)
+        runner_app._session_inboxes_ref.pop(parent_id, None)
+        runner_app._subagent_recovery_done.discard(parent_id)
+        restarted = create_runner_app(
+            process_manager=_FakeProcessManager(_ScriptedHarnessClient([])),  # type: ignore[arg-type]
+            server_client=server_client,  # type: ignore[arg-type]
+        )
+        async with _runner_client(restarted):
+            await restarted.state.recover_undrained_subagent_results(parent_id)
+            await asyncio.sleep(0.05)
+
+        assert len(server_client.posts) == 1
+        assert runner_app._session_inboxes_ref[parent_id].empty()
     finally:
         runner_app.unregister_subagent_work(child_id)
         runner_app._session_inboxes_ref.pop(parent_id, None)
+        runner_app._subagent_recovery_done.discard(parent_id)
 
 
 @pytest.mark.asyncio
-async def test_a_delivered_helper_result_adds_one_journal_line(
+async def test_a_delivered_helper_result_adds_no_journal_line(
     _no_wake_backoff: list[float], _isolated_knowledge_workspace: Path
 ) -> None:
-    """The line names the Helper, its outcome and session id, never the Result text."""
+    """The Round's one journal entry names the Helper (ADR 0029); the wake itself writes none."""
     from omnigent.runner import app as runner_app
 
     parent_id = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"
@@ -124,22 +170,17 @@ async def test_a_delivered_helper_result_adds_one_journal_line(
         title="auth",
         superside_chat=True,
     )
-    journal_dir = _isolated_knowledge_workspace / "memory" / "journal"
     try:
         async with _runner_client(app):
             _complete_child(app, child_id, "FINDINGS: the vault key rotated on March 3.")
             deadline = asyncio.get_running_loop().time() + 5.0
-            while not list(journal_dir.glob("*.md")):
+            while not server_client.posts:
                 if asyncio.get_running_loop().time() > deadline:
-                    raise AssertionError("no journal line within 5s")
+                    raise AssertionError("no wake POST observed within 5s")
                 await asyncio.sleep(0.01)
+            await asyncio.sleep(0.05)
 
-        (day_file,) = journal_dir.glob("*.md")
-        lines = [ln for ln in day_file.read_text().splitlines() if ln.startswith("- ")]
-        assert len(lines) == 1
-        assert f'Helper "auth" completed (session {child_id})' in lines[0]
-        assert f"main <!-- {parent_id} helpers:{child_id} -->" in lines[0]
-        assert "vault key" not in lines[0]
+        assert not list((_isolated_knowledge_workspace / "memory" / "journal").glob("*.md"))
     finally:
         runner_app.unregister_subagent_work(child_id)
         runner_app._session_inboxes_ref.pop(parent_id, None)

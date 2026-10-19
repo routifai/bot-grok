@@ -2952,6 +2952,7 @@ def _publish_status(
     paused: bool = False,
     scheduled_run_outcome: Literal["auto", "failed"] = "auto",
     failure_origin: str | None = None,
+    activity_id: str | None = None,
 ) -> None:
     """
     Publish a typed :class:`SessionStatusEvent` to the live stream and
@@ -2984,6 +2985,8 @@ def _publish_status(
         server-side failure logs one ERROR from here, so without it the
         dozen unrelated causes that reach this function are one
         undifferentiated signature. Ignored for non-failed edges.
+    :param activity_id: The running Super Chat turn's Activity id, e.g.
+        ``"turn:conv_abc:resp_xyz"``; ``None`` (left off the wire) otherwise.
     """
     # ``failed`` is sticky against a trailing ``idle``. A turn error is
     # terminal — it must not be silently downgraded to ``idle`` by a
@@ -3111,6 +3114,7 @@ def _publish_status(
         blocked_on=blocked_on,
         paused=True if paused else None,
         turn=turn,
+        activity_id=activity_id,
     )
     payload = event.model_dump()
     if turn is None:
@@ -3128,6 +3132,8 @@ def _publish_status(
         payload.pop("blocked_on", None)
     if not paused:
         payload.pop("paused", None)
+    if activity_id is None:
+        payload.pop("activity_id", None)
     session_stream.publish(session_id, payload)
 
 

@@ -46,24 +46,34 @@ def test_no_pricing_falls_back_to_the_catalog_default() -> None:
     assert automatic_models(rows, None, lambda _m: None)["light"] == "a"
 
 
-def test_automatic_is_the_catalog_default_and_light_the_cheapest() -> None:
-    # No capability signal in the catalog yet: Foundation and Builder are the connection's
-    # default, never the dearest model.
+def test_automatic_follows_price_dearest_middle_cheapest() -> None:
     rows = _catalog("small", "big", "mid")["models"]
-    assert automatic_models(rows, "mid", PRICES.get) == {
-        "foundation": "mid",
+    assert automatic_models(rows, "small", PRICES.get) == {
+        "foundation": "big",
         "builder": "mid",
         "light": "small",
     }
-    # Nothing priced: the catalog's default for all three.
+    # Unpriced rows take no part; nothing priced: the catalog's default for all three.
+    assert automatic_models([*rows, {"id": "mystery"}], "mystery", PRICES.get)["builder"] == "mid"
     assert set(automatic_models(rows, "mid", lambda _m: None).values()) == {"mid"}
+
+
+def test_builder_is_foundation_below_three_priced_rows() -> None:
+    rows = _catalog("small", "big", "mystery")["models"]
+    assert automatic_models(rows, "mystery", PRICES.get) == {
+        "foundation": "big",
+        "builder": "big",
+        "light": "small",
+    }
+    one = _catalog("mid", "mystery")["models"]
+    assert set(automatic_models(one, "mystery", PRICES.get).values()) == {"mid"}
 
 
 def test_the_persons_picks_win_while_the_catalog_serves_them() -> None:
     catalog = _catalog("big", "mid", "small")
     auto = person_models_from_catalog(catalog, {}, price=PRICES.get)
-    assert (auto.foundation, auto.builder, auto.light) == ("big", "big", "small")
-    assert auto.automatic == {"foundation": "big", "builder": "big", "light": "small"}
+    assert (auto.foundation, auto.builder, auto.light) == ("big", "mid", "small")
+    assert auto.automatic == {"foundation": "big", "builder": "mid", "light": "small"}
     picked = person_models_from_catalog(
         catalog, {"foundation": "mid", "builder": "small", "light": "big"}, price=PRICES.get
     )

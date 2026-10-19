@@ -19,6 +19,8 @@ jobs:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
+          # The retired-words step diffs against the base branch.
+          fetch-depth: 0
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -33,6 +35,10 @@ jobs:
             echo "::error::Run 'pnpm --filter @superchat/web intl:extract' and commit the catalogs."
             exit 1
           }
+      - name: No retired words on added lines (ADR 0029)
+        env:
+          BASE: origin/${{ github.base_ref || 'main' }}
+        run: python3 engine/scripts/retired_words.py "$BASE"
 
   check:
     name: Typecheck
@@ -83,7 +89,8 @@ jobs:
   engine:
     name: Engine (Python)
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # The suite takes 30 to 59 minutes on a hosted runner; 45 cancelled green runs.
+    timeout-minutes: 75
     defaults:
       run:
         working-directory: engine
@@ -104,8 +111,28 @@ jobs:
           uv run --no-sync ruff format --check .
       - name: Layer contracts (ADR 0019)
         run: uv run --no-sync lint-imports
+      # xdist reports a dead worker only as "node down". Record every SIGTERM
+      # and SIGKILL the kernel delivers, and the worker pids, so the trace
+      # shows who killed a worker, or that nobody did and it exited itself.
+      - name: Trace signals
+        run: |
+          t=/sys/kernel/tracing
+          echo 65536 | sudo tee "$t/buffer_size_kb" > /dev/null
+          echo 'sig == 9 || sig == 15' | sudo tee "$t/events/signal/signal_generate/filter" > /dev/null
+          echo 1 | sudo tee "$t/events/signal/signal_generate/enable" > /dev/null
       - name: Tests
-        run: uv run --no-sync pytest tests -q -p no:randomly -n auto -m "not databricks"
+        run: |
+          (while sleep 15; do echo "$(date -u +%T) $(pgrep -d ' ' -f 'sys.stdin.readline')"; done) > "$RUNNER_TEMP/workers.log" &
+          uv run --no-sync pytest tests -q -p no:randomly -n auto -m "not databricks" --durations=30
+      - name: Who stopped the workers
+        if: always()
+        run: |
+          sort -u -k2 "$RUNNER_TEMP/workers.log" | head -n 40
+          pids=$(cut -d' ' -f2- "$RUNNER_TEMP/workers.log" | tr ' ' '\n' | grep . | sort -u)
+          sudo cat /sys/kernel/tracing/trace > "$RUNNER_TEMP/signals.txt"
+          echo "signals recorded: $(grep -vc '^#' "$RUNNER_TEMP/signals.txt")"
+          for p in $pids; do grep -E " pid=$p " "$RUNNER_TEMP/signals.txt" || true; done
+          sudo dmesg | grep -iE "out of memory|killed process" || echo "no OOM kills"
 
   host-tests:
     name: Host scripts

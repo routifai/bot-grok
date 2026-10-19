@@ -20,7 +20,7 @@ from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import StatusCode
 
-from omnigent.harnesses.tracing import TracingContext, enable_tracing
+from omnigent.harnesses.tracing import TracingContext, disable_tracing, enable_tracing
 
 
 @pytest.fixture
@@ -42,6 +42,7 @@ def exporter() -> Iterator[InMemorySpanExporter]:
     try:
         yield in_mem
     finally:
+        disable_tracing()
         in_mem.clear()
         with contextlib.suppress(Exception):
             provider.shutdown()

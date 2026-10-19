@@ -80,8 +80,11 @@ from .executor import (
     TextChunk,
     ToolCallComplete,
     ToolCallRequest,
+    ToolCallStarted,
     ToolCallStatus,
+    ToolInputChunk,
     ToolSpec,
+    TurnCancelled,
     TurnComplete,
     result_ends_turn,
 )
@@ -1507,8 +1510,10 @@ def _build_pi_prompt(messages: list[Message], *, is_first_turn: bool) -> str | l
 
     On the first turn with prior history (e.g. sub-agent with
     ``pass_history=True``), serializes the full conversation so
-    the Pi process has context. Otherwise returns just the
-    latest user message content (may be multimodal).
+    the Pi process has context, followed by the latest user
+    message's images so they still reach the model. Otherwise
+    returns just the latest user message content (may be
+    multimodal).
 
     :param messages: Omnigent conversation history for the
         turn.
@@ -1529,6 +1534,14 @@ def _build_pi_prompt(messages: list[Message], *, is_first_turn: bool) -> str | l
         lines.append(
             "Respond to the latest user message, using the conversation above as context."
         )
+        latest = _extract_latest_user_content(messages)
+        images = (
+            [block for block in latest if block.get("type") == "input_image"]
+            if isinstance(latest, list)
+            else []
+        )
+        if images:
+            return [{"type": "input_text", "text": "\n".join(lines)}, *images]
         return "\n".join(lines)
 
     return _extract_latest_user_content(messages)
@@ -2594,6 +2607,8 @@ class PiExecutor(Executor):
         # Read events until agent_end.
         response_text = ""
         streamed_any = False
+        # Content index → (tool call id, name) for the tool calls Pi is streaming.
+        streaming_tools: dict[object, tuple[str, str]] = {}
         # Per-LLM-call token usage captured from each assistant message pi
         # forwards (``message_end`` is the capture site; ``agent_end`` is a
         # fallback). Summed into a turn-level usage dict at completion so a
@@ -2685,6 +2700,18 @@ class PiExecutor(Executor):
                     if isinstance(raw_delta, str) and raw_delta:
                         # Reasoning stays out of response_text — it is not assistant text.
                         yield ReasoningChunk(delta=raw_delta, event_type="reasoning_text")
+                elif ame_type == "toolcall_start":
+                    start_id, start_name = ame.get("id"), ame.get("toolName")
+                    if isinstance(start_id, str) and start_id and isinstance(start_name, str):
+                        streaming_tools[ame.get("contentIndex")] = (start_id, start_name)
+                        yield ToolCallStarted(name=start_name, metadata={"call_id": start_id})
+                elif ame_type == "toolcall_delta":
+                    streaming = streaming_tools.get(ame.get("contentIndex"))
+                    raw_delta = ame.get("delta")
+                    if streaming is not None and isinstance(raw_delta, str) and raw_delta:
+                        yield ToolInputChunk(
+                            name=streaming[1], delta=raw_delta, metadata={"call_id": streaming[0]}
+                        )
                 continue
 
             # Both lifecycle events must retain the same Pi-owned correlation ID.
@@ -2783,8 +2810,14 @@ class PiExecutor(Executor):
                 )
                 continue
 
-            # Agent ended — the turn is complete.
+            # Agent ended — the turn is complete, unless pi retries the errored
+            # call itself (``willRetry``, pi >= 0.80): its retry streams on as
+            # this same turn, so a transient failure (e.g. "Request timed out.")
+            # is not surfaced while pi still has attempts left.
             if event_type == "agent_end":
+                if event.get("willRetry") is True:
+                    pending_error = None
+                    continue
                 if state is not None:
                     state.turn_streaming = False
                     for outcome in await self._settle_steers_at_agent_end(session_key, state, rpc):
@@ -2853,8 +2886,8 @@ class PiExecutor(Executor):
                     raw_stop = msg.get("stopReason")
                     stop: str | None = raw_stop if isinstance(raw_stop, str) else None
                     if stop == "aborted":
-                        err = msg.get("errorMessage", stop)
-                        yield ExecutorError(message=str(err))
+                        # Pi stopped on an abort (``interrupt_session``): a cancelled turn.
+                        yield TurnCancelled()
                         return
                     if stop == "error":
                         # Pi emits the turn-terminal ``agent_end`` after an

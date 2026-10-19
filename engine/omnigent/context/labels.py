@@ -51,7 +51,7 @@ ADHOC_HELPER_LABEL_KEY = "omnigent.subagent.adhoc"
 
 #: Stamped on a file's studio session (ADR 0024, a ``sub_agent`` of helper type ``editor``); its
 #: value is the artifact group id. The studio is outside the Conversation's Helpers, activity,
-#: listings, caps and step limit; its turns get the file's own prefix.
+#: listings and caps; its turns get the file's own prefix.
 ARTIFACT_CHAT_LABEL_KEY = "superchat.artifact_chat"
 
 
@@ -64,6 +64,14 @@ def is_artifact_chat(labels: Mapping[str, str] | None) -> bool:
 #: its value is the scheduled task id. Its first user message is the task's
 #: system-authored prompt, so memory upkeep never treats it as the person's words.
 SCHEDULED_FIRE_LABEL_KEY = "omnigent.scheduled_task_id"
+
+#: Labels the server stamps on a run no person started (a schedule, a Goal's cadence, a pass).
+BACKGROUND_LABELS = (SCHEDULED_HELPER_LABEL_KEY, ADHOC_HELPER_LABEL_KEY, SCHEDULED_FIRE_LABEL_KEY)
+
+#: The Round a session's work belongs to now (ADR 0029). On the Conversation it moves when a
+#: person's message opens a Round or a Helper's wake brings one back; a Helper gets its parent's
+#: at creation and keeps it.
+ROUND_LABEL_KEY = "omnigent.superchat.round_id"
 
 #: Prefix of the session labels that hold pending ``state_close`` requests: one label per tag
 #: (``<prefix><tag id>``), the value being the reason. Consumed by the next checkpoint, which

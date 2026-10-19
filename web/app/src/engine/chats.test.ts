@@ -1,10 +1,11 @@
 import { call } from "@orpc/server";
+import type { RoundView } from "@superchat/contracts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const adapters = vi.hoisted(() => ({
+  getOmnigentRound: vi.fn(),
   getOmnigentTranscript: vi.fn(),
   postOmnigentMessage: vi.fn(),
-  readTurnImages: vi.fn(),
   resolveChatOwnership: vi.fn(),
   streamOmnigentFamily: vi.fn(),
   streamOmnigentSession: vi.fn(),
@@ -126,6 +127,17 @@ describe("chats.watch", () => {
       yield { type: "turn.done", chat_id: "c1", status: "completed" };
       yield { type: "chats.changed" };
       yield { type: "activities.changed" };
+      yield {
+        type: "round.updated",
+        root_id: "conv_super",
+        round_id: "r1",
+        status: "running",
+        started_at: 1.5,
+        live: "name=deck",
+        helpers: 1,
+        files: 0,
+        steps: 2,
+      };
       yield { type: "session.heartbeat" };
     });
     expect(await collect()).toEqual([
@@ -136,8 +148,73 @@ describe("chats.watch", () => {
       { type: "turnDone", chatId: "c1", status: "completed" },
       { type: "chatsChanged" },
       { type: "activitiesChanged" },
+      {
+        type: "roundUpdated",
+        roundId: "r1",
+        status: "running",
+        startedAt: 1500,
+        live: "name=deck",
+        helpers: 1,
+        files: 0,
+        steps: 2,
+      },
       { type: "heartbeat" },
     ]);
+  });
+});
+
+describe("chats.round", () => {
+  it("reads the Conversation's Round in ms, its Helpers in the order they started", async () => {
+    const helper = (id: string, started: number) => ({
+      id,
+      title: id,
+      folder: null,
+      status: "running",
+      started_at: started,
+      finished_at: null,
+    });
+    adapters.getOmnigentRound.mockResolvedValue({
+      round_id: "r1",
+      status: "running",
+      started_at: 10,
+      settled_at: null,
+      elapsed: 2.5,
+      stop_line: null,
+      now: { actor: "helper", helper_id: "h2", name: "artifact_save", digest: "name=deck" },
+      trail: [
+        {
+          t: 11,
+          actor: "assistant",
+          helper_id: null,
+          name: "start_helper",
+          digest: null,
+          ok: true,
+        },
+      ],
+      helpers: { h2: helper("h2", 12), h1: helper("h1", 11) },
+      files: [{ name: "deck", artifact_id: "a1", version: 2, helper_id: "h2" }],
+      checklist: [{ id: "1", subject: "Outline", active_form: "Outlining", status: "in_progress" }],
+    });
+    const view = await run<RoundView>(chatsRouter.chats.round, {
+      botId: "conv_super",
+      roundId: "r1",
+    });
+    expect(adapters.getOmnigentRound).toHaveBeenCalledWith(
+      expect.anything(),
+      "",
+      "conv_super",
+      "r1",
+    );
+    expect(view).toMatchObject({
+      startedAt: 10_000,
+      settledAt: null,
+      elapsedMs: 2_500,
+      now: { helperId: "h2", name: "artifact_save", digest: "name=deck" },
+      trail: [{ at: 11_000, name: "start_helper", ok: true }],
+      files: [{ artifactId: "a1", name: "deck", version: 2, helperId: "h2" }],
+      checklist: [{ subject: "Outline", activeForm: "Outlining", status: "in_progress" }],
+    });
+    expect(view.helpers.map((h) => h.id)).toEqual(["h1", "h2"]);
   });
 });
 
@@ -201,8 +278,6 @@ describe("chats.reset", () => {
 });
 
 describe("chats.send", () => {
-  beforeEach(() => adapters.readTurnImages.mockResolvedValue([]));
-
   it("sends to the Conversation", async () => {
     await run(chatsRouter.chats.send, { botId: "conv_super", text: "hello" });
     expect(adapters.postOmnigentMessage).toHaveBeenCalledWith(
@@ -230,18 +305,6 @@ describe("chats.send", () => {
     expect(text.endsWith("look")).toBe(true);
   });
 
-  it("hands attached images to the model as images", async () => {
-    adapters.readTurnImages.mockResolvedValue([{ mime: "image/png", data: "AA==" }]);
-    await run(chatsRouter.chats.send, { botId: "conv_super", text: "see" });
-    expect(adapters.postOmnigentMessage).toHaveBeenCalledWith(
-      expect.anything(),
-      "",
-      "conv_super",
-      "see",
-      [{ mime: "image/png", data: "AA==" }],
-    );
-  });
-
   it("passes the artifact open beside the chat to the engine", async () => {
     await run(chatsRouter.chats.send, {
       botId: "conv_super",
@@ -253,7 +316,6 @@ describe("chats.send", () => {
       "",
       "conv_super",
       "bigger",
-      undefined,
       { openArtifact: { artifactId: "art_1", version: 2 } },
     );
   });

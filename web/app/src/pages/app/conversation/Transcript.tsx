@@ -17,6 +17,7 @@ import {
   AnsweredWhileWorking,
   drawnOnlyMessageIds,
   noteServerClock,
+  RoundStrip,
   useAnsweredWhileWorking,
   useTurnStrips,
 } from "../../../features/activity";
@@ -144,9 +145,12 @@ const TranscriptView = memo(function Transcript({
   const { strips, drawn } = useTurnStrips(work, workState, museLiveLabel);
   // Live clocks count against the engine's timestamps: learn its clock from what arrives.
   useEffect(() => noteServerClock(messages), [messages]);
+  // The newest work has a strip: the Round the person's newest message opened, or a reply's.
   const lastTurnHasStrip = useMemo(
-    () => [...work.turns.values()].some((turn) => turn.last),
-    [work],
+    () =>
+      Boolean(messages.findLast((message) => message.role === "user")?.roundId) ||
+      [...work.turns.values()].some((turn) => turn.last),
+    [messages, work],
   );
   // Muse: failed replies in a row read as one "3 failed attempts" line (failureNotes.ts).
   const transcriptRows = useMemo<TranscriptRow[]>(() => {
@@ -474,6 +478,11 @@ const TranscriptView = memo(function Transcript({
                   {answeredWhileWorking.has(message.id) ? <AnsweredWhileWorking /> : null}
                 </div>
               </div>
+              {message.roundId ? (
+                <div className="flex justify-start">
+                  <RoundStrip botId={artifactTarget.botId} roundId={message.roundId} />
+                </div>
+              ) : null}
             </div>
           );
         })}

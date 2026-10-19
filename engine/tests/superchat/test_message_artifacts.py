@@ -13,7 +13,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 
-from omnigent.context.labels import SCHEDULED_HELPER_LABEL_KEY
+from omnigent.context.labels import ROUND_LABEL_KEY, SCHEDULED_HELPER_LABEL_KEY
 from omnigent.entities import MessageData, NewConversationItem
 from omnigent.entities.conversation import FunctionCallData, FunctionCallOutputData
 from omnigent.errors import OmnigentError
@@ -270,16 +270,25 @@ def test_a_save_links_the_message_and_the_version_names_it(env) -> None:
 
 
 def test_a_helper_save_names_the_message_the_helper_came_from(env) -> None:
-    client, _store, conversations, chat, _updates, _steers = env
+    """A save names the person's message that opened the saving chat's Round and is stamped with
+    that Round: a Helper's save, and the Conversation's own save after a steer. A scheduled
+    run, in no Round, names no message."""
+    client, store, conversations, chat, _updates, _steers = env
     asked = _ask(conversations, chat, "write the memo")
-    helper = conversations.create_conversation(parent_conversation_id=chat).id
+    in_round = {"omnigent.context.mode": "superside-chat", ROUND_LABEL_KEY: asked}
+    conversations.set_labels(chat, in_round)
+    helper = conversations.create_conversation(parent_conversation_id=chat, labels=in_round).id
     _started(conversations, chat, helper)
     _ask(conversations, helper, "brief: write the memo")
-    _ask(conversations, chat, "and a later message, sent while it works")
+    steer = _ask(conversations, chat, "and a later message, sent while it works")
     saved = _save(client, chat, "memo.md", chat_id=helper)
     version = client.get(f"/v1/artifacts/{saved['id']}").json()["all_versions"][0]
     assert version["item_id"] == asked
     assert _transcript_message(client, chat, asked)["artifact"]["how"] == "edited"
+    own = _save(client, chat, "notes.md")
+    version = client.get(f"/v1/artifacts/{own['id']}").json()["all_versions"][0]
+    assert version["item_id"] == asked != steer
+    assert {store.get_in_session(a["id"], chat).round_id for a in (saved, own)} == {asked}
 
     scheduled = conversations.create_conversation(
         parent_conversation_id=chat, labels={SCHEDULED_HELPER_LABEL_KEY: "t1"}

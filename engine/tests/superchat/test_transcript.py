@@ -4,6 +4,7 @@ route's paging, reset cut and access over a real store."""
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -18,10 +19,14 @@ from omnigent.entities import (
     NewConversationItem,
 )
 from omnigent.errors import OmnigentError
+from omnigent.stores.artifact_store.local import LocalArtifactStore
 from omnigent.stores.conversation_store.sqlalchemy_store import SqlAlchemyConversationStore
-from omnigent.superchat.artifact_kinds import KIND_MIME
+from omnigent.superchat.artifact_kinds import DECK_SUFFIX, KIND_MIME
+from omnigent.superchat.artifacts.store import SqlAlchemyArtifactStore
+from omnigent.superchat.rounds.fold import fold
+from omnigent.superchat.rounds.store import RoundEvent, SqlAlchemyRoundStore
 from omnigent.superchat.transcript.blocks import project_items
-from omnigent.superchat.transcript.routes import register_transcript_routes
+from omnigent.superchat.transcript.routes import read_transcript, register_transcript_routes
 
 _MODE = {"omnigent.context.mode": "superside-chat"}
 
@@ -55,10 +60,10 @@ def _out(item_id: str, call_id: str, output: Any) -> dict[str, Any]:
 
 _CARD = {
     "type": "card",
-    "card": "plan",
-    "id": "plan-1",
+    "card": "progress",
+    "id": "progress-1",
     "data": {"steps": ["a"]},
-    "fallback": " the plan ",
+    "fallback": " the progress ",
     "note": "internal",
 }
 
@@ -99,55 +104,35 @@ def test_a_turn_shows_only_its_last_text_and_keeps_cards_and_chips() -> None:
     assert out[2]["blocks"][1]["card"]["card"] == "passages"
 
 
-def test_a_short_working_note_before_more_work_is_never_a_message() -> None:
+def test_the_turns_last_text_is_its_reply_however_short() -> None:
     check = {"slides": 5, "errors": ["Slide 2: runs past the edge"]}
     running = [
         _msg("u1", "user", "Academic Paper"),
+        _msg("a0", "assistant", "Building the deck now."),
         _call("c1", "deck_check", "k1"),
         _out("o1", "k1", check),
-        _msg("a1", "assistant", "Likely the long label/value wraps; shorten."),
+        _msg("a1", "assistant", "Shorten."),
         _call("c2", "sys_os_edit", "k2"),
         _out("o2", "k2", {"replacements": 1}),
     ]
-    # mid-turn: the note is the newest text, yet the turn has no reply to show yet
-    assert [m["id"] for m in project_items(running)] == ["u1"]
+    # mid-turn: the newest text shows, however short, until a later one replaces it
+    assert [m["id"] for m in project_items(running)] == ["u1", "a1"]
     done = [*running, _msg("a2", "assistant", "Your 5-slide deck is ready.")]
     assert [m["id"] for m in project_items(done)] == ["u1", "a2"]
-    # a short answer before a card, a file or a Helper is the answer, not a note
-    card = {"type": "card", "card": "follow_ups", "data": {"suggestions": ["x"]}}
+
+
+def test_chips_come_last_and_text_after_them_is_the_reply() -> None:
+    card = {"type": "card", "card": "follow_ups", "data": {"suggestions": ["x"]}, "fallback": "x"}
     answered = [
         _msg("u1", "user", "hi"),
         _msg("a1", "assistant", "Done, it is saved."),
         _call("c1", "suggest_follow_ups", "k1"),
         _out("o1", "k1", card),
     ]
-    assert [m["id"] for m in project_items(answered)][:2] == ["u1", "a1"]
-    # a longer text before more work stays the turn's text until a later one replaces it
-    long = "I am reading the spreadsheet first, then I will build the five slides from it."
-    reading = [_msg("u1", "user", "deck"), _msg("a1", "assistant", long), _call("c1", "x", "k")]
-    assert [m["id"] for m in project_items(reading)] == ["u1", "a1"]
-
-
-def test_the_spoken_opener_is_the_turn_text_until_the_answer_replaces_it() -> None:
-    opener = "Building the TD vs BMO deck now with mock figures."
-    running = [
-        _msg("u1", "user", "TD vs BMO deck"),
-        _msg("a1", "assistant", opener),
-        _call("c1", "deck_new", "k1"),  # no output yet
-    ]
-    out = project_items(running)
-    assert [m["id"] for m in out] == ["u1", "a1"]
-    assert out[1]["blocks"] == [{"type": "text", "text": opener}]
-    # a working note after more work folds back to the opener
-    noted = [
-        *running,
-        _out("o1", "k1", {"slides": 6}),
-        _msg("a2", "assistant", "Shorten slide 3."),
-        _call("c2", "sys_os_edit", "k2"),
-    ]
-    assert [m["id"] for m in project_items(noted)] == ["u1", "a1"]
-    done = [*noted, _msg("a3", "assistant", "Here is the TD vs BMO deck.")]
-    assert [m["id"] for m in project_items(done)] == ["u1", "a3"]
+    assert [m["id"] for m in project_items(answered)] == ["u1", "a1", "c1"]
+    # the model kept going after the chips: its last text is the reply, the chips still last
+    later = [*answered, _msg("a2", "assistant", "I added a chart."), _msg("u2", "user", "ok")]
+    assert [m["id"] for m in project_items(later)] == ["u1", "a2", "c1", "u2"]
 
 
 def test_system_notice_and_hidden_context_are_dropped() -> None:
@@ -239,18 +224,18 @@ def test_card_call_becomes_a_card_message_without_internal_fields() -> None:
     (message,) = project_items(items)
     assert message["role"] == "assistant"
     (block,) = message["blocks"]
-    assert block["type"] == "card" and block["card_id"] == "plan-1"
+    assert block["type"] == "card" and block["card_id"] == "progress-1"
     assert block["card"] == {
-        "card": "plan",
-        "id": "plan-1",
+        "card": "progress",
+        "id": "progress-1",
         "data": {"steps": ["a"]},
-        "fallback": "the plan",
+        "fallback": "the progress",
     }
     assert "pending" not in block
 
 
 def test_card_without_output_is_pending_and_failed_card_is_skipped() -> None:
-    args = {"card": "plan", "fallback": "wait", "data": {"x": 1}}
+    args = {"card": "progress", "fallback": "wait", "data": {"x": 1}}
     (pending,) = project_items([_call("c1", "render_card", "k1", args)])
     assert pending["blocks"][0]["pending"] is True
     assert pending["blocks"][0]["card"]["data"] == {}
@@ -506,27 +491,239 @@ async def client(conversation_store: SqlAlchemyConversationStore) -> httpx.Async
         yield http
 
 
-async def test_pages_walk_back_with_before_and_unknown_session_is_not_found(
-    client: httpx.AsyncClient, conversation_store: SqlAlchemyConversationStore
+_RECORDED = Path(__file__).parent / "rounds"
+
+
+def _replay_recorded(
+    conversations: SqlAlchemyConversationStore,
+    rounds: SqlAlchemyRoundStore,
+    artifacts: SqlAlchemyArtifactStore,
+    root: str,
+) -> list[str]:
+    """Replay the recorded Round streams five times into one Conversation: its items, its
+    Helpers, its Round events and its saved versions. In every other pass the Assistant saves
+    the file a Helper saved in the recording, with an ``artifact_save`` call in the Conversation.
+
+    :returns: The Round ids, oldest first.
+    """
+    opened: list[str] = []
+    for n, path in enumerate(sorted(_RECORDED.glob("*.jsonl")) * 5):
+        base = n * 100_000
+        ids: dict[str, str] = {}  # recorded Round or Helper id -> stored id
+        events: list[RoundEvent] = []
+        said: list[str] = []
+        names: dict[str, str] = {}
+        for line in path.read_text().splitlines():
+            ev = json.loads(line)
+            kind, actor = ev.pop("kind"), ev.pop("actor")
+            at, recorded = base + int(ev.pop("t") * 1000), ev.pop("round_id")
+            if kind == "round.opened":
+                (asked,) = conversations.append(root, [_say("user", ev["text"])])
+                ids[recorded] = asked.id
+                opened.append(asked.id)
+            rid = ids[recorded]
+            if "helper_id" in ev or (kind == "tool.result" and ev.get("name") == "start_helper"):
+                key = ev.get("helper_id", "h1")
+                if key not in ids:
+                    ids[key] = conversations.create_conversation(
+                        kind="sub_agent",
+                        parent_conversation_id=root,
+                        title=f"Deck {n}",
+                        labels=_MODE,
+                    ).id
+                ev["helper_id"] = ids[key]
+            if kind == "tool.started" and actor == "assistant":
+                names[ev["call_id"]] = ev["name"]
+            elif kind == "tool.result" and actor == "assistant":
+                call_id, output = f"{n}{ev['call_id']}", "{}"
+                if ev["name"] == "start_helper":
+                    output = json.dumps({"started": True, "helper_id": ev.pop("helper_id")})
+                conversations.append(root, _tool(call_id, names[ev["call_id"]], output))
+            elif kind == "words" and actor == "assistant":
+                said.append(ev["text"])
+            elif kind == "turn.ended" and actor == "assistant" and said:
+                conversations.append(root, [_say("assistant", "".join(said))])
+                said = []
+            elif kind == "file.saved":
+                by_assistant = n // 4 % 2 == 1
+                saver = root if by_assistant else ev["helper_id"]
+                name = f"{ev['name']}{DECK_SUFFIX}"
+                saved = artifacts.create(
+                    user_id=None,
+                    parent_session_id=root,
+                    name=name,
+                    title="Uruguay",
+                    kind="html",
+                    mime=KIND_MIME["html"],
+                    data=b"<p>deck</p>",
+                    chat_id=saver,
+                    round_id=rid,
+                )
+                ev.update(name=name, file_kind="html", artifact_id=saved.id, version=saved.version)
+                if by_assistant:
+                    actor = "assistant"
+                    del ev["helper_id"]
+                    result = {"type": "artifact", "id": saved.id, "name": name, "kind": "html"}
+                    result["version"] = saved.version
+                    conversations.append(
+                        root, _tool(f"{n}save", "artifact_save", json.dumps(result))
+                    )
+            events.append(RoundEvent(rid, root, kind, actor, at, ev))
+        rounds.append(events)
+    return opened
+
+
+def _tool(call_id: str, name: str, output: str) -> list[NewConversationItem]:
+    call = FunctionCallData(agent="brain", name=name, arguments="{}", call_id=call_id)
+    return [
+        _new("function_call", call),
+        _new("function_call_output", FunctionCallOutputData(call_id=call_id, output=output)),
+    ]
+
+
+def cards(messages: list[dict[str, Any]]) -> list[tuple[str, int | None]]:
+    """The file cards of transcript *messages* in order, as ``(artifact_id, version)``."""
+    return [
+        (b["artifact_id"], b.get("version"))
+        for m in messages
+        for b in m["blocks"]
+        if b["type"] == "file" and b.get("by") != "user"
+    ]
+
+
+def _file_card(saved: Any) -> str:
+    data = {"name": saved.name, "artifactId": saved.id, "version": saved.version}
+    return json.dumps({"type": "card", "card": "file", "data": data, "fallback": saved.name})
+
+
+def _resave_and_show(
+    conversations: SqlAlchemyConversationStore,
+    rounds: SqlAlchemyRoundStore,
+    artifacts: SqlAlchemyArtifactStore,
+    root: str,
+) -> tuple[str, str]:
+    """A Round in which the Assistant saves a deck twice, shows it with a file card, and shows
+    an older file with another: three cards for one file before the Round drew them.
+
+    :returns: The Round id and the older file's artifact id.
+    """
+    (asked,) = conversations.append(root, [_say("user", "Make a deck on the history of jazz")])
+    older = artifacts.create(
+        user_id=None,
+        parent_session_id=root,
+        name="notes.md",
+        title="Notes",
+        kind="md",
+        mime=KIND_MIME["md"],
+        data=b"notes",
+        chat_id=root,
+    )
+    events = [RoundEvent(asked.id, root, "round.opened", "person", 9_000_000, {"text": "jazz"})]
+    for n in (1, 2):
+        saved = artifacts.create(
+            user_id=None,
+            parent_session_id=root,
+            name=f"history-of-jazz{DECK_SUFFIX}",
+            title="Jazz",
+            kind="html",
+            mime=KIND_MIME["html"],
+            data=b"<p>v%d</p>" % n,
+            chat_id=root,
+            round_id=asked.id,
+        )
+        result = {"type": "artifact", "id": saved.id, "name": saved.name, "kind": "html"}
+        conversations.append(
+            root, _tool(f"jazz{n}", "artifact_save", json.dumps({**result, "version": n}))
+        )
+        body = {"name": saved.name, "file_kind": "html", "artifact_id": saved.id, "version": n}
+        events.append(RoundEvent(asked.id, root, "file.saved", "assistant", 9_000_000 + n, body))
+    conversations.append(root, _tool("jazz3", "render_card", _file_card(saved)))
+    conversations.append(root, _tool("jazz4", "render_card", _file_card(older)))
+    conversations.append(root, [_say("assistant", "Your jazz deck is ready.")])
+    rounds.append(events)
+    return asked.id, older.id
+
+
+async def test_pages_walk_back_and_draw_each_rounds_cards_at_any_page_size(
+    client: httpx.AsyncClient,
+    conversation_store: SqlAlchemyConversationStore,
+    db_uri: str,
+    tmp_path: Path,
 ) -> None:
+    """The recorded Rounds, replayed into one Conversation, page back to their first message at
+    9, 40, 100 and 500 items a page. A Round's file cards are every file of its view, the
+    Assistant's and its Helper's, in order on the Round's last reply, one per file at its latest
+    version, and a page's size never moves a card. A file card the Assistant drew for a file of
+    its Round is dropped; one for a file outside it stays. Every message carries the Round it is
+    in (``round_id``, the id of the message that opened it), whatever the page size."""
+    rounds = SqlAlchemyRoundStore(db_uri)
+    blobs = LocalArtifactStore(str(tmp_path / "blobs"))
+    artifacts = SqlAlchemyArtifactStore(db_uri, lambda: blobs)
     root = conversation_store.create_conversation(kind="default", title="S", labels=_MODE)
-    conversation_store.append(root.id, [_say("user", f"m{i}") for i in range(5)])
-    first = (await client.get(f"/v1/sessions/{root.id}/transcript?limit=2")).json()
-    assert [m["blocks"][0]["text"] for m in first["data"]] == ["m3", "m4"]
-    assert first["has_more"] is True and first["lineage"]["kind"] == "super"
-    second = (
-        await client.get(
-            f"/v1/sessions/{root.id}/transcript?limit=2&before={first['older_cursor']}"
-        )
-    ).json()
-    assert [m["blocks"][0]["text"] for m in second["data"]] == ["m1", "m2"]
-    last = (
-        await client.get(
-            f"/v1/sessions/{root.id}/transcript?limit=2&before={second['older_cursor']}"
-        )
-    ).json()
-    assert [m["blocks"][0]["text"] for m in last["data"]] == ["m0"]
-    assert last["has_more"] is False and last["older_cursor"] is None
+    opened = _replay_recorded(conversation_store, rounds, artifacts, root.id)
+    jazz, older = _resave_and_show(conversation_store, rounds, artifacts, root.id)
+    opened.append(jazz)
+    assert len(conversation_store.list_items(root.id, limit=500).data) > 100
+
+    def read_all(limit: int) -> list[dict[str, Any]]:
+        messages: list[dict[str, Any]] = []
+        before = None
+        while True:
+            page = read_transcript(
+                conversation_store,
+                root,
+                before=before,
+                limit=limit,
+                rounds=rounds,
+                artifacts=artifacts,
+            )
+            messages = page["data"] + messages
+            if not page["has_more"]:
+                assert page["older_cursor"] is None and page["lineage"]["kind"] == "super"
+                return messages
+            before = page["older_cursor"]
+
+    def by_message(messages: list[dict[str, Any]]) -> list[tuple[str, list[Any]]]:
+        return [(m["id"], cards([m])) for m in messages if cards([m])]
+
+    whole = read_all(500)
+    assert [m["id"] for m in whole if m["role"] == "user"] == opened
+    in_round, current = {}, None
+    for message in whole:
+        current = message["id"] if message["role"] == "user" else current
+        in_round[message["id"]] = current
+    assert {m["id"]: m["round_id"] for m in whole} == in_round
+    for limit in (9, 40, 100):
+        paged = read_all(limit)
+        if limit >= 40:  # a smaller page can split a turn from its last text, so shows more
+            assert [m["id"] for m in paged] == [m["id"] for m in whole]
+        assert by_message(paged) == by_message(whole)
+        assert all(in_round.get(m["id"], m["round_id"]) == m["round_id"] for m in paged)
+    views = {rid: fold(rounds.events(rid, root.id), rid)["files"] for rid in opened}
+    recorded = [(f["artifact_id"], f["version"]) for rid in opened for f in views[rid]]
+    assistants = [f for rid in opened for f in views[rid] if f["helper_id"] is None]
+    assert (len(assistants), len(recorded)) == (5, 11)
+    assert cards(whole) == recorded
+    current, per_round = None, {}
+    for message in whole:
+        if message["role"] == "user":
+            current = message["id"]
+        elif cards([message]):
+            assert message["blocks"][0]["type"] == "text"  # after the reply's words
+            per_round.setdefault(current, []).extend(cards([message]))
+    assert per_round == {
+        rid: [(f["artifact_id"], f["version"]) for f in views[rid]] for rid in opened if views[rid]
+    }
+    (deck,) = views[jazz]
+    assert per_round[jazz] == [(deck["artifact_id"], 2)]
+    shown = [
+        b["card"]["data"]["artifactId"]
+        for m in whole
+        if m["round_id"] == jazz
+        for b in m["blocks"]
+        if b["type"] == "card" and b["card"]["card"] == "file"
+    ]
+    assert shown == [older]
     with pytest.raises(OmnigentError, match="not found"):
         await client.get("/v1/sessions/ad563e906854634c49e1a6fd2fbb31d4/transcript")
 

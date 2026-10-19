@@ -39,6 +39,8 @@ export interface OmnigentActivity {
   families?: string[];
   /** A Helper's entry: whether Pause holds it (its `superchat.paused` label). */
   paused?: unknown;
+  /** The Round the work is in (ADR 0029); null for work from before Rounds. */
+  round_id?: string | null;
 }
 
 /** `GET /v1/sessions/{superId}/activities?before=&limit=` — the Activity Feed, newest first
@@ -170,5 +172,6 @@ export function mapActivity(raw: OmnigentActivity): Activity {
     summaryLine: typeof raw.summary_line === "string" && raw.summary_line ? raw.summary_line : null,
     families: mapFamilies(raw.families),
     ...(raw.paused === true ? { paused: true } : {}),
+    ...(raw.round_id ? { roundId: raw.round_id } : {}),
   };
 }

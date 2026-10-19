@@ -41,7 +41,6 @@ from omnigent.superchat.artifacts.studio import (
     studio_session_id,
 )
 from omnigent.superchat.artifacts.studio_turn import _NOTED, studio_turn_blocks
-from omnigent.superchat.step_limit import policy as step_limit
 from omnigent.superchat.subagents import count_live_children
 
 CHAT_LABELS = {CONTEXT_MODE_LABEL: SUPERSIDE_CHAT_MODE_VALUE}
@@ -234,7 +233,7 @@ def test_a_racing_create_is_caught_and_read_back(env) -> None:
 # ---------------------------------------------------------------- isolation
 
 
-def test_the_studio_is_outside_listings_caps_activity_and_the_step_limit(env) -> None:
+def test_the_studio_is_outside_listings_caps_and_activity(env) -> None:
     client, _app, _store, conversations, chat, _linked = env
     saved = _save(client, chat, "deck.md").json()
     session_id = client.post(f"/v1/artifacts/{saved['id']}/chat").json()["session_id"]
@@ -248,11 +247,6 @@ def test_the_studio_is_outside_listings_caps_activity_and_the_step_limit(env) ->
     assert count_live_children([{**row, "tool": "worker", "labels": {}}]) == 1
     # Not a Helper row, not work in the strip.
     assert all(a.chat_id != session_id for a in list_activities(conversations, chat))
-    # The step limit never applies, whether asked through the session or its labels.
-    assert step_limit.applies(studio, None) is False
-    labels = {**CHAT_LABELS, ARTIFACT_CHAT_LABEL_KEY: saved["id"]}
-    event = {"type": "request", "data": {"user_content": "go"}, "context": {"labels": labels}}
-    assert step_limit.muse_step_limit(event) is None  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------- saves from the studio

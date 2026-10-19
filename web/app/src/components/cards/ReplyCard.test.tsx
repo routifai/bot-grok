@@ -68,6 +68,9 @@ const block = (over: Partial<ReplyCardBlock>): ReplyCardBlock => ({
 it("draws the fallback markdown for an unknown kind or malformed data", () => {
   const unknown = mount(<ReplyCard block={block({ card: "hologram" })} />);
   expect(unknown.querySelector("[data-md]")?.textContent).toBe("**Fallback** text");
+  // An older chat's plan card is no kind any more (ADR 0029).
+  const plan = mount(<ReplyCard block={block({ card: "plan", data: { items: [] } })} />);
+  expect(plan.querySelector("[data-md]")?.textContent).toBe("**Fallback** text");
   const malformed = mount(<ReplyCard block={block({ card: "quote", data: { symbol: "A" } })} />);
   expect(malformed.querySelector("[data-md]")).not.toBeNull();
   expect(malformed.querySelector("[data-testid=reply-card]")).toBeNull();
@@ -409,37 +412,4 @@ it("previewed options with no registered tiles keep the plain buttons", () => {
   const host = mount(<ReplyCard block={themeAsk} />);
   expect(host.querySelector('[data-testid="tiles"]')).toBeNull();
   expect(host.textContent).toContain("Minimal White");
-});
-
-it("draws a plan card as the engine reads each step, the way the work strip does (ADR 0027)", () => {
-  const host = mount(
-    <ReplyCard
-      block={block({
-        card: "plan",
-        data: {
-          items: [
-            { text: "Brief", state: "done" },
-            { text: "Build", status: "done", state: "claimed" },
-            { text: "Check", state: "not_checked" },
-            { text: "Export", state: "stopped" },
-            { text: "Send", state: "failed" },
-            { text: "Later", state: "someday" },
-          ],
-        },
-      })}
-    />,
-  );
-  const steps = [...host.querySelectorAll("[data-testid=work-plan-step]")];
-  expect(steps.map((step) => step.getAttribute("data-status"))).toEqual([
-    "done",
-    "claimed",
-    "not_checked",
-    "stopped",
-    "failed",
-    "todo",
-  ]);
-  expect(
-    steps.map((step) => step.querySelector("[data-testid=work-plan-reading]")?.textContent ?? null),
-  ).toEqual([null, null, "Not checked", "Stopped", "Didn't finish", null]);
-  expect(host.textContent).toContain("1/6");
 });

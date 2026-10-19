@@ -1,11 +1,17 @@
 import { ORPCError } from "@orpc/server";
-import type { OmnigentMessageContext } from "@superchat/adapters/omnigent/browser";
+import type {
+  OmnigentMessageContext,
+  OmnigentRoundSummary,
+  OmnigentRoundView,
+} from "@superchat/adapters/omnigent/browser";
 import {
   confineWorkspacePath,
+  getOmnigentRound,
   getOmnigentTranscript,
   getOmnigentWorkingPlace,
   getOmnigentWorkspaceRoot,
   interruptOmnigentSession,
+  listOmnigentRounds,
   mapReplyFrame,
   mapSessionStatusFrame,
   mapTranscriptMessage,
@@ -14,7 +20,6 @@ import {
   moveOmnigentSessionForPerson,
   OmnigentApiError,
   postOmnigentMessage,
-  readTurnImages,
   resetOmnigentSession,
   resolveChatOwnership,
   setOmnigentHelpersPaused,
@@ -22,7 +27,7 @@ import {
   streamOmnigentFamily,
   streamOmnigentSession,
 } from "@superchat/adapters/omnigent/browser";
-import type { FamilyEvent } from "@superchat/contracts";
+import type { FamilyEvent, RoundSummary, RoundView } from "@superchat/contracts";
 import { promptTextForWorkspaceAttachments } from "@superchat/core";
 import { engineClient, museSessionId, NO_EMAIL } from "./client";
 import { onSuperChat, os } from "./context";
@@ -136,6 +141,70 @@ export async function getChatTranscript(input: {
   return input.chatId ? { ...mapped, readOnly: true } : mapped;
 }
 
+/** Epoch seconds (the engine's) as epoch ms. */
+const ms = (seconds: number) => Math.round(seconds * 1000);
+
+/** A Round's summary, from the engine's list or its `round.updated` frame. */
+export function roundSummary(round: OmnigentRoundSummary): RoundSummary {
+  return {
+    roundId: round.round_id,
+    status: round.status,
+    startedAt: round.started_at === null ? null : ms(round.started_at),
+    live: round.live,
+    helpers: round.helpers,
+    files: round.files,
+    steps: round.steps,
+  };
+}
+
+/** A Round in full, as the web reads it. */
+export function roundView(round: OmnigentRoundView): RoundView {
+  return {
+    roundId: round.round_id,
+    status: round.status,
+    startedAt: round.started_at === null ? null : ms(round.started_at),
+    settledAt: round.settled_at === null ? null : ms(round.settled_at),
+    elapsedMs: ms(round.elapsed),
+    stopLine: round.stop_line,
+    now: round.now && {
+      actor: round.now.actor,
+      helperId: round.now.helper_id,
+      name: round.now.name,
+      digest: round.now.digest,
+    },
+    trail: round.trail.map((step) => ({
+      actor: step.actor,
+      helperId: step.helper_id,
+      at: ms(step.t),
+      name: step.name,
+      digest: step.digest,
+      ok: step.ok,
+    })),
+    helpers: Object.values(round.helpers)
+      .map((helper) => ({
+        id: helper.id,
+        title: helper.title,
+        folder: helper.folder,
+        status: helper.status,
+        startedAt: ms(helper.started_at),
+        finishedAt: helper.finished_at === null ? null : ms(helper.finished_at),
+      }))
+      .sort((a, b) => a.startedAt - b.startedAt),
+    files: round.files.map((file) => ({
+      artifactId: file.artifact_id,
+      name: file.name,
+      version: file.version,
+      helperId: file.helper_id,
+    })),
+    checklist: round.checklist.map((item) => ({
+      id: item.id,
+      subject: item.subject,
+      activeForm: item.active_form,
+      status: item.status,
+    })),
+  };
+}
+
 /** The Muse's family stream (Conversation and Helpers), relayed as ids only so the
  * client refetches what changed. Ends when the engine's stream does; the client reconnects and
  * refetches. */
@@ -164,6 +233,8 @@ export async function* watchFamily(
       else if (frame.type === "activities.changed") yield { type: "activitiesChanged" };
       else if (frame.type === "artifacts.changed") {
         yield { type: "artifactsChanged", groupId: frame.group_id };
+      } else if (frame.type === "round.updated") {
+        yield { type: "roundUpdated", ...roundSummary(frame) };
       } else yield { type: "heartbeat" };
     }
   } catch (error) {
@@ -175,8 +246,8 @@ export async function* watchFamily(
 /**
  * The person's message to the Muse's Conversation. Attached
  * files are already in the workspace: the message carries one reference line each (the same lines
- * the Conversation shows back as chips) and any image goes to the model as an image. The engine
- * owns delivery: a message sent while a turn runs is steered into it or queued behind it.
+ * the Conversation shows back as chips); the engine hands an image to the model as an image. The
+ * engine owns delivery: a message sent while a turn runs is steered into it or queued behind it.
  */
 export async function sendToChat(input: {
   botId: string;
@@ -194,21 +265,11 @@ export async function sendToChat(input: {
   );
   if (!text) throw new ORPCError("BAD_REQUEST", { message: "Nothing to send." });
   const client = engineClient();
-  const images = await readTurnImages(client, NO_EMAIL, sessionId, text);
   const context = input.context;
   await onSuperChat(
-    context?.openArtifact || context?.cardAnswer || context?.stepComment
-      ? postOmnigentMessage(
-          client,
-          NO_EMAIL,
-          sessionId,
-          text,
-          images.length ? images : undefined,
-          context,
-        )
-      : images.length
-        ? postOmnigentMessage(client, NO_EMAIL, sessionId, text, images)
-        : postOmnigentMessage(client, NO_EMAIL, sessionId, text),
+    context?.openArtifact || context?.cardAnswer
+      ? postOmnigentMessage(client, NO_EMAIL, sessionId, text, context)
+      : postOmnigentMessage(client, NO_EMAIL, sessionId, text),
   );
   return { ok: true as const };
 }
@@ -244,6 +305,17 @@ export async function setMessageArtifact(input: {
 export const chatsRouter = {
   chats: {
     transcript: os.chats.transcript.handler(({ input }) => getChatTranscript(input)),
+    rounds: os.chats.rounds.handler(async ({ input }) => {
+      const sessionId = await requireMuse(input.botId);
+      const rounds = await onSuperChat(listOmnigentRounds(engineClient(), NO_EMAIL, sessionId));
+      return { rounds: rounds.map(roundSummary) };
+    }),
+    round: os.chats.round.handler(async ({ input }) => {
+      const sessionId = await requireMuse(input.botId);
+      return roundView(
+        await onSuperChat(getOmnigentRound(engineClient(), NO_EMAIL, sessionId, input.roundId)),
+      );
+    }),
     // The person has the Conversation open; moves their engine read baseline so its unread dot
     // clears.
     markRead: os.chats.markRead.handler(async ({ input }) => {
@@ -266,7 +338,7 @@ export const chatsRouter = {
       return { ok: true as const };
     }),
     watchStatus: os.chats.watchStatus.handler(async function* ({ input, signal }) {
-      await requireOwnHelper(input.botId, input.chatId);
+      await requireOwnChat(input.botId, input.chatId);
       try {
         for await (const frame of streamOmnigentSession(
           engineClient(),

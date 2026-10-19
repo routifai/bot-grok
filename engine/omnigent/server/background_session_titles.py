@@ -17,6 +17,7 @@ from omnigent.entities.conversation import (
 )
 from omnigent.server.auth import RESERVED_USER_WORKSPACE
 from omnigent.stores.conversation_store import ConversationStore
+from omnigent.superchat.rounds.record import helper_titled
 
 if TYPE_CHECKING:
     from omnigent.entities.conversation import Conversation
@@ -576,6 +577,8 @@ class BackgroundSessionTitleCoordinator:
                 request.session_id,
                 title,
             )
+            if updated is not None:
+                helper_titled(updated)
             _logger.info(
                 "background task summary completed session=%s set=%s elapsed_ms=%.1f",
                 request.session_id,

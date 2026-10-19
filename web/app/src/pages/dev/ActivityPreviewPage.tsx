@@ -22,16 +22,15 @@ import { ContextPanel } from "../app/chrome/ContextPanel";
 import {
   activityDetail,
   DECK_HELPER_CHAT_ID,
-  DECK_PLAN_RENDERS,
+  DECK_STAGES,
   DEV_ACTIVITY_BOT_ID,
   DEV_MEMORY_PROFILE,
-  deckPlanHelper,
-  deckPlanMessages,
+  deckHelper,
+  deckMessages,
   EARLIER_ACTIVITIES,
   HELPER_MESSAGES,
   INITIAL_ACTIVITIES,
   READ_HELPER_CHAT_ID,
-  SOLO_PLAN_MESSAGES,
 } from "./activity-fixture";
 import { DEV_MUSE_NAME } from "./dev-muse";
 
@@ -69,19 +68,17 @@ function Reply({
   );
 }
 
-/** One reply's strip as the transcript draws it: its plan read by `transcriptWork`, its Helpers
- * from the fixture feed. */
-function PlanStrip({
+/** One reply's strip as the transcript draws it: read by `transcriptWork`, its Helpers from the
+ * fixture feed. */
+function ReplyStrip({
   messages,
   activities,
   live,
-  liveLabel,
   drafts,
 }: {
   messages: ThreadMessage[];
   activities: Activity[];
   live: boolean;
-  liveLabel?: string;
   drafts?: Parameters<typeof WorkStripView>[0]["drafts"];
 }) {
   const turn = [...transcriptWork(messages).turns.values()][0];
@@ -94,11 +91,9 @@ function PlanStrip({
     deriveWorkStrip(turn.helpers, activities, now),
     helperActivities(turn.helpers, activities).flatMap(flagsOf),
     {
-      plan: turn.plan,
       live,
       startedAt: turn.startedAt,
       endedAt: turn.endedAt,
-      ...(liveLabel ? { liveLabel } : {}),
     },
     now,
   );
@@ -112,61 +107,66 @@ const firstText = (messages: ThreadMessage[], id: string) => {
   return block?.kind === "text" ? block.text : "";
 };
 
-/** The deck reply's plan, one render at a time (the third adds a step after a flag). */
-function DeckPlanPreview() {
-  const [renders, setRenders] = useState(() => {
-    const asked = Number(new URLSearchParams(window.location.search).get("renders"));
-    return asked >= 1 && asked <= DECK_PLAN_RENDERS.length - 1 ? asked : 3;
+const DECK_MESSAGES = deckMessages();
+
+/** The deck reply, one stage of its Helper's work at a time (the third adds a flag). */
+function DeckPreview() {
+  const [stage, setStage] = useState(() => {
+    const asked = Number(new URLSearchParams(window.location.search).get("stage"));
+    return asked >= 1 && asked <= DECK_STAGES - 1 ? asked : 3;
   });
-  const messages = useMemo(() => deckPlanMessages(renders), [renders]);
-  const activities = useMemo(() => [deckPlanHelper(renders)], [renders]);
+  const activities = useMemo(() => [deckHelper(stage)], [stage]);
   const drafts =
-    renders >= 3
+    stage >= 3
       ? [
           {
             artifactId: "dev-markets-deck",
             name: "mock-markets.deck.html",
-            version: renders - 2,
+            version: stage - 2,
             mimeType: "text/html",
           },
         ]
       : [];
   return (
     <>
-      <Mine>{firstText(messages, "ask-deck")}</Mine>
+      <Mine>{firstText(DECK_MESSAGES, "ask-deck")}</Mine>
       <Reply
-        fixture="plan-running"
+        fixture="deck-running"
         below={
-          <PlanStrip messages={messages} activities={activities} live={false} drafts={drafts} />
+          <ReplyStrip
+            messages={DECK_MESSAGES}
+            activities={activities}
+            live={false}
+            drafts={drafts}
+          />
         }
       >
-        {firstText(messages, "reply-deck")}
+        {firstText(DECK_MESSAGES, "reply-deck")}
       </Reply>
       <div className="flex gap-2 self-start text-[12px] text-ink-3">
         <button
           type="button"
           className="underline"
-          onClick={() => setRenders((value) => Math.max(1, value - 1))}
+          onClick={() => setStage((value) => Math.max(1, value - 1))}
         >
-          Previous render
+          Previous stage
         </button>
         <button
           type="button"
           className="underline"
-          onClick={() => setRenders((value) => Math.min(DECK_PLAN_RENDERS.length - 1, value + 1))}
+          onClick={() => setStage((value) => Math.min(DECK_STAGES - 1, value + 1))}
         >
-          Next render
+          Next stage
         </button>
         <span>
-          {renders} of {DECK_PLAN_RENDERS.length - 1}
+          {stage} of {DECK_STAGES - 1}
         </span>
       </div>
     </>
   );
 }
 
-const SETTLED_MESSAGES = deckPlanMessages(DECK_PLAN_RENDERS.length);
-const SETTLED_ACTIVITIES = [deckPlanHelper(DECK_PLAN_RENDERS.length)];
+const SETTLED_ACTIVITIES = [deckHelper(DECK_STAGES)];
 const PILL_STARTED = Date.now() - 12_000;
 
 /** The work strip under replies, on the same fixture feed as the panel: Show details opens the
@@ -183,27 +183,13 @@ function WorkPreview({ activities }: { activities: Activity[] | undefined }) {
         </span>
       </div>
       <div className="mx-auto flex w-full max-w-[700px] flex-col gap-[22px] px-6 pb-8">
-        <DeckPlanPreview />
-        <Mine>{firstText(SOLO_PLAN_MESSAGES, "ask-solo")}</Mine>
+        <DeckPreview />
+        <Mine>{firstText(DECK_MESSAGES, "ask-deck")}</Mine>
         <Reply
-          fixture="plan-solo"
+          fixture="deck-settled"
           below={
-            <PlanStrip
-              messages={SOLO_PLAN_MESSAGES}
-              activities={[]}
-              live
-              liveLabel="Asia up 11%, Europe flat, North America down 4%"
-            />
-          }
-        >
-          {firstText(SOLO_PLAN_MESSAGES, "reply-solo")}
-        </Reply>
-        <Mine>{firstText(SETTLED_MESSAGES, "ask-deck")}</Mine>
-        <Reply
-          fixture="plan-settled"
-          below={
-            <PlanStrip
-              messages={SETTLED_MESSAGES}
+            <ReplyStrip
+              messages={DECK_MESSAGES}
               activities={SETTLED_ACTIVITIES}
               live={false}
               drafts={[

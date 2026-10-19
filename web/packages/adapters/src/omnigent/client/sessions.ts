@@ -116,29 +116,20 @@ export interface OmnigentMessageContext {
   openArtifact?: { artifactId: string; version: number };
   /** The ask card option the message answers (ADR 0025). */
   cardAnswer?: { cardId: string; optionId: string; label: string };
-  /** The plan step the message comments on (ADR 0027). */
-  stepComment?: { cardId: string; stepIndex: number; text: string };
 }
 
-/** `POST /v1/sessions/{id}/events` with a `message` event carrying the user's turn text and,
- * optionally, images as `input_image` data URIs. `context` rides beside the message data (never
- * in the model's input item): the artifact open beside the chat, for the engine's runtime hint
- * and the message's `open` link. */
+/** `POST /v1/sessions/{id}/events` with a `message` event carrying the user's turn text; the
+ * engine reads the images its reference lines name. `context` rides beside the message data
+ * (never in the model's input item): the artifact open beside the chat, for the engine's runtime
+ * hint and the message's `open` link. */
 export async function postOmnigentMessage(
   config: OmnigentClientConfig,
   email: string,
   sessionId: string,
   text: string,
-  images?: Array<{ mimeType: string; dataBase64: string }>,
   context?: OmnigentMessageContext,
 ): Promise<OmnigentPostedMessage> {
-  const content: Array<Record<string, string>> = [{ type: "input_text", text }];
-  for (const image of images ?? []) {
-    content.push({
-      type: "input_image",
-      image_url: `data:${image.mimeType};base64,${image.dataBase64}`,
-    });
-  }
+  const content = [{ type: "input_text", text }];
   const response = await fetch(
     new URL(`/v1/sessions/${encodeURIComponent(sessionId)}/events`, config.baseUrl),
     {
@@ -147,7 +138,7 @@ export async function postOmnigentMessage(
       body: JSON.stringify({
         type: "message",
         data: { role: "user", content },
-        ...(context?.openArtifact || context?.cardAnswer || context?.stepComment
+        ...(context?.openArtifact || context?.cardAnswer
           ? {
               context: {
                 ...(context.openArtifact
@@ -164,15 +155,6 @@ export async function postOmnigentMessage(
                         card_id: context.cardAnswer.cardId,
                         option_id: context.cardAnswer.optionId,
                         label: context.cardAnswer.label,
-                      },
-                    }
-                  : {}),
-                ...(context.stepComment
-                  ? {
-                      step_comment: {
-                        card_id: context.stepComment.cardId,
-                        step_index: context.stepComment.stepIndex,
-                        text: context.stepComment.text,
                       },
                     }
                   : {}),

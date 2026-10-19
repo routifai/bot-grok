@@ -22,7 +22,13 @@ import {
 } from "../components/ai/orb";
 import { ArtifactPanelProvider, AskPreviewsProvider } from "../components/cards/context";
 import { SuperchatLogo } from "../components/SuperchatLogo";
-import { stripOf, transcriptWork, useWorkState, WorkingPill } from "../features/activity";
+import {
+  transcriptWork,
+  useRounds,
+  useWorkState,
+  WorkingPill,
+  withRounds,
+} from "../features/activity";
 import { ApprovalCards } from "../features/approvals";
 import { appsExtension } from "../features/apps";
 import { ArtifactRegistryProvider } from "../features/artifacts/registry";
@@ -36,7 +42,7 @@ import { liveExtension } from "../features/live";
 import { ConversationModelPicker } from "../features/models";
 import { useChatPlace, WorkInChip } from "../features/projects/WorkIn";
 import {
-  newestPlanTurn,
+  newestTurn,
   SessionPanel,
   SessionPanelToggle,
   useSessionPanelOpen,
@@ -188,11 +194,16 @@ export function ShellPage() {
   revealMessageRef.current = museTranscript.reveal;
   // The person's message on its way, then the reply as it streams, until the transcript has them.
   const { messages: storedMessages, pendingMessage, liveMessage } = museTranscript;
+  // The Conversation's Rounds (ADR 0029): the message that opened one carries its id.
+  const rounds = useRounds(active?.id);
+  // Only a new Round changes the transcript; its updates are its strip's.
+  const roundKey = rounds.map((round) => round.roundId).join(" ");
   const transcriptMessages = useMemo(() => {
     const unstored = [pendingMessage, liveMessage].filter((message) => message !== null);
-    return unstored.length ? [...(storedMessages ?? []), ...unstored] : (storedMessages ?? []);
-  }, [storedMessages, pendingMessage, liveMessage]);
-  // Each reply's strip and where the running work began, read once (ADR 0023).
+    const stored = withRounds(storedMessages ?? [], new Set(roundKey.split(" ")));
+    return unstored.length ? [...stored, ...unstored] : stored;
+  }, [storedMessages, pendingMessage, liveMessage, roundKey]);
+  // Each reply's strip from before Rounds and where the running work began, read once.
   const work = useMemo(() => transcriptWork(transcriptMessages), [transcriptMessages]);
   const {
     activePendingAttachments,
@@ -241,6 +252,8 @@ export function ShellPage() {
     sending,
     stopping,
     turnStartedAt: work.runningSince ?? null,
+    rounds,
+    roundId: transcriptMessages.findLast((message) => message.role === "user")?.roundId,
   });
   const running = workState.running;
   const turnRuns = useTurnRuns(`conversation:${active?.id}`, workState.turnRunning);
@@ -294,12 +307,7 @@ export function ShellPage() {
   // The session panel (ADR 0027) opens beside the transcript when work runs (desktop only; a
   // phone opens it from the header), and stays closed once the viewer closed it.
   const sessionPanel = useSessionPanelOpen(running && _isDesktop);
-  const planTurn = useMemo(() => newestPlanTurn(work), [work]);
-  // The panel reads the same strip as that reply (its plan, fold and the latest line of the work).
-  const panelStrip = useMemo(
-    () => (planTurn ? stripOf(planTurn, workState, undefined) : null),
-    [planTurn, workState],
-  );
+  const lastTurn = useMemo(() => newestTurn(work), [work]);
   const orbHome = orbPlacement({
     startPage: shownStart,
     sidebarVisible: false,
@@ -343,7 +351,6 @@ export function ShellPage() {
   const composerEl = (
     <Composer
       key={`bot:${active?.id}`}
-      botId={active?.id}
       activeName={active?.name}
       phase={workState.phase}
       stopFailed={stopFailed && running}
@@ -391,7 +398,7 @@ export function ShellPage() {
       <div className="app-no-drag flex shrink-0 items-center gap-2">
         {/* Running work shows here too, for when its strip is scrolled away (ADR 0023). */}
         <WorkingPill work={workState} />
-        {running || planTurn ? (
+        {running || lastTurn ? (
           <SessionPanelToggle
             open={sessionPanel.open}
             onToggle={sessionPanel.open ? sessionPanel.close : sessionPanel.show}
@@ -491,7 +498,7 @@ export function ShellPage() {
           {active && !chatArtifacts.isOpen ? (
             <SessionPanel
               botId={active.id}
-              strip={panelStrip}
+              roundId={rounds[0]?.status === "running" ? rounds[0].roundId : undefined}
               open={sessionPanel.open}
               onClose={sessionPanel.close}
             />

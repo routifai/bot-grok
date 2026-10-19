@@ -22,7 +22,10 @@ from omnigent.harnesses.executor import (
     TextChunk,
     ToolCallComplete,
     ToolCallRequest,
+    ToolCallStarted,
     ToolCallStatus,
+    ToolInputChunk,
+    TurnCancelled,
     TurnComplete,
 )
 
@@ -162,6 +165,29 @@ class TestPromptExtraction(unittest.TestCase):
         joined = " ".join(b.get("text", "") for b in prompt if b.get("type") == "text")
         self.assertIn("describe this", joined)
         self.assertIn("and this too", joined)
+        # The engine's turn start puts an attached image after the message's text, with its
+        # name; warm or cold, the model gets it as an image block.
+        engine_turn = {
+            "role": "user",
+            "content": [
+                {"type": "input_text", "text": "what is this?"},
+                {
+                    "type": "input_image",
+                    "filename": "Screenshot 4.40.50 PM.png",
+                    "image_url": "data:image/png;base64,aGVsbG8=",
+                },
+            ],
+        }
+        image = {
+            "type": "image",
+            "source": {"type": "base64", "media_type": "image/png", "data": "aGVsbG8="},
+        }
+        for resume in (True, False):
+            with self.subTest(resume_session=resume):
+                self.assertEqual(
+                    executor._build_prompt([engine_turn], resume_session=resume),
+                    [{"type": "text", "text": "what is this?"}, image],
+                )
 
     def test_empty_messages(self):
         executor = self._make_executor()
@@ -969,6 +995,54 @@ class TestConstructor(unittest.TestCase):
 
         _run(_t())
 
+    def test_force_close_client_cancels_the_sdk_reader_before_closing_it(self):
+        # Regression: marking the query closed while its reader still ran let the reader
+        # break out of the transport's message generator mid-yield. The generator's
+        # finalizer then raised the CLI's exit status in a task nobody awaited
+        # ("Task exception was never retrieved" at close()).
+        import gc
+
+        from omnigent.harnesses.claude_sdk_executor import ClaudeSDKExecutor
+
+        unretrieved: list[dict] = []
+
+        async def _t():
+            asyncio.get_running_loop().set_exception_handler(
+                lambda _loop, context: unretrieved.append(context)
+            )
+            lines: asyncio.Queue = asyncio.Queue()
+
+            async def read_messages():
+                try:
+                    while True:
+                        yield await lines.get()
+                except GeneratorExit:
+                    pass
+                raise RuntimeError("Command failed with exit code 143")
+
+            query = SimpleNamespace(_closed=False)
+
+            async def reader():
+                async for _ in read_messages():
+                    if query._closed:
+                        break
+
+            query._read_task = asyncio.create_task(reader())
+            await asyncio.sleep(0)
+            lines.put_nowait({"type": "assistant"})  # already on its way at close
+            await ClaudeSDKExecutor._force_close_client(
+                SimpleNamespace(_query=query, _transport=None)
+            )
+            await asyncio.gather(query._read_task, return_exceptions=True)
+            for _ in range(3):
+                gc.collect()
+                await asyncio.sleep(0)
+
+        _run(_t())
+        gc.collect()
+
+        self.assertEqual(unretrieved, [])
+
     def test_force_close_client_handles_sdk_without_stderr_task_group(self):
         # Regression: claude-agent-sdk >=0.2.x renamed the stderr reader from an
         # anyio task group (`_stderr_task_group`) to a single `_stderr_task`
@@ -1655,7 +1729,7 @@ class TestSupersideChatEngineOptions(unittest.TestCase):
 
         return _FakeSDK
 
-    def _run_turn_with_context_mode(self, context_mode: str | None):
+    def _run_turn_with_context_mode(self, context_mode: str | None, checklist: bool = False):
         from omnigent.harnesses.claude_sdk_executor import ClaudeSDKExecutor
         from omnigent.harnesses.executor import ExecutorConfig
 
@@ -1674,7 +1748,7 @@ class TestSupersideChatEngineOptions(unittest.TestCase):
                         [{"role": "user", "content": "hello"}],
                         [],
                         "system prompt",
-                        config=ExecutorConfig(extra=extra),
+                        config=ExecutorConfig(extra=extra, checklist=checklist),
                     )
                 ]
             self.assertEqual(len(events), 1)
@@ -1683,10 +1757,12 @@ class TestSupersideChatEngineOptions(unittest.TestCase):
         self.assertEqual(len(captured_options), 1)
         return captured_options[0]
 
-    def test_superside_chat_disables_auto_compact_and_auto_memory(self):
+    def test_superside_chat_disables_auto_compact_auto_memory_and_tool_search(self):
         options = self._run_turn_with_context_mode("superside-chat")
         self.assertEqual(options.env.get("DISABLE_AUTO_COMPACT"), "1")
         self.assertEqual(options.env.get("CLAUDE_CODE_DISABLE_AUTO_MEMORY"), "1")
+        # Its tool definitions load with the session: no ToolSearch before the first call.
+        self.assertEqual(options.env.get("ENABLE_TOOL_SEARCH"), "false")
 
     def test_superside_chat_disables_filesystem_settings(self):
         options = self._run_turn_with_context_mode("superside-chat")
@@ -1714,10 +1790,20 @@ class TestSupersideChatEngineOptions(unittest.TestCase):
         self.assertIn("Agent", options.disallowed_tools)
         self.assertIn("Task", options.disallowed_tools)
 
+    def test_checklist_opts_the_cli_into_its_native_task_tools(self):
+        task_tools = ["TaskCreate", "TaskUpdate", "TaskList", "TaskGet"]
+        options = self._run_turn_with_context_mode("superside-chat", checklist=True)
+        self.assertEqual(options.env.get("CLAUDE_CODE_ENABLE_TODO_TOOLS"), "1")
+        self.assertEqual(options.tools, ["Skill", "ToolSearch", *task_tools])
+        self.assertEqual(options.allowed_tools, task_tools)
+
     def test_unset_context_mode_leaves_engine_features_untouched(self):
         options = self._run_turn_with_context_mode(None)
+        self.assertNotIn("CLAUDE_CODE_ENABLE_TODO_TOOLS", options.env)
+        self.assertEqual(options.tools, ["Skill", "ToolSearch"])
         self.assertNotIn("DISABLE_AUTO_COMPACT", options.env)
         self.assertNotIn("CLAUDE_CODE_DISABLE_AUTO_MEMORY", options.env)
+        self.assertEqual(options.env.get("ENABLE_TOOL_SEARCH"), "true")
         self.assertEqual(options.disallowed_tools, [])
         self.assertNotEqual(getattr(options, "setting_sources", "unset-sentinel"), [])
 
@@ -1888,9 +1974,10 @@ class TestStreamEventStreaming(unittest.TestCase):
             # leakage. It was dropped because bare mode also kills
             # CLAUDE.md auto-discovery, plugin sync, and skill loading —
             # which the spec's ``skills:`` field is the proper knob for.
+            # ``--name`` names the session, so the CLI makes no title call of its own.
             self.assertEqual(
                 query_calls[0]["extra_args"],
-                {"no-session-persistence": None, "replay-user-messages": None},
+                {"no-session-persistence": None, "replay-user-messages": None, "name": "omnigent"},
             )
             # Skill remains available for configured skills; ToolSearch
             # keeps large MCP definitions deferred until they are needed.
@@ -2423,6 +2510,68 @@ class TestStreamEventStreaming(unittest.TestCase):
 
         _run(_t())
 
+    def test_an_interrupted_turn_ends_cancelled_not_crashed(self):
+        """An interrupt closes the CLI under the turn's read: the turn reports TurnCancelled
+        and the session is not marked crashed, so the next turn starts a fresh CLI."""
+        from omnigent.harnesses.claude_sdk_executor import ClaudeSDKExecutor
+
+        reading = asyncio.Event()
+
+        class _FakeSDK:
+            AssistantMessage = type("AssistantMessage", (), {})
+            UserMessage = type("UserMessage", (), {})
+            SystemMessage = type("SystemMessage", (), {})
+            ResultMessage = type("ResultMessage", (), {})
+            StreamEvent = type("StreamEvent", (), {})
+            ClaudeAgentOptions = type(
+                "ClaudeAgentOptions",
+                (),
+                {"__init__": lambda self, **kwargs: self.__dict__.update(kwargs)},
+            )
+
+            class ClaudeSDKClient:
+                def __init__(self, options):
+                    self.interrupted = asyncio.Event()
+
+                async def connect(self):
+                    return None
+
+                async def query(self, prompt, session_id="default"):
+                    return None
+
+                async def interrupt(self):
+                    self.interrupted.set()
+
+                async def receive_response(self):
+                    reading.set()
+                    await self.interrupted.wait()
+                    raise RuntimeError("Command failed with exit code 143")
+                    yield  # pragma: no cover
+
+                async def disconnect(self):
+                    return None
+
+        async def _t():
+            executor = ClaudeSDKExecutor()
+            messages = [{"role": "user", "content": "hello", "session_id": "session-a"}]
+            with patch(
+                "omnigent.harnesses.claude_sdk_executor._ensure_sdk", return_value=_FakeSDK
+            ):
+
+                async def _consume():
+                    return [e async for e in executor.run_turn(messages, [], "")]
+
+                turn = asyncio.ensure_future(_consume())
+                await asyncio.wait_for(reading.wait(), timeout=5)
+                self.assertTrue(await executor.interrupt_session("session-a"))
+                events = await asyncio.wait_for(turn, timeout=5)
+
+            self.assertEqual(events, [TurnCancelled()])
+            self.assertNotIn("session-a", executor._crashed_sessions)
+            self.assertEqual(executor._clients, {})
+
+        _run(_t())
+
     def test_close_session_disconnects_live_client(self):
         from omnigent.harnesses.claude_sdk_executor import ClaudeSDKExecutor, _ClaudeClientState
 
@@ -2819,6 +2968,21 @@ class TestStreamEventStreaming(unittest.TestCase):
                             "input": {},
                         },
                     },
+                    # Made inside another call (a sub-agent's): the events say which.
+                    parent_tool_use_id="agent_1",
+                ),
+                *(
+                    SDKStreamEvent(
+                        uuid=f"d{i}",
+                        session_id="s1",
+                        event={
+                            "type": "content_block_delta",
+                            "index": 0,
+                            "delta": {"type": "input_json_delta", "partial_json": piece},
+                        },
+                        parent_tool_use_id="agent_1",
+                    )
+                    for i, piece in enumerate(['{"command": ', '"ls -la"}'])
                 ),
                 # Full AssistantMessage after input deltas have
                 # assembled — this is where ``tool_block.input`` is
@@ -2832,6 +2996,7 @@ class TestStreamEventStreaming(unittest.TestCase):
                         ),
                     ],
                     model="claude-sonnet-4",
+                    parent_tool_use_id="agent_1",
                 ),
                 SDKResultMessage(
                     subtype="result",
@@ -2886,6 +3051,16 @@ class TestStreamEventStreaming(unittest.TestCase):
             # from ``tool_block.input``, not ``{}``. Pre-fix this was
             # ``{}`` and downstream rendered ``⏵ Bash()``.
             self.assertEqual(reqs[0].args, {"command": "ls -la"})
+            call = {"call_id": "tool_1", "parent_tool_use_id": "agent_1"}
+            self.assertEqual(reqs[0].metadata, call)
+            # The early, arg-less signal is its own event, paired by call_id.
+            starts = [e for e in events if isinstance(e, ToolCallStarted)]
+            self.assertEqual(starts, [ToolCallStarted(name="Bash", metadata=call)])
+            chunks = [e for e in events if isinstance(e, ToolInputChunk)]
+            self.assertEqual("".join(c.delta for c in chunks), '{"command": "ls -la"}')
+            self.assertTrue(all(c.metadata == {"call_id": "tool_1"} for c in chunks))
+            self.assertLess(events.index(starts[0]), events.index(chunks[0]))
+            self.assertLess(events.index(chunks[-1]), events.index(reqs[0]))
 
         _run(_t())
 
@@ -2911,6 +3086,7 @@ class TestStreamEventStreaming(unittest.TestCase):
         class _UserMessage:
             def __init__(self, content):
                 self.content = content
+                self.parent_tool_use_id = "agent_1"
 
         class _ResultMessage:
             def __init__(self, session_id, result):
@@ -2979,6 +3155,9 @@ class TestStreamEventStreaming(unittest.TestCase):
             self.assertEqual(len(tool_events), 1)
             self.assertEqual(tool_events[0].status, ToolCallStatus.ERROR)
             self.assertEqual(tool_events[0].error, "boom")
+            self.assertEqual(
+                tool_events[0].metadata, {"call_id": "tool_1", "parent_tool_use_id": "agent_1"}
+            )
 
         _run(_t())
 
@@ -5665,8 +5844,10 @@ class TestPrelaunch(unittest.TestCase):
                 return_value=self._fake_sdk(clients, prompts),
             ):
                 executor = ClaudeSDKExecutor()
-                for messages, system_prompt in turns:
-                    events = [e async for e in executor.run_turn(messages, [], system_prompt)]
+                for messages, system_prompt, *config in turns:
+                    events = [
+                        e async for e in executor.run_turn(messages, [], system_prompt, *config)
+                    ]
                     self.assertIsInstance(events[-1], TurnComplete)
 
         _run(_t())
@@ -5695,3 +5876,75 @@ class TestPrelaunch(unittest.TestCase):
         clients, prompts = self._run([(self._HISTORY, "prompt"), (self._EMPTY, "prompt")])
         self.assertEqual(len(clients), 1)
         self.assertEqual(len(prompts), 1)
+
+    _LOGGER = "omnigent.harnesses.claude_sdk_executor"
+    _NEXT = [
+        *_HISTORY,
+        {"role": "assistant", "content": "the deck", "session_id": "s"},
+        {"role": "user", "content": "and the notes", "session_id": "s"},
+    ]
+
+    def setUp(self):
+        from omnigent.harnesses import claude_sdk_executor
+
+        claude_sdk_executor._client_drop_reasons.clear()
+
+    def _launches(self, logs) -> list[str]:
+        return [r.getMessage() for r in logs.records if "Claude CLI launched" in r.getMessage()]
+
+    def test_a_second_turn_with_nothing_changed_reuses_the_warm_cli(self):
+        with self.assertLogs(self._LOGGER, level="INFO") as logs:
+            clients, prompts = self._run(
+                [(self._EMPTY, "prompt"), (self._HISTORY, "prompt"), (self._NEXT, "prompt")]
+            )
+        self.assertEqual(len(clients), 1, "no CLI launch after the pre-launch")
+        self.assertEqual(prompts[1], "and the notes", "the warm CLI gets only the new message")
+        launches = self._launches(logs)
+        self.assertEqual(len(launches), 1)
+        self.assertIn("pre-launch", launches[0])
+
+    def test_a_relaunch_names_what_differs(self):
+        with self.assertLogs(self._LOGGER, level="INFO") as logs:
+            self._run([(self._EMPTY, "prompt"), (self._HISTORY, "new prompt")])
+        self.assertIn("differs from the first turn in instructions", self._launches(logs)[-1])
+
+    def test_a_warm_cli_without_the_checklist_is_relaunched_when_it_turns_on(self):
+        from omnigent.harnesses.executor import ExecutorConfig
+
+        with self.assertLogs(self._LOGGER, level="INFO") as logs:
+            clients, prompts = self._run(
+                [
+                    (self._HISTORY, "prompt"),
+                    (self._NEXT, "prompt", ExecutorConfig(checklist=True)),
+                    (self._NEXT, "prompt", ExecutorConfig(checklist=True)),
+                ]
+            )
+        self.assertEqual(len(clients), 2, "the flag relaunches once, then the CLI stays warm")
+        self.assertEqual(clients[1].env.get("CLAUDE_CODE_ENABLE_TODO_TOOLS"), "1")
+        self.assertIn("TaskCreate", clients[1].tools)
+        self.assertNotIn("CLAUDE_CODE_ENABLE_TODO_TOOLS", clients[0].env)
+        self.assertIn("first question", str(prompts[1]), "the new CLI gets the whole history")
+        self.assertIn("the turn's mode changed", self._launches(logs)[-1])
+
+    def test_a_launch_after_an_interrupt_says_so(self):
+        from omnigent.harnesses.claude_sdk_executor import ClaudeSDKExecutor
+
+        clients: list = []
+        prompts: list = []
+
+        async def _t():
+            with patch(
+                "omnigent.harnesses.claude_sdk_executor._ensure_sdk",
+                return_value=self._fake_sdk(clients, prompts),
+            ):
+                executor = ClaudeSDKExecutor()
+                executor._force_close_client = AsyncMock()  # type: ignore[method-assign]
+                _ = [e async for e in executor.run_turn(self._HISTORY, [], "prompt")]
+                await executor.interrupt_session("s")
+                # The adapter replaces its executor after an interrupt; the reason survives.
+                _ = [e async for e in ClaudeSDKExecutor().run_turn(self._NEXT, [], "prompt")]
+
+        with self.assertLogs(self._LOGGER, level="INFO") as logs:
+            _run(_t())
+        self.assertEqual(len(clients), 2)
+        self.assertIn("the previous turn was interrupted", self._launches(logs)[-1])

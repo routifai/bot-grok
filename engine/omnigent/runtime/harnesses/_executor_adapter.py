@@ -26,6 +26,7 @@ from omnigent.context.tool_digest import digest_tool_items
 from omnigent.debug_logging import phase_scope
 from omnigent.errors import ElicitationDeclinedError, ErrorPhase
 from omnigent.harnesses.executor import (
+    CHECKLIST_TOOL,
     CompactionComplete,
     CompactionStarted,
     Executor,
@@ -38,6 +39,8 @@ from omnigent.harnesses.executor import (
     TextChunk,
     ToolCallComplete,
     ToolCallRequest,
+    ToolCallStarted,
+    ToolInputChunk,
     TurnCancelled,
     TurnComplete,
 )
@@ -56,6 +59,7 @@ from omnigent.server.schemas import (
     ReasoningStartedEvent,
     ReasoningSummaryTextDeltaEvent,
     ReasoningTextDeltaEvent,
+    ToolInputDeltaEvent,
 )
 
 _logger = logging.getLogger(__name__)
@@ -226,8 +230,12 @@ class ExecutorAdapter(HarnessApp):
         if request.context_mode:
             extra["context_mode"] = request.context_mode
         # model_override is the per-request override; takes precedence over the spec default.
-        config = ExecutorConfig(model=request.model_override, extra=extra)
         tools = _normalize_tool_schemas(request.tools or [])
+        config = ExecutorConfig(
+            model=request.model_override,
+            extra=extra,
+            checklist=any(t["name"] == CHECKLIST_TOOL for t in tools),
+        )
         system_prompt = request.instructions or ""
         # Install stable bridges once on first use — the SDK closure-captures them from the first
         # turn; per-turn rebinding would leave later tool calls dispatching into a dead ctx.
@@ -272,15 +280,17 @@ class ExecutorAdapter(HarnessApp):
             name=f"executor-adapter-injection-watch:{ctx.response_id}",
         )
         try:
-            trace_cm: contextlib.AbstractContextManager[None] = contextlib.nullcontext()
+            # Entered inside the guard: the context parses the response id on entry, and an id
+            # that is not ``resp_<hex>`` must not fail the turn.
+            trace_cm = contextlib.ExitStack()
             if tctx:
                 try:
                     from omnigent.runtime.telemetry import trace_context_for_response
 
-                    trace_cm = trace_context_for_response(response_id=ctx.response_id)
+                    trace_cm.enter_context(trace_context_for_response(response_id=ctx.response_id))
                 except Exception:
                     _logger.debug("trace_context_for_response unavailable", exc_info=True)
-            with session_scope(turn_session_id), phase_scope(ErrorPhase.TURN), trace_cm:
+            with trace_cm, session_scope(turn_session_id), phase_scope(ErrorPhase.TURN):
                 if tctx is not None:
                     agent_span = tctx.start_agent_span(
                         agent_name=request.model or "unknown",
@@ -444,8 +454,14 @@ class ExecutorAdapter(HarnessApp):
         """Cancel the turn and drop the inner executor session synchronously.
 
         Extends the base handler to also call ``interrupt_session`` — ensuring the in-flight
-        generation stops even when the run loop is blocked awaiting the first token.
+        generation stops even when the run loop is blocked awaiting the first token. A Stop
+        between turns has no turn to cancel but still drops the warm session, so the next turn
+        replays the history and reads the Stop line the runner wrote: a warm Pi process would
+        otherwise be sent only the person's next message.
         """
+        if not self._in_flight and self._executor is not None:
+            await self._executor.interrupt_session(self._session_key)
+            return Response(status_code=204)
         response = await super()._handle_interrupt_event()
         if self._executor is not None:
             await self._executor.interrupt_session(self._session_key)
@@ -791,6 +807,18 @@ class ExecutorAdapter(HarnessApp):
                         type="response.reasoning_text.delta",
                         delta=event.delta,
                     ),
+                )
+        elif isinstance(event, (ToolCallStarted, ToolInputChunk)):
+            # A call still being written: the relay records it, clients never see it.
+            call_id = _call_id_from_metadata(event.metadata)
+            if call_id:
+                ctx.emit(
+                    ToolInputDeltaEvent(
+                        type="response.function_call_arguments.delta",
+                        call_id=call_id,
+                        name=_strip_mcp_tool_prefix(event.name),
+                        delta=event.delta if isinstance(event, ToolInputChunk) else "",
+                    )
                 )
         elif isinstance(event, ToolCallRequest):
             # Emit observed function_call INLINE (interleaved with text). Queue the tool_use_id

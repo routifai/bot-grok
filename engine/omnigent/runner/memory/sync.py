@@ -1,4 +1,4 @@
-"""What feeds ``memory/``: a stored checkpoint, a Helper's Result, or a rebuild from the chats.
+"""What feeds ``memory/``: a stored checkpoint, a settled Round, or a rebuild from the chats.
 
 Also what feeds the index's ``conversation`` source: the passages of the turns a checkpoint
 retires (:func:`index_retired_turns`), the turns from before that (:func:`backfill_turns`), and
@@ -29,7 +29,6 @@ from omnigent.superchat.feature import is_helper
 from omnigent.superchat.knowledge.db import TurnPassage
 from omnigent.superchat.knowledge.runtime import KnowledgeRuntime, default_workspace
 from omnigent.superchat.knowledge.turns import Turn, passage_of, split_turns
-from omnigent.superchat.projects.card import project_slug_from_workspace
 from omnigent.superchat.rollover import (
     ItemsPageFetchError,
     _get_items_page,
@@ -101,37 +100,47 @@ async def record_checkpoint(
         _logger.warning("memory: could not record the checkpoint of %s", chat_id, exc_info=True)
 
 
-async def record_helper_result(
-    server_client: Any,
-    parent_id: str,
-    *,
-    title: str,
-    outcome: str,
-    session_id: str,
-    workspace: Path | None = None,
-) -> None:
-    """Journal one line when a Helper's Result reaches its Conversation. Never raises.
+def _strings(raw: Any) -> list[str]:
+    return [str(v) for v in raw if isinstance(v, str) and v] if isinstance(raw, list) else []
 
-    The line names the Helper and, when its working directory is in one, the Project.
+
+async def record_round(
+    chat_id: str, entry: dict[str, Any], *, workspace: Path | None = None
+) -> bool:
+    """Journal the one entry of a settled Round (ADR 0029), once per Round. Never raises.
+
+    *entry* is what the engine built from the Round view
+    (:func:`omnigent.superchat.rounds.record.journal_entry`): ``round_id``, ``date``, ``ask``,
+    ``outcome``, ``stopped``, ``files``, ``helpers``, ``folder``, ``seconds``, ``checked`` and
+    ``refs``. A
+    second settlement of the same Round finds its mark in the day file and writes nothing.
+
+    :returns: Whether the entry was written now.
     """
     try:
-        origin = files.Origin("main", parent_id)
-        workspace_dir = (await _snapshot(server_client, session_id)).get("workspace")
-        entry = files.helper_result_line(
-            origin,
-            title=title,
-            outcome=outcome,
-            session_id=session_id,
-            date=files.today(),
-            project=project_slug_from_workspace(
-                workspace_dir if isinstance(workspace_dir, str) else None
-            ),
+        round_id, date = entry.get("round_id"), entry.get("date")
+        if not isinstance(round_id, str) or not round_id or not isinstance(date, str):
+            return False
+        raw_refs = entry.get("refs") if isinstance(entry.get("refs"), dict) else {}
+        line = files.round_line(
+            files.Origin("main", chat_id),
+            round_id=round_id,
+            date=date,
+            ask=str(entry.get("ask") or ""),
+            outcome=str(entry.get("outcome") or ""),
+            stopped=entry.get("stopped") is True,
+            files=_strings(entry.get("files")),
+            helpers=_strings(entry.get("helpers")),
+            folder=str(entry.get("folder") or ""),
+            seconds=float(entry.get("seconds") or 0),
+            checked=entry.get("checked") if isinstance(entry.get("checked"), bool) else None,
+            refs={key: _strings(values) for key, values in raw_refs.items()},
         )
-        await asyncio.to_thread(files.append_lines, workspace or default_workspace(), [entry])
+        root = workspace or default_workspace()
+        return await asyncio.to_thread(files.append_once, root, line, files.round_mark(round_id))
     except Exception:  # a copy must never fail the turn
-        _logger.warning(
-            "memory: could not record a Helper result for %s", parent_id, exc_info=True
-        )
+        _logger.warning("memory: could not journal a Round of %s", chat_id, exc_info=True)
+        return False
 
 
 async def record_hand_edits(
@@ -220,8 +229,8 @@ async def rebuild(server_client: Any, chat_id: str, *, workspace: Path | None = 
     """Regenerate ``memory/journal/*.md`` and ``STATE.md`` from stored checkpoints, no model call.
 
     Reads the compaction items of the Conversation. A line already in a day file is not added
-    again, so running it twice gives the same files. Helper-result lines exist only
-    as notices and are not replayed. Never raises.
+    again, so running it twice gives the same files. Round entries come from the Round record,
+    not from the checkpoints, and are not replayed. Never raises.
     """
     try:
         root = workspace or default_workspace()

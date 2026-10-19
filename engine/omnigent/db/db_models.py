@@ -1764,6 +1764,8 @@ class SqlArtifact(OmnigentBase):
         was started from. ``None`` for hand edits, restores and unknown turns.
     :param group_id: The deliverable's stable id, the same on every version: its first version's
         id (ADR 0024).
+    :param round_id: The Round of the chat that saved it (ADR 0029), stamped at save; ``None``
+        for a save outside a Round and for older versions.
     """
 
     __tablename__ = "artifacts"
@@ -1797,6 +1799,7 @@ class SqlArtifact(OmnigentBase):
     chat_id: Mapped[str | None] = mapped_column(Uuid16, nullable=True)
     item_id: Mapped[str | None] = mapped_column(Uuid16, nullable=True)
     group_id: Mapped[str | None] = mapped_column(Uuid16, nullable=True)
+    round_id: Mapped[str | None] = mapped_column(Uuid16, nullable=True)
 
     __table_args__ = (
         Index(
@@ -1817,6 +1820,7 @@ class SqlArtifact(OmnigentBase):
         ),
         Index("ix_artifacts_owner", "workspace_id", "user_id", "created_at"),
         Index("ix_artifacts_group_id", "workspace_id", "group_id", "version"),
+        Index("ix_artifacts_round", "workspace_id", "parent_session_id", "round_id"),
     )
 
 
@@ -2112,6 +2116,45 @@ class SqlCardAnswer(OmnigentBase):
     label: Mapped[str] = mapped_column(String(200), nullable=False)
     task_id: Mapped[str | None] = mapped_column(Uuid16, nullable=True)
     created_at: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class SqlRoundEvent(OmnigentBase):
+    """
+    SQLAlchemy model for the ``round_events`` table: what happened in a Round, one fact per row,
+    appended as the engine sees it (ADR 0029). A Round has no row of its own; it is the set of
+    events that share a ``round_id``.
+
+    :param round_id: The Round: the id of the person's message that opened it, or a hidden id
+        for a scheduled or system run.
+    :param seq: The event's place in its Round, from 1.
+    :param conversation_id: The Conversation the Round is in (no DB foreign key, Rule R032).
+    :param kind: What happened, e.g. ``round.opened``, ``tool.started``, ``helper.finished``.
+    :param actor: Who did it: ``person``, ``system``, ``assistant`` or ``helper``.
+    :param body: JSON object of the kind's fields, e.g. ``{"call_id": "...", "name": "..."}``.
+    :param at_ms: Epoch milliseconds when the engine saw it.
+    """
+
+    __tablename__ = "round_events"
+    __table_args__ = (
+        Index(
+            "ix_round_events_conversation", "workspace_id", "conversation_id", "round_id", "seq"
+        ),
+    )
+
+    workspace_id: Mapped[int] = mapped_column(
+        BigInteger,
+        primary_key=True,
+        nullable=False,
+        server_default="0",
+        default=current_workspace_id,
+    )
+    round_id: Mapped[str] = mapped_column(Uuid16, primary_key=True)
+    seq: Mapped[int] = mapped_column(Integer, primary_key=True)
+    conversation_id: Mapped[str] = mapped_column(Uuid16, nullable=False)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    actor: Mapped[str] = mapped_column(String(16), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    at_ms: Mapped[int] = mapped_column(BigInteger, nullable=False)
 
 
 class SqlObjective(OmnigentBase):

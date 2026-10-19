@@ -14,8 +14,11 @@ least-lossy to most-lossy:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import threading
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -43,6 +46,17 @@ _TOOL_RESULT_CLEARED = "[Previous tool result cleared — re-call tool if needed
 _BINARY_CONTENT_CLEARED = (
     "[binary content removed for context management — use file_id to retrieve]"
 )
+
+# tiktoken downloads an encoding's BPE file on first use with a blocking HTTP
+# call and no timeout. Loaded encodings live here; a failed load is retried
+# no sooner than _ENCODING_RETRY_S later. Until one loads, counts are
+# estimated at _CHARS_PER_TOKEN.
+_encodings: dict[str, tiktoken.Encoding] = {}
+_encoding_loading: set[str] = set()
+_encoding_retry_at: dict[str, float] = {}
+_encoding_lock = threading.Lock()
+_ENCODING_RETRY_S = 60.0
+_CHARS_PER_TOKEN = 4
 
 # Default compaction settings when AgentSpec.compaction is None.
 _DEFAULT_TRIGGER_THRESHOLD: float = 0.8
@@ -130,6 +144,72 @@ class _CompactionState:
     history_len_at_compaction: int | None = None
 
 
+def _load_encoding(name: str) -> None:
+    """Load one tiktoken encoding into the cache, remembering a failure."""
+    try:
+        encoding = tiktoken.get_encoding(name)
+    except Exception:
+        # An unreachable download must only degrade counts, never fail a request.
+        _logger.warning(
+            "tokenizer %s is unavailable; estimating token counts", name, exc_info=True
+        )
+        with _encoding_lock:
+            _encoding_retry_at[name] = time.monotonic() + _ENCODING_RETRY_S
+            _encoding_loading.discard(name)
+        return
+    with _encoding_lock:
+        _encodings[name] = encoding
+        _encoding_loading.discard(name)
+
+
+def _encoding(model: str) -> tiktoken.Encoding | None:
+    """Return *model*'s encoding when it is loaded, or ``None`` to estimate.
+
+    Never loads on a thread running an event loop: the first load can be a
+    network download, and blocking the runner's loop on it starves the tunnel
+    and every turn. There the load moves to a background thread and this call
+    estimates. Off a loop the load runs inline.
+    """
+    # Strip provider prefix (e.g. "openai/gpt-4o" -> "gpt-4o")
+    # so tiktoken can look up the model encoding.
+    bare_model = model.split("/", 1)[-1] if "/" in model else model
+    try:
+        name = tiktoken.encoding_name_for_model(bare_model)
+    except KeyError:
+        # Unknown model — fall back to the most common encoding.
+        name = "cl100k_base"
+    with _encoding_lock:
+        encoding = _encodings.get(name)
+        if encoding is not None:
+            return encoding
+        if name in _encoding_loading or time.monotonic() < _encoding_retry_at.get(name, 0.0):
+            return None
+        _encoding_loading.add(name)
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        _load_encoding(name)
+        return _encodings.get(name)
+    threading.Thread(
+        target=_load_encoding, args=(name,), name=f"tiktoken-load-{name}", daemon=True
+    ).start()
+    return None
+
+
+def count_text_tokens(text: str, model: str) -> int:
+    """Count *text*'s tokens with *model*'s tokenizer, or estimate them.
+
+    :param text: Text to count, e.g. a summary.
+    :param model: The LLM model string, e.g. ``"openai/gpt-4o"``.
+    :returns: The tiktoken count, or ``len(text) / 4`` while the tokenizer
+        is not loaded.
+    """
+    encoding = _encoding(model)
+    if encoding is None:
+        return -(-len(text) // _CHARS_PER_TOKEN)
+    return len(encoding.encode(text))
+
+
 def count_tokens(messages: list[dict[str, Any]], model: str) -> int:
     """
     Estimate the token count for a messages list using tiktoken.
@@ -146,16 +226,7 @@ def count_tokens(messages: list[dict[str, Any]], model: str) -> int:
         back to ``cl100k_base`` for unknown models.
     :returns: Approximate token count for the serialised messages.
     """
-    # Strip provider prefix (e.g. "openai/gpt-4o" -> "gpt-4o")
-    # so tiktoken can look up the model encoding.
-    bare_model = model.split("/", 1)[-1] if "/" in model else model
-    try:
-        enc = tiktoken.encoding_for_model(bare_model)
-    except KeyError:
-        # Unknown model — fall back to the most common encoding.
-        enc = tiktoken.get_encoding("cl100k_base")
-    text = json.dumps(messages, ensure_ascii=False)
-    return len(enc.encode(text))
+    return count_text_tokens(json.dumps(messages, ensure_ascii=False), model)
 
 
 def _find_recent_boundary(

@@ -5,7 +5,9 @@ workspace: <path> (<mime>, <n> bytes)``). The message is stored exactly so: the 
 those lines, nothing else. When the turn starts, the runner reads each referenced upload through
 the indexer (an idempotent ingest; the composer already did it, so it answers at once) and puts the
 framed result in front of the person's message **for the harness only**. It is never persisted, so
-it is not the person's message in the transcript, the search index or the Memory Profile.
+it is not the person's message in the transcript, the search index or the Memory Profile. An
+attached image is read from the same stored path and goes with the message as an ``input_image``
+block, so the model sees the picture and never has to retype its name.
 
 Any frontend that writes the reference lines gets the same context.
 """
@@ -13,6 +15,7 @@ Any frontend that writes the reference lines gets the same context.
 from __future__ import annotations
 
 import asyncio
+import base64
 import logging
 import re
 import unicodedata
@@ -36,6 +39,10 @@ INGESTABLE_MIME_TYPES = frozenset(
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     }
 )
+#: Image types the vision models read; another image stays a path line.
+IMAGE_MIME_TYPES = frozenset({"image/png", "image/jpeg", "image/gif", "image/webp"})
+#: Largest image that goes with the message (the providers' per-image limit).
+MAX_IMAGE_BYTES = 5 * 1024 * 1024
 #: Most characters of file text one message carries across all its files (about 12k tokens).
 INLINE_BUDGET_CHARS = 48_000
 MAX_FILES = 8
@@ -79,19 +86,25 @@ def _quote(value: str) -> str:
     return neutralise(re.sub(r"[\r\n]+", " ", value.replace('"', "'")))
 
 
-def references(texts: Iterable[str]) -> list[str]:
-    """Upload paths of the ingestable files the message refers to (once each, in order)."""
-    found: list[str] = []
+def _referenced(texts: Iterable[str], kinds: frozenset[str]) -> dict[str, str]:
+    """``path -> mime`` of the uploads of *kinds* the message refers to (once each, in order)."""
+    found: dict[str, str] = {}
     for text in texts:
         for match in REFERENCE_LINE.finditer(text):
             path, mime = match.group(1), match.group(2)
-            if (
-                mime in INGESTABLE_MIME_TYPES
-                and path.startswith(UPLOADS_PREFIX)
-                and path not in found
-            ):
-                found.append(path)
-    return found[:MAX_FILES]
+            if mime in kinds and path.startswith(UPLOADS_PREFIX) and len(found) < MAX_FILES:
+                found.setdefault(path, mime)
+    return found
+
+
+def references(texts: Iterable[str]) -> list[str]:
+    """Upload paths of the ingestable files the message refers to (once each, in order)."""
+    return list(_referenced(texts, INGESTABLE_MIME_TYPES))
+
+
+def image_references(texts: Iterable[str]) -> dict[str, str]:
+    """``path -> mime`` of the images the message refers to (once each, in order)."""
+    return _referenced(texts, IMAGE_MIME_TYPES)
 
 
 def manifest_line(item: dict[str, Any]) -> str:
@@ -207,3 +220,41 @@ async def attachment_context_blocks(indexer: Any, texts: Iterable[str]) -> list[
     items = [done.get(p) or _unread(p) for p in paths]
     block = build_block(items)
     return [block] if block else []
+
+
+def _image_block(indexer: Any, path: str, mime: str) -> dict[str, str] | None:
+    """The ``input_image`` block of the upload at *path*, or ``None`` when it cannot go."""
+    relative = indexer.relative(path)  # resolved, so ``..`` and a symlink out fail the check
+    if relative is None or not relative.startswith(UPLOADS_PREFIX):
+        return None
+    try:
+        with indexer.absolute(relative).open("rb") as file:
+            data = file.read(MAX_IMAGE_BYTES + 1)
+    except OSError:
+        return None
+    if not data or len(data) > MAX_IMAGE_BYTES:
+        return None
+    return {
+        "type": "input_image",
+        "filename": relative.rsplit("/", 1)[-1],
+        "image_url": f"data:{mime};base64,{base64.b64encode(data).decode('ascii')}",
+    }
+
+
+async def image_blocks(indexer: Any, texts: Iterable[str]) -> list[dict[str, str]]:
+    """The ``input_image`` blocks of the images the message *texts* refer to.
+
+    Best effort: an image that cannot be read, or is too large, stays the path line it is.
+    """
+    found = image_references(texts)
+    if not found:
+        return []
+
+    def read_all() -> list[dict[str, str]]:
+        blocks = [_image_block(indexer, path, mime) for path, mime in found.items()]
+        return [block for block in blocks if block is not None]
+
+    got = await asyncio.to_thread(read_all)
+    if len(got) < len(found):
+        _logger.warning("attachment context: %d image(s) could not be read", len(found) - len(got))
+    return got

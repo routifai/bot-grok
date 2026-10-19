@@ -196,18 +196,20 @@ export async function putOmnigentBudget(
   });
 }
 
+/** The session's stored model (`model`, `null`: none) and the one the engine runs its next turn
+ * on (`effectiveModel`: the stored one, else a Super Chat's Foundation pick). */
 export async function getOmnigentSessionModel(
   config: OmnigentClientConfig,
   email: string,
   sessionId: string,
-): Promise<string | null> {
-  const session = await call<{ model_override?: string | null }>(
+): Promise<{ model: string | null; effectiveModel: string | null }> {
+  const session = await call<{ model_override?: string | null; effective_model?: string | null }>(
     config,
     email,
     "get session model",
     `/v1/sessions/${seg(sessionId)}?include_items=false&include_liveness=false&include_usage=false`,
   );
-  return session.model_override ?? null;
+  return { model: session.model_override ?? null, effectiveModel: session.effective_model ?? null };
 }
 
 /** `PATCH /v1/sessions/{id}` with `model_override`; `null` ("default") makes the session follow

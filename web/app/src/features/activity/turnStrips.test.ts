@@ -6,11 +6,9 @@ import type { WorkState } from "./workState";
 
 const turn = (anchorId: string, text: string, last = false, helpers = 0): TurnWork => ({
   anchorId,
-  plan: [{ text, status: "doing", added: false }],
-  planId: `${anchorId}:plan`,
-  fold: 0,
   activityId: null,
-  files: [],
+  // What the reply's turn saved: a different file is different work.
+  files: [text],
   helpers: Array.from({ length: helpers }, (_, i) => ({ helperId: `h${i}`, title: "Helper" })),
   startedAt: 1_000,
   endedAt: 2_000,
@@ -29,6 +27,7 @@ const state = (over: Partial<WorkState> = {}): WorkState => ({
   turnRunning: false,
   since: null,
   cancelled: false,
+  paused: false,
   ...over,
 });
 const RUNNING = state({ phase: "running", running: true, turnRunning: true, since: 1_000 });
@@ -42,7 +41,7 @@ it("keeps a strip's object while its reply's work did not change", () => {
     state(),
     undefined,
   );
-  // Rebuilt from the transcript: new objects, the same work for "a"; "b"'s plan moved on.
+  // Rebuilt from the transcript: new objects, the same work for "a"; "b"'s work moved on.
   const second = nextTurnStrips(
     first,
     work([turn("a", "Read"), turn("b", "Check", true)], ["a:0"]),

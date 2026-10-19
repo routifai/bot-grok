@@ -692,11 +692,12 @@ async def test_input_no_guardrails_skips_policy():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(("helper", "builds_engine"), [(False, True), (True, False)])
-async def test_input_policy_gate_only_builds_an_engine_for_the_super_chat(
-    helper: bool, builds_engine: bool
+@pytest.mark.parametrize("helper", [False, True])
+async def test_input_policy_gate_skips_the_engine_build_for_a_conversation_without_guardrails(
+    helper: bool,
 ):
-    """A Helper has no step limit, so with no guardrails its turn skips the engine build."""
+    """No session policy reads a Conversation's or a Helper's message (ADR 0029: the step limit
+    is gone), so with no guardrails either turn skips the engine build."""
     from dataclasses import replace
 
     from omnigent.context.labels import (
@@ -729,7 +730,7 @@ async def test_input_policy_gate_only_builds_an_engine_for_the_super_chat(
             None,
         )
 
-    assert mock_build.called is builds_engine
+    assert mock_build.called is False
 
 
 @pytest.mark.asyncio

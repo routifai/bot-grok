@@ -104,12 +104,22 @@ def today(now: datetime | None = None) -> str:
 
 
 def format_line(
-    date: str, text: str, origin: Origin, refs: Mapping[str, list[str]] | None = None
+    date: str,
+    text: str,
+    origin: Origin,
+    refs: Mapping[str, list[str]] | None = None,
+    *,
+    mark: str = "",
 ) -> tuple[str, str]:
-    """:returns: ``(date, line)``: the journal line for *text* on *date*, its origin and refs."""
+    """:returns: ``(date, line)``: the journal line for *text* on *date*, its origin and refs.
+
+    :param mark: A token after the chat id that names what the line is about once, e.g.
+        ``round:<id>`` (:func:`append_once` looks for it).
+    """
     body = _one_line(text)
     refs_text = _one_line(format_refs(refs))
-    comment = " ".join(part for part in (_one_line(origin.chat_id), refs_text) if part)
+    parts = (_one_line(origin.chat_id), _one_line(mark), refs_text)
+    comment = " ".join(part for part in parts if part)
     return date, f"- {date} · {body} · {origin.label} <!-- {comment} -->"
 
 
@@ -144,24 +154,64 @@ def checkpoint_lines(
     return out
 
 
-def helper_result_line(
+def round_mark(round_id: str) -> str:
+    """:returns: The token that names a Round in its journal entry's comment."""
+    return f"round:{_one_line(round_id)}"
+
+
+def _took(seconds: float) -> str:
+    whole = max(0, round(seconds))
+    if whole < 60:
+        return f"{whole}s"
+    if whole < 3600:
+        return f"{whole // 60}m {whole % 60}s"
+    return f"{whole // 3600}h {whole % 3600 // 60}m"
+
+
+def round_line(
     origin: Origin,
     *,
-    title: str,
-    outcome: str,
-    session_id: str,
+    round_id: str,
     date: str,
-    project: str | None = None,
+    ask: str,
+    outcome: str,
+    stopped: bool = False,
+    files: Iterable[str] = (),
+    helpers: Iterable[str] = (),
+    folder: str = "",
+    seconds: float = 0,
+    checked: bool | None = None,
+    refs: Mapping[str, list[str]] | None = None,
 ) -> tuple[str, str]:
-    """:returns: ``(date, line)`` for a Helper Result reaching its Conversation (no body).
+    """:returns: ``(date, line)``: the one journal entry of a settled Round (ADR 0029).
 
-    The line refers to the Helper (``helpers:``) and to the Project it worked in, when known.
+    The template, a part left out when it is empty::
+
+        Asked "<ask>" · <outcome> · Files: <a>, <b> · Helpers: "<title>", "<title>"
+        · Folder: <folder> · Checked · Took <duration>
+
+    ``Checked`` or ``Not checked`` only for a Round with a deck (*checked* not ``None``).
+
+    A stopped Round's outcome reads ``Stopped: <outcome>`` (``Stopped`` alone without one). The
+    comment carries :func:`round_mark`, so the Round is written once (:func:`append_once`).
     """
-    name = _one_line(title).replace('"', "'")[:TITLE_MAX_CHARS]
-    refs = {"helpers": [session_id], **({"project": [project]} if project else {})}
-    return format_line(
-        date, f'Helper "{name}" {outcome} (session {_one_line(session_id)})', origin, refs
-    )
+    said = _one_line(outcome)
+    parts = [
+        f'Asked "{_one_line(ask).replace(chr(34), chr(39))}"',
+        (f"Stopped: {said}" if said else "Stopped") if stopped else said or "Done",
+    ]
+    names = [_one_line(n) for n in files if _one_line(n)]
+    if names:
+        parts.append("Files: " + ", ".join(names))
+    titles = [_one_line(t).replace('"', "'")[:TITLE_MAX_CHARS] for t in helpers if _one_line(t)]
+    if titles:
+        parts.append("Helpers: " + ", ".join(f'"{t}"' for t in titles))
+    if _one_line(folder):
+        parts.append(f"Folder: {_one_line(folder)}")
+    if checked is not None:
+        parts.append("Checked" if checked else "Not checked")
+    parts.append(f"Took {_took(seconds)}")
+    return format_line(date, " · ".join(parts), origin, refs, mark=round_mark(round_id))
 
 
 def hand_edit_line(
@@ -267,6 +317,29 @@ def append_lines(
                 lines = list(dict.fromkeys(lines)) if skip_present else lines
                 if lines:
                     _append(path, lines)
+    except (OSError, ValueError):
+        _logger.warning("memory: could not write the journal", exc_info=True)
+        return False
+    return True
+
+
+def append_once(workspace: Path, entry: tuple[str, str], mark: str) -> bool:
+    """Append *entry* unless its day file already holds a line whose comment carries *mark*.
+
+    :returns: ``True`` when the line was written, ``False`` when it was there already or the
+        write failed (logged). Never raises.
+    """
+    date, line = entry
+    if not _DAY.match(date):  # the date names the file
+        return False
+    directory = memory_dir(workspace) / JOURNAL_DIR
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        with _locked(directory):
+            path = directory / f"{date}.md"
+            if path.exists() and f" {mark} " in path.read_text(encoding="utf-8"):
+                return False
+            _append(path, [line])
     except (OSError, ValueError):
         _logger.warning("memory: could not write the journal", exc_info=True)
         return False

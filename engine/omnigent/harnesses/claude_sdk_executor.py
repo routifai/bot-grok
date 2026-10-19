@@ -32,7 +32,7 @@ import sys
 import tempfile
 import time
 import uuid
-from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Sequence
 from contextlib import ExitStack, contextmanager, suppress
 from dataclasses import dataclass, field
 from types import ModuleType
@@ -78,8 +78,11 @@ from .executor import (
     TextChunk,
     ToolCallComplete,
     ToolCallRequest,
+    ToolCallStarted,
     ToolCallStatus,
+    ToolInputChunk,
     ToolSpec,
+    TurnCancelled,
     TurnComplete,
     classify_tool_result,
     describe_exception,
@@ -736,6 +739,10 @@ _CLAUDE_CODE_DISABLE_AUTO_MEMORY_ENV = "CLAUDE_CODE_DISABLE_AUTO_MEMORY"
 # ClaudeAgentOptions.agents); "Task" is its historical CLI name. Omnigent
 # sub-agents are Omnigent sessions (see ``sys_session_create``), never this.
 _SDK_BUILTIN_SUBAGENT_TOOLS = ("Agent", "Task")
+# The CLI's native checklist tools, off unless this env var opts the CLI in. A turn whose
+# config asks for a checklist gets them; their calls surface as ordinary tool events.
+_CLAUDE_CODE_ENABLE_TODO_TOOLS_ENV = "CLAUDE_CODE_ENABLE_TODO_TOOLS"
+_CLI_TASK_TOOLS = ("TaskCreate", "TaskUpdate", "TaskList", "TaskGet")
 
 
 def _usage_from_observed_call(
@@ -891,9 +898,9 @@ class _ClaudeClientState:
     # False for a client launched ahead of the session's first turn (see
     # ``run_turn``'s pre-launch): it holds no history yet, so that turn replays it.
     primed: bool = True
-    # What the client was launched with (:func:`_launch_key`); a pre-launched client
-    # that does not match its first turn is relaunched.
-    launch_key: str | None = None
+    # What the client was launched with (:func:`_launch_key`), by part; a pre-launched
+    # client that does not match its first turn is relaunched.
+    launch_key: dict[str, str] | None = None
 
 
 @dataclass
@@ -912,14 +919,37 @@ class _SteerWindow:
     pending: dict[str, str] = field(default_factory=dict)
 
 
+def _call_metadata(call_id: str, message: object) -> dict[str, str]:
+    """A tool event's metadata: its call id, and the SDK's ``parent_tool_use_id`` when the
+    call was made inside another tool call (e.g. by a sub-agent)."""
+    parent = getattr(message, "parent_tool_use_id", None)
+    if isinstance(parent, str) and parent:
+        return {"call_id": call_id, "parent_tool_use_id": parent}
+    return {"call_id": call_id}
+
+
 def _launch_key(
-    system_prompt: str, tools: list[ToolSpec], effort: object, extra: Mapping[str, object]
-) -> str:
-    """What a Claude CLI launch is fixed to: its prompt, tools, effort and turn mode."""
-    payload = [system_prompt, tools, effort, extra.get("context_mode"), extra.get("max_turns")]
-    return hashlib.sha256(
-        json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
-    ).hexdigest()
+    system_prompt: str, tools: list[ToolSpec], effort: object, cfg: ExecutorConfig
+) -> dict[str, str]:
+    """What a Claude CLI launch is fixed to, a hash per part: prompt, tools, effort, mode."""
+    parts: dict[str, object] = {
+        "instructions": system_prompt,
+        "tools": tools,
+        "effort": effort,
+        "mode": [cfg.extra.get("context_mode"), cfg.extra.get("max_turns"), cfg.checklist],
+    }
+    return {
+        name: hashlib.sha256(
+            json.dumps(value, sort_keys=True, default=str).encode("utf-8")
+        ).hexdigest()
+        for name, value in parts.items()
+    }
+
+
+#: Why a session's warm Claude CLI went away, by session key, kept across executors in this
+#: harness process (the adapter replaces its executor after a turn that did not end cleanly),
+#: so the launch that follows can say why it was needed.
+_client_drop_reasons: dict[str, str] = {}
 
 
 def _composed_instructions_hash(system_prompt: object) -> str | None:
@@ -1700,6 +1730,8 @@ class ClaudeSDKExecutor(Executor):
         self._pending_framework_context: dict[str, str] = {}
         # Session keys whose Claude harness process crashed and must not be reused.
         self._crashed_sessions: dict[str, str] = {}
+        # Session keys interrupted during their current turn: the turn ends as cancelled.
+        self._interrupted_sessions: set[str] = set()
         # Force-close tasks for clients evicted on turn cancellation, kept
         # referenced so they are not GC'd mid-close.
         self._cancel_close_tasks: set[asyncio.Task[None]] = set()
@@ -1782,10 +1814,16 @@ class ClaudeSDKExecutor(Executor):
         options: SdkOptions,
         model: str | None,
         rebuild_on_instructions_change: bool = False,
-        launch_key: str | None = None,
+        launch_key: dict[str, str] | None = None,
         primed: bool = True,
     ) -> _ClaudeClient:
         state = self._clients.get(session_key)
+        if state is None:
+            reason = _client_drop_reasons.pop(session_key, None) or (
+                "pre-launch" if not primed else "no warm client in this harness process"
+            )
+        else:
+            reason = ""
         if (
             state is not None
             and not getattr(state, "primed", True)
@@ -1793,11 +1831,24 @@ class ClaudeSDKExecutor(Executor):
         ):
             # Launched ahead of this turn with other options (tools, prompt, effort):
             # it has seen no turn yet, so relaunching loses nothing.
-            logger.info(
-                "pre-launched Claude CLI for session %s does not match its first turn; "
-                "relaunching",
-                session_key,
+            differs = sorted(
+                name
+                for name in {**(state.launch_key or {}), **(launch_key or {})}
+                if (state.launch_key or {}).get(name) != (launch_key or {}).get(name)
             )
+            reason = f"the pre-launched CLI differs from the first turn in {', '.join(differs)}"
+            await self._close_live_client(session_key)
+            state = None
+        if (
+            state is not None
+            and state.launch_key is not None
+            and launch_key is not None
+            and state.launch_key.get("mode") != launch_key.get("mode")
+        ):
+            # The mode (context mode, turn cap, checklist) is fixed in the CLI's env and base
+            # tools at launch; a warm CLI keeps the one it started with, so a turn that turns
+            # the checklist on would never get the task tools.
+            reason = "the turn's mode changed"
             await self._close_live_client(session_key)
             state = None
         new_instructions_hash = (
@@ -1815,14 +1866,11 @@ class ClaudeSDKExecutor(Executor):
             # instructions composed after turn 1 (memory, rollover) would
             # otherwise never reach the model. Drop and reconnect so the
             # next turn's options actually apply.
-            logger.info(
-                "superside-chat composed instructions changed for session %s; "
-                "rebuilding the warm Claude SDK client",
-                session_key,
-            )
+            reason = "the composed instructions changed"
             await self._close_live_client(session_key)
             state = None
         if state is None:
+            launch_started = time.monotonic()
             # Tee CLI stderr so the connect timeout error carries the
             # tail; ``_on_stderr`` alone only logs at DEBUG.
             connect_stderr: list[str] = []
@@ -1907,6 +1955,13 @@ class ClaudeSDKExecutor(Executor):
                 launch_key=launch_key,
             )
             self._clients[session_key] = state
+            _client_drop_reasons.pop(session_key, None)
+            logger.info(
+                "Claude CLI launched for session %s in %.2fs: %s",
+                session_key,
+                time.monotonic() - launch_started,
+                reason,
+            )
             return client
 
         if state.model != model:
@@ -1918,10 +1973,12 @@ class ClaudeSDKExecutor(Executor):
         self._crashed_sessions.pop(session_key, None)
         await self._close_live_client(session_key)
 
-    async def _close_live_client(self, session_key: str) -> None:
+    async def _close_live_client(self, session_key: str, reason: str | None = None) -> None:
         state = self._clients.pop(session_key, None)
         if state is None:
             return
+        if reason is not None:
+            _client_drop_reasons[session_key] = reason
         try:
             current_loop = asyncio.get_running_loop()
             current_task = asyncio.current_task()
@@ -1958,6 +2015,8 @@ class ClaudeSDKExecutor(Executor):
 
     def _evict_client_on_cancel(self, session_key: str) -> None:
         state = self._clients.pop(session_key, None)
+        if state is not None:
+            _client_drop_reasons[session_key] = "the previous turn was cancelled"
         if state is None:
             return
         # Close in the background: an await here runs under an in-flight
@@ -1975,6 +2034,7 @@ class ClaudeSDKExecutor(Executor):
         state = self._clients.get(session_key)
         if state is None:
             return False
+        self._interrupted_sessions.add(session_key)
         # Interrupt is best-effort and fast; a failure just falls through to
         # the close below.
         try:
@@ -1992,6 +2052,7 @@ class ClaudeSDKExecutor(Executor):
         # forces the next turn to rebuild full history (marker included) in a
         # fresh session — the abandoned request is then visible-but-superseded
         # rather than silently continued.
+        _client_drop_reasons[session_key] = "the previous turn was interrupted"
         try:
             await self.close_session(session_key)
             return True
@@ -2045,7 +2106,7 @@ class ClaudeSDKExecutor(Executor):
             window.pending.pop(message_uuid, None)
             logger.warning("Claude SDK steer write failed for session %s: %s", session_key, exc)
             # A broken stdin means the CLI is gone: drop it so the turn's stream ends too.
-            await self._close_live_client(session_key)
+            await self._close_live_client(session_key, "a steer write failed")
             return "refused"
         return "pending"
 
@@ -2118,6 +2179,13 @@ class ClaudeSDKExecutor(Executor):
         # no-op against test fakes that only stub `disconnect`.
         query = getattr(client, "_query", None)
         if query is not None:
+            # Cancel the SDK's reader before marking the query closed: a reader that sees
+            # ``_closed`` breaks out of the transport's message generator mid-yield, and that
+            # generator's finalizer later raises the CLI's exit status in a task nobody awaits.
+            read_task = getattr(query, "_read_task", None)
+            if read_task is not None:
+                with suppress(Exception):
+                    read_task.cancel()
             query._closed = True
             tg = getattr(query, "_tg", None)
             if tg is not None:
@@ -2575,6 +2643,7 @@ class ClaudeSDKExecutor(Executor):
         cfg = config or ExecutorConfig()
 
         session_key = self._session_key(messages)
+        self._interrupted_sessions.discard(session_key)
         crashed_reason = self._crashed_sessions.get(session_key)
         if crashed_reason is not None:
             yield ExecutorError(
@@ -2667,6 +2736,12 @@ class ClaudeSDKExecutor(Executor):
         if is_superside_chat:
             env[_CLAUDE_CODE_DISABLE_AUTO_COMPACT_ENV] = "1"
             env[_CLAUDE_CODE_DISABLE_AUTO_MEMORY_ENV] = "1"
+            # Its Omnigent tools are few and every turn needs some: load their definitions
+            # with the session instead of through a ToolSearch call before the first one.
+            env[_CLAUDE_CODE_ENABLE_TOOL_SEARCH_ENV] = "false"
+        if cfg.checklist:
+            env[_CLAUDE_CODE_ENABLE_TODO_TOOLS_ENV] = "1"
+            allowed_tools.extend(_CLI_TASK_TOOLS)
         api_key_helper = env.pop(_CLAUDE_API_KEY_HELPER_ENV_KEY, None)
         # Teach Claude Code this gateway's spellings so no model surface routes
         # to an id the gateway rejects: pins for the family aliases, rewrites
@@ -2714,6 +2789,8 @@ class ClaudeSDKExecutor(Executor):
         # SDK's native Bash/Read/Edit/Write. Keep Skill and ToolSearch in
         # the base set so MCP definitions can be discovered on demand.
         base_tools: list[str] = ["Skill", "ToolSearch"]
+        if cfg.checklist:
+            base_tools.extend(_CLI_TASK_TOOLS)
         # Translate the spec's host-skill filter into the SDK
         # options. Falls back to ``"all"`` semantics when the
         # field is malformed (the parser already validates, so
@@ -2748,7 +2825,13 @@ class ClaudeSDKExecutor(Executor):
             # ``replay-user-messages`` makes the CLI echo each user message it takes
             # up (with the uuid we sent), which is how a mid-turn steer is seen to
             # have been consumed -- see ``steer_session_message``.
-            "extra_args": {"no-session-persistence": None, "replay-user-messages": None},
+            # A named session skips the CLI's own title call, a model call over the
+            # whole first prompt that nothing here reads.
+            "extra_args": {
+                "no-session-persistence": None,
+                "replay-user-messages": None,
+                **({} if cfg.session_titles else {"name": "omnigent"}),
+            },
             "max_buffer_size": 10 * 1024 * 1024,
             "disallowed_tools": list(_SDK_BUILTIN_SUBAGENT_TOOLS) if is_superside_chat else [],
         }
@@ -2824,7 +2907,7 @@ class ClaudeSDKExecutor(Executor):
             len(tools),
             options_kwargs.get("thinking"),
         )
-        launch_key = _launch_key(system_prompt, tools, reasoning_effort, cfg.extra)
+        launch_key = _launch_key(system_prompt, tools, reasoning_effort, cfg)
         if prelaunch:
             try:
                 await self._get_or_create_client(
@@ -2874,6 +2957,9 @@ class ClaudeSDKExecutor(Executor):
         # Track in-flight tool calls so we can emit ToolCallComplete
         # with the tool name and duration when results arrive.
         pending_tools: dict[str, tuple[str, float]] = {}  # id → (name, start_mono)
+        # (parent call, stream block index) → (tool id, name), so ``input_json_delta`` (keyed
+        # by index within its own stream) can name its call.
+        streaming_tools: dict[object, tuple[str, str]] = {}
 
         # Track whether we've received any StreamEvent messages.
         # When True, we skip text/tool events from AssistantMessage to
@@ -3156,6 +3242,15 @@ class ClaudeSDKExecutor(Executor):
                                 # loses a few ms of "tool call started"
                                 # feedback in exchange for correct args.
                                 pending_tools[raw_tool_id] = (tool_name, time.monotonic())
+                                streaming_tools[
+                                    (
+                                        getattr(message, "parent_tool_use_id", None),
+                                        evt.get("index"),
+                                    )
+                                ] = (raw_tool_id, tool_name)
+                                yield ToolCallStarted(
+                                    name=tool_name, metadata=_call_metadata(raw_tool_id, message)
+                                )
 
                         elif evt_type == "content_block_delta":
                             delta = evt.get("delta", {})
@@ -3177,6 +3272,20 @@ class ClaudeSDKExecutor(Executor):
                                     yield ReasoningChunk(
                                         delta=thinking_text,
                                         event_type="reasoning_text",
+                                    )
+                            elif delta_type == "input_json_delta":
+                                streaming = streaming_tools.get(
+                                    (
+                                        getattr(message, "parent_tool_use_id", None),
+                                        evt.get("index"),
+                                    )
+                                )
+                                partial = delta.get("partial_json")
+                                if streaming is not None and isinstance(partial, str) and partial:
+                                    yield ToolInputChunk(
+                                        name=streaming[1],
+                                        delta=partial,
+                                        metadata={"call_id": streaming[0]},
                                     )
 
                     elif isinstance(message, sdk.AssistantMessage):
@@ -3219,7 +3328,7 @@ class ClaudeSDKExecutor(Executor):
                                         # with the matching
                                         # :class:`ToolCallComplete`
                                         # by call_id.
-                                        metadata={"call_id": tool_block.id},
+                                        metadata=_call_metadata(tool_block.id, message),
                                     )
                         else:
                             # No streaming — emit events from the full message.
@@ -3256,7 +3365,7 @@ class ClaudeSDKExecutor(Executor):
                                     yield ToolCallRequest(
                                         name=tool_block.name,
                                         args=tool_block.input,
-                                        metadata={"call_id": tool_block.id},
+                                        metadata=_call_metadata(tool_block.id, message),
                                     )
 
                     elif isinstance(message, sdk.UserMessage):
@@ -3294,7 +3403,7 @@ class ClaudeSDKExecutor(Executor):
                                         # thing the adapter can
                                         # use to pair this output
                                         # back to its function_call.
-                                        metadata={"call_id": result_block.tool_use_id},
+                                        metadata=_call_metadata(result_block.tool_use_id, message),
                                     )
 
                     elif isinstance(message, sdk.ResultMessage):
@@ -3470,8 +3579,14 @@ class ClaudeSDKExecutor(Executor):
             raise
         except Exception as exc:  # noqa: BLE001 — top-level executor error boundary; records crash and surfaces to caller
             self._pending_framework_context.pop(session_key, None)
+            if session_key in self._interrupted_sessions:
+                # The interrupt closed the CLI under this read: a cancelled turn, not a crash.
+                for refused in self._settle_steer_window(session_key, steer_window):
+                    yield refused
+                yield TurnCancelled()
+                return
             self._crashed_sessions[session_key] = str(exc)
-            await self._close_live_client(session_key)
+            await self._close_live_client(session_key, "the previous turn failed")
             for refused in self._settle_steer_window(session_key, steer_window):
                 yield refused
             stderr_text = "\n".join(stderr_lines) if stderr_lines else "(no stderr captured)"
@@ -3511,7 +3626,9 @@ class ClaudeSDKExecutor(Executor):
                 if closing.pending:
                     # Cut short (cancelled, interrupted, closed) with steers in the CLI's queue:
                     # drop it so a later turn cannot answer them twice.
-                    await self._close_live_client(session_key)
+                    await self._close_live_client(
+                        session_key, "the previous turn ended with a steer unanswered"
+                    )
         # Steers the CLI never answered for (its stream ended early, or the loop stopped on a
         # terminal error): refused, so the caller's copy runs as the next turn.
         for refused in self._settle_steer_window(session_key, steer_window):
@@ -3530,6 +3647,9 @@ class ClaudeSDKExecutor(Executor):
         # whenever it runs.
         if turn_usage is None:
             turn_usage = _usage_from_observed_call(last_call_usage, observed_model or model)
+        if session_key in self._interrupted_sessions:
+            yield TurnCancelled()
+            return
 
         if provider_error_type and not terminal_error:
             # The CLI flagged a provider failure but sent no failing ResultMessage.

@@ -3,13 +3,13 @@ name: editor
 description: >-
   A file's own chat (its studio, ADR 0024): edits that one file in place when the person asks,
   in the studio beside the canvas. Started by the engine when a file's studio is first opened,
-  never by the Muse.
+  never by the Assistant.
 
 # No `params.helper_type`: the Type has no Helper role, so start_helper never picks it. The
 # engine makes its session (POST /v1/artifacts/{id}/chat); its turns come from the person.
 
 {{SKILLS_FILTER}}
-# Sub-agent Type: editor. {{HARNESS_NAME}}, same engine as the Super Chat (ADR 0001).
+# Sub-agent Type: editor. {{HARNESS_NAME}}, same engine as the Assistant (ADR 0001).
 # No model pinned: the engine starts it on the person's Default model.
 executor:
   type: omnigent
@@ -29,7 +29,7 @@ os_env:
 
 tools:
   # Edit the one file, check and export a deck, read the person's files and memory. No Helpers,
-  # no progress notices or flags, no plan card.
+  # no progress notices or flags.
   allow:
     - "sys_os_*"
     - artifact_patch

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shutil
+import sqlite3
 import sys
 import tempfile
 import time
@@ -590,9 +592,37 @@ def _worker_db_uri() -> Generator[str, None, None]:
 
 
 @pytest.fixture(scope="session")
-def _sqlite_db_template() -> Path | None:
-    """Suites may supply a migrated SQLite snapshot; the default runs migrations."""
-    return None
+def _sqlite_db_template(
+    tmp_path_factory: pytest.TempPathFactory, _worker_db_uri: str
+) -> Path | None:
+    """Migrate once per worker; :func:`db_uri` copies this for each test.
+
+    Running every migration for every test cost about a second per test
+    locally and up to 25 s on a loaded CI runner. ``tests/db`` overrides this
+    with None to keep the cold initialization path under test. External
+    database fixtures retain their existing per-worker lifecycle.
+    """
+    if _worker_db_uri:
+        return None
+
+    directory = tmp_path_factory.mktemp("server-db-template")
+    source = directory / "source.db"
+    template = directory / "empty.db"
+    uri = f"sqlite:///{source}"
+    engine = get_or_create_engine(uri)
+    try:
+        # SQLite backup includes committed WAL contents without copying sidecars.
+        with (
+            contextlib.closing(sqlite3.connect(source)) as src,
+            contextlib.closing(sqlite3.connect(template)) as dst,
+        ):
+            src.backup(dst)
+    finally:
+        with _engine_lock:
+            _engine_cache.pop(uri, None)
+        engine.dispose()
+    template.chmod(0o444)
+    return template
 
 
 @pytest.fixture()

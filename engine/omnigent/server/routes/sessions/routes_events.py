@@ -24,7 +24,12 @@ from pydantic import BaseModel
 from starlette.datastructures import Headers
 from starlette.types import Message, Receive, Scope, Send
 
-from omnigent.context.labels import PAUSED_LABEL_KEY, is_artifact_chat, is_superside_chat
+from omnigent.context.labels import (
+    PAUSED_LABEL_KEY,
+    ROUND_LABEL_KEY,
+    is_artifact_chat,
+    is_superside_chat,
+)
 from omnigent.db.workspace_cache import WorkspaceScopedCache
 from omnigent.debug_logging import add_audit_attrs, debug_event, mark_request_audit_suppressed
 from omnigent.entities import (
@@ -247,6 +252,7 @@ from omnigent.stores.host_store import host_is_live
 from omnigent.stores.permission_store import PermissionStore
 from omnigent.superchat.lineage import is_super_chat_helper
 from omnigent.superchat.models.org import refuse_if_suspended
+from omnigent.superchat.rounds import record as rounds
 from omnigent.superchat.subagents import is_live_child_row
 from omnigent.telemetry import emit as _tel_emit
 from omnigent.telemetry.anon import anon_user_id as _tel_anon_user_id
@@ -284,6 +290,21 @@ _TRANSIENT_AUDIT_EVENT_TYPES = frozenset(
         _EXTERNAL_SESSION_USAGE_TYPE,
     }
 )
+
+
+def _plain_spaces(content: Any) -> Any:
+    """A person's message *content* with each U+202F (the narrow no-break space macOS writes in a
+    screenshot's name) as a plain space, so a name the model retypes is the name it was given."""
+    if isinstance(content, str):
+        return content.replace("\u202f", " ")
+    if isinstance(content, list):
+        return [
+            {**block, "text": block["text"].replace("\u202f", " ")}
+            if isinstance(block, dict) and isinstance(block.get("text"), str)
+            else block
+            for block in content
+        ]
+    return content
 
 
 def _is_batchable_external_item(event: SessionEventInput) -> bool:
@@ -708,7 +729,9 @@ def register_events_routes(
     if register_runner_ingest is not None:
         register_runner_ingest(ingest_runner_batch)
 
-    async def _interrupt_session(session_id: str) -> bool:
+    async def _interrupt_session(
+        session_id: str, round_id: str | None = None, note: str | None = None
+    ) -> bool:
         """
         Stop *session_id*'s turn and, the same way, its running Helpers (ADR 0026 "Stop stops").
 
@@ -717,6 +740,9 @@ def register_events_routes(
         relaunch.
 
         :param session_id: Session/conversation identifier.
+        :param round_id: The Round stopped: only its Helpers (and Helpers in no Round) are
+            stopped, other Rounds' keep working (ADR 0029). ``None`` stops every Helper.
+        :param note: The Stop line; the runner writes it in the session's history.
         :returns: Whether the stop landed: the runner took it, or a waiting dispatch was
             cancelled.
         """
@@ -730,7 +756,7 @@ def register_events_routes(
             try:
                 interrupt_resp = await runner_client.post(
                     f"/v1/sessions/{session_id}/events",
-                    json={"type": "interrupt"},
+                    json={"type": "interrupt", **({"data": {"note": note}} if note else {})},
                     timeout=5.0,
                 )
                 forwarded = interrupt_resp.status_code < 400
@@ -749,7 +775,7 @@ def register_events_routes(
         if cancelled_items and not forwarded:
             _publish_status(session_id, "idle")
         try:
-            await _interrupt_running_helpers(session_id)
+            await _interrupt_running_helpers(session_id, round_id)
         except Exception:
             _logger.exception("Interrupt cascade to helpers failed for %r", session_id)
         return forwarded or bool(cancelled_items)
@@ -776,11 +802,19 @@ def register_events_routes(
         }
         return children, live
 
-    async def _interrupt_running_helpers(session_id: str) -> None:
-        """Interrupt every running Helper of *session_id* (read as ``count_live_children`` does)."""
+    async def _interrupt_running_helpers(session_id: str, round_id: str | None = None) -> None:
+        """Interrupt the running Helpers of *session_id* (read as ``count_live_children`` does)
+        that are in *round_id*, or in no Round; every one when *round_id* is ``None``."""
         children, live_ids = await _helpers_of(session_id)
-        live = [child.id for child in children if child.id in live_ids]
-        results = await asyncio.gather(*(_interrupt_session(child_id) for child_id in live))
+        live = [
+            child.id
+            for child in children
+            if child.id in live_ids
+            and (round_id is None or (child.labels or {}).get(ROUND_LABEL_KEY) in (None, round_id))
+        ]
+        results = await asyncio.gather(
+            *(_interrupt_session(child_id, round_id) for child_id in live)
+        )
         for child_id, delivered in zip(live, results, strict=True):
             _logger.info("interrupt helper=%s of=%s delivered=%s", child_id, session_id, delivered)
 
@@ -951,6 +985,8 @@ def register_events_routes(
             await _require_helper_writer(request, user_id, conv)
             if body.data.get("role", "user") == "user":
                 mark_accepted(session_id)
+                if "content" in body.data:
+                    body.data["content"] = _plain_spaces(body.data["content"])
         if in_flight is not None:
             # Marked only after authorization, so an unauthorized caller
             # cannot flip a session to "running" even transiently.
@@ -1100,6 +1136,14 @@ def register_events_routes(
                 "Session is closed. Start a new sub-agent session to continue.",
                 code=ErrorCode.CONFLICT,
             )
+        if (
+            body.type == "message"
+            and persisted_item is None
+            and await rounds.stopped_wake(conversation_store, conv, body.data, body.context)
+        ):
+            # Stop ended this Helper's Round, and its pending wakes with it (ADR 0029).
+            _logger.info("wake of a stopped Round dropped session=%s", session_id)
+            return {"queued": False, "delivered": False}
         if (
             body.type == "message"
             and body.data.get("role") == "user"
@@ -1363,7 +1407,14 @@ def register_events_routes(
             return wake_conv, _client
 
         if body.type == _INTERRUPT_TYPE:
-            delivered = await _interrupt_session(session_id)
+            # The person's Stop ends one Round (ADR 0029): its turn, its Helpers, its wakes.
+            children, live_ids = await _helpers_of(session_id)
+            stopped = await rounds.stop_round(conv, [c for c in children if c.id in live_ids])
+            delivered = await _interrupt_session(
+                session_id,
+                stopped.round_id if stopped else None,
+                stopped.line if stopped else None,
+            )
             _logger.info("interrupt session=%s delivered=%s", session_id, delivered)
             return {"queued": False, "delivered": delivered}
         if body.type == _STOP_SESSION_TYPE:
@@ -2535,6 +2586,7 @@ def register_events_routes(
             # serves this turn; absent, routing keeps its default posture.
             host_store=getattr(request.app.state, "host_store", None),
             persisted_item=persisted_item,
+            app_state=request.app.state,
         )
         if pending_background_title is not None:
             pending_background_title.schedule(expected_seed_title=conv.title)

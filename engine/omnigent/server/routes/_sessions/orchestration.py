@@ -327,6 +327,8 @@ from omnigent.stores.permission_store import PermissionStore
 from omnigent.stores.project_store import ProjectStore
 from omnigent.superchat.approvals.policy import remember_browser_snapshot
 from omnigent.superchat.feature import is_super_chat
+from omnigent.superchat.rounds import record as rounds
+from omnigent.superchat.transcript.blocks import turn_activity_id
 from omnigent.telemetry import emit as _tel_emit
 from omnigent.telemetry.anon import anon_user_id as _tel_anon_user_id
 from omnigent.telemetry.anon import current_anon_user_id as _tel_current_anon
@@ -4961,6 +4963,15 @@ async def _persist_user_event_item(
     item = _build_new_item(body, f"turn_{uuid.uuid4().hex}", created_by=created_by)
     persisted_items = await asyncio.to_thread(conversation_store.append, session_id, [item])
     await _seed_missing_title_from_user_message(conv, item, conversation_store)
+    if body.type == "message":
+        await rounds.note_message(
+            conversation_store,
+            conv,
+            persisted_items[0].id,
+            body.data,
+            body.context,
+            turn_running=_session_status_cache.get(session_id) in ("running", "waiting"),
+        )
     if body.type == "message" and body.context:
         for hook in list(ON_MESSAGE_CONTEXT.values()):
             try:
@@ -4983,6 +4994,7 @@ async def _forward_event_to_runner(
     created_by: str | None = None,
     host_store: HostStore | None = None,
     persisted_item: ConversationItem | None = None,
+    app_state: Any = None,
 ) -> _ForwardedItem:
     """
     Persist a user event and forward it to the runner.
@@ -5017,6 +5029,8 @@ async def _forward_event_to_runner(
     :param persisted_item: The user item when the caller already stored it
         (see :func:`_persist_user_event_item`); it is then forwarded without
         a second append.
+    :param app_state: ``request.app.state``, for the owner's Foundation pick a
+        Super Chat with no stored model runs on. ``None``: no pick is resolved.
     :returns: The store-assigned id of the persisted item.
     """
     persisted_item = persisted_item or await _persist_user_event_item(
@@ -5412,6 +5426,12 @@ async def _forward_event_to_runner(
                             extra={"session_id": session_id},
                         )
     # ────────────────────────────────────────────────────────────────
+    if effective_runner_override is None and app_state is not None:
+        # A Super Chat with no pin runs its owner's Foundation pick (ADR 0027), never the
+        # connection's default: the same answer the session read gives as ``effective_model``.
+        from omnigent.server.routes.sandbox_inference import session_model
+
+        effective_runner_override = await session_model(app_state, conv, conversation_store)
     if effective_runner_override is not None:
         runner_body["model_override"] = effective_runner_override
     # Forward the persisted create-time effort on every downward event, like
@@ -5842,6 +5862,7 @@ async def _dispatch_session_event_to_runner_impl(
     created_by: str | None = None,
     host_store: HostStore | None = None,
     persisted_item: ConversationItem | None = None,
+    app_state: Any = None,
 ) -> _SessionEventDispatchResult:
     """
     Persist an item-event AP-side and forward it to the bound runner.
@@ -5887,6 +5908,7 @@ async def _dispatch_session_event_to_runner_impl(
         created_by=created_by,
         host_store=host_store,
         persisted_item=persisted_item,
+        app_state=app_state,
     )
     return _SessionEventDispatchResult(
         item_id=forwarded.item_id, pending_id=None, turn=forwarded.turn
@@ -6074,6 +6096,9 @@ async def _relay_runner_stream(
     deadline: float | None = None
     outage_started = 0.0
     retries = 0
+    # One Round recorder across reconnects: a turn the runner keeps streaming after the tunnel
+    # comes back is still recorded, and one whose stream is gone is ended from the store.
+    round_record = rounds.RelayRound(session_id, conversation_store)
     while True:
         started = loop.time()
         try:
@@ -6082,7 +6107,9 @@ async def _relay_runner_stream(
                 runner_client,
                 conversation_store,
                 ready,
+                round_record,
             )
+            round_record.lost()
             return
         except _RelayTransportLost as lost:
             now = loop.time()
@@ -6153,6 +6180,9 @@ async def _relay_runner_stream(
                     retries=retries,
                 ),
             )
+            if decision not in ("server_shutdown", "live_elsewhere"):
+                # No relay of this process streams the session's turn again.
+                round_record.lost()
             if decision == "intentional_stop":
                 # User clicked Stop: the Stop handler brought this runner's
                 # tunnel down on purpose (see _stop_session_host_runner), so
@@ -6237,6 +6267,7 @@ async def _relay_runner_stream_once(
     runner_client: httpx.AsyncClient,
     conversation_store: ConversationStore,
     ready: asyncio.Event | None = None,
+    round_record: rounds.RelayRound | None = None,
 ) -> None:
     """
     Subscribe to the runner's SSE stream and relay events locally.
@@ -6263,9 +6294,14 @@ async def _relay_runner_stream_once(
         slot is registered. ``None`` is accepted for direct unit tests
         that exercise relay parsing/persistence without asserting on
         startup readiness.
+    :param round_record: The session's Round recorder, kept across the
+        supervisor's reconnects; ``None`` makes one for this attempt.
     """
     text_acc: list[str] = []
     current_response_id: str | None = None
+    # Whether this is a Super Chat (read once, at its first turn): its running edges name the
+    # turn's Activity (``activity_id``) so the strip can show steps before the first word.
+    super_chat: bool | None = None
     # Model/agent label from the turn header, stamped on text segments
     # flushed at tool-call boundaries (the boundary event carries no model).
     current_model: str | None = None
@@ -6281,6 +6317,9 @@ async def _relay_runner_stream_once(
     tool_call_response_ids: dict[str, str] = {}
     # The person's wait per turn, from their message (ADR 0026).
     turn_clock = TurnClock(session_id)
+    # What the turns of a Superchat session do, recorded as their Round's events (ADR 0029).
+    if round_record is None:
+        round_record = rounds.RelayRound(session_id, conversation_store)
     _logger.info(
         "Relay: connecting to runner GET /stream for session=%s",
         session_id,
@@ -6348,6 +6387,12 @@ async def _relay_runner_stream_once(
                             ready.set()
                         continue
 
+                    # The terminal of a turn the engine stopped: recorded stopped, whatever
+                    # status the executor gave it (ADR 0029).
+                    stopped_turn = (
+                        evt_type in _TERMINAL_RESPONSE_EVENT_TYPES
+                        and session_id in _interrupt_fenced_sessions
+                    )
                     # Stopped turn: drop its trailing response.* output (no
                     # forward, no persist) but keep text_acc — the pre-stop
                     # narration the user watched persists at the terminal flush.
@@ -6366,6 +6411,9 @@ async def _relay_runner_stream_once(
 
                     if evt_type == "session.status":
                         status = event.get("status", "")
+                        if status == "idle":
+                            # A turn whose stream this relay lost ends from the store.
+                            round_record.lost()
                         if status:
                             # Forward the runner's failure detail on a
                             # ``failed`` transition so a SETUP-phase
@@ -6446,6 +6494,13 @@ async def _relay_runner_stream_once(
                                     else None
                                 ),
                                 failure_origin="relayed_runner_status",
+                                activity_id=(
+                                    turn_activity_id(session_id, current_response_id)
+                                    if super_chat
+                                    and current_response_id is not None
+                                    and status in ("running", "waiting")
+                                    else None
+                                ),
                                 paused=event.get("paused") is True,
                                 blocked_on=(
                                     raw_blocked_on
@@ -6489,12 +6544,27 @@ async def _relay_runner_stream_once(
                         _rid = resp_obj.get("id")
                         if isinstance(_rid, str) and _rid:
                             current_response_id = _rid
+                            if super_chat is None:
+                                _conv = await asyncio.to_thread(
+                                    conversation_store.get_conversation, session_id
+                                )
+                                super_chat = _conv is not None and is_super_chat(_conv.labels)
+                            if super_chat:
+                                _publish_status(
+                                    session_id,
+                                    "running",
+                                    response_id=_rid,
+                                    activity_id=turn_activity_id(session_id, _rid),
+                                )
                         _model = resp_obj.get("model")
                         failure_agent_name = _model if isinstance(_model, str) and _model else None
                         if isinstance(_model, str) and _model:
                             current_model = _model
                         await turn_clock.start(conversation_store)
                     turn_clock.observe(event)
+                    await round_record.observe(event, stopped=stopped_turn)
+                    if evt_type == rounds.TOOL_INPUT_DELTA:
+                        continue  # recorded only; clients see the call when it is complete
 
                     # Accumulate response-scoped (scaffold) text deltas for
                     # persistence. Native message-scoped deltas (with a
@@ -7406,14 +7476,7 @@ async def _evaluate_input_policy(
     # default policies AND no session policies. Without this, default/
     # session policies (e.g. deny_pii_in_llm_request added via the UI)
     # are silently skipped for agents without a guardrails: YAML block.
-    # A Super Chat turn always passes the gate: its step-limit policy resets per user message
-    # (a Helper has no step limit, so it takes the normal skip).
-    if (
-        not spec.guardrails
-        and not get_caps().default_policies
-        and get_policy_store() is None
-        and not is_super_chat(conv.labels)
-    ):
+    if not spec.guardrails and not get_caps().default_policies and get_policy_store() is None:
         return None
 
     # Text-like attachments (e.g. an uploaded CSV) arrive as ``input_file`` blocks
@@ -7505,6 +7568,7 @@ async def _wake_parent_for_blocked_child(
     *,
     conversation_store: ConversationStore,
     runner_router: RunnerRouter | None,
+    app_state: Any = None,
 ) -> bool:
     """
     Deliver a parent-wake notice when a sub-agent blocks on an approval.
@@ -7527,6 +7591,8 @@ async def _wake_parent_for_blocked_child(
     :param runner_router: Router used to resolve the parent's bound
         runner. ``None`` in in-process setups (the runtime singleton is
         consulted as a fallback).
+    :param app_state: ``app.state``, so a Super Chat parent runs its owner's
+        Foundation pick.
     :returns: ``True`` when the notice was dispatched to the parent's runner;
         ``False`` when delivery could not happen (parent gone, no runner bound,
         or the forward raised a transport error).
@@ -7578,6 +7644,7 @@ async def _wake_parent_for_blocked_child(
             agent_name=None,
             file_store=None,
             artifact_store=None,
+            app_state=app_state,
         )
     except (httpx.HTTPError, OmnigentError):
         _logger.warning(
@@ -7593,6 +7660,7 @@ async def _wake_parent_for_blocked_child(
 def configure_subagent_block_notifier(
     conversation_store: ConversationStore,
     runner_router: RunnerRouter | None,
+    app_state: Any = None,
 ) -> Callable[[], None]:
     """
     Install the parent-wake notifier on the elicitation publish path.
@@ -7611,6 +7679,8 @@ def configure_subagent_block_notifier(
         ``parent_conversation_id`` and to persist the wake message.
     :param runner_router: Router used by the wake to reach the parent's
         bound runner. ``None`` in in-process setups.
+    :param app_state: ``app.state``, so a woken Super Chat runs its owner's
+        Foundation pick.
     :returns: A callable that uninstalls the observer and cancels any
         in-flight wake futures. Call from the lifespan teardown.
     """
@@ -7636,6 +7706,7 @@ def configure_subagent_block_notifier(
             notice,
             conversation_store=conversation_store,
             runner_router=runner_router,
+            app_state=app_state,
         )
 
     notifier = SubagentBlockNotifier(
@@ -8267,6 +8338,8 @@ async def _create_session_from_existing_agent(
         from omnigent.context.labels import LAUNCHING_LABEL_KEY
 
         initial_labels[LAUNCHING_LABEL_KEY] = "true"
+        if _parent_for_routing is not None:
+            initial_labels.update(rounds.helper_labels(_parent_for_routing.labels, initial_labels))
     if created_worktree_path is not None:
         from omnigent.server.routes._host_worktree import (
             WORKTREE_ROOT_LABEL_KEY,
@@ -8367,6 +8440,7 @@ async def _create_session_from_existing_agent(
 
     session_created(conv.id, conv.runner_id)
     telemetry.set_session_id(conv.id)
+    rounds.helper_created(conv)
 
     # Emit session.created exactly once at creation time.
     # Best-effort: skip if the host opted out via HostHelloFrame.
@@ -8475,6 +8549,7 @@ async def _create_session_from_existing_agent(
                     artifact_store=artifact_store,
                     created_by=_attribution_user(user_id),
                     host_store=getattr(request.app.state, "host_store", None),
+                    app_state=request.app.state,
                 )
                 if pending_background_title is not None:
                     pending_background_title.schedule(expected_seed_title=conv.title)

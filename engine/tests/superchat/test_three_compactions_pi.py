@@ -4,7 +4,7 @@ Follows a single Super Chat Conversation through three checkpoints and checks wh
 pi process is sent after each one. The layers that run for real are the ones the runner
 drives: :func:`~omnigent.superchat.rollover.roll_over_session` (anchored reads, the
 summarizer call, repair, closes, the budget), the ``on_stored`` copy into ``memory/``
-(:func:`~omnigent.runner.memory.sync.record_checkpoint`), the Helper Result journal line,
+(:func:`~omnigent.runner.memory.sync.record_checkpoint`), a settled Round's journal entry,
 the ``state_close`` handler, the runner's cold-start history read (a recovery turn on a real
 runner app, which goes through ``_load_history_as_input``), the executor adapter's
 ``_translate_input_to_messages(..., tool_digests=True)`` and pi's ``_build_pi_prompt``.
@@ -36,7 +36,7 @@ from omnigent.harnesses.pi_executor import _build_pi_prompt
 from omnigent.llms.types import MessageOutput, OutputText, Response
 from omnigent.runner import create_runner_app
 from omnigent.runner.memory import files
-from omnigent.runner.memory.sync import record_checkpoint, record_helper_result
+from omnigent.runner.memory.sync import record_checkpoint, record_round
 from omnigent.runtime.harnesses._executor_adapter import _translate_input_to_messages
 from omnigent.spec.types import AgentSpec, ExecutorSpec
 from omnigent.superchat import rollover as rollover_mod
@@ -540,12 +540,18 @@ async def test_three_compactions_reach_pi_on_cold_starts(
 
     # Phase 2 → compaction 2: the rewrite drops the EUR decision; repair puts it back.
     _phase_2(server)
-    await record_helper_result(
-        server,
+    await record_round(
         CHAT_ID,
-        title="Q4 forecast",
-        outcome="completed",
-        session_id="helper_q4",
+        {
+            "round_id": "msg_q4",
+            "date": P2,
+            "ask": "Have a Helper build the Q4 forecast",
+            "outcome": "The Q4 forecast is in q4-forecast.xlsx.",
+            "files": ["q4-forecast.xlsx"],
+            "helpers": ["Q4 forecast"],
+            "seconds": 95,
+            "refs": {"helpers": ["helper_q4"]},
+        },
         workspace=tmp_path,
     )
     c2, reads = await _compact(P2)
@@ -584,7 +590,7 @@ async def test_three_compactions_reach_pi_on_cold_starts(
     assert len(summarizer.requests) == 3
     assert len(server.compactions()) == 3
 
-    # memory/: every journal line, the Helper result, the close and the evictions; STATE.md.
+    # memory/: every journal line, the Round entry, the close and the evictions; STATE.md.
     journal = "\n".join(
         p.read_text(encoding="utf-8")
         for p in sorted((tmp_path / files.MEMORY_DIR / files.JOURNAL_DIR).glob("*.md"))
@@ -592,7 +598,7 @@ async def test_three_compactions_reach_pi_on_cold_starts(
     for item in stored:
         for line in item.journal_lines:
             assert line.split(" · ", 1)[1] in journal, line
-    assert 'Helper "Q4 forecast" completed (session helper_q4)' in journal
+    assert 'Helpers: "Q4 forecast" · Took 1m 35s · main' in journal
     assert "closed [t-q3-sales]: the person said the Q3 sales topic is done" in journal
     for line in evicted:
         assert files.EVICTED_PREFIX + line.removeprefix("- ") in journal, line

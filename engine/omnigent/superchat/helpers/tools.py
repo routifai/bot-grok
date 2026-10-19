@@ -29,11 +29,13 @@ class StartHelperTool(Tool):
     def description(cls) -> str:
         """:returns: Human-readable description of the tool."""
         return (
-            "Start a Helper on one self-contained piece of work. It runs on its own and its "
-            "result arrives here as a message when it finishes. `task` is the whole brief: what "
-            "to do, the outcome wanted, constraints and every detail it needs (it does not see "
-            "this conversation). One call per Helper; call it more than once in the same step to "
-            "run several in parallel. Never call it twice for the same task."
+            "Start a Helper on one self-contained piece of work; returns its id at once. Its "
+            "result arrives later as a message, so once the brief is sent, say in one sentence "
+            "that the work started and end your turn. `task` is the whole brief (it does not see "
+            "this conversation); call it once per Helper, several in one step to run them in "
+            "parallel, never twice for the same task. `project` or `path` sets the folder the "
+            "Helper works in; a job for a Project's folder must pass it, since a path inside the "
+            "brief does not move the Helper there."
         )
 
     def get_schema(self) -> dict[str, Any]:

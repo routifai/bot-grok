@@ -24,12 +24,16 @@ from omnigent.server.routes._auth_helpers import require_access_and_level, requi
 
 def inference_service(request: Request) -> Any:
     """Use the service owned by this server's application state."""
+    return _state_inference_service(request.app.state)
+
+
+def _state_inference_service(app_state: Any) -> Any:
     from omnigent.server.inference_catalog import SandboxInferenceService
 
-    service = getattr(request.app.state, "inference_catalog", None)
+    service = getattr(app_state, "inference_catalog", None)
     if service is None:
-        service = SandboxInferenceService(request.app.state)
-        request.app.state.inference_catalog = service
+        service = SandboxInferenceService(app_state)
+        app_state.inference_catalog = service
     return service
 
 
@@ -191,6 +195,44 @@ async def user_default_model(
     if resolve is None:
         return None
     return await resolve(user_id, normalize_inference_harness(harness), catalog)
+
+
+async def session_model(
+    app_state: Any, conversation: Conversation, conversation_store: Any
+) -> str | None:
+    """The model *conversation* runs: its stored pin, else, for a session that follows its
+    owner's picks (:func:`follows_person_picks`), the owner's Foundation on its harness (resolved
+    against its saved catalog, else the catalog a new session would get). ``None``: the harness
+    runs its connection's default.
+
+    The one answer for both the turn's dispatch and the model the web shows.
+    """
+    if conversation.model_override is not None:
+        return conversation.model_override
+    resolve = getattr(app_state, "foundation_model", None)
+    if resolve is None or not follows_person_picks(conversation.labels):
+        return None
+    service = _state_inference_service(app_state)
+    snapshot = conversation.inference_snapshot
+    if configured_snapshot(snapshot):
+        assert snapshot is not None
+        owner, harness = snapshot.get("owner_id"), snapshot["harness"]
+        catalog = await service.catalog(snapshot)
+    else:
+        from omnigent.server.routes._sessions.helpers import _resolve_harness
+
+        harness = await asyncio.to_thread(_resolve_harness, conversation)
+        if harness is None:
+            return None
+        owner = await asyncio.to_thread(conversation_store.get_session_owner, conversation.id)
+        try:
+            fresh = await service.prepare(None, normalize_inference_harness(harness), owner)
+        except (OmnigentError, ValueError):
+            return None  # no key or no reachable catalog: the connection's default runs
+        catalog = (fresh or {}).get("catalog") or {}
+    if catalog.get("status") != "ready":
+        return None
+    return await resolve(owner, normalize_inference_harness(harness), catalog)
 
 
 async def preview_inference(

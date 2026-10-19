@@ -159,14 +159,16 @@ Handler = Callable[[HandlerCtx, dict[str, Any]], Awaitable[str]]
 ResultListener = Callable[[HandlerCtx, str], None]
 #: ``(server_client, conversation_id) -> blocks`` prepended to a Super Chat turn (never raises).
 TurnPrefix = Callable[["httpx.AsyncClient | None", str], Awaitable[list[str]]]
-#: ``(server_client, conversation_id, texts of the turn's own message) -> blocks`` prepended to the
+#: One block a feature builds from the turn's own message: text goes in front of the message, a
+#: content block (an attached image as ``input_image``) goes with the message itself.
+MessageBlock = str | dict[str, Any]
+#: ``(server_client, conversation_id, texts of the turn's own message) -> blocks`` for the
 #: harness body only, closest to the message (never stored; never raises).
-MessagePrefix = Callable[["httpx.AsyncClient | None", str, Sequence[str]], Awaitable[list[str]]]
+MessagePrefix = Callable[
+    ["httpx.AsyncClient | None", str, Sequence[str]], Awaitable[list[MessageBlock]]
+]
 #: ``(conversation_id) -> None``: a runner turn of that session ended (never raises, never awaits).
 TurnEnd = Callable[[str], None]
-#: ``(ctx, tool_name, reason) -> None``: a TOOL_CALL policy denied a call; *reason* is the
-#: policy's text, as the model reads it in the tool's error result.
-ToolDenied = Callable[[HandlerCtx, str, str], None]
 
 
 @dataclass(frozen=True)
@@ -189,8 +191,6 @@ class Feature:
     :param conversation_only: ``message_prefix`` is for the Conversation itself: a Helper's turn
         and a file's studio never call it (ADR 0026: no call whose result is thrown away).
     :param on_turn_end: Told when a runner turn ends (the turn's ``response.completed``).
-    :param on_tool_denied: Told when a TOOL_CALL policy denied a tool call of a session (the
-        call never ran, so ``on_result`` never sees it).
     :param needs_own_turn: Whether a message's text needs a turn of its own to be read whole,
         e.g. because it attaches a file whose ``message_prefix`` context only a turn start
         adds; such a message is never steered into a running turn.
@@ -207,7 +207,6 @@ class Feature:
     message_prefix: MessagePrefix | None = None
     conversation_only: bool = False
     on_turn_end: TurnEnd | None = None
-    on_tool_denied: ToolDenied | None = None
     needs_own_turn: Callable[[str], bool] | None = None
     install: Callable[[FastAPI, InstallDeps], None] | None = None
     jobs: Callable[[FastAPI], list[BackgroundJob]] | None = None

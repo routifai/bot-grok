@@ -74,9 +74,6 @@ function mapBlock(block: OmnigentTranscriptBlock): MessageBlock {
         data: block.card.data,
         fallback: block.card.fallback,
         ...(block.pending ? { pending: true } : {}),
-        ...(typeof block.fold === "number" && block.fold > 0
-          ? { fold: Math.floor(block.fold) }
-          : {}),
       };
     }
     case "helper":
@@ -193,13 +190,15 @@ export function mapTranscriptMessage(
  * for a studio turn queued behind the studio cap, ADR 0024). Null for any other frame. */
 export function mapSessionStatusFrame(
   frame: OmnigentStreamEvent,
-): { status: string; blockedOn: string | null; paused?: boolean } | null {
+): { status: string; blockedOn: string | null; paused?: boolean; activityId?: string } | null {
   if (frame.type !== "session.status") return null;
   const body = (typeof frame.data === "object" && frame.data !== null ? frame.data : frame) as {
     status?: unknown;
     blocked_on?: unknown;
     paused?: unknown;
     labels?: unknown;
+    activity_id?: unknown;
+    activityId?: unknown;
   };
   if (typeof body.status !== "string") return null;
   const blockedOn = typeof body.blocked_on === "string" && body.blocked_on ? body.blocked_on : null;
@@ -209,7 +208,15 @@ export function mapSessionStatusFrame(
     typeof body.labels === "object" && body.labels !== null ? body.labels : {}
   ) as Record<string, unknown>;
   const paused = body.paused === true || Boolean(labels[PAUSED_LABEL]);
-  return { status: body.status, blockedOn, ...(paused ? { paused } : {}) };
+  // The running turn's Activity (ADR 0027), however the engine spells it.
+  const activity = body.activity_id ?? body.activityId;
+  const activityId = typeof activity === "string" && activity ? activity : undefined;
+  return {
+    status: body.status,
+    blockedOn,
+    ...(paused ? { paused } : {}),
+    ...(activityId ? { activityId } : {}),
+  };
 }
 
 /** The label the engine keeps on a paused Helper (`omnigent.context.labels.PAUSED_LABEL_KEY`). */

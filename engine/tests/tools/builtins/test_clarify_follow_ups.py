@@ -61,12 +61,13 @@ def test_clarification_rejects_bad_input(args: dict, needle: str) -> None:
     assert needle in build_clarification(args)["error"]
 
 
-def test_follow_ups_builds_a_chip_card_that_ends_the_turn() -> None:
+def test_follow_ups_builds_a_chip_card_that_leaves_the_turn_open() -> None:
     out = _follow(suggestions=["Compare with last year", " Show by region "])
     assert out["card"] == "follow_ups" and out["type"] == "card"
     assert out["data"] == {"suggestions": ["Compare with last year", "Show by region"]}
     assert out["fallback"] == "- Compare with last year\n- Show by region"
-    assert out["ends_turn"] is True
+    # chips never end the turn: the model ends it (ADR 0029)
+    assert "ends_turn" not in out
 
 
 @pytest.mark.parametrize(
@@ -82,7 +83,7 @@ def test_non_object_arguments_are_rejected() -> None:
         assert "error" in json.loads(tool.invoke("{", _CTX))
 
 
-def test_schemas_bound_the_counts_and_carry_the_muse_rules() -> None:
+def test_schemas_bound_the_counts_and_say_when_to_use_them() -> None:
     ask = AskClarificationTool().get_schema()["function"]
     options = ask["parameters"]["properties"]["options"]
     assert (options["minItems"], options["maxItems"]) == (2, 5)
@@ -91,7 +92,10 @@ def test_schemas_bound_the_counts_and_carry_the_muse_rules() -> None:
     follow = SuggestFollowUpsTool().get_schema()["function"]
     suggestions = follow["parameters"]["properties"]["suggestions"]
     assert (suggestions["minItems"], suggestions["maxItems"]) == (1, 3)
-    assert "generic filler" in follow["description"]
+    # Shown as quiet chips under the answer; no "last step" (ADR 0029: chips end no turn).
+    assert "quiet chips under your answer" in follow["description"]
+    assert "never for filler" in follow["description"]
+    assert "last step" not in follow["description"]
 
 
 def test_dispatch_and_registration_follow_render_card() -> None:
@@ -161,17 +165,16 @@ def test_hidden_control_characters_are_stripped_from_buttons() -> None:
     )
 
 
-def test_text_after_a_follow_ups_card_does_not_replace_the_answer() -> None:
+def test_text_after_a_follow_ups_card_is_the_answer_and_the_chips_stay_last() -> None:
     items = [
         _msg("u1", "user", "How is the backlog?"),
         _msg("a1", "assistant", "It fell from 84 to 61."),
         _call("suggest_follow_ups", "k1"),
         _output("k1", build_follow_ups({"suggestions": ["By auditor"]})),
-        _msg("a2", "assistant", "Here are some things you can ask next."),
+        _msg("a2", "assistant", "It fell from 84 to 61, mostly in March."),
     ]
     out = project_items(items)
-    assert [m["id"] for m in out] == ["u1", "a1", "i-k1"]
-    assert out[1]["blocks"][0]["text"] == "It fell from 84 to 61."
+    assert [m["id"] for m in out] == ["u1", "a2", "i-k1"]
     # The chips are the last message, which is what the client keys "latest answer" on.
     assert out[-1]["blocks"][0]["card"]["card"] == "follow_ups"
 
@@ -187,7 +190,7 @@ def test_a_rejected_follow_ups_call_leaves_the_turns_last_text_as_its_answer() -
     assert [m["id"] for m in project_items(items)] == ["u1", "a2"]
 
 
-def test_text_after_a_clarification_card_is_dropped_too() -> None:
+def test_text_after_a_clarification_card_is_shown_too() -> None:
     items = [
         _msg("u1", "user", "Pull the numbers"),
         _msg("a1", "assistant", "I need one thing first."),
@@ -195,7 +198,7 @@ def test_text_after_a_clarification_card_is_dropped_too() -> None:
         _output("k1", build_clarification({"question": "Which?", "options": ["A", "B"]})),
         _msg("a2", "assistant", "Let me know."),
     ]
-    assert [m["id"] for m in project_items(items)] == ["u1", "a1", "i-k1"]
+    assert [m["id"] for m in project_items(items)] == ["u1", "i-k1", "a2"]
 
 
 def _msg(item_id: str, role: str, text: str) -> dict:
@@ -267,11 +270,12 @@ def test_clarification_keeps_the_models_option_ids_and_makes_the_rest_distinct()
     assert [o["id"] for o in themed["data"]["options"]] == ["nord", "bauhaus"]
 
 
-def test_a_clarification_card_records_the_task_it_asks_about() -> None:
+def test_a_clarification_card_records_the_round_it_asks_in() -> None:
     args = {"question": "Data?", "options": ["Mock", "Real"]}
-    assert build_clarification(args, "t1")["task_id"] == "t1"
-    assert "task_id" not in build_clarification(args)
+    card = build_clarification(args, "r1")
+    assert card["round_id"] == "r1" and "task_id" not in card
+    assert "round_id" not in build_clarification(args)
     # the card the web draws does not carry it
-    items = [_call("ask_clarification", "k1"), _output("k1", build_clarification(args, "t1"))]
+    items = [_call("ask_clarification", "k1"), _output("k1", build_clarification(args, "r1"))]
     (message,) = project_items(items)
-    assert "task_id" not in message["blocks"][0]["card"]
+    assert "round_id" not in message["blocks"][0]["card"]

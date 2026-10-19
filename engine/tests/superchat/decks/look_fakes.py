@@ -1,4 +1,4 @@
-"""A fake Omnigent server for deck_new's look: the task view of one chat and a Memory Profile."""
+"""A fake Omnigent server for deck_new's look: the view of one chat and a Memory Profile."""
 
 from __future__ import annotations
 
@@ -16,7 +16,6 @@ def view(
     *,
     answer: str | None = None,
     option_id: str = "o1",
-    tasks: list[dict[str, Any]] | None = None,
     background: bool = False,
     is_helper: bool = False,
 ) -> dict[str, Any]:
@@ -31,7 +30,8 @@ def view(
             if answer is not None
             else None
         ),
-        "tasks": tasks or [],
+        "round_id": "r1",
+        "rounds": [],
     }
 
 

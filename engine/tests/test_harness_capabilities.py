@@ -181,13 +181,13 @@ def test_catalog_rows_carry_setup_steps() -> None:
             # JSON-serializable primitives only.
             for value in step.values():
                 assert value is None or isinstance(value, str)
-    # Codex keeps its setup checklist (resolved by spelling, it is not a picker
-    # row): install (one-click) then a UI-authable auth step. The step opens the
-    # credential form (action "auth"); its subscription option still carries the
-    # `codex login` command.
-    codex = harness_setup_steps_by_spelling()["codex"]
-    assert [s["action"] for s in codex] == ["install", "auth"]
-    assert codex[1]["command"] == "codex login"
+    # The installable Claude CLI keeps its setup checklist (resolved by spelling,
+    # it is not a picker row): install (one-click) then a UI-authable auth step.
+    # The step opens the credential form (action "auth"); its subscription
+    # option still carries the CLI login command.
+    claude = harness_setup_steps_by_spelling()["claude"]
+    assert [s["action"] for s in claude] == ["install", "auth"]
+    assert claude[1]["command"] == "claude auth login --claudeai"
 
 
 def test_native_tui_harnesses_declare_shell_tool_provocation() -> None:

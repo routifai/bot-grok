@@ -10,7 +10,7 @@ One file per decision, numbered in order. A superseded record keeps its file wit
 | [0004](0004-engine-owns-the-host.md) | The engine owns the host | Current |
 | [0005](0005-proactive-work-is-scheduled-helper-runs.md) | Proactive work is scheduled helper runs | Current |
 | [0006](0006-omnigent-owns-everything.md) | Omnigent owns everything; the engine only runs the model loop | Current; moved from the engine's own records 2026-10-17, side chats gone after 0021 |
-| [0007](0007-the-muse-delegates-multi-step-work.md) | The Muse delegates multi-step work | Current; narration added by 0022; the step limit's ending rule amended by 0025 |
+| [0007](0007-the-muse-delegates-multi-step-work.md) | The Muse delegates multi-step work | Current; narration added by 0022; the step limit's ending rule amended by 0025; amended by 0029: the limit is gone, delegation is judgement |
 | [0008](0008-projects-are-folders-the-muse-opens.md) | Projects are folders the Muse opens | Current |
 | [0009](0009-the-engine-is-the-whole-backend.md) | The engine is the whole backend | Current |
 | [0010](0010-a-fork-is-a-side-chat-with-an-anchor.md) | A fork is a side chat with an anchor | Superseded by 0021 |
@@ -25,11 +25,13 @@ One file per decision, numbered in order. A superseded record keeps its file wit
 | [0019](0019-repository-layout-and-layers.md) | Repository layout and layers | Done 2026-10-17 (moves, flatten, docs, layer contracts in CI) |
 | [0020](0020-the-engine-keeps-only-what-superchat-runs.md) | The engine keeps only what Superchat runs | Done 2026-10-17; log in [`docs/engine-trim.md`](../engine-trim.md) |
 | [0021](0021-one-conversation-messages-link-to-artifacts.md) | One conversation: messages link to artifacts | Done 2026-10-17; amended by 0024 (both halves; contract in [`docs/conversation.md`](../conversation.md)) |
-| [0022](0022-the-orchestrator-narrates-while-helpers-work.md) | The orchestrator narrates while helpers work | Done 2026-10-17 (engine notices, bundle rules, web work strip); updated after review the same day: progress wakes an idle parent, helpers save drafts |
-| [0023](0023-the-plan-is-visible-and-the-work-is-alive.md) | The plan is visible and the work is alive | Done 2026-10-17 (plan in the work strip, lit state, header pill; merge `d18372e18`); updated after review the same day: plan id across wake turns, outcome on the strip, one clock |
+| [0022](0022-the-orchestrator-narrates-while-helpers-work.md) | The orchestrator narrates while helpers work | Done 2026-10-17 (engine notices, bundle rules, web work strip); updated after review the same day: progress wakes an idle parent, helpers save drafts; amended by 0029, which reverses the engine hiding or writing the assistant's words (the strip shows the Round's facts) |
+| [0023](0023-the-plan-is-visible-and-the-work-is-alive.md) | The plan is visible and the work is alive | Done 2026-10-17 (plan in the work strip, lit state, header pill; merge `d18372e18`); updated after review the same day: plan id across wake turns, outcome on the strip, one clock; 0029 reverses the plan in the strip and its ticks (the strip shows Round facts) |
 | [0024](0024-the-artifact-studio.md) | The artifact studio | Accepted 2026-10-17, refined after review; slices 1 and 2 built 2026-10-17 (both halves); amends 0021 |
 | [0025](0025-act-by-default-tasks-have-state.md) | Act by default, tasks have state, a pick resumes the work | Built and reworked 2026-10-17 (explicit task lifecycle, one stall rule, cards tied to tasks); amends the look gate of 0011 and the step limit's ending rule of 0007 |
 | [0026](0026-a-turn-speaks-in-a-second.md) | A turn speaks in a second | Built 2026-10-17; the latency budget, warm Chromium, look as a record, bounded metadata calls, loop never stalls, Stop that stops; measured rerun pending |
-| [0027](0027-super-chat-is-an-agentic-layer.md) | Super Chat is an agentic layer | Accepted 2026-10-17; three model categories, the context brief, an evidence-ticked plan, review before hand-back, display owned by the engine, Pause; amends 0007, 0022, 0023, 0025, 0026 |
+| [0027](0027-super-chat-is-an-agentic-layer.md) | Super Chat is an agentic layer | Accepted 2026-10-17; three model categories, the context brief, an evidence-ticked plan, review before hand-back, display owned by the engine, Pause; amends 0007, 0022, 0023, 0025, 0026; amended by 0029 (context is pulled, not ordered; the evidence-ticked plan goes) |
+| 0028 | Progress is an Omnigent capability | Never merged; superseded by 0029 (branch `wave4`) |
+| [0029](0029-a-round-is-recorded-and-the-harness-owns-the-words.md) | A Round is recorded and the harness owns the words | Accepted 2026-10-18; Rounds recorded and folded, words from the harness, context pulled, Helpers as Omnigent sessions, Stop per Round, one vocabulary; supersedes 0028, amends 0007, 0022, 0023, 0027 |
 
 The pages that explain the current system are listed in [../README.md](../README.md).

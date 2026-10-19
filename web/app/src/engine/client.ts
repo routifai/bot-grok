@@ -10,10 +10,7 @@ import {
  * single-user local mode), so no email, tenant or proxy secret is ever sent from here.
  */
 export function engineClient(): OmnigentClientConfig {
-  return omnigentClientFor(
-    { baseUrl: window.location.origin, proxySecret: "", secrets: [] },
-    "",
-  );
+  return omnigentClientFor({ baseUrl: window.location.origin, proxySecret: "", secrets: [] }, "");
 }
 
 /** The engine's calls take the caller's email for its identity header; the engine already knows

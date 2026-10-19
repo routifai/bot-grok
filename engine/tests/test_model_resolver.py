@@ -53,7 +53,7 @@ def test_explicit_model_bypasses_constraints_without_catalog_metadata() -> None:
             explicit_model="user-choice",
             required_capabilities=frozenset({ModelCapability.TOOL_USE}),
             minimum_context_window=200_000,
-            required_wire_api=ModelWireAPI.BEDROCK_CONVERSE,
+            required_wire_api=ModelWireAPI.ANTHROPIC_MESSAGES,
             allowed_families=frozenset({"required-family"}),
         ),
         [_candidate("catalog-choice")],
@@ -143,8 +143,6 @@ def test_cost_intent_returns_best_available_tier() -> None:
 def test_wire_api_vocabulary_covers_model_endpoint_adapters() -> None:
     assert {wire_api.value for wire_api in ModelWireAPI} == {
         "anthropic-messages",
-        "bedrock-converse",
-        "gemini-generate-content",
         "openai-chat",
         "openai-responses",
     }

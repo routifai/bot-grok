@@ -100,7 +100,7 @@ class ArtifactOutlineTool(ArtifactTool):
     """A saved file's outline; read from ``GET /v1/artifacts/{id}`` and its content (ADR 0027).
 
     Offered to the Conversation only, for reviewing a Helper's result against the ask. A read,
-    like ``artifact_list``: it never counts toward the step limit.
+    like ``artifact_list``: it is never work.
     """
 
     _NAME = "artifact_outline"

@@ -20,6 +20,7 @@ from omnigent.runner.memory.sync import (
     reconcile,
     record_checkpoint,
     record_daily_note,
+    record_round,
 )
 
 MAIN = files.Origin("main", "conv_main")
@@ -135,29 +136,58 @@ def test_a_failing_write_does_not_raise(tmp_path: Path) -> None:
     assert files.write_state(tmp_path, "state") is False
 
 
-def test_helper_result_line_has_no_body() -> None:
-    date, line = files.helper_result_line(
-        MAIN, title="Counting words", outcome="completed", session_id="conv_h1", date="2026-10-12"
-    )
+ROUND_ENTRY: dict[str, Any] = {
+    "round_id": "msg_r1",
+    "date": "2026-10-12",
+    "ask": "Build the Q4 forecast from the sales CSV",
+    "outcome": "The forecast is in q4-forecast.xlsx with three scenarios.",
+    "stopped": False,
+    "files": ["q4-forecast.xlsx"],
+    "helpers": ["Q4 forecast"],
+    "folder": "projects/q3",
+    "seconds": 134.4,
+    "refs": {"artifacts": ["a1@v2"], "project": ["q3"], "helpers": ["conv_h1"]},
+}
 
-    assert date == "2026-10-12"
-    assert line == (
-        '- 2026-10-12 · Helper "Counting words" completed (session conv_h1) '
-        "· main <!-- conv_main helpers:conv_h1 -->"
-    )
 
+@pytest.mark.parametrize(
+    ("entry", "line"),
+    [
+        (
+            ROUND_ENTRY,
+            '- 2026-10-12 · Asked "Build the Q4 forecast from the sales CSV" · The forecast is '
+            "in q4-forecast.xlsx with three scenarios. · Files: q4-forecast.xlsx · Helpers: "
+            '"Q4 forecast" · Folder: projects/q3 · Took 2m 14s · main <!-- conv_main '
+            "round:msg_r1 artifacts:a1@v2 project:q3 helpers:conv_h1 -->",
+        ),
+        (
+            {"round_id": "msg_r2", "date": "2026-10-12", "ask": "Stop that", "stopped": True},
+            '- 2026-10-12 · Asked "Stop that" · Stopped · Took 0s · main '
+            "<!-- conv_main round:msg_r2 -->",
+        ),
+        (
+            {"round_id": "msg_r3", "date": "2026-10-12", "ask": "A deck", "checked": True},
+            '- 2026-10-12 · Asked "A deck" · Done · Checked · Took 0s · main '
+            "<!-- conv_main round:msg_r3 -->",
+        ),
+        (
+            {"round_id": "msg_r4", "date": "2026-10-12", "ask": "A deck", "checked": False},
+            '- 2026-10-12 · Asked "A deck" · Done · Not checked · Took 0s · main '
+            "<!-- conv_main round:msg_r4 -->",
+        ),
+    ],
+    ids=["full", "stopped", "deck checked", "deck not checked"],
+)
+async def test_a_settled_round_writes_one_entry_once(
+    tmp_path: Path, entry: dict[str, Any], line: str
+) -> None:
+    """The fixed template; a second settlement of the same Round adds nothing."""
+    assert await record_round("conv_main", entry, workspace=tmp_path) is True
+    assert await record_round("conv_main", {**entry, "outcome": "x"}, workspace=tmp_path) is False
+    assert await record_round("conv_main", {**entry, "date": "../x"}, workspace=tmp_path) is False
 
-def test_helper_result_line_names_its_project_when_known() -> None:
-    line = files.helper_result_line(
-        MAIN,
-        title="Counting words",
-        outcome="completed",
-        session_id="conv_h1",
-        date="2026-10-12",
-        project="spring-launch",
-    )[1]
-
-    assert line.endswith("· main <!-- conv_main project:spring-launch helpers:conv_h1 -->")
+    lines = [ln for ln in _journal(tmp_path, "2026-10-12").splitlines() if ln.startswith("- ")]
+    assert lines == [line]
 
 
 REFS = {"files": ["projects/spring-launch/budget.xlsx"], "artifacts": ["a1@v3"]}

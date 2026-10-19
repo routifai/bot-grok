@@ -25,13 +25,17 @@ from omnigent.harnesses.executor import (
     TextChunk,
     ToolCallComplete,
     ToolCallRequest,
+    ToolCallStarted,
     ToolCallStatus,
+    ToolInputChunk,
+    TurnCancelled,
     TurnComplete,
 )
 from omnigent.harnesses.pi_executor import (
     PiExecutor,
     PiSubprocessConfig,
     _build_models_json,
+    _build_pi_prompt,
     _generate_extension_js,
     _only_configured_family,
     _pi_provider_for_model,
@@ -428,16 +432,33 @@ class TestPiProviderForModel(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 
-def test_split_pi_prompt_separates_text_and_images():
+@pytest.mark.parametrize("cold_with_history", [False, True])
+def test_split_pi_prompt_separates_text_and_images(cold_with_history):
     # #515: multimodal blocks must go to Pi's native message + images, not be
     # JSON-encoded into the text (which the model reads as a literal blob).
-    message, images = _split_pi_prompt(
-        [
+    # A fresh Pi process replays the history as text and still carries the
+    # latest message's image as an image.
+    latest = {
+        "role": "user",
+        "content": [
             {"type": "input_text", "text": "what is in this image?"},
-            {"type": "input_image", "image_url": "data:image/png;base64,AAAA"},
-        ]
-    )
-    assert message == "what is in this image?"
+            {
+                "type": "input_image",
+                "filename": "a.png",
+                "image_url": "data:image/png;base64,AAAA",
+            },
+        ],
+    }
+    history = [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "hello"}]
+    messages = [*history, latest] if cold_with_history else [latest]
+    prompt = _build_pi_prompt(messages, is_first_turn=True)
+    assert isinstance(prompt, list)
+    message, images = _split_pi_prompt(prompt)
+    if cold_with_history:
+        assert message.startswith("Conversation so far:") and "what is in this image?" in message
+        assert "base64" not in message
+    else:
+        assert message == "what is in this image?"
     assert images == [{"type": "image", "data": "AAAA", "mimeType": "image/png"}]
 
 
@@ -946,6 +967,9 @@ class TestToolServer(unittest.TestCase):
             # top-level result does.
             page = {"ends_turn": True}
             self.assertIs((await _run_with(page, tool="web_search"))["terminate"], False)
+            # Chips and a Helper start leave the turn to the model (ADR 0029).
+            for tool in ("suggest_follow_ups", "start_helper"):
+                self.assertIs((await _run_with(page, tool=tool))["terminate"], False)
             nested = {"result": json.dumps(page)}
             self.assertIs((await _run_with(nested))["terminate"], False)
             # A call batched with a card agrees to end the turn with it (Pi stops only when
@@ -1826,7 +1850,8 @@ class TestBuildEnvAndDir(unittest.TestCase):
             self.assertTrue(settings_path.is_file())
             with open(settings_path) as f:
                 settings = json.load(f)
-            self.assertIn("retry", settings)
+            # One model request may take the whole stdout idle budget.
+            self.assertEqual(settings["retry"]["provider"], {"timeoutMs": 120_000})
         finally:
             import shutil
 
@@ -2519,6 +2544,10 @@ class TestRunTurn(unittest.TestCase):
         _run(_test())
 
     def test_message_end_with_error_stop_reason(self):
+        """An errored call pi retries itself (``agent_end.willRetry``) stays in
+        the turn; the turn fails with the last attempt's own message only once
+        pi gives up."""
+
         async def _test():
             executor = self._make_executor()
 
@@ -2529,17 +2558,21 @@ class TestRunTurn(unittest.TestCase):
             fake_rpc.process.stdin = _FakeStreamWriter()
             fake_rpc._stderr_lines = []
 
-            errored = {
+            timed_out = {
                 "role": "assistant",
                 "content": [],
                 "stopReason": "error",
-                "errorMessage": "Rate limited",
+                "errorMessage": "Request timed out.",
             }
+            errored = {**timed_out, "errorMessage": "Rate limited"}
             lines = [
                 json.dumps({"type": "response", "success": True}),
+                json.dumps({"type": "message_end", "message": timed_out}),
+                json.dumps({"type": "agent_end", "messages": [timed_out], "willRetry": True}),
+                json.dumps({"type": "auto_retry_start", "attempt": 1, "delayMs": 2000}),
                 json.dumps({"type": "message_end", "message": errored}),
                 # Pi's agent loop always emits agent_end after an errored call.
-                json.dumps({"type": "agent_end", "messages": [errored]}),
+                json.dumps({"type": "agent_end", "messages": [errored], "willRetry": False}),
             ]
             for line in lines:
                 fake_rpc._line_queue.put_nowait(line)
@@ -2560,7 +2593,7 @@ class TestRunTurn(unittest.TestCase):
 
             self.assertEqual(len(events), 1)
             self.assertIsInstance(events[0], ExecutorError)
-            self.assertIn("Rate limited", events[0].message)
+            self.assertEqual(events[0].message, "Rate limited")
 
         _run(_test())
 
@@ -3090,6 +3123,52 @@ def test_pi_thinking_and_text_delta_ordering_preserved() -> None:
     _run(_test())
 
 
+def test_pi_streams_tool_call_start_and_argument_deltas() -> None:
+    """
+    Pi's ``toolcall_start`` / ``toolcall_delta`` updates surface as ToolCallStarted and
+    ToolInputChunk with the call id that ``tool_execution_start`` later carries.
+    """
+
+    async def _test() -> None:
+        def _update(ame: dict[str, object]) -> str:
+            return json.dumps({"type": "message_update", "assistantMessageEvent": ame})
+
+        executor = _executor_with_scripted_rpc(
+            [
+                json.dumps({"type": "response", "success": True}),
+                _update(
+                    {"type": "toolcall_start", "contentIndex": 1, "id": "c1", "toolName": "bash"}
+                ),
+                _update({"type": "toolcall_delta", "contentIndex": 1, "delta": '{"command": '}),
+                _update({"type": "toolcall_delta", "contentIndex": 1, "delta": '"ls"}'}),
+                json.dumps(
+                    {
+                        "type": "tool_execution_start",
+                        "toolCallId": "c1",
+                        "toolName": "bash",
+                        "args": {"command": "ls"},
+                    }
+                ),
+                json.dumps({"type": "agent_end", "messages": []}),
+            ]
+        )
+
+        events = [
+            e async for e in executor.run_turn([{"role": "user", "content": "hi"}], [], "system")
+        ]
+        kinds = [type(e).__name__ for e in events if not isinstance(e, TurnComplete)]
+        assert kinds == ["ToolCallStarted", "ToolInputChunk", "ToolInputChunk", "ToolCallRequest"]
+        assert events[0] == ToolCallStarted(name="bash", metadata={"call_id": "c1"})
+        assert (
+            "".join(e.delta for e in events if isinstance(e, ToolInputChunk))
+            == '{"command": "ls"}'
+        )
+        tool_events = (ToolCallStarted, ToolInputChunk, ToolCallRequest)
+        assert all(e.metadata["call_id"] == "c1" for e in events if isinstance(e, tool_events))
+
+    _run(_test())
+
+
 # ---------------------------------------------------------------------------
 # PiExecutor session management tests
 # ---------------------------------------------------------------------------
@@ -3165,6 +3244,19 @@ class TestSessionManagement(unittest.TestCase):
             # turn starts fresh and replays full history (marker included).
             mock_rpc.close.assert_awaited_once()
             self.assertEqual(executor._session_states, {})
+            # The Stop line the runner writes after a Stop between turns reaches
+            # the fresh process's prompt; a warm one would get the question alone.
+            stop_line = "[System: stopped]\nStopped. 'Jazz deck' was still working."
+            history = [
+                {"role": "user", "content": "Make a jazz deck"},
+                {"role": "assistant", "content": "I've started it."},
+                {"role": "user", "content": [{"type": "input_text", "text": stop_line}]},
+                {"role": "user", "content": "Did it finish?"},
+            ]
+            cold = _build_pi_prompt(history, is_first_turn=True)
+            self.assertIn(stop_line, cold)
+            self.assertTrue(cold.endswith("using the conversation above as context."))
+            self.assertEqual(_build_pi_prompt(history, is_first_turn=False), "Did it finish?")
 
         _run(_test())
 
@@ -5071,7 +5163,7 @@ class TestPiSteering(unittest.TestCase):
 
         _run(_test())
 
-    def test_a_turn_cut_short_with_steers_pending_drops_pi(self):
+    def test_an_aborted_turn_is_cancelled_and_drops_pi_with_steers_pending(self):
         async def _test():
             pi = _SteerablePi(cleared=[])
             executor = self._executor(pi)
@@ -5086,7 +5178,7 @@ class TestPiSteering(unittest.TestCase):
             )
             await asyncio.wait_for(task, 5)
 
-            self.assertIsInstance(events[-1], ExecutorError)
+            self.assertEqual(events[-1], TurnCancelled())
             self.assertEqual(self._outcomes(events), [])  # unreported: the caller refuses it
             self.assertTrue(pi.closed)  # Pi may still hold it; nothing answers it twice
             self.assertNotIn("s", executor._session_states)

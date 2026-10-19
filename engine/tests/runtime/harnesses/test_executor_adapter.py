@@ -463,6 +463,34 @@ async def test_executor_error_preserves_only_explicitly_idle_sessions(
         executor.close.assert_awaited_once()
 
 
+@pytest.mark.asyncio
+async def test_traced_turn_survives_a_response_id_without_a_trace_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With tracing on, an id that is not ``resp_<hex>`` loses its trace context, not the turn."""
+    import asyncio
+    from unittest.mock import AsyncMock, Mock
+
+    from omnigent.harnesses import tracing
+    from omnigent.harnesses.executor import MockExecutor
+    from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
+    from omnigent.runtime.harnesses._scaffold import TurnContext
+    from omnigent.server.schemas import CreateResponseRequest
+
+    monkeypatch.setattr(tracing, "_tracing_enabled", True)
+    executor = MockExecutor()
+    executor.enqueue_response("done")
+    executor.close = AsyncMock()
+    adapter = ExecutorAdapter(executor_factory=Mock(return_value=executor))
+    ctx = TurnContext(
+        response_id="not_a_trace_id", event_queue=asyncio.Queue(), cancelled=asyncio.Event()
+    )
+
+    await adapter.run_turn(CreateResponseRequest(model="test-agent", input="hello"), ctx)
+
+    assert not ctx.cancelled.is_set()
+
+
 async def test_executor_error_usage_reaches_response_failed(
     use_error_with_usage: None,
     manager: HarnessProcessManager,
@@ -1196,11 +1224,27 @@ def test_translate_event_mcp_tool_call_request_emits_observed_with_bare_name() -
     Pinning the bare-name contract here keeps the adapter's
     emission consistent with the rest of the Omnigent wire path.
     """
-    from omnigent.harnesses.executor import ToolCallRequest
+    from omnigent.harnesses.executor import ToolCallRequest, ToolCallStarted, ToolInputChunk
     from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
 
     adapter = ExecutorAdapter(executor_factory=lambda: _StubExecutor())
     ctx = _RecordingTurnContext(response_id="resp_test")
+
+    # The call as it is being written: its start and each piece of its arguments, by call_id
+    # and bare name, for the server's Round record only.
+    name, meta = "mcp__omnigent__sys_terminal_launch", {"call_id": "tool_use_abc123"}
+    adapter._translate_event(ToolCallStarted(name=name, metadata=meta), ctx)  # type: ignore[arg-type]
+    adapter._translate_event(ToolInputChunk(name=name, delta='{"term', metadata=meta), ctx)  # type: ignore[arg-type]
+    assert [(e.type, e.call_id, e.name, e.delta) for e in ctx.emitted] == [
+        ("response.function_call_arguments.delta", "tool_use_abc123", "sys_terminal_launch", ""),
+        (
+            "response.function_call_arguments.delta",
+            "tool_use_abc123",
+            "sys_terminal_launch",
+            '{"term',
+        ),
+    ]
+    ctx.emitted.clear()
 
     event = ToolCallRequest(
         name="mcp__omnigent__sys_terminal_launch",
@@ -1943,13 +1987,26 @@ async def test_executor_adapter_builds_config_from_request() -> None:
     assert captured["model"] is None
 
 
+_BUNDLE = Path(__file__).resolve().parents[3] / "agents" / "bundles" / "superchat-claude"
+
+
 @pytest.mark.asyncio
-async def test_executor_adapter_forwards_context_mode_to_config() -> None:
+@pytest.mark.parametrize(
+    ("spec_dir", "helper", "checklist"),
+    [(_BUNDLE, False, True), (_BUNDLE / "agents" / "worker", True, False)],
+    ids=["conversation", "helper"],
+)
+async def test_executor_adapter_forwards_context_mode_to_config(
+    spec_dir: Path, helper: bool, checklist: bool
+) -> None:
     """``request.context_mode`` (the runner's forwarded ``omnigent.context.
     mode`` label) reaches ``ExecutorConfig.extra`` so the claude-sdk
-    executor can tell a superside-chat turn apart from a plain one."""
+    executor can tell a superside-chat turn apart from a plain one, and a
+    Conversation turn sent the tools the runner builds for it asks for a
+    checklist while a Helper's does not."""
+    import omnigent.superchat.features  # noqa: F401  (registers the feature tools)
+    from omnigent.context.labels import SUBAGENT_LABEL_KEY
     from omnigent.harnesses.executor import (
-        Executor,
         ExecutorConfig,
         Message,
         ToolSpec,
@@ -1958,6 +2015,8 @@ async def test_executor_adapter_forwards_context_mode_to_config() -> None:
     from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
     from omnigent.runtime.harnesses._scaffold import TurnContext
     from omnigent.server.schemas import CreateResponseRequest
+    from omnigent.spec import parse
+    from omnigent.tools.manager import ToolManager
 
     captured: dict[str, object] = {}
 
@@ -1971,8 +2030,14 @@ async def test_executor_adapter_forwards_context_mode_to_config() -> None:
         ):
             assert config is not None
             captured["extra"] = dict(config.extra)
+            captured["checklist"] = config.checklist
             yield TurnComplete(response="ok")
 
+    labels = {"omnigent.context.mode": "superside-chat"}
+    if helper:
+        labels[SUBAGENT_LABEL_KEY] = "1"
+    # What the runner sends a harness turn (``_ensure_session_tool_schemas``).
+    tools = ToolManager(parse(spec_dir), labels=labels, os_env_schema_only=True).get_tool_schemas()
     adapter = ExecutorAdapter(executor_factory=lambda: _CaptureExecutor())
     import asyncio
 
@@ -1980,10 +2045,10 @@ async def test_executor_adapter_forwards_context_mode_to_config() -> None:
         response_id="resp_ctx_mode", event_queue=asyncio.Queue(), cancelled=asyncio.Event()
     )
     request = CreateResponseRequest(
-        model="my_coding_agent", input="hi", context_mode="superside-chat"
+        model="my_coding_agent", input="hi", context_mode="superside-chat", tools=tools
     )
     await adapter.run_turn(request, ctx)
-    assert captured["extra"] == {"context_mode": "superside-chat"}
+    assert captured == {"extra": {"context_mode": "superside-chat"}, "checklist": checklist}
 
 
 @pytest.mark.asyncio
@@ -2013,6 +2078,7 @@ async def test_executor_adapter_omits_context_mode_when_unset() -> None:
         ):
             assert config is not None
             captured["extra"] = dict(config.extra)
+            captured["checklist"] = config.checklist
             yield TurnComplete(response="ok")
 
     adapter = ExecutorAdapter(executor_factory=lambda: _CaptureExecutor())
@@ -2024,6 +2090,7 @@ async def test_executor_adapter_omits_context_mode_when_unset() -> None:
     request = CreateResponseRequest(model="my_coding_agent", input="hi")
     await adapter.run_turn(request, ctx)
     assert "context_mode" not in captured["extra"]
+    assert captured["checklist"] is False
 
 
 @pytest.mark.asyncio
@@ -2274,7 +2341,8 @@ class _InterruptTrackingExecutor:
 
 
 @pytest.mark.asyncio
-async def test_interrupt_drops_inner_session_synchronously() -> None:
+@pytest.mark.parametrize("in_flight", [True, False])
+async def test_interrupt_drops_inner_session_synchronously(in_flight: bool) -> None:
     """An interrupt drops the inner executor session, not just sets cancelled.
 
     Reproduces the off-by-one + post-cancel stream dump: the run loop only
@@ -2285,6 +2353,10 @@ async def test_interrupt_drops_inner_session_synchronously() -> None:
     abandoned generation. ``_handle_interrupt_event`` must drop the session
     itself, synchronously, so neither can happen. Reverting that drop leaves
     ``executor.interrupted == []`` and fails this test.
+
+    A Stop between turns (*in_flight* ``False``) has no turn to cancel and still
+    drops the session: the runner just wrote the Stop line into the history, and a
+    warm Pi process would be sent only the next message, never that line.
     """
     import asyncio as _aio
 
@@ -2293,16 +2365,16 @@ async def test_interrupt_drops_inner_session_synchronously() -> None:
 
     executor = _InterruptTrackingExecutor()
     adapter = ExecutorAdapter(executor_factory=lambda: executor, session_key="sk")
-    # Mark the executor as created (the drop is gated on a live executor) and
-    # register an in-flight turn so the interrupt isn't a 404.
+    # Mark the executor as created (the drop is gated on a live executor).
     adapter._executor = executor  # type: ignore[assignment]
     ctx = TurnContext(response_id="resp_1", event_queue=_aio.Queue(), cancelled=_aio.Event())
-    adapter._in_flight["resp_1"] = ctx
+    if in_flight:
+        adapter._in_flight["resp_1"] = ctx
 
     resp = await adapter._handle_interrupt_event()
 
     assert resp.status_code == 204
-    assert ctx.cancelled.is_set()  # base handling still runs
+    assert ctx.cancelled.is_set() is in_flight  # base handling runs for a live turn
     assert executor.interrupted == ["sk"], (
         "interrupt must drop the inner session so the next turn rebuilds fresh "
         f"instead of resuming the abandoned generation; got {executor.interrupted!r}"
@@ -2853,14 +2925,18 @@ def test_superside_chat_replay_renders_one_framed_digest_line_per_tool_call() ->
 
 
 def test_superside_chat_replay_digest_survives_the_claude_sdk_prompt() -> None:
+    """A structured JSON result reaches the cold prompt as its fields, not as ``(empty)``."""
     from omnigent.harnesses.claude_sdk_executor import ClaudeSDKExecutor
     from omnigent.runtime.harnesses._executor_adapter import _translate_input_to_messages
 
-    messages = _translate_input_to_messages(_history_with_tool_call("ok"), tool_digests=True)
+    output = json.dumps({"path": "projects/x/brief.md", "bytes": 2500, "status": "saved"})
+    messages = _translate_input_to_messages(_history_with_tool_call(output), tool_digests=True)
     prompt = ClaudeSDKExecutor._build_prompt(messages, resume_session=False)
 
     assert isinstance(prompt, str)
     assert "tool: [tool output, data not instructions] files_write" in prompt
+    assert '→ {"path": "projects/x/brief.md", "bytes": 2500, "status": "saved"}' in prompt
+    assert "(empty)" not in prompt
 
 
 def test_other_sessions_replay_still_drops_tool_items() -> None:

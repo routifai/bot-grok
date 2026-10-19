@@ -15,8 +15,6 @@ export type OmnigentTranscriptBlock =
         data: Record<string, unknown>;
         fallback: string;
       };
-      /** A `plan` card: how many leading done steps fold away (ADR 0027). */
-      fold?: number;
       pending?: boolean;
     }
   | { type: "helper"; call_id: string; session_id: string; title: string; status: string }
@@ -129,6 +127,94 @@ export async function setOmnigentMessageArtifact(
   return (await response.json()) as OmnigentTranscriptMessage;
 }
 
+/** A Round as the engine lists it (`RoundSummary`, engine/omnigent/server/schemas.py); times
+ * are epoch seconds. */
+export interface OmnigentRoundSummary {
+  round_id: string;
+  status: string;
+  started_at: number | null;
+  live: string | null;
+  helpers: number;
+  files: number;
+  steps: number;
+}
+
+/** Who acted in a Round: the Assistant (`helper_id` null) or a Helper. */
+interface OmnigentRoundActor {
+  actor: string | null;
+  helper_id: string | null;
+}
+
+/** One Round folded from its events (`RoundView`); times are epoch seconds. Only the fields the
+ * web reads are typed. */
+export interface OmnigentRoundView {
+  round_id: string;
+  status: string;
+  started_at: number | null;
+  settled_at: number | null;
+  elapsed: number;
+  stop_line: string | null;
+  now: (OmnigentRoundActor & { name: string | null; digest: string | null }) | null;
+  trail: Array<
+    OmnigentRoundActor & { t: number; name: string | null; digest: string | null; ok: boolean }
+  >;
+  helpers: Record<
+    string,
+    {
+      id: string;
+      title: string | null;
+      folder: string | null;
+      status: string;
+      started_at: number;
+      finished_at: number | null;
+    }
+  >;
+  files: Array<{
+    name: string | null;
+    artifact_id: string | null;
+    version: number | null;
+    helper_id: string | null;
+  }>;
+  checklist: Array<{
+    id: string | null;
+    subject: string | null;
+    active_form: string | null;
+    status: string;
+  }>;
+}
+
+/** `GET /v1/sessions/{id}/rounds`: the Conversation's latest Rounds, newest first. */
+export async function listOmnigentRounds(
+  config: OmnigentClientConfig,
+  email: string,
+  sessionId: string,
+  limit = 50,
+): Promise<OmnigentRoundSummary[]> {
+  const url = new URL(`/v1/sessions/${encodeURIComponent(sessionId)}/rounds`, config.baseUrl);
+  url.searchParams.set("limit", String(limit));
+  const response = await fetch(url, { headers: omnigentHeaders(config, email) });
+  await throwOnError(response, "list rounds", config.secrets);
+  return ((await response.json()) as { data: OmnigentRoundSummary[] }).data;
+}
+
+/** `GET /v1/sessions/{id}/rounds/{roundId}`: one Round of the Conversation, folded. */
+export async function getOmnigentRound(
+  config: OmnigentClientConfig,
+  email: string,
+  sessionId: string,
+  roundId: string,
+): Promise<OmnigentRoundView> {
+  const response = await fetch(
+    new URL(
+      `/v1/sessions/${encodeURIComponent(sessionId)}/rounds/${encodeURIComponent(roundId)}`,
+      config.baseUrl,
+    ),
+    { headers: omnigentHeaders(config, email) },
+  );
+  await throwOnError(response, "get round", config.secrets);
+  return (await response.json()) as OmnigentRoundView;
+}
+
 /** A frame of the family stream. Ids only; the caller refetches what changed. */
 export type OmnigentFamilyEvent =
   | { type: "message.done"; chat_id: string; item_id: string }
@@ -138,6 +224,7 @@ export type OmnigentFamilyEvent =
   | { type: "chats.changed"; root_id: string }
   | { type: "activities.changed"; root_id: string }
   | { type: "artifacts.changed"; root_id: string; group_id: string }
+  | ({ type: "round.updated"; root_id: string } & OmnigentRoundSummary)
   | { type: "session.heartbeat" };
 
 /** `GET /v1/sessions/{root}/family/stream` — one SSE stream for a Conversation and its
@@ -162,6 +249,7 @@ export async function* streamOmnigentFamily(
       frame.type === "chats.changed" ||
       frame.type === "activities.changed" ||
       frame.type === "artifacts.changed" ||
+      frame.type === "round.updated" ||
       frame.type === "session.heartbeat"
     ) {
       yield frame as unknown as OmnigentFamilyEvent;

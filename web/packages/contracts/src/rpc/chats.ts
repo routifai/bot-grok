@@ -5,6 +5,81 @@ import { ThreadMessagePageSchema } from "../domain.js";
 import { ThreadMessageSchema } from "../events.js";
 import { Id } from "../ids.js";
 
+/** A Round (ADR 0029): one person's message through settlement, as the engine's record folds it.
+ * Times are epoch ms on the engine's clock. `status`: `idle`, `running`, `done`, `failed` or `stopped`. */
+export const RoundSummarySchema = z.object({
+  /** The id of the person's message that opened it. */
+  roundId: z.string(),
+  status: z.string(),
+  startedAt: z.number().nullable(),
+  /** The running tool's digest, else its name. */
+  live: z.string().nullable(),
+  helpers: z.number(),
+  files: z.number(),
+  steps: z.number(),
+});
+export type RoundSummary = z.infer<typeof RoundSummarySchema>;
+
+/** Who acted in a Round: the Assistant (`helperId` null) or one of its Helpers. */
+const RoundActor = { actor: z.string().nullable(), helperId: z.string().nullable() };
+
+/** One Round in full (`GET /v1/sessions/{id}/rounds/{roundId}`): every word is the harness's or
+ * the record's; `stopLine` is the one line the engine writes, already in the transcript. */
+export const RoundViewSchema = z.object({
+  roundId: z.string(),
+  status: z.string(),
+  startedAt: z.number().nullable(),
+  settledAt: z.number().nullable(),
+  elapsedMs: z.number(),
+  stopLine: z.string().nullable(),
+  /** The tool running now. */
+  now: z
+    .object({ ...RoundActor, name: z.string().nullable(), digest: z.string().nullable() })
+    .nullable(),
+  /** Finished tool calls, in order. */
+  trail: z.array(
+    z.object({
+      ...RoundActor,
+      at: z.number(),
+      name: z.string().nullable(),
+      digest: z.string().nullable(),
+      ok: z.boolean(),
+    }),
+  ),
+  /** Helpers in the order they started. */
+  helpers: z.array(
+    z.object({
+      id: z.string(),
+      title: z.string().nullable(),
+      folder: z.string().nullable(),
+      /** `running`, `done`, `failed` or `stopped`. */
+      status: z.string(),
+      startedAt: z.number(),
+      finishedAt: z.number().nullable(),
+    }),
+  ),
+  /** Files saved, a re-save replacing the earlier one. */
+  files: z.array(
+    z.object({
+      artifactId: z.string().nullable(),
+      name: z.string().nullable(),
+      version: z.number().nullable(),
+      helperId: z.string().nullable(),
+    }),
+  ),
+  /** The model's checklist, in its own words; it drives nothing. */
+  checklist: z.array(
+    z.object({
+      id: z.string().nullable(),
+      subject: z.string().nullable(),
+      activeForm: z.string().nullable(),
+      /** `pending`, `in_progress` or `completed`. */
+      status: z.string(),
+    }),
+  ),
+});
+export type RoundView = z.infer<typeof RoundViewSchema>;
+
 /** One event of a Muse's live family stream (the Conversation and its Helpers).
  * Ids only: the client refetches what changed. `open` is local to the relay: the stream just
  * (re)connected, so anything may have been missed. */
@@ -23,6 +98,8 @@ export const FamilyEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("activitiesChanged") }),
   /** A version of a file was saved (`groupId`: the file, `Artifact.groupId`). */
   z.object({ type: z.literal("artifactsChanged"), groupId: z.string() }),
+  /** A Round's record grew: its summary; `chats.round` reads it in full. */
+  RoundSummarySchema.extend({ type: z.literal("roundUpdated") }),
   z.object({ type: z.literal("heartbeat") }),
 ]);
 export type FamilyEvent = z.infer<typeof FamilyEventSchema>;
@@ -34,6 +111,8 @@ export const ChatStatusSchema = z.object({
   blockedOn: z.string().nullable(),
   /** A Helper held by Pause (ADR 0027), as the engine flags it. */
   paused: z.boolean().optional(),
+  /** While a turn runs: its Activity (`activities.get`), before any reply names it. */
+  activityId: z.string().optional(),
 });
 export type ChatStatus = z.infer<typeof ChatStatusSchema>;
 
@@ -62,13 +141,19 @@ export const chatsContract = {
         }),
       )
       .output(ThreadMessagePageSchema),
+    /** The Conversation's latest Rounds, newest first. */
+    rounds: oc
+      .input(z.object({ botId: Id }))
+      .output(z.object({ rounds: z.array(RoundSummarySchema) })),
+    /** One Round of the Conversation in full (NOT_FOUND for a message that opened none). */
+    round: oc.input(z.object({ botId: Id, roundId: Id })).output(RoundViewSchema),
     /** The person has the Conversation open: marks it read (and clears its unread dot). */
     markRead: oc.input(z.object({ botId: Id })).output(z.object({ ok: z.literal(true) })),
     /** Clears the Muse's Conversation (CONFLICT while a turn is running). */
     reset: oc.input(z.object({ botId: Id })).output(z.object({ ok: z.literal(true) })),
     /** The Muse's live family stream: ids only, refetch what changed. */
     watch: oc.input(z.object({ botId: Id })).output(eventIterator(FamilyEventSchema)),
-    /** One of the Muse's chats' status as it changes (a file's studio chat). */
+    /** The Conversation's or one of the Muse's chats' status as it changes. */
     watchStatus: oc
       .input(z.object({ botId: Id, chatId: Id }))
       .output(eventIterator(ChatStatusSchema)),
@@ -104,15 +189,6 @@ export const chatsContract = {
                     cardId: z.string().min(1).max(200),
                     optionId: z.string().min(1).max(64),
                     label: z.string().min(1).max(200),
-                  })
-                  .optional(),
-                /** The message is about one step of a reply's plan (ADR 0027 "Comment"): the
-                 * plan card, the step's place and its words. */
-                stepComment: z
-                  .object({
-                    cardId: z.string().min(1).max(200),
-                    stepIndex: z.number().int().min(0).max(49),
-                    text: z.string().min(1).max(2000),
                   })
                   .optional(),
               })

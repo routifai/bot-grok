@@ -109,9 +109,41 @@ def run_migrations(database_url: str) -> None:
     database_url = normalize_database_url(database_url)
     migration_engine = _create_engine(database_url)
     try:
+        _ensure_search_path_schema(migration_engine, database_url)
         _initialize_or_verify_schema(migration_engine, database_url)
     finally:
         migration_engine.dispose()
+
+
+def _search_path_schema(database_url: str) -> str | None:
+    """The schema a Postgres URL's ``options=-csearch_path=<name>`` names, else ``None``."""
+    from urllib.parse import parse_qs, unquote, urlsplit
+
+    parts = urlsplit(database_url)
+    if not parts.scheme.startswith("postgres"):
+        return None
+    for option in parse_qs(parts.query).get("options", []):
+        for token in unquote(option).split():
+            if token.startswith("-csearch_path="):
+                name = token.removeprefix("-csearch_path=").split(",")[0].strip()
+                if name and name.replace("_", "").isalnum():
+                    return name
+    return None
+
+
+def _ensure_search_path_schema(migration_engine: Any, database_url: str) -> None:
+    """Create the schema the URL's search path names, so a fresh database can migrate.
+
+    Compose points the engine at ``search_path=engine``; Postgres only ships ``public``, and
+    Alembic cannot create its version table in a schema that does not exist.
+    """
+    from sqlalchemy import text
+
+    name = _search_path_schema(database_url)
+    if name is None:
+        return
+    with migration_engine.begin() as connection:
+        connection.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{name}"'))
 
 
 def _resolve_config() -> _ResolvedConfig:

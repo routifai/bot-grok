@@ -215,15 +215,20 @@ def test_provision_explains_a_missing_runner_image() -> None:
         make_launcher(FakeDocker(image_present=False)).provision("a")
 
 
-def test_resource_limits_come_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_limits_and_names_come_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OMNIGENT_HOST_MEMORY", "512m")
     monkeypatch.setenv("OMNIGENT_HOST_CPUS", "1.5")
     monkeypatch.setenv("OMNIGENT_HOST_PIDS_LIMIT", "100")
+    monkeypatch.setenv("OMNIGENT_HOST_NAME_PREFIX", "superchat-train")
     docker = FakeDocker()
     make_launcher(docker).provision("a")
-    body = docker.containers["c1"]["Body"]
+    container = docker.containers["c1"]
+    # A second stack's engine names its hosts apart from the default stack's.
+    assert container["Name"] == f"superchat-train-host-{KEY}" != container_name(KEY)
+    body = container["Body"]
     assert isinstance(body, dict)
     host = body["HostConfig"]
+    assert host["Mounts"][0]["Source"] == f"superchat-train-home-{KEY}" != home_volume_name(KEY)
     assert (host["Memory"], host["NanoCpus"], host["PidsLimit"]) == (
         512 * 1024**2,
         1_500_000_000,

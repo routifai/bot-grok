@@ -2,7 +2,7 @@
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import type { Activity, ActivityStep, ThreadMessage } from "@superchat/contracts";
+import type { Activity, ActivityStep, RoundView, ThreadMessage } from "@superchat/contracts";
 import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -56,6 +56,7 @@ const rpcMock = vi.hoisted(() => {
   return {
     list: vi.fn(),
     get: vi.fn(),
+    round: vi.fn(),
     pauseHelpers: vi.fn(),
     resumeHelpers: vi.fn(),
     streams,
@@ -87,6 +88,7 @@ vi.mock("../../lib/rpc", () => ({
     artifacts: { list: rpcMock.list },
     activities: { get: rpcMock.get },
     chats: {
+      round: rpcMock.round,
       watchStatus: rpcMock.watchStatus,
       pauseHelpers: rpcMock.pauseHelpers,
       resumeHelpers: rpcMock.resumeHelpers,
@@ -102,6 +104,9 @@ const family = vi.hoisted(() => {
     saved: () => {
       for (const listener of [...listeners]) listener({ type: "artifactsChanged", groupId: "g" });
     },
+    roundUpdated: (roundId: string) => {
+      for (const listener of [...listeners]) listener({ type: "roundUpdated", roundId });
+    },
   };
 });
 vi.mock("../../lib/family-stream", () => ({
@@ -115,9 +120,9 @@ import { AnsweredWhileWorking, useAnsweredWhileWorking } from "./AnsweredWhileWo
 import { settleActivityFocus, useActivityFocus } from "./activityFocus";
 import { activity, helper } from "./activityTestKit";
 import { resetConversationFiles } from "./conversationFiles";
-import { setStepComment, stepCommentNow } from "./stepComment";
+import { RoundStrip } from "./RoundStrip";
+import { resetRounds } from "./rounds";
 import { WorkStrip } from "./WorkStrip";
-import type { PlanStep } from "./workPlan";
 import type { StripHelper, StripTurn } from "./workStripState";
 
 const mounted: Array<() => void> = [];
@@ -127,10 +132,11 @@ afterEach(() => {
   fake.refresh.mockClear();
   rpcMock.list.mockReset();
   rpcMock.get.mockReset();
+  rpcMock.round.mockReset();
+  resetRounds();
   rpcMock.pauseHelpers.mockReset();
   rpcMock.resumeHelpers.mockReset();
   rpcMock.streams.clear();
-  setStepComment(null);
   resetConversationFiles();
 });
 
@@ -351,11 +357,18 @@ it("shows no draft for a file someone else saved or edited by hand", async () =>
 });
 
 it("finds a draft however many newer files others saved, and an older file it updated", async () => {
-  const others = Array.from({ length: 8 }, (_, i) => fileRow(`v-o${i}`, `o${i}.md`, "h-other"));
+  // Files show newest first, so each gets its own time: the others newest, then deck, then page.
+  const at = (minute: number) => ({
+    createdAt: `2026-01-01T00:${String(minute).padStart(2, "0")}:00.000Z`,
+  });
+  const others = Array.from({ length: 8 }, (_, i) => ({
+    ...fileRow(`v-o${i}`, `o${i}.md`, "h-other"),
+    ...at(10 + i),
+  }));
   rpcMock.list.mockResolvedValue([
     ...others,
-    fileRow("v-deck-1", "deck.html", "h-deck", "ai"),
-    fileRow("v-page-4", "page.html", "h-deck", "update", 4),
+    { ...fileRow("v-deck-1", "deck.html", "h-deck", "ai"), ...at(2) },
+    { ...fileRow("v-page-4", "page.html", "h-deck", "update", 4), ...at(1) },
   ]);
   const { container } = await mount([deckHelper], [saving("h-deck")]);
   await act(async () => undefined);
@@ -441,7 +454,7 @@ it("falls back to the transcript's status for a Helper the feed does not list", 
   expect(fake.refresh).toHaveBeenCalled();
 });
 
-it("puts the quiet meta line under a reply given while the work continues", async () => {
+it("puts the quiet meta line under a reply given while the work continues, never in a Round", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const messages: ThreadMessage[] = [
     {
@@ -475,7 +488,7 @@ it("puts the quiet meta line under a reply given while the work continues", asyn
   fake.set(
     ready([helper("h-deck", { status: "in_progress", startedAt: ago(59_000), finishedAt: null })]),
   );
-  function Replies() {
+  function Replies({ messages }: { messages: ThreadMessage[] }) {
     const answered = useAnsweredWhileWorking("bot-1", messages);
     return (
       <>
@@ -491,130 +504,35 @@ it("puts the quiet meta line under a reply given while the work continues", asyn
   document.body.append(container);
   const root = createRoot(container);
   mounted.push(() => act(() => root.unmount()));
-  await act(async () => root.render(<Replies />));
+  await act(async () => root.render(<Replies messages={messages} />));
   const lines = container.querySelectorAll("[data-testid=answered-while-working]");
   expect(lines).toHaveLength(1);
   expect(lines[0]?.closest("[data-id]")?.getAttribute("data-id")).toBe("reply-2");
   expect(lines[0]?.textContent).toBe("Answered while the work continues");
+  // The question opened a Round: its strip is the only word on what runs.
+  const inRound = messages.map((m) => (m.id === "ask-2" ? { ...m, roundId: "ask-2" } : m));
+  await act(async () => root.render(<Replies messages={inRound} />));
+  expect(container.querySelector("[data-testid=answered-while-working]")).toBeNull();
 });
 
-describe("the plan in the strip (ADR 0023)", () => {
-  const step = (text: string, status: PlanStep["status"], added = false): PlanStep => ({
-    text,
-    status,
-    added,
-  });
-  const PLAN = [
-    step("Read the file", "done"),
-    step("Build the slides", "doing"),
-    step("Check the figures", "todo"),
-  ];
-  const running = (plan: PlanStep[]): StripTurn => ({
-    plan,
-    live: true,
-    startedAt: Date.now() - 42_000,
-    endedAt: null,
-  });
-  const steps = (container: HTMLElement) =>
-    [...container.querySelectorAll("[data-testid=work-plan-step]")].map((li) => [
-      li.textContent,
-      li.getAttribute("data-status"),
-    ]);
-
-  it("draws each step by its status, the current one with the latest progress sentence", async () => {
-    const { container } = await mount(
-      [deckHelper],
-      [
-        helper("h-deck", {
-          status: "in_progress",
-          startedAt: ago(30_000),
-          finishedAt: null,
-          steps: [toolStep("report_progress", "Slide 3 of 6 written", 1)],
-        }),
-      ],
-      running(PLAN),
-    );
-    // Live, the strip stops at the current step and names the next one under it.
-    expect(steps(container)).toEqual([
-      ["Read the file", "done"],
-      ["Build the slidesSlide 3 of 6 writtenThen: Check the figures", "doing"],
-    ]);
-    expect(container.querySelector("[data-testid=work-plan-then]")?.textContent).toBe(
-      "Then: Check the figures",
-    );
-    expect(container.querySelector("[data-testid=work-strip-now]")?.textContent).toBe(
-      "Build the slides",
-    );
-    expect(container.querySelector("[data-testid=work-plan-progress]")?.textContent).toBe(
-      "Slide 3 of 6 written",
-    );
-    expect(
-      container.querySelector("[data-testid=work-strip-progress]")?.getAttribute("aria-valuenow"),
-    ).toBe("1");
-    expect(container.querySelector("[data-testid=work-strip-clock]")?.textContent).toMatch(
-      /^0:4[23]$/,
-    );
-    // The plan replaces the per-Helper lines.
-    expect(container.querySelector("[data-testid=work-strip-line]")).toBeNull();
-  });
-
-  it("updates in place when the plan is rendered again, marking an added step", async () => {
-    const { container, render } = await mount([], [], running(PLAN));
-    const strip = container.querySelector("[data-testid=work-strip]");
-    await render(
-      [],
-      running([
-        step("Read the file", "done"),
-        step("Build the slides", "done"),
-        step("Note the cut-off", "doing", true),
-        step("Check the figures", "todo"),
-      ]),
-    );
-    expect(container.querySelectorAll("[data-testid=work-strip]")).toHaveLength(1);
-    expect(container.querySelector("[data-testid=work-strip]")).toBe(strip);
-    expect(steps(container).map(([, status]) => status)).toEqual(["done", "done", "doing"]);
-    const added = container.querySelectorAll("[data-added]");
-    expect(added).toHaveLength(1);
-    expect(added[0]?.textContent).toBe("Note the cut-offThen: Check the figures");
-  });
-
+describe("the strip's motion (ADR 0023)", () => {
   it("is lit while the work runs, without any Helper, and goes still when it settles", async () => {
-    const { container, render } = await mount([], [], running(PLAN));
+    const turnActivity = activity({ id: "turn:conv:r1", summaryLine: "Read your files" });
+    const turn: StripTurn = {
+      activityId: "turn:conv:r1",
+      live: true,
+      startedAt: Date.now() - 42_000,
+      endedAt: null,
+    };
+    const { container, render } = await mount([], [turnActivity], turn);
     const strip = () => container.querySelector("[data-testid=work-strip]");
     expect(strip()?.hasAttribute("data-live")).toBe(true);
     expect(strip()?.className).toContain("sc-work");
     expect(container.querySelector("[data-testid=superchat-orb]")).not.toBeNull();
-    await render([], { ...running(PLAN), live: false, endedAt: Date.now() });
+    await render([], { ...turn, live: false, endedAt: Date.now() });
     expect(strip()?.hasAttribute("data-live")).toBe(false);
     expect(strip()?.getAttribute("data-state")).toBe("settled");
     expect(container.querySelector("[data-testid=work-strip-still]")).not.toBeNull();
-    expect(container.querySelector("[data-testid=work-strip-progress]")).toBeNull();
-  });
-
-  it("settles to one line, the plan behind a Plan toggle that starts closed", async () => {
-    const started = Date.now() - 150_000;
-    const { container } = await mount([], [], {
-      plan: PLAN,
-      live: false,
-      startedAt: started,
-      endedAt: started + 150_000,
-    });
-    // The step running when the work finished counts as done; the one never started does not.
-    expect(container.querySelector("[data-testid=work-strip-settled]")?.textContent).toBe(
-      "2 of 3 done",
-    );
-    expect(container.querySelector("[data-testid=work-strip-clock]")?.textContent).toBe("2:30");
-    expect(container.querySelector("[data-testid=work-plan]")).toBeNull();
-    const toggle = container.querySelector<HTMLButtonElement>(
-      "[data-testid=work-strip-plan-toggle]",
-    );
-    expect(toggle?.textContent).toBe("Plan");
-    expect(toggle?.getAttribute("aria-expanded")).toBe("false");
-    await act(async () => toggle?.click());
-    expect(toggle?.getAttribute("aria-expanded")).toBe("true");
-    expect(steps(container).map(([, status]) => status)).toEqual(["done", "done", "todo"]);
-    await act(async () => toggle?.click());
-    expect(container.querySelector("[data-testid=work-plan]")).toBeNull();
   });
 
   it("stops the turning edge, the glow, the shimmer and every slide under reduced motion", () => {
@@ -661,62 +579,6 @@ it("takes no draft from a file's studio turn, even one that saved", async () => 
 });
 
 describe("the engine's display (ADR 0027)", () => {
-  const engineStep = (text: string, status: PlanStep["status"], active?: string): PlanStep => ({
-    text,
-    status,
-    added: false,
-    engine: true,
-    ...(active ? { active } : {}),
-  });
-
-  it("keeps the engine's reading once settled: a step left doing is not ticked", async () => {
-    const started = Date.now() - 60_000;
-    const { container } = await mount([], [], {
-      plan: [engineStep("Build", "done"), engineStep("Check", "not_checked")],
-      live: false,
-      startedAt: started,
-      endedAt: started + 60_000,
-    });
-    expect(container.querySelector("[data-testid=work-strip-settled]")?.textContent).toBe(
-      "1 of 2 done",
-    );
-  });
-
-  it("heads the live strip with the current step's present tense", async () => {
-    const { container } = await mount([], [], {
-      plan: [
-        engineStep("Build the deck", "doing", "Building the deck"),
-        engineStep("Check", "todo"),
-      ],
-      live: true,
-      startedAt: Date.now() - 5_000,
-      endedAt: null,
-    });
-    expect(container.querySelector("[data-testid=work-strip-now]")?.textContent).toBe(
-      "Building the deck",
-    );
-  });
-
-  it("puts a step in the composer from Comment, naming the plan card", async () => {
-    const { container } = await mount([], [], {
-      plan: [engineStep("Read", "done"), engineStep("Build", "doing")],
-      planId: "plan-1",
-      live: true,
-      startedAt: Date.now() - 5_000,
-      endedAt: null,
-    });
-    const buttons = container.querySelectorAll<HTMLButtonElement>(
-      "[data-testid=work-plan-comment]",
-    );
-    await act(async () => buttons[0]?.click());
-    expect(stepCommentNow()).toEqual({
-      botId: "bot-1",
-      cardId: "plan-1",
-      stepIndex: 0,
-      text: "Read",
-    });
-  });
-
   it("says what the work did under the settled reply, and unfolds its steps in place", async () => {
     const turnActivity = activity({
       id: "turn:conv:r1",
@@ -732,7 +594,6 @@ describe("the engine's display (ADR 0027)", () => {
     });
     const started = Date.now() - 60_000;
     const { container } = await mount([], [other, turnActivity], {
-      plan: [engineStep("Build", "done")],
       activityId: "turn:conv:r1",
       live: false,
       startedAt: started,
@@ -757,7 +618,6 @@ describe("the engine's display (ADR 0027)", () => {
   it("has no summary line without the reply's Activity", async () => {
     const started = Date.now() - 60_000;
     const { container } = await mount([], [activity({ summaryLine: "Read your files" })], {
-      plan: [engineStep("Build", "done")],
       live: false,
       startedAt: started,
       endedAt: started + 60_000,
@@ -771,17 +631,15 @@ describe("the engine's display (ADR 0027)", () => {
       fileRow("a2", "older.md", "conv", "ai"),
     ]);
     const started = Date.now() - 60_000;
-    const { container } = await mount([], [], {
-      plan: [engineStep("Build", "done")],
+    const turnActivity = activity({ id: "turn:conv:r1", summaryLine: "Created a file" });
+    const { container } = await mount([], [turnActivity], {
+      activityId: "turn:conv:r1",
       files: ["a1"],
       live: false,
       startedAt: started,
       endedAt: started + 60_000,
     });
     await act(async () => undefined);
-    await act(async () =>
-      container.querySelector<HTMLButtonElement>("[data-testid=work-strip-plan-toggle]")?.click(),
-    );
     expect(
       [...container.querySelectorAll("[data-testid=file-thumb]")].map((thumb) => thumb.textContent),
     ).toEqual(["rbc.deck.html v1"]);
@@ -845,13 +703,152 @@ describe("the engine's display (ADR 0027)", () => {
     expect(container.querySelector("[data-testid=work-strip-paused]")).not.toBeNull();
   });
 
+  it("draws nothing for a settled reply with no Helper and no steps", async () => {
+    const { container } = await mount([], [], {
+      activityId: "turn:conv:r9",
+      live: false,
+      startedAt: Date.now() - 5_000,
+      endedAt: Date.now(),
+    });
+    expect(container.querySelector("[data-testid=work-strip]")).toBeNull();
+  });
+
   it("offers no Pause without a running Helper", async () => {
     const { container } = await mount([], [], {
-      plan: [engineStep("Build", "doing")],
       live: true,
       startedAt: Date.now() - 5_000,
       endedAt: null,
     });
     expect(container.querySelector("[data-testid=work-strip-pause]")).toBeNull();
+  });
+});
+
+describe("the Round's strip (ADR 0029)", () => {
+  const running = (): RoundView => ({
+    roundId: "r1",
+    status: "running",
+    startedAt: Date.now() - 12_000,
+    settledAt: null,
+    elapsedMs: 12_000,
+    stopLine: null,
+    now: { actor: "assistant", helperId: null, name: "web_search", digest: "banks" },
+    trail: [
+      {
+        actor: "helper",
+        helperId: "h1",
+        at: Date.now(),
+        name: "artifact_save",
+        digest: "deck",
+        ok: true,
+      },
+    ],
+    helpers: [
+      {
+        id: "h1",
+        title: "Write the deck",
+        folder: "projects/q3",
+        status: "running",
+        startedAt: Date.now() - 10_000,
+        finishedAt: null,
+      },
+    ],
+    files: [{ artifactId: "a1", name: "deck", version: 2, helperId: "h1" }],
+    checklist: [
+      { id: "1", subject: "Outline", activeForm: "Outlining", status: "completed" },
+      { id: "2", subject: "Write slides", activeForm: "Writing slides", status: "in_progress" },
+    ],
+  });
+
+  async function mountRound() {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    fake.set(ready([]));
+    rpcMock.list.mockResolvedValue([]);
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    mounted.push(() => act(() => root.unmount()));
+    await act(async () => root.render(<RoundStrip botId="bot-1" roundId="r1" />));
+    return container;
+  }
+  const q = (container: HTMLElement, id: string) => container.querySelector(`[data-testid=${id}]`);
+
+  it("shows the running Round from its record: the tool now, the clock, each Helper, the checklist and the files", async () => {
+    rpcMock.round.mockResolvedValue(running());
+    const container = await mountRound();
+    expect(rpcMock.round).toHaveBeenCalledWith({ botId: "bot-1", roundId: "r1" });
+    expect(q(container, "round-strip")?.getAttribute("data-state")).toBe("working");
+    expect(q(container, "round-strip-now")?.textContent).toMatch(/ · banks$/);
+    expect(q(container, "round-strip-clock")?.textContent).toBe("0:12");
+    // A Helper's row: its title and folder, its own latest tool beneath.
+    expect(q(container, "round-helper-title")?.textContent).toBe("Write the deck · projects/q3");
+    expect(q(container, "round-helper-live")?.textContent).toMatch(/ · deck$/);
+    // The model's checklist in its words, each item by its own status.
+    const items = [...container.querySelectorAll("[data-testid=round-checklist] li")];
+    expect(items.map((item) => [item.textContent, item.getAttribute("data-status")])).toEqual([
+      ["Outline", "completed"],
+      ["Writing slides", "in_progress"],
+    ]);
+    expect(q(container, "file-thumb")?.textContent).toBe("deck v2");
+    // Never a fraction, never a count of steps as progress.
+    expect(container.querySelector("[role=progressbar]")).toBeNull();
+    expect(container.textContent).not.toMatch(/\d+ of \d+/);
+  });
+
+  it("reads the record again on its updates, one read at a time, then settles to one line that unfolds", async () => {
+    rpcMock.round.mockResolvedValue(running());
+    const container = await mountRound();
+    const settled: RoundView = {
+      ...running(),
+      status: "done",
+      settledAt: Date.now(),
+      elapsedMs: 95_000,
+      now: null,
+      trail: [
+        ...running().trail,
+        {
+          actor: "assistant",
+          helperId: null,
+          at: Date.now(),
+          name: "web_search",
+          digest: "fees",
+          ok: false,
+        },
+      ],
+      helpers: running().helpers.map((helper) => ({
+        ...helper,
+        status: "done",
+        finishedAt: Date.now(),
+      })),
+      files: [...running().files, { artifactId: "a2", name: "notes", version: 1, helperId: null }],
+    };
+    rpcMock.round.mockResolvedValue(settled);
+    await act(async () => {
+      family.roundUpdated("r1");
+      family.roundUpdated("r1");
+      family.roundUpdated("r1");
+      family.roundUpdated("other");
+    });
+    // The first read on show, one for the updates, one more queued behind it.
+    expect(rpcMock.round).toHaveBeenCalledTimes(3);
+    const line = q(container, "round-strip-settled");
+    expect(q(container, "round-strip")?.getAttribute("data-state")).toBe("settled");
+    expect(line?.textContent).toContain("2 files");
+    expect(q(container, "round-strip-clock")?.textContent).toBe("1:35");
+    expect(q(container, "round-helper")).toBeNull();
+    expect(q(container, "round-trail")).toBeNull();
+    await act(async () => (line as HTMLButtonElement).click());
+    expect(line?.getAttribute("aria-expanded")).toBe("true");
+    const trail = [...container.querySelectorAll("[data-testid=round-trail] li")];
+    expect(trail.map((step) => step.getAttribute("data-ok"))).toEqual(["true", "false"]);
+    // Each step is its title and its digest, nothing else.
+    expect(trail.map((step) => step.textContent?.split(" · ")[1])).toEqual(["deck", "fees"]);
+    expect(trail.every((step) => step.textContent?.split(" · ").length === 2)).toBe(true);
+    expect(q(container, "round-helper-title")?.textContent).toBe("Write the deck · projects/q3");
+    expect(q(container, "round-helper-live")).toBeNull();
+    // A Round that settled on a failed turn still shows, and says it did not finish.
+    rpcMock.round.mockResolvedValue({ ...settled, status: "failed", files: [] });
+    await act(async () => family.roundUpdated("r1"));
+    expect(q(container, "round-strip")?.getAttribute("data-state")).toBe("settled");
+    expect(q(container, "round-strip-settled")?.textContent).toContain("Didn't finish");
   });
 });

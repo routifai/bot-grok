@@ -8,11 +8,16 @@ import { formatClock } from "./workStripState";
 /**
  * The lit state in the conversation header (ADR 0023): while the Conversation's work runs, the orb
  * and "Working · 0:12" in a pill whose edge carries a turning glow, so running work shows even
- * when the strip under its reply is scrolled away. Nothing while everything has settled.
+ * when the strip under its reply is scrolled away; "Paused" while Pause holds every running
+ * Helper. Nothing while everything has settled.
  */
-export function WorkingPill({ work }: { work: Pick<WorkState, "running" | "since"> }) {
+export function WorkingPill({
+  work,
+}: {
+  work: Pick<WorkState, "running" | "since"> & { paused?: boolean };
+}) {
   const { t } = useLingui();
-  const now = useNow(work.running);
+  const now = useNow(work.running && !work.paused);
   if (!work.running) return null;
   return (
     <span
@@ -21,10 +26,13 @@ export function WorkingPill({ work }: { work: Pick<WorkState, "running" | "since
     >
       <span aria-hidden="true" className="sc-live-ring" />
       <SuperchatOrb size={16} state="working" flies={false} />
-      <span>
-        {work.since === null
-          ? t`Working`
-          : `${t`Working`} · ${formatClock(serverNow(now) - work.since)}`}
+      <span data-testid="working-pill-text">
+        {/* Pause holds every running Helper: the clock stops, the word is the strip's. */}
+        {work.paused
+          ? t`Paused`
+          : work.since === null
+            ? t`Working`
+            : `${t`Working`} · ${formatClock(serverNow(now) - work.since)}`}
       </span>
     </span>
   );

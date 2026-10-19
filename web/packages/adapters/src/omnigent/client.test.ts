@@ -200,29 +200,10 @@ describe("omnigent client", () => {
     });
   });
 
-  it("postOmnigentMessage appends images as input_image data URIs after the text", async () => {
-    const fetchMock = vi.fn(async () => jsonResponse({}));
-    vi.stubGlobal("fetch", fetchMock);
-    await postOmnigentMessage(CONFIG, "e@x.test", "conv_1", "look", [
-      { mimeType: "image/png", dataBase64: "iVBORw==" },
-    ]);
-    const init = (fetchMock.mock.calls[0] as unknown as [URL, RequestInit])[1];
-    expect(JSON.parse(String(init.body))).toEqual({
-      type: "message",
-      data: {
-        role: "user",
-        content: [
-          { type: "input_text", text: "look" },
-          { type: "input_image", image_url: "data:image/png;base64,iVBORw==" },
-        ],
-      },
-    });
-  });
-
   it("postOmnigentMessage sends the open artifact beside the message data, never inside it", async () => {
     const fetchMock = vi.fn(async () => jsonResponse({}));
     vi.stubGlobal("fetch", fetchMock);
-    await postOmnigentMessage(CONFIG, "e@x.test", "conv_1", "bigger title", undefined, {
+    await postOmnigentMessage(CONFIG, "e@x.test", "conv_1", "bigger title", {
       openArtifact: { artifactId: "art_1", version: 3 },
     });
     const init = (fetchMock.mock.calls[0] as unknown as [URL, RequestInit])[1];
@@ -236,24 +217,12 @@ describe("omnigent client", () => {
   it("postOmnigentMessage sends an ask card's pick beside the message data", async () => {
     const fetchMock = vi.fn(async () => jsonResponse({}));
     vi.stubGlobal("fetch", fetchMock);
-    await postOmnigentMessage(CONFIG, "e@x.test", "conv_1", "Nord", undefined, {
+    await postOmnigentMessage(CONFIG, "e@x.test", "conv_1", "Nord", {
       cardAnswer: { cardId: "m1:0", optionId: "nord", label: "Nord" },
     });
     const init = (fetchMock.mock.calls[0] as unknown as [URL, RequestInit])[1];
     expect(JSON.parse(String(init.body)).context).toEqual({
       card_answer: { card_id: "m1:0", option_id: "nord", label: "Nord" },
-    });
-  });
-
-  it("postOmnigentMessage sends a comment on a plan step beside the message data", async () => {
-    const fetchMock = vi.fn(async () => jsonResponse({}));
-    vi.stubGlobal("fetch", fetchMock);
-    await postOmnigentMessage(CONFIG, "e@x.test", "conv_1", "Use the Q3 figures", undefined, {
-      stepComment: { cardId: "plan-1", stepIndex: 2, text: "Build the deck" },
-    });
-    const init = (fetchMock.mock.calls[0] as unknown as [URL, RequestInit])[1];
-    expect(JSON.parse(String(init.body)).context).toEqual({
-      step_comment: { card_id: "plan-1", step_index: 2, text: "Build the deck" },
     });
   });
 
@@ -482,6 +451,7 @@ describe("transcript and family stream", () => {
         'event: message.done\ndata: {"type":"message.done","chat_id":"c1","item_id":"i1"}\n\n',
         'event: message.delivery\ndata: {"type":"message.delivery","chat_id":"c1","item_id":"i2","delivered":"steer"}\n\n',
         'event: other\ndata: {"type":"other"}\n\n',
+        'event: round.updated\ndata: {"type":"round.updated","root_id":"s1","round_id":"r1","status":"done","started_at":1,"live":null,"helpers":0,"files":1,"steps":3}\n\n',
         'event: session.heartbeat\ndata: {"type":"session.heartbeat"}\n\n',
       ]),
     );
@@ -495,6 +465,17 @@ describe("transcript and family stream", () => {
     expect(events).toEqual([
       { type: "message.done", chat_id: "c1", item_id: "i1" },
       { type: "message.delivery", chat_id: "c1", item_id: "i2", delivered: "steer" },
+      {
+        type: "round.updated",
+        root_id: "s1",
+        round_id: "r1",
+        status: "done",
+        started_at: 1,
+        live: null,
+        helpers: 0,
+        files: 1,
+        steps: 3,
+      },
       { type: "session.heartbeat" },
     ]);
     const [url] = fetchMock.mock.calls[0] as unknown as [URL];

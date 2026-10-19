@@ -14,7 +14,6 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 /** Where bundles are written; `SUPERCHAT_RENDER_AGENTS_DIR` redirects it (tests render to a temp dir). */
-// biome-ignore lint/suspicious/noUndeclaredEnvVars: a test-only redirect, not a build input
 const AGENTS_DIR = process.env.SUPERCHAT_RENDER_AGENTS_DIR || join(here, "bundles");
 /** One entry per Muse bundle. The engine's `OMNIGENT_SUPERCHAT_DEFAULT_AGENT` (`superchat-claude` |
  * `superchat-pi`) picks which one a new Muse runs on (ADR 0009): this script renders BOTH every run
@@ -73,14 +72,12 @@ function main() {
   // The layout menu is the deck kit's own file (one source for the prompt and the deck_new
   // result); the rules around it live in templates/deck-rules.md.
   const deckLayouts = readFileSync(join(here, DECK_LAYOUTS_PATH), "utf8").trimEnd();
-  // The shared deck rules go to every Type that builds decks; templates/decks.md adds the
-  // Conversation's own part (when a deck is a Helper job, the Brief, the review).
+  // The full deck rules go to every Helper Type that builds decks. The Conversation gets the
+  // short templates/decks.md instead: deck_new without slides returns the layouts to it.
   const deckRules = render(readFileSync(join(here, "templates/deck-rules.md"), "utf8"), {
     DECK_LAYOUTS: deckLayouts,
   }).trimEnd();
-  const decks = render(readFileSync(join(here, "templates/decks.md"), "utf8"), {
-    DECK_RULES: deckRules,
-  }).trimEnd();
+  const decks = readFileSync(join(here, "templates/decks.md"), "utf8").trimEnd();
   // The template opens with a provenance comment for ported text; the prompt does not carry it.
   const agentsTemplate = readFileSync(join(here, "templates/AGENTS.md"), "utf8").replace(
     /^<!--[\s\S]*?-->\n/,

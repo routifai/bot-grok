@@ -545,28 +545,34 @@ async def test_hard_limit_with_no_rollover_ever_started_trims_and_schedules(
 
 
 @pytest.mark.asyncio
-async def test_below_the_hard_limit_the_whole_record_is_sent(
+async def test_a_cold_start_below_the_hard_limit_replays_only_the_newest_turns(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The trim only applies at the hard limit."""
-    monkeypatch.setattr(
-        "omnigent.runner.app._get_runner_llm_client", lambda: _GatedLLMClient(asyncio.Event())
-    )
+    """A relaunched harness gets the checkpoint plus the newest whole turns that fit the tail
+    budget, not the whole record, and no summarizer runs for it."""
+    from omnigent.runtime.compaction import count_tokens
+
+    llm_client = _GatedLLMClient(asyncio.Event())
+    monkeypatch.setattr("omnigent.runner.app._get_runner_llm_client", lambda: llm_client)
+    # About 80k tokens since the last checkpoint, well under the hard limit.
+    items = _long_history_items(turns=150)
     server_client = _HardLimitServerClient(
-        labels={**_hard_limit_labels(), "omnigent.last_context_window": "1000000"},
-        items=_long_history_items(),
+        labels={**_SUPERSIDE_LABELS, "omnigent.last_context_window": "1000000"}, items=items
     )
     harness_client = _SequencedHarnessClient([_plain_frames()])
     app, _pm = _build_app(harness_client, server_client)
 
     async with _runner_client(app) as client:
-        await asyncio.wait_for(_post_turn(client, "conv_whole", "hello"), timeout=5.0)
+        await asyncio.wait_for(_post_turn(client, "conv_cold_tail", "hello"), timeout=5.0)
         await _wait_until(lambda: len(harness_client.posted_bodies) == 1, timeout=2.0)
 
     messages = [
         m for m in harness_client.posted_bodies[0]["content"] if m.get("type") == "message"
     ]
-    assert len(messages) >= 60
+    assert messages[0]["role"] == "user", "a turn was cut in half"
+    assert "turn 149" in " ".join(b["text"] for b in messages[-2]["content"] if "text" in b)
+    assert count_tokens(messages, "gpt-4o") < 20_000
+    assert llm_client.call_count == 0
 
 
 @pytest.mark.asyncio

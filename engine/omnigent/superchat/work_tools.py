@@ -1,4 +1,4 @@
-"""Which tool calls count as the Muse doing work (step limit and Activity feed share this)."""
+"""Which tool calls count as the Assistant doing work (the Activity feed reads this)."""
 
 from __future__ import annotations
 

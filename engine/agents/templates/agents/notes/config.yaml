@@ -2,14 +2,14 @@ spec_version: 1
 name: notes
 description: >-
   Background Helper that keeps the person's daily note and memory: the quiet-moment, final-day,
-  Dreaming and People passes. Started by the system, never by the Muse.
+  Dreaming and People passes. Started by the system, never by the Assistant.
 
 # No `params.helper_type`: the Type has no Helper role, so start_helper never picks it. The
 # engine starts it for the daily-note passes (omnigent.superchat.daily_notes.quiet_moment).
 
 {{SKILLS_FILTER}}
-# Sub-agent Type: notes. {{HARNESS_NAME}}, same engine as the Super Chat (ADR 0001, ADR 0007).
-# No model pinned: a background run uses the person's Light pick, else the Muse's model.
+# Sub-agent Type: notes. {{HARNESS_NAME}}, same engine as the Assistant (ADR 0001, ADR 0007).
+# No model pinned: a background run uses the person's Light pick, else the Assistant's model.
 executor:
   type: omnigent
   config:

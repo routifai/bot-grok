@@ -76,6 +76,9 @@ export const ActivitySchema = z.object({
   families: z.array(ToolFamilySchema).optional(),
   /** A Helper held by Pause (ADR 0027); absent on a turn. */
   paused: z.boolean().optional(),
+  /** The Round the work is in (ADR 0029): a Conversation turn's, or the one that started a
+   * Helper; absent for work from before Rounds. */
+  roundId: z.string().optional(),
 });
 export type Activity = z.infer<typeof ActivitySchema>;
 
