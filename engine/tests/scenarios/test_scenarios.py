@@ -215,30 +215,72 @@ def test_ends_well(turn: list[Event], well: bool) -> None:
 
 
 _SENT = 1000.0
+_NOW = 1200.0
+
+
+def _view(status: str, trail: list[tuple[float, str, str | None]], files: int) -> dict[str, Any]:
+    """A Round view in the real schema's shape (``RoundView``): *trail* as (t, name, helper)."""
+    done = status in ("done", "stopped")
+    return {
+        "round_id": "m1",
+        "status": status,
+        "hidden": False,
+        "started_at": _SENT,
+        "settled_at": 1090.0 if done else None,
+        "elapsed": 90.0,
+        "trail": [
+            {
+                "t": t,
+                "actor": "helper" if helper else "assistant",
+                "helper_id": helper,
+                "name": name,
+                "digest": None,
+                "ok": True,
+            }
+            for t, name, helper in trail
+        ],
+        "helpers": {"h1": {"id": "h1", "status": "done", "started_at": 1010.0}}
+        if any(helper for _, _, helper in trail)
+        else {},
+        "files": [{"name": "deck.html", "kind": "html", "artifact_id": "a1", "version": 1}]
+        * files,
+    }
+
+
+# The live Round of round-deck-direct: the Assistant built it, deck_new twice, one file.
+_DIRECT = [
+    (1020.0, "deck_new", None),
+    (1030.0, "deck_new", None),
+    (1040.0, "sys_os_edit", None),
+    (1050.0, "deck_check", None),
+    (1060.0, "artifact_save", None),
+]
 
 
 @pytest.mark.parametrize(
     ("view", "deck", "columns"),
     [
-        # the Helper built the deck with deck_new: no artifact_save ever fires
+        (_view("done", _DIRECT, 1), 20.0, {"settled": "1/1", "helpers": 0, "duration": 90.0}),
+        # a Helper built it: its first deck_new, any actor
         (
-            {
-                "settled_at": 1090.0,
-                "elapsed": 90.0,
-                "helpers": {"h1": {}},
-                "trail": [
-                    {"t": 1010.0, "name": "start_helper"},
-                    {"t": 1040.0, "name": "decks__deck_new", "helper_id": "h1"},
-                    {"t": 1060.0, "name": "artifact_save", "helper_id": "h1"},
-                ],
-            },
+            _view(
+                "done",
+                [(1010.0, "start_helper", None), (1040.0, "decks__deck_new", "h1")],
+                1,
+            ),
             40.0,
             {"settled": "1/1", "helpers": 1, "duration": 90.0},
         ),
+        # a file with no deck tool in the trail ends the deck when it is seen
         (
-            {"settled_at": None, "elapsed": 12.0, "helpers": {}, "trail": [{"t": 1005.0}]},
+            _view("running", [(1005.0, "sys_os_bash", None)], 1),
+            _NOW - _SENT,
+            {"settled": "0/1", "helpers": 0, "duration": 90.0},
+        ),
+        (
+            _view("running", [(1005.0, "sys_os_bash", None)], 0),
             None,
-            {"settled": "0/1", "helpers": 0, "duration": 12.0},
+            {"settled": "0/1", "helpers": 0, "duration": 90.0},
         ),
         (None, None, {"settled": "0/1", "helpers": 0, "duration": None}),
     ],
@@ -246,8 +288,42 @@ _SENT = 1000.0
 def test_the_runner_reads_the_deck_end_and_columns_from_the_round(
     view: dict[str, Any] | None, deck: float | None, columns: dict[str, Any]
 ) -> None:
-    assert runner.deck_end(view or {}, _SENT) == deck
+    assert runner.deck_end(view or {}, _SENT, _NOW) == deck
     assert runner.round_columns([view]) == columns
+
+
+@pytest.mark.parametrize(
+    ("views", "deck", "polls"),
+    [
+        ([_view("done", _DIRECT, 1)], 20.0, 1),
+        ([_view("running", [], 0), _view("running", _DIRECT[:1], 0)], 20.0, 2),
+        ([_view("done", [(1005.0, "sys_os_bash", None)], 0)], None, 1),  # settled, no file
+        ([_view("running", [], 0)], "stalled", 3),  # never ends: the deadline stops it
+    ],
+)
+def test_the_deck_wait_ends_at_the_rounds_deck_end_or_the_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+    views: list[dict[str, Any]],
+    deck: float | str | None,
+    polls: int,
+) -> None:
+    clock = iter(range(100))
+    monkeypatch.setattr(runner.time, "monotonic", lambda: float(next(clock)))
+    monkeypatch.setattr(runner.time, "sleep", lambda seconds: None)
+    seen: list[str | None] = []
+
+    class Rounds:
+        def round(self, session_id: str, item_id: str | None) -> dict[str, Any]:
+            seen.append(item_id)
+            return views[min(len(seen), len(views)) - 1]
+
+    wait = runner._wait_for_deck
+    if deck == "stalled":
+        with pytest.raises(runner.Stalled):
+            wait(Rounds(), "s1", "m1", _SENT, 3.0)  # type: ignore[arg-type]
+    else:
+        assert wait(Rounds(), "s1", "m1", _SENT, 3.0) == deck  # type: ignore[arg-type]
+    assert seen == ["m1"] * polls
 
 
 def test_a_turn_ends_the_deck_at_deck_new() -> None:

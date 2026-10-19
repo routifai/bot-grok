@@ -396,14 +396,25 @@ def _helpers(activities: list[dict[str, Any]], session_id: str) -> set[str]:
     }
 
 
-def deck_end(view: dict[str, Any], sent: float) -> float | None:
-    """Seconds from *sent* to the Round's first ``artifact_save`` or ``deck_new``, by anyone."""
+def _settled(view: dict[str, Any]) -> bool:
+    return view.get("settled_at") is not None or view.get("status") in ("done", "stopped")
+
+
+def deck_end(view: dict[str, Any], sent: float, now: float) -> float | None:
+    """Seconds from *sent* to the Round's deck end, or ``None`` while it has none.
+
+    The deck ends at the earliest of a trail entry named ``deck_new`` or ``artifact_save``, by
+    any actor, and the Round's first file; a file is timed at *now*, when it is seen, since a
+    file carries no time. A Round that settled with a file has a file.
+    """
     ends = [
         float(step["t"]) - sent
         for step in view.get("trail") or []
         if str(step.get("name") or "").rsplit("__", 1)[-1] in _DECK_END
         and isinstance(step.get("t"), (int, float))
     ]
+    if view.get("files"):
+        ends.append(now - sent)
     return min(ends) if ends else None
 
 
@@ -413,21 +424,19 @@ def _wait_for_deck(
     """The deck wait of a turn that handed the deck to Helpers, polling its Round.
 
     Polled after the whole scenario, so a later turn can still arrive while the Helper works.
-    Ends at the Round's first deck end, at a file it saved (timed when seen), or when it
-    settles without one.
+    Ends at the Round's deck end (:func:`deck_end`), or when it settles without one: a settled
+    Round waits for nothing else.
 
-    :raises Stalled: Past *deadline* with the Round still running.
+    :raises Stalled: Past *deadline* (``time.monotonic()``) with no deck end and the Round not
+        settled.
     """
-    while True:
+    while time.monotonic() < deadline:
         view = engine.round(session_id, item_id) or {}
-        found = deck_end(view, sent)
-        if found is None and view.get("files"):
-            found = time.time() - sent
-        if found is not None or view.get("settled_at") is not None:
+        found = deck_end(view, sent, time.time())
+        if found is not None or _settled(view):
             return found
-        if time.monotonic() >= deadline:
-            raise Stalled
         time.sleep(_POLL)
+    raise Stalled
 
 
 def round_columns(views: list[dict[str, Any] | None]) -> dict[str, Any]:
@@ -435,7 +444,7 @@ def round_columns(views: list[dict[str, Any] | None]) -> dict[str, Any]:
     ``duration`` in seconds (``None`` with no Round)."""
     known = [view for view in views if view]
     return {
-        "settled": f"{sum(1 for v in known if v.get('settled_at') is not None)}/{len(views)}",
+        "settled": f"{sum(1 for v in known if _settled(v))}/{len(views)}",
         "helpers": sum(len(v.get("helpers") or {}) for v in known),
         "duration": _worst([float(v["elapsed"]) for v in known if v.get("elapsed") is not None]),
     }
