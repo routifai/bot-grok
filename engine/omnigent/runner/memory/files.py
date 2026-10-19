@@ -180,6 +180,7 @@ def round_line(
     helpers: Iterable[str] = (),
     folder: str = "",
     seconds: float = 0,
+    checked: bool | None = None,
     refs: Mapping[str, list[str]] | None = None,
 ) -> tuple[str, str]:
     """:returns: ``(date, line)``: the one journal entry of a settled Round (ADR 0029).
@@ -187,7 +188,9 @@ def round_line(
     The template, a part left out when it is empty::
 
         Asked "<ask>" · <outcome> · Files: <a>, <b> · Helpers: "<title>", "<title>"
-        · Folder: <folder> · Took <duration>
+        · Folder: <folder> · Checked · Took <duration>
+
+    ``Checked`` or ``Not checked`` only for a Round with a deck (*checked* not ``None``).
 
     A stopped Round's outcome reads ``Stopped: <outcome>`` (``Stopped`` alone without one). The
     comment carries :func:`round_mark`, so the Round is written once (:func:`append_once`).
@@ -205,6 +208,8 @@ def round_line(
         parts.append("Helpers: " + ", ".join(f'"{t}"' for t in titles))
     if _one_line(folder):
         parts.append(f"Folder: {_one_line(folder)}")
+    if checked is not None:
+        parts.append("Checked" if checked else "Not checked")
     parts.append(f"Took {_took(seconds)}")
     return format_line(date, " · ".join(parts), origin, refs, mark=round_mark(round_id))
 

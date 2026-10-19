@@ -111,7 +111,8 @@ async def record_round(
 
     *entry* is what the engine built from the Round view
     (:func:`omnigent.superchat.rounds.record.journal_entry`): ``round_id``, ``date``, ``ask``,
-    ``outcome``, ``stopped``, ``files``, ``helpers``, ``folder``, ``seconds`` and ``refs``. A
+    ``outcome``, ``stopped``, ``files``, ``helpers``, ``folder``, ``seconds``, ``checked`` and
+    ``refs``. A
     second settlement of the same Round finds its mark in the day file and writes nothing.
 
     :returns: Whether the entry was written now.
@@ -132,6 +133,7 @@ async def record_round(
             helpers=_strings(entry.get("helpers")),
             folder=str(entry.get("folder") or ""),
             seconds=float(entry.get("seconds") or 0),
+            checked=entry.get("checked") if isinstance(entry.get("checked"), bool) else None,
             refs={key: _strings(values) for key, values in raw_refs.items()},
         )
         root = workspace or default_workspace()

@@ -420,6 +420,29 @@ CASES: list[tuple[str, Callable[[], Any], Callable[[Any], bool]]] = [
             and v["status"] == "done"
         ),
     ),
+    (
+        "a deck is checked by its Helper's clean deck_check, the check line reads it",
+        lambda: fold(
+            S()
+            .open()
+            .spawn("h1", "Deck")
+            .end()
+            .save("a.deck.html", "h1")
+            .result("deck_check", "h1", ok=False)
+            .result("deck_check", "h1")
+            .fin("h1")
+            .ev
+        ),
+        lambda v: record.checked(v) is True,
+    ),
+    (
+        "a deck with no clean check is not checked; a Round with no deck has no check line",
+        lambda: (
+            fold(S().open().save("a.deck.html").result("deck_check", ok=False).end().ev),
+            fold(S().open().save("notes.md").end().ev),
+        ),
+        lambda r: record.checked(r[0]) is False and record.checked(r[1]) is None,
+    ),
 ]
 
 
@@ -663,6 +686,7 @@ def test_a_round_is_written_from_the_message_the_relay_and_the_save(
         "helpers": ["Deck"],
     }
     assert entry["refs"] == {"artifacts": ["v1@v1"], "project": [], "helpers": [helper_id]}
+    assert entry["checked"] is None  # no deck saved, no check run
     hidden_view = fold(store.events("f" * 32))
     assert hidden_view["hidden"] is True and hidden_view["settled_at"] is not None
     assert convs.rows[helper_id].labels[ROUND_LABEL_KEY] == item

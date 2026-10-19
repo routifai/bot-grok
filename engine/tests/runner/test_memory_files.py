@@ -165,8 +165,18 @@ ROUND_ENTRY: dict[str, Any] = {
             '- 2026-10-12 · Asked "Stop that" · Stopped · Took 0s · main '
             "<!-- conv_main round:msg_r2 -->",
         ),
+        (
+            {"round_id": "msg_r3", "date": "2026-10-12", "ask": "A deck", "checked": True},
+            '- 2026-10-12 · Asked "A deck" · Done · Checked · Took 0s · main '
+            "<!-- conv_main round:msg_r3 -->",
+        ),
+        (
+            {"round_id": "msg_r4", "date": "2026-10-12", "ask": "A deck", "checked": False},
+            '- 2026-10-12 · Asked "A deck" · Done · Not checked · Took 0s · main '
+            "<!-- conv_main round:msg_r4 -->",
+        ),
     ],
-    ids=["full", "stopped"],
+    ids=["full", "stopped", "deck checked", "deck not checked"],
 )
 async def test_a_settled_round_writes_one_entry_once(
     tmp_path: Path, entry: dict[str, Any], line: str
