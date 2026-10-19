@@ -6077,11 +6077,18 @@ def create_runner_app(
         created_by: str | None,
         *,
         is_rewake: bool = False,
+        delivered_work_id: str | None = None,
     ) -> None:
         delivered = await _deliver_subagent_wake_post(
             server_client, parent_id, notice, created_by=created_by, helper_id=child_id
         )
         if delivered:
+            if delivered_work_id is not None:
+                # The wake carried the Result itself, so the Conversation holds it now: write
+                # the receipt a drain would, or a restarted runner's recovery posts it again.
+                from omnigent.runner.tool_dispatch import _record_subagent_receipt
+
+                await _record_subagent_receipt(server_client, child_id, delivered_work_id)
             forget_saved_files(child_id, _subagent_children)
             _stranded_wake_parents.discard(parent_id)
             if is_rewake:
@@ -6146,6 +6153,7 @@ def create_runner_app(
                 entry.child_session_id,
                 entry.created_by,
                 is_rewake=is_rewake,
+                delivered_work_id=entry.work_id if entry.wake_inlined else None,
             )
         )
         _wake_task.add_done_callback(_background_tasks.discard)
