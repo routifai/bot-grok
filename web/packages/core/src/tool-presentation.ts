@@ -621,6 +621,12 @@ export const TOOL_PRESENTATION: Record<string, ToolPresentation> = {
     snippet: () => null,
   },
 
+  checklist: {
+    icon: "generic",
+    title: () => "Updated the task list",
+    snippet: () => null,
+  },
+
   artifact_publish: {
     icon: "generic",
     title: () => "Published an app",
