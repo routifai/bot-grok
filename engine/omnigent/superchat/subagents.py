@@ -465,7 +465,8 @@ def format_subagent_wake_notice_with_result(
         body = text
     return (
         f"[System: sub-agent {agent}/{title} finished ({status}) — result:\n{body}\n{saved_files}"
-        "Use this Result to complete what the person originally asked for: deliver the finished "
+        "Use this Result to complete what the person originally asked for: first write one or two "
+        "plain sentences saying what was made and anything still open, then deliver the finished "
         "thing (the answer, comparison or draft, as a card or file if that fits), not a status "
-        "update. Mention anything still open in one line. Do not raise unrelated topics.]"
+        "update. Do not raise unrelated topics.]"
     )
