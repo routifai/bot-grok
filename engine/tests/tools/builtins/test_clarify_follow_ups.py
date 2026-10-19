@@ -267,11 +267,12 @@ def test_clarification_keeps_the_models_option_ids_and_makes_the_rest_distinct()
     assert [o["id"] for o in themed["data"]["options"]] == ["nord", "bauhaus"]
 
 
-def test_a_clarification_card_records_the_task_it_asks_about() -> None:
+def test_a_clarification_card_records_the_round_it_asks_in() -> None:
     args = {"question": "Data?", "options": ["Mock", "Real"]}
-    assert build_clarification(args, "t1")["task_id"] == "t1"
-    assert "task_id" not in build_clarification(args)
+    card = build_clarification(args, "r1")
+    assert card["round_id"] == "r1" and "task_id" not in card
+    assert "round_id" not in build_clarification(args)
     # the card the web draws does not carry it
-    items = [_call("ask_clarification", "k1"), _output("k1", build_clarification(args, "t1"))]
+    items = [_call("ask_clarification", "k1"), _output("k1", build_clarification(args, "r1"))]
     (message,) = project_items(items)
-    assert "task_id" not in message["blocks"][0]["card"]
+    assert "round_id" not in message["blocks"][0]["card"]
