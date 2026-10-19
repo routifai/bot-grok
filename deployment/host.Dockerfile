@@ -46,8 +46,8 @@ RUN python3 -m venv /opt/venv \
 # ── host: the image that runs ──────────────────────────────────────────────
 FROM ${UBUNTU_IMAGE} AS host
 ARG PYPI_INDEX_URL=https://pypi.org/simple
-# Pin the two CLIs here. pi is pinned to the version the superchat-pi bundle is verified against.
-ARG CLAUDE_CODE_VERSION=latest
+# Pin the two CLIs here, each to the version its bundle (superchat-claude, superchat-pi) is verified against.
+ARG CLAUDE_CODE_VERSION=2.1.302
 ARG PI_VERSION=0.87.1
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \

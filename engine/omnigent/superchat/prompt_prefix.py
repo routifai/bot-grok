@@ -53,6 +53,14 @@ _known_timezone: dict[str, str | None] = {}
 #: Sent in place of a block the warm client already holds, see :func:`turn_prefix_blocks`.
 PROFILE_UNCHANGED_LINE = "Standing memory unchanged since the last message."
 PROJECTS_UNCHANGED_LINE = "Projects unchanged since the last message."
+#: Sent in place of a block not read within the budget, so the model knows it is missing and
+#: how to get it, instead of acting as if there were no memory or no Projects.
+PROFILE_LATE_LINE = (
+    "Standing memory was not read in time for this message; memory_search looks up what you need."
+)
+PROJECTS_LATE_LINE = (
+    "The Project list was not read in time for this message; list ~/workspace/projects/ to see it."
+)
 
 
 IDLE_GAP_OPEN, IDLE_GAP_CLOSE = "It has been ", " since the last message."
@@ -296,8 +304,8 @@ async def turn_prefix_blocks(
         Conversation artifact hint).
 
     The reads share one budget (:data:`PREFIX_BUDGET_SECONDS`, longer for the person's own
-    material): a block not read in time is left out of this turn, and feature notes read late
-    go with the next turn's.
+    material): a block not read in time is left out of this turn, the profile and Projects with
+    one line saying so, and feature notes read late go with the next turn's.
     """
     # Every block is an independent read: fetch them together (ADR 0026: the prefix is paid on
     # every turn), within one budget, then assemble them in the documented order. Imported
@@ -366,10 +374,14 @@ async def turn_prefix_blocks(
         blocks.append(
             _delta_block("profile", profile, PROFILE_UNCHANGED_LINE, last_sent, sent_now)
         )
+    elif not helper and "profile" not in got:
+        blocks.append(PROFILE_LATE_LINE)
     if projects is not None:
         blocks.append(
             _delta_block("projects", projects, PROJECTS_UNCHANGED_LINE, last_sent, sent_now)
         )
+    elif "projects" not in got:
+        blocks.append(PROJECTS_LATE_LINE)
     blocks.extend(feature_blocks)
     if idle_gap_seconds is not None:
         blocks.append(idle_gap_line(idle_gap_seconds))
@@ -404,7 +416,14 @@ def _injected_line(line: str) -> bool:
         (line.startswith(LOCAL_TIME_OPEN) and line.endswith("]"))
         # The attachment block's closing line is left alone by the transcript's own cut of the
         # block (:func:`omnigent.context.attachments.strip_legacy_attachment_context`).
-        or line in (PROFILE_UNCHANGED_LINE, PROJECTS_UNCHANGED_LINE, ATTACHMENT_REMINDER)
+        or line
+        in (
+            PROFILE_UNCHANGED_LINE,
+            PROJECTS_UNCHANGED_LINE,
+            PROFILE_LATE_LINE,
+            PROJECTS_LATE_LINE,
+            ATTACHMENT_REMINDER,
+        )
         or (line.startswith(IDLE_GAP_OPEN) and line.endswith(IDLE_GAP_CLOSE))
         or (line.startswith(_MOVED_OPEN) and line.endswith(_MOVED_CLOSE))
         or line.startswith(FILE_LINE_OPEN)
