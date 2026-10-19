@@ -68,8 +68,9 @@ def _install(app: FastAPI, deps: InstallDeps) -> None:
         _session_status_from_cache,
     )
     from omnigent.server.routes._sessions.orchestration import ON_SESSION_DELETED
-    from omnigent.superchat.activity.derive import ROUND_IDS
+    from omnigent.superchat.activity.derive import ROUND_IDS, ROUND_VIEWS
     from omnigent.superchat.rounds import record
+    from omnigent.superchat.rounds.fold import fold
     from omnigent.superchat.rounds.read import Announcer, Shadow, item_rounds, shadow_on
     from omnigent.superchat.rounds.routes import register_round_routes
     from omnigent.superchat.rounds.store import SqlAlchemyRoundStore
@@ -110,6 +111,12 @@ def _install(app: FastAPI, deps: InstallDeps) -> None:
     ROUND_IDS["rounds"] = lambda conversation_id, item_ids: item_rounds(
         store, deps.conversation_store, conversation_id, item_ids
     )
+
+    def views(conversation_id: str, round_ids: list[str]) -> dict[str, dict[str, Any]]:
+        read = {r: store.events(r, conversation_id) for r in round_ids}
+        return {r: fold(events, r) for r, events in read.items() if events}
+
+    ROUND_VIEWS["rounds"] = views
     ON_SESSION_DELETED["rounds"] = store.delete_conversation
 
     async def idle(session_id: str) -> bool:
