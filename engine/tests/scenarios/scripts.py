@@ -20,7 +20,9 @@ class Scenario:
     :param turns: The turns in order, each a list of events (see :mod:`tests.scenarios.rules`).
     :param max_asks: How many question cards the whole conversation may show.
     :param deliverable: ``"deck"`` when the scenario makes a new deck: the live runner then
-        measures the message to its first save, in the turn or in the Helper it started.
+        measures the message to its first save or ``deck_new``, in the turn or in the Helper it
+        started. ``"page"`` for a new page. Either way the runner gives its requests a fresh
+        subject on each run.
     """
 
     name: str
@@ -260,6 +262,7 @@ ROUNDS: tuple[Scenario, ...] = (
                 ("reply", "The landing page is ready, with plans, pricing and a sign-up form."),
             ),
         ),
+        deliverable="page",
     ),
     Scenario(
         "round-two-deliverables",
