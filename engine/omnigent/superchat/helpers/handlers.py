@@ -161,8 +161,8 @@ def _helper_folder(args: dict[str, Any]) -> tuple[str, str | None] | str | None:
     """Where the Helper works: ``(folder, Project name)``; ``None`` keeps the caller's; or why not.
 
     ``project`` resolves exactly as ``open_project`` does. ``path`` is resolved (``..`` and
-    symlinks followed) and must land on an existing folder inside the workspace; the server's
-    workspace route checks it again on the host.
+    symlinks followed) and must land inside the workspace, where a missing folder is made; the
+    server's workspace route checks it again on the host.
     """
     slug, path = args.get("project"), args.get("path")
     if slug is not None:
@@ -178,8 +178,13 @@ def _helper_folder(args: dict[str, Any]) -> tuple[str, str | None] | str | None:
     folder = (root / path).resolve()
     if not folder.is_relative_to(root):
         return "'path' must be a folder inside the workspace"
-    if not folder.is_dir():
-        return f"no folder '{path}' in the workspace"
+    if folder.exists() and not folder.is_dir():
+        return f"'{path}' is a file, not a folder"
+    # A folder asked for new work (a new project's) is made here rather than refused.
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        return f"could not make folder '{path}': {exc.strerror or exc}"
     return str(folder), None
 
 

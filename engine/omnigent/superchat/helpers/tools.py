@@ -91,7 +91,7 @@ class StartHelperTool(Tool):
                             "type": "string",
                             "description": (
                                 "Workspace-relative folder the Helper works in, instead of "
-                                "`project`."
+                                "`project`; made when it does not exist yet."
                             ),
                         },
                     },
