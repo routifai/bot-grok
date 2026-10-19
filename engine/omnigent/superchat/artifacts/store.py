@@ -153,6 +153,7 @@ class Artifact:
     :param item_id: The person's message in the Conversation that led to it, if known.
     :param group_id: The deliverable's stable id (its first version's id), the same on every
         version.
+    :param round_id: The Round of the chat that saved it, if it was saved in one.
     """
 
     id: str
@@ -177,6 +178,7 @@ class Artifact:
     chat_id: str | None = None
     item_id: str | None = None
     group_id: str | None = None
+    round_id: str | None = None
 
 
 #: How a message came to be linked to an artifact (docs/conversation.md "Contract").
@@ -238,6 +240,7 @@ def _to_entity(row: SqlArtifact) -> Artifact:
         chat_id=row.chat_id,
         item_id=row.item_id,
         group_id=row.group_id,
+        round_id=row.round_id,
     )
 
 
@@ -292,6 +295,7 @@ class SqlAlchemyArtifactStore:
         turn_item_id: str | None = None,
         chat_id: str | None = None,
         item_id: str | None = None,
+        round_id: str | None = None,
     ) -> Artifact:
         """Store ``data`` as the next version of ``name`` in the session.
 
@@ -303,6 +307,7 @@ class SqlAlchemyArtifactStore:
         :param turn_item_id: The person's message item of the turn that saved it.
         :param chat_id: The chat that saved it.
         :param item_id: The person's message in the Conversation that led to it.
+        :param round_id: The Round of the chat that saved it.
         """
         blobs = self._blob_store()
         artifact_id = uuid.uuid4().hex
@@ -354,6 +359,7 @@ class SqlAlchemyArtifactStore:
                 chat_id=chat_id,
                 item_id=item_id,
                 group_id=group_id,
+                round_id=round_id,
             )
             session.add(row)
             session.flush()
@@ -498,6 +504,27 @@ class SqlAlchemyArtifactStore:
                 .order_by(desc(SqlArtifact.version))
             )
             return [_to_entity(r) for r in session.execute(stmt).scalars().all()]
+
+    def for_rounds(
+        self, parent_session_id: str, round_ids: list[str]
+    ) -> dict[str, list[Artifact]]:
+        """The versions each of the Conversation's *round_ids* saved, oldest first, by Round."""
+        if not round_ids:
+            return {}
+        with self._session("list_artifacts_for_rounds") as session:
+            rows = session.execute(
+                select(SqlArtifact)
+                .where(
+                    SqlArtifact.workspace_id == current_workspace_id(),
+                    SqlArtifact.parent_session_id == parent_session_id,
+                    SqlArtifact.round_id.in_(round_ids),
+                )
+                .order_by(SqlArtifact.created_at, SqlArtifact.version)
+            ).scalars()
+            found: dict[str, list[Artifact]] = {}
+            for row in rows:
+                found.setdefault(row.round_id, []).append(_to_entity(row))
+            return found
 
     def list_latest(
         self,

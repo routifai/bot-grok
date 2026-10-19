@@ -13,7 +13,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 
-from omnigent.context.labels import SCHEDULED_HELPER_LABEL_KEY
+from omnigent.context.labels import ROUND_LABEL_KEY, SCHEDULED_HELPER_LABEL_KEY
 from omnigent.entities import MessageData, NewConversationItem
 from omnigent.entities.conversation import FunctionCallData, FunctionCallOutputData
 from omnigent.errors import OmnigentError
@@ -40,6 +40,7 @@ from omnigent.superchat.artifacts.store import (
     SqlAlchemyArtifactStore,
 )
 from omnigent.superchat.prompt_prefix import person_words
+from omnigent.superchat.rounds.read import ROUND_FILES_ENV
 from omnigent.superchat.transcript import routes as transcript_routes
 from omnigent.superchat.transcript.routes import register_transcript_routes
 
@@ -269,17 +270,34 @@ def test_a_save_links_the_message_and_the_version_names_it(env) -> None:
     assert (link["artifact_id"], link["version"]) == (again["id"], 2)
 
 
-def test_a_helper_save_names_the_message_the_helper_came_from(env) -> None:
-    client, _store, conversations, chat, _updates, _steers = env
+@pytest.mark.parametrize("by_round", [False, True])
+def test_a_helper_save_names_the_message_the_helper_came_from(
+    env, by_round: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A save names the person's message it came from and is stamped with its Round. Found from
+    the chats' items, the Conversation's own save after a steer names the steer; read from the
+    saving chat's Round, it names the message that opened the Round. A Helper's save names
+    that message both ways."""
+    if by_round:
+        monkeypatch.setenv(ROUND_FILES_ENV, "1")
+    else:
+        monkeypatch.delenv(ROUND_FILES_ENV, raising=False)
+    client, store, conversations, chat, _updates, _steers = env
     asked = _ask(conversations, chat, "write the memo")
-    helper = conversations.create_conversation(parent_conversation_id=chat).id
+    in_round = {"omnigent.context.mode": "superside-chat", ROUND_LABEL_KEY: asked}
+    conversations.set_labels(chat, in_round)
+    helper = conversations.create_conversation(parent_conversation_id=chat, labels=in_round).id
     _started(conversations, chat, helper)
     _ask(conversations, helper, "brief: write the memo")
-    _ask(conversations, chat, "and a later message, sent while it works")
+    steer = _ask(conversations, chat, "and a later message, sent while it works")
     saved = _save(client, chat, "memo.md", chat_id=helper)
     version = client.get(f"/v1/artifacts/{saved['id']}").json()["all_versions"][0]
     assert version["item_id"] == asked
     assert _transcript_message(client, chat, asked)["artifact"]["how"] == "edited"
+    own = _save(client, chat, "notes.md")
+    version = client.get(f"/v1/artifacts/{own['id']}").json()["all_versions"][0]
+    assert version["item_id"] == (asked if by_round else steer)
+    assert {store.get_in_session(a["id"], chat).round_id for a in (saved, own)} == {asked}
 
     scheduled = conversations.create_conversation(
         parent_conversation_id=chat, labels={SCHEDULED_HELPER_LABEL_KEY: "t1"}
