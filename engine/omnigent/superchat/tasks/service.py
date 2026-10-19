@@ -2,8 +2,8 @@
 the cards that asked.
 
 The Round record is the source (ADR 0029): the work still under way is the Conversation's
-Rounds not settled besides the one asking (:func:`~omnigent.superchat.rounds.read.open_rounds`),
-and a card
+Rounds not settled (:func:`~omnigent.superchat.rounds.read.open_rounds`), the one asking only
+while its Helper runs, and a card
 answer is kept on the message that carried it, the opener of its Round. Nothing creates, settles
 or reads a task record any more.
 """
@@ -18,6 +18,7 @@ from omnigent.context.labels import BACKGROUND_LABELS
 from omnigent.entities import Conversation, MessageData
 from omnigent.stores import ConversationStore
 from omnigent.superchat.artifacts.links import is_person_message
+from omnigent.superchat.rounds.fold import fold, summary
 from omnigent.superchat.rounds.read import open_rounds
 from omnigent.superchat.rounds.record import round_of
 from omnigent.superchat.rounds.store import SqlAlchemyRoundStore
@@ -120,8 +121,8 @@ class TaskService:
     def view(self, session_id: str) -> dict[str, Any] | None:
         """What a turn and ``deck_new`` read: the person's latest message, whether a person
         opened this turn, the Round the session is in (``round_id``), the card answer that
-        Round's message carried, and the Conversation's other Rounds not settled (``rounds``,
-        :func:`~omnigent.superchat.rounds.read.open_rounds`). A read changes nothing.
+        Round's message carried, and the Conversation's Rounds not settled (``rounds``,
+        :meth:`_open_rounds`). A read changes nothing.
         """
         place = self.place(session_id)
         if place is None:
@@ -146,10 +147,22 @@ class TaskService:
             "by_person": by_person and not place.is_helper,
             "round_id": round_id,
             "answer": answer.to_wire() if answer else None,
-            "rounds": [
-                r for r in open_rounds(self.rounds, conversation_id) if r["round_id"] != round_id
-            ],
+            "rounds": self._open_rounds(conversation_id, round_id),
         }
+
+    def _open_rounds(self, conversation_id: str, round_id: str | None) -> list[dict[str, Any]]:
+        """The Conversation's Rounds not settled. The session's own Round is one of them only
+        while a Helper of it runs (a status question asked mid-turn joins that Round), with what
+        that work is doing now (``now``: the live tool's phrase) and its finished ``steps``."""
+        rows = []
+        for row in open_rounds(self.rounds, conversation_id):
+            if row["round_id"] == round_id:
+                if not any(h["status"] == "running" for h in row["helpers"]):
+                    continue
+                brief = summary(fold(self.rounds.events(round_id, conversation_id), round_id))
+                row = {**row, "now": brief["live"], "steps": brief["steps"]}
+            rows.append(row)
+        return rows
 
     def card_answered(self, session_id: str, item_id: str, context: Mapping[str, Any]) -> None:
         """A message carried ``context.card_answer``: keep it on that message (the opener of the
