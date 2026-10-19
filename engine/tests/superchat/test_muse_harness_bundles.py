@@ -213,12 +213,22 @@ def test_the_conversation_prompt_states_three_rules_once_and_stays_small(bundle:
     assert len(prompt) <= 15_000
     for term in RETIRED:
         assert term not in prompt, term
-    # Context is pulled, and delegation is judgement: one line, stated once (ADR 0029).
+    # Context is pulled; delegation is judgement, stated once where the work is (ADR 0029).
     look_up = prompt.split("## What you can look up", 1)[1].split("\n## ", 1)[0]
-    for term in ("Standing memory", "journal", "`recall`", "`context_brief`", "Helper"):
+    for term in ("Standing memory", "journal", "`recall`", "`context_brief`"):
         assert term in look_up, term
+    work = prompt.split("## How you work", 1)[1].split("\n## ", 1)[0]
     flat = " ".join(prompt.split())
-    assert flat.count("long work and parallel work go to a Helper") == 1
+    rule = "Delegate work that is long, multi-step or self-contained to a Helper"
+    assert flat.count(rule) == 1 and rule in " ".join(work.split())
+    assert "Do simple single-step work yourself" in flat
+    for line in (
+        "Never predict or make up a result, never say how much time is left",
+        "answer from the `Open task:` lines only: running, quiet, done or needs attention",
+        "an error does not mean nothing happened. Never silently drop work.",
+    ):
+        assert flat.count(line) == 1, line
+    assert "go to a Helper." not in flat
     # A deck is HTML; PowerPoint only when asked, so briefs stop asking for one.
     assert "ask for PowerPoint only when the person did" in flat
     assert "`artifact_outline`" in prompt
