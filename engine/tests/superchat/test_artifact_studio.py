@@ -140,7 +140,7 @@ def _texts(conversations: SqlAlchemyConversationStore, session_id: str) -> list[
 def test_every_version_carries_its_groups_id_and_backfill_names_version_one(env, db_uri) -> None:
     client, _app, store, _conversations, chat, _linked = env
     first = _save(client, chat, "deck.md").json()
-    second = _save(client, chat, "deck.md").json()
+    second = _save(client, chat, "deck.md", body=b"<p>y</p>").json()
     other = _save(client, chat, "memo.md").json()
     assert first["group_id"] == second["group_id"] == first["id"]
     assert other["group_id"] == other["id"] != first["group_id"]
@@ -155,7 +155,7 @@ def test_every_version_carries_its_groups_id_and_backfill_names_version_one(env,
     detail = client.get(f"/v1/artifacts/{second['id']}").json()
     assert detail["group_id"] == first["id"]
     # A version saved after the backfill keeps the group's id.
-    assert _save(client, chat, "deck.md").json()["group_id"] == first["id"]
+    assert _save(client, chat, "deck.md", body=b"<p>z</p>").json()["group_id"] == first["id"]
 
 
 # ---------------------------------------------------------------- find-or-create
@@ -164,7 +164,7 @@ def test_every_version_carries_its_groups_id_and_backfill_names_version_one(env,
 def test_find_or_create_makes_one_quiet_session_per_file(env) -> None:
     client, _app, _store, conversations, chat, _linked = env
     v1 = _save(client, chat, "deck.md").json()
-    v2 = _save(client, chat, "deck.md").json()
+    v2 = _save(client, chat, "deck.md", body=b"<p>y</p>").json()
     made = client.post(f"/v1/artifacts/{v1['id']}/chat")
     assert made.status_code == 200, made.text
     session_id = made.json()["session_id"]
@@ -267,7 +267,7 @@ def test_a_studio_save_needs_its_base_and_stays_out_of_super_chat(env) -> None:
     assert stale.json()["error"]["code"] == "artifact_stale"
     assert "v1" in stale.json()["error"]["message"]
 
-    ok = _save(client, chat, "deck.md", chat_id=studio, base_version=1)
+    ok = _save(client, chat, "deck.md", body=b"<p>y</p>", chat_id=studio, base_version=1)
     assert ok.status_code == 201, ok.text
     version = client.get(f"/v1/artifacts/{ok.json()['id']}").json()["all_versions"][0]
     # The studio turn's own message; no chip on any of Super Chat's messages.

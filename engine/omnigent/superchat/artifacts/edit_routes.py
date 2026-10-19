@@ -213,6 +213,7 @@ def create_html_edit_router(
                 **artifact_to_response(newest, versions=newest.version),
                 "source_path": newest.source_path,
                 "summary": "",
+                "unchanged": True,
             }
         if len(new_data) > MAX_ARTIFACT_BYTES:
             raise OmnigentError("file too large (25 MB max)", code=ErrorCode.INVALID_INPUT)

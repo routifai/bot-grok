@@ -264,7 +264,7 @@ def test_a_save_links_the_message_and_the_version_names_it(env) -> None:
         "how": "edited",
     }
     # A second save in the same turn fills the newer version; a hand edit names no message.
-    again = _save(client, chat, "page.md")
+    again = _save(client, chat, "page.md", body=b"<p>y</p>")
     link = _transcript_message(client, chat, asked)["artifact"]
     assert (link["artifact_id"], link["version"]) == (again["id"], 2)
 
