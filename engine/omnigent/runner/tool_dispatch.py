@@ -49,7 +49,8 @@ from omnigent.superchat.prompt_prefix import fetch_memory_profile as _fetch_memo
 from omnigent.superchat.subagents import (
     WORKER_TYPE,
     count_live_children,
-    prepend_memory_profile,
+    folder_fact,
+    helper_brief,
     refuse_subagent_concurrency,
     refuse_subagent_dispatch_override,
     refuse_subagent_nesting,
@@ -2299,6 +2300,46 @@ async def _subagent_nesting_refusal(
     return refuse_subagent_nesting(caller_kind=caller_kind, parent_kind=parent_kind)
 
 
+async def _helper_brief(
+    message: str,
+    server_client: httpx.AsyncClient,
+    conversation_id: str,
+    folder: str | None,
+) -> str:
+    """A new Helper's first message: *message* plus the facts the engine knows (ADR 0029).
+
+    The folder, the caller's newest saved files and the memory profile's preference lines on
+    the brief's subject; never the whole profile. A read that fails leaves its fact out.
+    """
+    from omnigent.superchat.context_brief.brief import profile_preference_lines, subject_words
+    from omnigent.superchat.projects.card import workspace_root
+    from omnigent.superchat.subagents import MAX_FILES_IN_PLAY
+
+    async def files() -> list[str]:
+        try:
+            resp = await server_client.get(
+                "/v1/artifacts",
+                params={"parent_session_id": conversation_id, "limit": MAX_FILES_IN_PLAY},
+                timeout=10.0,
+            )
+            rows = resp.json().get("artifacts") if resp.status_code == 200 else None
+        except (httpx.HTTPError, ValueError, AttributeError):
+            return []
+        if not isinstance(rows, list):
+            return []
+        return [r["name"] for r in rows if isinstance(r, dict) and isinstance(r.get("name"), str)]
+
+    profile, names = await asyncio.gather(
+        _fetch_memory_profile_block(server_client, conversation_id), files()
+    )
+    return helper_brief(
+        message,
+        folder=folder_fact(folder, workspace_root()),
+        files=names,
+        preferences=profile_preference_lines(profile, subject_words(message)),
+    )
+
+
 def _sub_agent_host(
     *,
     server_client: httpx.AsyncClient | None,
@@ -2611,6 +2652,7 @@ async def _execute_subagent_tool(
             return existing
     assert not isinstance(existing, str)
     created_child = False
+    child_folder: str | None = None
     child_wrapper_label: str | None = None
     work_id = _runner_app.new_subagent_work_id()
     if existing is not None:
@@ -2993,11 +3035,17 @@ async def _execute_subagent_tool(
             return "Error: server did not return child session_id"
         child_wrapper_label = _session_wrapper_label(child_data)
         created_child = True
+        # The server created the child in its parent's current folder; a move below replaces it.
+        inherited = child_data.get("workspace")
+        child_folder = workspace or (inherited if isinstance(inherited, str) else None)
 
         if workspace is not None:
-            # Moved before anything is registered or posted, so the first turn already works
-            # there; a refusal deletes the child. Pi and claude-sdk keep their spawn-time cwd,
-            # harmless while their native file tools are off: re-enabling them needs a respawn.
+            # The order is the guarantee that a Helper works in its folder on every executor:
+            # the folder is stored on the child's record here, then the brief is posted, and
+            # only that first message makes the runner launch the child's harness process,
+            # which reads its cwd from the record (``_session_runtime_cwd``). Nothing launches
+            # a new child earlier. A refusal deletes the child. A process already running
+            # keeps its cwd on a later move; only its tool calls follow.
             from omnigent.superchat._handler_http import set_session_workspace
 
             failure = await set_session_workspace(
@@ -3112,11 +3160,8 @@ async def _execute_subagent_tool(
     )
 
     if created_child and is_superside_chat(labels):
-        # A new sub-agent starts from its Brief plus the Memory Profile
-        # (docs/glossary.md: "Sub-agent"); never on a continuation.
-        message = prepend_memory_profile(
-            message, await _fetch_memory_profile_block(server_client, conversation_id)
-        )
+        # A new Helper starts from its brief plus the engine's facts; never on a continuation.
+        message = await _helper_brief(message, server_client, conversation_id, child_folder)
 
     # Copy any forwarded parent files into the child and build the
     # first-turn content (input_text plus a file block per copied id).
@@ -3637,11 +3682,9 @@ async def _execute_session_create(
 
         message = args.get("message")
         if is_superside_chat(labels) and isinstance(message, str) and message:
-            # A new child starts from its Brief plus the Memory Profile
-            # (docs/glossary.md: "Sub-agent"), same as the named launch path.
-            message = prepend_memory_profile(
-                message, await _fetch_memory_profile_block(server_client, conversation_id)
-            )
+            # A new child starts from its brief plus the engine's facts, same as the named
+            # launch path; its folder is only known once it exists, so it is left out.
+            message = await _helper_brief(message, server_client, conversation_id, None)
 
         if has_config_path:
             # The multipart create carries only the config bundle, so an effort

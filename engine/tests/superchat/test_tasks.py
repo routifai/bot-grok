@@ -836,18 +836,25 @@ def test_event_calls_have_a_two_second_budget() -> None:
 
 
 @pytest.mark.parametrize(
-    ("kwargs", "read"),
-    [({"helper": True}, False), ({"studio": True}, False), ({}, True)],
+    ("kwargs", "read", "profile"),
+    [({"helper": True}, False, False), ({"studio": True}, False, True), ({}, True, True)],
     ids=["helper", "studio", "conversation"],
 )
-async def test_only_the_conversations_turn_reads_the_tasks(monkeypatch, kwargs, read) -> None:
+async def test_only_the_conversations_turn_reads_the_tasks(
+    monkeypatch, kwargs, read, profile
+) -> None:
+    """A Helper's turn also skips the memory profile: its brief carries what applies."""
     from omnigent.superchat import features, prompt_prefix
 
     calls: list[str] = []
+    profiles: list[str] = []
 
     async def prefix(_client, conversation_id: str, _texts) -> list[str]:
         calls.append(conversation_id)
         return []
+
+    async def fetch_profile(_client, conversation_id: str) -> None:
+        profiles.append(conversation_id)
 
     swapped = [
         dataclasses.replace(f, message_prefix=prefix) if f.name == "tasks" else f
@@ -855,8 +862,10 @@ async def test_only_the_conversations_turn_reads_the_tasks(monkeypatch, kwargs, 
     ]
     assert next(f for f in swapped if f.name == "tasks").conversation_only
     monkeypatch.setattr(features, "FEATURES", swapped)
+    monkeypatch.setattr(prompt_prefix, "fetch_memory_profile", fetch_profile)
     await prompt_prefix.turn_prefix_blocks(None, "s1", message_texts=["go"], **kwargs)
     assert calls == (["s1"] if read else [])
+    assert profiles == (["s1"] if profile else [])
 
 
 async def test_the_message_prefix_features_are_fetched_together(monkeypatch) -> None:

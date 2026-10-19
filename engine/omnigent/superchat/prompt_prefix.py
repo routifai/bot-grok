@@ -1,7 +1,8 @@
 """What a Super Chat turn or a new Helper's Brief is prefixed with: the one hook.
 
 Both the runner's per-turn path (``runner/app.py``) and the sub-agent launch paths
-(``runner/tool_dispatch.py``) read the person's Memory Profile from the server here, and the
+(``runner/tool_dispatch.py``, which keep only the profile's preference lines on the brief's
+subject) read the person's Memory Profile from the server here, and the
 runner's per-turn path also reads the local-time line. Failures never fail the turn: a missing
 profile means "no profile".
 """
@@ -286,8 +287,9 @@ async def turn_prefix_blocks(
         ``None`` (a cold start, or anything unproven) sends every block in full.
     :param sent_now: Filled with the hashes of the profile and Projects blocks this turn
         carries, for the caller to remember once the turn completes.
-    :param helper: The session is a Helper: no Conversation-only message blocks (tasks). A
-        file's studio is treated the same way.
+    :param helper: The session is a Helper: no Conversation-only message blocks (tasks) and no
+        memory profile (its brief carries the preference lines that apply). A file's studio
+        drops the Conversation-only blocks the same way.
     :param studio: The session is a file's studio (ADR 0024): its turn gets the memory profile,
         the file line and this file's write-back notes only (no Projects, no feature notes, no
         Conversation artifact hint).
@@ -342,7 +344,10 @@ async def turn_prefix_blocks(
             )
             if message_texts
             else _no_blocks(),
-            "profile": fetch_memory_profile(server_client, conversation_id),
+            # A Helper gets the preference lines on its subject in its brief, not the profile.
+            **(
+                {} if helper else {"profile": fetch_memory_profile(server_client, conversation_id)}
+            ),
             "projects": asyncio.to_thread(_safe_projects_block, workspace),
             "features": features,
             "local_time": fetch_local_time_line(server_client),

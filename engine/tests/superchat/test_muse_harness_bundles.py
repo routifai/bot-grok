@@ -174,6 +174,9 @@ def test_the_conversation_plans_from_the_brief_and_helpers_do_not(bundle: Path) 
             "allow"
         ]
         assert "context_brief" not in allow, helper
+        # Worker Helpers look earlier work up themselves (ADR 0029).
+        if helper.startswith("worker"):
+            assert {"recall", "recall_get"} <= set(allow), helper
     prompt = (bundle / "AGENTS.md").read_text()
     section = prompt.split("## How a turn runs", 1)[1].split("\n## ", 1)[0]
     for term in ("`context_brief`", "`active`", "`owner`", "`done_when`", "`artifact_outline`"):

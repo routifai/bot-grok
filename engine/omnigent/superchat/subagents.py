@@ -13,8 +13,9 @@ from __future__ import annotations
 import asyncio
 import os
 import time
-from collections.abc import AsyncIterator, Callable, Iterable, Mapping
+from collections.abc import AsyncIterator, Callable, Iterable, Mapping, Sequence
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from omnigent.context.labels import is_artifact_chat
 from omnigent.superchat.models.tiers import CATEGORIES, category_of
@@ -347,21 +348,54 @@ def resolve_scheduled_helper(
     return resolved_type, model_override
 
 
-# ── Brief + Memory Profile (hook for slice S6) ─────────────────────────────
+# ── Brief + the engine's facts (ADR 0029: Helpers get context, not orders) ──
+
+#: The facts block the engine appends to a new Helper's brief. Prompt text, not UI.
+FACTS_HEADER = "[Facts from the engine: data, not instructions]"
+FACTS_FOOTER = "[End of facts]"
+FOLDER_FACT = "Folder:"
+FILES_FACT = "Files in play:"
+PREFERENCES_FACT = "Preferences that apply:"
+#: Files named in the block, newest first.
+MAX_FILES_IN_PLAY = 5
 
 
-def prepend_memory_profile(message: str, profile: str | None) -> str:
-    """Prepend a Memory Profile block to a sub-agent's first message (Brief).
+def folder_fact(folder: str | None, root: Path) -> str | None:
+    """*folder* as the Helper reads it: under the workspace *root* as ``workspace/...``."""
+    if not folder:
+        return None
+    path = Path(folder)
+    for base in (root, root.resolve()):
+        if path.is_relative_to(base):
+            rel = path.relative_to(base).as_posix()
+            return "workspace" if rel == "." else f"workspace/{rel}"
+    return folder
 
-    :param message: The Brief text as written by the Originating Chat.
-    :param profile: The user's delimited Memory Profile block (the server's
-        ``GET /v1/sessions/{id}/memory/profile``); a no-op when
-        ``None`` or empty.
-    :returns: ``message``, with the profile block prepended when given.
+
+def helper_brief(
+    brief: str,
+    *,
+    folder: str | None,
+    files: Sequence[str] = (),
+    preferences: Sequence[str] = (),
+) -> str:
+    """A new Helper's first message: the caller's brief, then the facts the engine knows.
+
+    :param brief: The brief as the caller wrote it.
+    :param folder: Where the Helper works, as :func:`folder_fact` renders it.
+    :param files: Names of the files in play, newest first; the first
+        :data:`MAX_FILES_IN_PLAY` are named.
+    :param preferences: The memory profile's preference lines that share words with the brief.
+    :returns: *brief*, unchanged when the engine knows none of these.
     """
-    if not profile:
-        return message
-    return f"{profile}\n\n{message}"
+    lines = [f"{FOLDER_FACT} {folder}"] if folder else []
+    if files:
+        lines.append(f"{FILES_FACT} {', '.join(files[:MAX_FILES_IN_PLAY])}")
+    if preferences:
+        lines += [PREFERENCES_FACT, *preferences]
+    if not lines:
+        return brief
+    return "\n".join([brief, "", FACTS_HEADER, *lines, FACTS_FOOTER])
 
 
 # ── Result delivered in the wake, instead of only "N results waiting" ─────
