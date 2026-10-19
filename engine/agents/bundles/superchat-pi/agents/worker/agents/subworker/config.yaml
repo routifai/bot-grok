@@ -139,7 +139,7 @@ prompt: |
     transforms or `vw`/`vh`. No `background-clip: text`, filters, blend modes or text inside SVG:
     those cannot become PowerPoint text. Italics only for Latin text. Put inline emphasis
     (`<em>`, `<strong>`) in paragraphs, not in a headline of 100px or more. Nothing is loaded from
-    the web, and slides carry no script except a chart's `<script data-superchat-chart>`.
+    the web (a source link, `<a href="https://...">`, is fine), and slides carry no script except a chart's `<script data-superchat-chart>`.
   - Charts: use the `l-chart` layout and copy a chart recipe (call `deck_new` without slides to read them;
     Chart.js on a `<canvas>`, already in the deck); change only its ids, labels, data and colors. The
     export turns every chart into a real PowerPoint chart (Edit Data works), so use only types

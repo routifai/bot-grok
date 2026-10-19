@@ -945,6 +945,9 @@ msgstr "I ask before doing anything I can't undo."
 msgid "I couldn't reach the model provider. Try again."
 msgstr "I couldn't reach the model provider. Try again."
 
+msgid "I couldn't save that reply, so it won't be here when you come back."
+msgstr "I couldn't save that reply, so it won't be here when you come back."
+
 msgid "I lost the connection. Try again."
 msgstr "I lost the connection. Try again."
 

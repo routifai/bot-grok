@@ -86,11 +86,16 @@ def helper_part(helper: Mapping[str, Any]) -> str:
 def round_line(row: Mapping[str, Any]) -> str:
     """One line naming a Round not settled (``rounds.read.open_rounds``) and, while a Helper of
     it runs, what comes next, e.g. ``Open task: "make a deck on Uruguay" · helper "Uruguay
-    deck" · next: wait for the helper``."""
+    deck" · now: slides.html · steps done: 4 · next: wait for the helper`` (``now`` and
+    ``steps`` only on the Round the message itself is in)."""
     ask = truncate(str(row.get("ask") or ""), _ASK_CHARS)
     parts = [f'{LINE_OPEN}"{ask}"' if ask else LINE_OPEN.rstrip(": ")]
     helpers = [h for h in row.get("helpers") or () if isinstance(h, Mapping)]
     parts += [helper_part(h) for h in helpers]
+    if row.get("now"):
+        parts.append(f"now: {row['now']}")
+    if row.get("steps"):
+        parts.append(f"steps done: {row['steps']}")
     if any(h.get("status") in (None, "running") for h in helpers):
         parts.append("next: wait for the helper")
     return " · ".join(parts)

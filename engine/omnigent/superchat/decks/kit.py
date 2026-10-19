@@ -188,6 +188,11 @@ _EXTERNAL_RE = re.compile(
     r"""(?:\bsrc|\bhref|\bposter|\bsrcset|\baction)\s*=\s*["']\s*(?:https?:)?//|url\(\s*["']?\s*(?:https?:)?//|@import""",
     re.I,
 )
+# A link's href opens a page on a click and loads nothing, so it is left out of the check above;
+# an SVG <image>/<use> href, and any url() in the link's own style, still count.
+_LINK_HREF_RE = re.compile(
+    r"""(<a\b[^>]*?)\s(?:xlink:)?href\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)""", re.I
+)
 _FORBIDDEN_TAG_RE = re.compile(r"<\s*(script|iframe|object|embed|link|base|form|meta)\b", re.I)
 # The one script a slide may carry: the Chart.js call that draws a chart on its canvas.
 _CHART_SCRIPT_RE = re.compile(
@@ -230,9 +235,10 @@ def check_slides(slides_html: str) -> tuple[list[str], list[str]]:
                 "A <script data-superchat-chart> may only configure its chart: the data goes in "
                 "the script, nothing is fetched or evaluated."
             )
-    external = _EXTERNAL_RE.search(slides_html)
+    loading = _LINK_HREF_RE.sub(r"\1", slides_html)
+    external = _EXTERNAL_RE.search(loading)
     if external:
-        near = slides_html[external.start() : external.end() + 60].split(">", 1)[0]
+        near = loading[external.start() : external.end() + 60].split(">", 1)[0]
         errors.append(
             "Slides may not load anything from the web (images, fonts, @import), as in "
             f"`{near}`: remove every such reference, drawing it with HTML/CSS/SVG or leaving "

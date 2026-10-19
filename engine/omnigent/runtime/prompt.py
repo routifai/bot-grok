@@ -43,11 +43,17 @@ SUBAGENT_WAKE_NOTICE_INSTRUCTION = (
     "approval) are routine runtime status messages in the same way."
 )
 
-# Orders the web tools: search for lookups, the embedded browser (auto-registered
-# for every agent, ToolManager._register_browser_tools) for pages that must be used.
-EMBEDDED_BROWSER_PRIORITY_INSTRUCTION = (
+# Orders the web tools: search for lookups, only when the spec declares a search or fetch
+# builtin; the embedded browser (auto-registered for every agent,
+# ToolManager._register_browser_tools) for pages that must be used.
+WEB_SEARCH_INSTRUCTION = (
     "Web: for facts, prices, news and lookups use web search (and web fetch to "
-    "read a specific page) when you have them. Use the embedded browser "
+    "read a specific page)."
+)
+#: The builtins :data:`WEB_SEARCH_INSTRUCTION` speaks of.
+WEB_SEARCH_BUILTINS = frozenset({"web_search", "web_fetch"})
+EMBEDDED_BROWSER_PRIORITY_INSTRUCTION = (
+    "Use the embedded browser "
     "(browser_navigate / browser_snapshot / browser_click / browser_type / "
     "browser_screenshot) when a page must be used (log in, click, fill forms, "
     "pages search cannot read) or when the person asks to see it; the person "
@@ -109,8 +115,9 @@ def _framework_instructions_for(
     registration gate in ``omnigent.tools.manager`` (declared sub-agents or
     ``spawn: true``).
 
-    The embedded-browser priority guidance applies to every agent,
-    mirroring the unconditional ``browser_*`` registration
+    The web-search line goes only to an agent that declares a ``web_search`` or
+    ``web_fetch`` builtin. The embedded-browser priority guidance applies to every
+    agent, mirroring the unconditional ``browser_*`` registration
     (``ToolManager._register_browser_tools``).
 
     :param spec: The parsed AgentSpec.
@@ -124,6 +131,8 @@ def _framework_instructions_for(
     instructions: list[str] = []
     if spec.tools.agents or spec.spawn:
         instructions.append(SUBAGENT_WAKE_NOTICE_INSTRUCTION)
+    if any(b.name in WEB_SEARCH_BUILTINS for b in spec.tools.builtins):
+        instructions.append(WEB_SEARCH_INSTRUCTION)
     instructions.append(EMBEDDED_BROWSER_PRIORITY_INSTRUCTION)
     if is_rollover(labels):
         instructions.append(ROLLOVER_CONTEXT_INSTRUCTION)

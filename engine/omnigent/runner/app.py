@@ -7203,6 +7203,18 @@ def create_runner_app(
                             extra={"session_id": conv},
                         )
 
+        # Super Chat answers which model it runs on when asked; the bundle's prompt names the
+        # harness, the turn names the model. In the instructions, so a model change relaunches
+        # the harness (both key their launch on the prompt) and the line never goes stale.
+        _turn_model = msg_body.get("model_override")
+        if (
+            instructions
+            and isinstance(_turn_model, str)
+            and _turn_model
+            and (await _rollover_labels_for_session(conv)).get(CONTEXT_MODE_LABEL)
+            == SUPERSIDE_CHAT_MODE_VALUE
+        ):
+            instructions = f"{instructions}\n\nSetup: you run on the model {_turn_model}."
         _setup_env = time.monotonic() - _env_started
         ctx = TurnDispatch(
             agent_id=_dispatched_agent_id,
