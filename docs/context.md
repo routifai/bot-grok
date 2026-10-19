@@ -179,9 +179,9 @@ long becomes a one-line manifest pointing at `files_query` and `files_get`.
   with `state_close`, applied at the next checkpoint.
 - **The journal and `STATE.md`.** After each checkpoint the runner appends the journal lines and the
   evicted entries to `~/workspace/memory/journal/YYYY-MM-DD.md` and writes the working list to
-  `~/workspace/memory/STATE.md` (`runner/memory/files.py`, `sync.py`). A helper result and a
-  delivered hand edit add a line too. Each line names its chat and, written by code, what the work
-  touched (files, project). The folder is a projection: nothing in the engine reads it back as
+  `~/workspace/memory/STATE.md` (`runner/memory/files.py`, `sync.py`). Each settled Round adds
+  one entry (ask, outcome, files, Helpers, folder, duration) and a delivered hand edit a line.
+  Each line names its chat and, written by code, what the work touched (files, project). The folder is a projection: nothing in the engine reads it back as
   state, it is rebuilt from the stored checkpoints when missing, and the index makes it searchable.
 - **Daily notes** (`superchat/daily_notes/`): one per person per local day, stored in the engine
   (`/v1/me/daily-notes`), with sections for what was talked about, decisions, promises and open
