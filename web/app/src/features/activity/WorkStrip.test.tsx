@@ -357,11 +357,18 @@ it("shows no draft for a file someone else saved or edited by hand", async () =>
 });
 
 it("finds a draft however many newer files others saved, and an older file it updated", async () => {
-  const others = Array.from({ length: 8 }, (_, i) => fileRow(`v-o${i}`, `o${i}.md`, "h-other"));
+  // Files show newest first, so each gets its own time: the others newest, then deck, then page.
+  const at = (minute: number) => ({
+    createdAt: `2026-01-01T00:${String(minute).padStart(2, "0")}:00.000Z`,
+  });
+  const others = Array.from({ length: 8 }, (_, i) => ({
+    ...fileRow(`v-o${i}`, `o${i}.md`, "h-other"),
+    ...at(10 + i),
+  }));
   rpcMock.list.mockResolvedValue([
     ...others,
-    fileRow("v-deck-1", "deck.html", "h-deck", "ai"),
-    fileRow("v-page-4", "page.html", "h-deck", "update", 4),
+    { ...fileRow("v-deck-1", "deck.html", "h-deck", "ai"), ...at(2) },
+    { ...fileRow("v-page-4", "page.html", "h-deck", "update", 4), ...at(1) },
   ]);
   const { container } = await mount([deckHelper], [saving("h-deck")]);
   await act(async () => undefined);

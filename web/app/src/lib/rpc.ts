@@ -1,6 +1,6 @@
+import type { ContractRouterClient } from "@orpc/contract";
 import { createRouterClient } from "@orpc/server";
 import type { AppContract } from "@superchat/contracts";
-import type { ContractRouterClient } from "@orpc/contract";
 import { router } from "../engine/router";
 
 /**

@@ -170,11 +170,12 @@ it("shows open Asks as the Inbox on the Activity tab", async () => {
 
 it("shows a 'View all' action once there are more open Asks than fit", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  // The panel lists Asks newest first, so each gets its own time and "Four" is the oldest.
   api.asks.list.mockResolvedValue([
-    ask({ id: "ask-1", text: "One" }),
-    ask({ id: "ask-2", text: "Two" }),
-    ask({ id: "ask-3", text: "Three" }),
-    ask({ id: "ask-4", text: "Four" }),
+    ask({ id: "ask-1", text: "One", createdAt: "2026-01-01T00:04:00.000Z" }),
+    ask({ id: "ask-2", text: "Two", createdAt: "2026-01-01T00:03:00.000Z" }),
+    ask({ id: "ask-3", text: "Three", createdAt: "2026-01-01T00:02:00.000Z" }),
+    ask({ id: "ask-4", text: "Four", createdAt: "2026-01-01T00:01:00.000Z" }),
   ]);
   const page = await renderPanel();
   try {
