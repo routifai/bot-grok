@@ -922,6 +922,11 @@ def _owner_from_grants(grants: list[SessionPermission]) -> str | None:
     return next((g.user_id for g in grants if g.level >= LEVEL_OWNER), None)
 
 
+#: Awaited with the session id and the failure's public message when a turn fails before
+#: reaching a runner (:func:`_record_turn_failure`), so a feature can settle what waited for it.
+ON_TURN_FAILED: dict[str, Callable[[str, str], Awaitable[None]]] = {}
+
+
 def _session_status_from_cache(
     conversation_id: str,
     db_status: str | None = None,
@@ -5833,6 +5838,11 @@ async def _record_turn_failure(
             },
         },
     )
+    for on_failed in list(ON_TURN_FAILED.values()):
+        try:
+            await on_failed(session_id, error.message)
+        except Exception:  # noqa: BLE001 - a feature's settling never fails the turn's end
+            _logger.warning("turn-failed hook raised for %s", session_id, exc_info=True)
     _publish_status(session_id, "failed", failure, failure_origin=failure_origin)
 
 

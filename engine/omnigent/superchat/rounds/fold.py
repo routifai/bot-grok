@@ -19,6 +19,10 @@ Helper and events that arrive after settlement are cases of the fold, not rules 
 * A Round that settles on an Assistant ``turn.ended`` whose status is ``failed`` (a model error,
   a turn the relay lost with no reply stored, a reset, a Round the sweep found with no turn to
   come) is **failed**, with that end's ``reason``; one that settles on any other end is done.
+* A ``wake`` that came while a turn of the Conversation ran (``steered``; that turn may be
+  another Round's) is read by that turn, or by the turn the runner runs right after it for the
+  queued notice. ``session.idle`` (the Conversation's session went idle with nothing queued)
+  says it was: the steered results count as read then, and the Round may settle.
 * ``helper.titled`` renames a Helper (its model-written name), before or after settlement.
 * Each actor has one live slot (the Assistant, or one Helper by its id): the newest tool it
   started. ``now`` is the slot started last; a settled Round has none.
@@ -46,6 +50,7 @@ FILE_SAVED = "file.saved"
 CHIPS = "chips"
 CHECKLIST_CREATED, CHECKLIST_UPDATED = "checklist.created", "checklist.updated"
 WAKE = "wake"
+SESSION_IDLE = "session.idle"
 STOP_REQUESTED = "stop.requested"
 
 #: Actors.
@@ -114,7 +119,11 @@ def fold(events: Sequence[Mapping[str, Any]], round_id: str | None = None) -> di
         ``reason`` (why a failed Round failed, when its end said), ``stop_line``,
         ``now`` (the live tool or ``None``), ``trail``, ``helpers`` by id, ``files``, ``chips``,
         ``checklist``, ``words`` (one entry per finished Assistant turn), ``live_words`` (the
-        running turn's text so far), ``failed_helper`` and ``after_settle``.
+        running turn's text so far), ``failed_helper``, ``after_settle``, ``turn_due`` (an
+        unsettled Round waits for an Assistant turn that has not started: its message's first
+        turn, or the wake that reads a Helper's result) and ``read_on_idle`` (an unsettled Round
+        whose only wait is Helper results steered into a turn that has ended: the session going
+        idle settles it).
     """
     if round_id is None and events:
         round_id = events[-1].get("round_id")
@@ -140,6 +149,8 @@ def fold(events: Sequence[Mapping[str, Any]], round_id: str | None = None) -> di
     }
     assistant_running = False
     unconsumed: set[str] = set()
+    steered: set[str] = set()  # results in *unconsumed* whose wake was steered into a turn
+    turned = False  # an Assistant turn started
     cur_words: list[str] | None = None
     live: dict[str, dict[str, Any]] = {}
     ended: Mapping[str, Any] | None = None  # the last Assistant turn.ended
@@ -253,12 +264,19 @@ def fold(events: Sequence[Mapping[str, Any]], round_id: str | None = None) -> di
                 h.update(status=ev.get("status") or "done", finished_at=t, result=ev.get("result"))
                 unconsumed.add(ev["helper_id"])
                 live.pop(ev["helper_id"], None)
+        elif kind == WAKE:
+            if ev.get("steered") and ev.get("helper_id") in unconsumed:
+                steered.add(ev["helper_id"])
+        elif kind == SESSION_IDLE:
+            if not assistant_running:
+                unconsumed -= steered  # the turn they were steered into read them
+                steered = set()
         elif kind == TURN_STARTED and actor == ASSISTANT:
-            assistant_running, cur_words = True, []
-            unconsumed = set()  # an Assistant turn reads the results that woke it
+            assistant_running, cur_words, turned = True, [], True
+            unconsumed, steered = set(), set()  # an Assistant turn reads the results that woke it
         elif kind == TURN_ENDED and actor == ASSISTANT:
             if not assistant_running:
-                unconsumed = set()  # an end with no turn running: no turn will read them
+                unconsumed, steered = set(), set()  # no turn running: no turn will read them
             assistant_running, ended = False, ev
             if cur_words:
                 v["words"].append("".join(cur_words))
@@ -285,6 +303,11 @@ def fold(events: Sequence[Mapping[str, Any]], round_id: str | None = None) -> di
             live = {}  # nothing is live on a settled Round
         v["now"] = copy.deepcopy(list(live.values())[-1]) if live else None
         v["live_words"] = "".join(cur_words or []) if v["settled_at"] is None else ""
+    unsettled = v["status"] == "running"
+    v["turn_due"] = unsettled and (
+        (assistant_running and not turned) or (not assistant_running and bool(unconsumed - steered))
+    )
+    v["read_on_idle"] = unsettled and not assistant_running and bool(steered)
     end = v["settled_at"] if v["settled_at"] is not None else (mine[-1]["t"] if mine else 0)
     v["elapsed"] = round(end - (v["started_at"] or 0), 1) if v["started_at"] is not None else 0
     return v
