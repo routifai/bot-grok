@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import inspect
 import logging
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 from omnigent.runtime.policies.hooks import (
@@ -35,7 +35,6 @@ from omnigent.superchat.step_limit import policy as step_limit_policy
 from omnigent.tools.manager import register_tool_source
 
 if TYPE_CHECKING:
-    import httpx
     from fastapi import FastAPI
 
     from omnigent.spec import AgentSpec
@@ -129,20 +128,6 @@ def notify_denied(ctx: HandlerCtx, tool_name: str, reason: str) -> None:
             feature.on_tool_denied(ctx, tool_name, reason)
         except Exception:  # a listener is bookkeeping, never a reason to fail a call
             _logger.warning("%s tool denial failed", feature.name, exc_info=True)
-
-
-def notify_accept(
-    server_client: httpx.AsyncClient | None, conversation_id: str, texts: Sequence[str]
-) -> None:
-    """Tell every feature that listens (``Feature.on_accept``) that the runner accepted a
-    Conversation message. A listener's failure is logged and never reaches the turn."""
-    for feature in FEATURES:
-        if feature.on_accept is None:
-            continue
-        try:
-            feature.on_accept(server_client, conversation_id, texts)
-        except Exception:  # background work, never a reason to fail a turn
-            _logger.warning("%s accept failed", feature.name, exc_info=True)
 
 
 def notify_turn_end(conversation_id: str) -> None:

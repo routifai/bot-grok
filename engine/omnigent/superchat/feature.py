@@ -162,9 +162,6 @@ TurnPrefix = Callable[["httpx.AsyncClient | None", str], Awaitable[list[str]]]
 #: ``(server_client, conversation_id, texts of the turn's own message) -> blocks`` prepended to the
 #: harness body only, closest to the message (never stored; never raises).
 MessagePrefix = Callable[["httpx.AsyncClient | None", str, Sequence[str]], Awaitable[list[str]]]
-#: ``(server_client, conversation_id, texts of the message) -> None``: the runner accepted a
-#: Conversation message; starts work its turn reads later (never raises, never awaits).
-MessageAccepted = Callable[["httpx.AsyncClient | None", str, Sequence[str]], None]
 #: ``(conversation_id) -> None``: a runner turn of that session ended (never raises, never awaits).
 TurnEnd = Callable[[str], None]
 #: ``(ctx, tool_name, reason) -> None``: a TOOL_CALL policy denied a call; *reason* is the
@@ -191,9 +188,6 @@ class Feature:
         part of what is stored as the person's words.
     :param conversation_only: ``message_prefix`` is for the Conversation itself: a Helper's turn
         and a file's studio never call it (ADR 0026: no call whose result is thrown away).
-    :param on_accept: Told the moment the runner accepts a message of the Conversation itself
-        (never a Helper's or a studio's), before the turn's setup and prefix: starts work in
-        the background that the turn reads later (the context brief), so nothing waits on it.
     :param on_turn_end: Told when a runner turn ends (the turn's ``response.completed``).
     :param on_tool_denied: Told when a TOOL_CALL policy denied a tool call of a session (the
         call never ran, so ``on_result`` never sees it).
@@ -212,7 +206,6 @@ class Feature:
     turn_prefix: TurnPrefix | None = None
     message_prefix: MessagePrefix | None = None
     conversation_only: bool = False
-    on_accept: MessageAccepted | None = None
     on_turn_end: TurnEnd | None = None
     on_tool_denied: ToolDenied | None = None
     needs_own_turn: Callable[[str], bool] | None = None

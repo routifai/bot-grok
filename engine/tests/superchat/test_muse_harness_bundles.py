@@ -165,7 +165,7 @@ def test_prompts_point_at_the_memory_folder(bundle: Path) -> None:
 
 
 @pytest.mark.parametrize("bundle", [CLAUDE, PI], ids=["claude", "pi"])
-def test_the_conversation_plans_from_the_brief_and_helpers_do_not(bundle: Path) -> None:
+def test_the_conversation_pulls_the_brief_and_helpers_do_not_have_it(bundle: Path) -> None:
     # Named in the allow list, so the Conversation always has them up front (ADR 0027).
     muse = yaml.safe_load((bundle / "config.yaml").read_text())["tools"]["allow"]
     assert {"render_card", "context_brief"} <= set(muse)
@@ -175,8 +175,14 @@ def test_the_conversation_plans_from_the_brief_and_helpers_do_not(bundle: Path) 
         ]
         assert "context_brief" not in allow, helper
     prompt = (bundle / "AGENTS.md").read_text()
+    # Context is pulled: the prompt says what can be looked up and when, and orders no call.
+    look_up = prompt.split("## What you can look up", 1)[1].split("\n## ", 1)[0]
+    for term in ("Standing memory", "journal", "`recall`", "`context_brief`", "Helper"):
+        assert term in look_up, term
+    assert len(look_up.strip().splitlines()) <= 8
+    assert "call `context_brief` first" not in prompt
     section = prompt.split("## How a turn runs", 1)[1].split("\n## ", 1)[0]
-    for term in ("`context_brief`", "`active`", "`owner`", "`done_when`", "`artifact_outline`"):
+    for term in ("`active`", "`owner`", "`done_when`", "`artifact_outline`"):
         assert term in section, term
     assert "Never mark a step done" in section and "under eighty words" in section
 
