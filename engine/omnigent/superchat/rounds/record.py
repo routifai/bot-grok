@@ -1,9 +1,10 @@
-"""Write a Round's events where the engine sees each fact (ADR 0029). Nothing here reads them.
+"""Write a Round's events where the engine sees each fact (ADR 0029).
 
 * :func:`assign_round` is the one rule for which Round a stored message belongs to.
 * :class:`Recorder` appends events in order on a background task: a write never blocks the
   turn or the request that saw the fact, and a failed write is logged, never raised. Streamed
-  words are joined per :data:`WORDS_EVERY` seconds.
+  words are joined per :data:`WORDS_EVERY` seconds. Each stored batch is handed to the
+  recorder's ``on_written`` (:mod:`omnigent.superchat.rounds.read`).
 * :class:`RelayRound` turns one session's runner stream, as the server relays it, into events:
   turns, words, tool calls, a Helper's finish, chips and checklist changes.
 * :func:`note_message`, :func:`helper_created`, :func:`file_saved` and
@@ -21,7 +22,7 @@ import json
 import logging
 import re
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -146,8 +147,16 @@ def assign_round(
 class Recorder:
     """Appends Round events in order on one background task; never blocks, never raises."""
 
-    def __init__(self, store: SqlAlchemyRoundStore) -> None:
+    def __init__(
+        self,
+        store: SqlAlchemyRoundStore,
+        on_written: Callable[[Sequence[RoundEvent]], None] | None = None,
+    ) -> None:
+        """
+        :param on_written: Called on the loop with each batch once it is stored.
+        """
         self._store = store
+        self._on_written = on_written
         self._queue: list[RoundEvent] = []
         self._drain: asyncio.Task[None] | None = None
         #: ``(round, actor, helper) -> [first chunk ms, conversation, chunks]`` not yet queued.
@@ -202,6 +211,12 @@ class Recorder:
                 await asyncio.to_thread(self._store.append, batch)
             except Exception:
                 _logger.warning("round events not stored (%d dropped)", len(batch), exc_info=True)
+                continue
+            if self._on_written is not None:
+                try:
+                    self._on_written(batch)
+                except Exception:
+                    _logger.warning("round events stored, not announced", exc_info=True)
 
     async def idle(self) -> None:
         """Wait until every queued event is written (for tests and shutdown)."""

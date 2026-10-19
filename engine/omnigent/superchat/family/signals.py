@@ -91,3 +91,22 @@ def notify_artifacts_changed(root_id: str, group_id: str) -> None:
         f"chats:{root_id}",
         {"type": "artifacts.changed", "root_id": root_id, "group_id": group_id},
     )
+
+
+def listening(root_id: str) -> bool:
+    """Whether a family stream of the Conversation *root_id* is open."""
+    with _lock:
+        return bool(_listeners.get(f"chats:{root_id}"))
+
+
+def notify_round_updated(root_id: str, round_id: str, summary: dict[str, Any]) -> None:
+    """The Round *round_id* of the Conversation *root_id* changed.
+
+    Sent as ``round.updated`` on the family stream with the Round's summary
+    (:func:`omnigent.superchat.rounds.fold.summary`); the client reads the full view from
+    ``GET /v1/sessions/{root_id}/rounds/{round_id}``.
+    """
+    _notify(
+        f"chats:{root_id}",
+        {"type": "round.updated", "root_id": root_id, "round_id": round_id, **summary},
+    )

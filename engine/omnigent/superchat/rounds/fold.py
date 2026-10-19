@@ -243,3 +243,20 @@ def fold(events: Sequence[Mapping[str, Any]], round_id: str | None = None) -> di
     end = v["settled_at"] if v["settled_at"] is not None else (mine[-1]["t"] if mine else 0)
     v["elapsed"] = round(end - (v["started_at"] or 0), 1) if v["started_at"] is not None else 0
     return v
+
+
+def summary(view: Mapping[str, Any]) -> dict[str, Any]:
+    """The few fields of a Round *view* a list row or a live signal carries.
+
+    :returns: ``status``, ``started_at``, ``live`` (the live tool's digest, else its name, else
+        ``None``), and how many ``helpers``, ``files`` and finished ``steps`` it has.
+    """
+    now = view.get("now")
+    return {
+        "status": view["status"],
+        "started_at": view["started_at"],
+        "live": (now.get("digest") or now.get("name")) if now else None,
+        "helpers": len(view["helpers"]),
+        "files": len(view["files"]),
+        "steps": len(view["trail"]),
+    }

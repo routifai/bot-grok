@@ -540,9 +540,11 @@ def test_a_round_is_written_from_the_message_the_relay_and_the_save(
     db_uri: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A person's message opens the Round, its Helper inherits it, the relayed streams of both
-    become events in order, the save and the Stop are recorded, and the fold reads them back."""
+    become events in order, the save and the Stop are recorded, each stored batch is handed on,
+    and the fold reads them back."""
     store = SqlAlchemyRoundStore(db_uri)
-    monkeypatch.setattr(record, "RECORDER", record.Recorder(store))
+    written: list[Any] = []
+    monkeypatch.setattr(record, "RECORDER", record.Recorder(store, on_written=written.extend))
     root = "a" * 32
     item = "b" * 32
     helper_id = "c" * 32
@@ -603,6 +605,7 @@ def test_a_round_is_written_from_the_message_the_relay_and_the_save(
         ("stop.requested", "person"),
     ]
     assert [e["seq"] for e in events] == list(range(1, 16))
+    assert [e.kind for e in written] == [e["kind"] for e in events]  # handed on once stored
     assert events[2]["text"] == "On it." and events[5]["digest"] == "title=Deck"
     assert events[12]["result"] == "Saved the deck." and events[12]["helper_id"] == helper_id
     view = fold(events, item)
