@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/react/macro";
-import type { Activity, ActivityStep, Artifact } from "@superchat/contracts";
+import type { ActivityStep, Artifact } from "@superchat/contracts";
 import { presentActivityTitle, presentStep } from "@superchat/core";
 import { cn } from "@superchat/ui-web";
 import { ChevronDown, TriangleAlert } from "lucide-react";
@@ -39,7 +39,7 @@ export interface DraftFile {
 }
 
 /** The strip's mark: the Superchat orb while the work runs, gone still and grey once it settles. */
-function WorkMark({ live, size = 20 }: { live: boolean; size?: number }) {
+export function WorkMark({ live, size = 20 }: { live: boolean; size?: number }) {
   return live ? (
     <SuperchatOrb size={size} state="working" flies={false} />
   ) : (
@@ -107,7 +107,13 @@ function Flag({ text }: { text: string }) {
 }
 
 /** Files the work is writing, as a row of thumbnails filling in; each opens beside the chat. */
-function DraftThumbs({ drafts, updating }: { drafts: readonly DraftFile[]; updating: boolean }) {
+export function DraftThumbs({
+  drafts,
+  updating,
+}: {
+  drafts: readonly DraftFile[];
+  updating: boolean;
+}) {
   const panel = useArtifactPanel();
   return (
     <div data-testid="work-strip-drafts" className="grid grid-cols-6 gap-1.5 pt-0.5">
@@ -137,7 +143,7 @@ function DraftThumbs({ drafts, updating }: { drafts: readonly DraftFile[]; updat
   );
 }
 
-const LINK =
+export const LINK =
   "shrink-0 rounded-sm text-[12.5px] text-ink-2 underline-offset-2 transition-colors hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-ring";
 
 /** The engine's one line of what the reply's work did; pressed, the steps unfold beneath it
@@ -200,7 +206,7 @@ export interface StripPause {
   onResume: () => void;
 }
 
-function PauseControl({ pause }: { pause: StripPause }) {
+export function PauseControl({ pause }: { pause: StripPause }) {
   const { t } = useLingui();
   return pause.paused ? (
     <span data-testid="work-strip-paused" className="shrink-0 text-[12.5px] text-ink-2">
@@ -418,7 +424,7 @@ export function draftsOf(
  * state says something does (`lit`). The strip and the session panel both read it. */
 export function useStripView(
   botId: string,
-  transcriptHelpers: readonly StripHelper[],
+  helpers: readonly StripHelper[],
   turn: StripTurn | undefined,
   lit: boolean,
 ) {
@@ -431,14 +437,6 @@ export function useStripView(
     () =>
       activityId ? (activities?.find((activity) => activity.id === activityId) ?? null) : null,
     [activities, activityId],
-  );
-  // A running turn no reply speaks for yet: its Helpers are the ones the feed says it started.
-  const helpers = useMemo(
-    () =>
-      transcriptHelpers.length > 0 || !turnLive || !turnActivity
-        ? transcriptHelpers
-        : startedBy(turnActivity, activities ?? []),
-    [transcriptHelpers, turnLive, turnActivity, activities],
   );
   const firstMissing = useFirstMissing(helpers, activities);
   // The clock ticks while the strip is live; it is told so after the render that finds it live.
@@ -462,24 +460,6 @@ export function useStripView(
     if (missing) feed.refresh();
   }, [feed, missing]);
   return { view, state, listed, turnActivity, activities };
-}
-
-/** The Helpers a running turn started, as the feed lists them: the Conversation's, since the turn
- * began. */
-function startedBy(turn: Activity, activities: readonly Activity[]): StripHelper[] {
-  const from = Date.parse(turn.startedAt);
-  return activities
-    .filter(
-      (activity) =>
-        activity.kind === "sub_agent" &&
-        activity.parentChatId === turn.chatId &&
-        Date.parse(activity.startedAt) >= from,
-    )
-    .map((activity) => ({
-      helperId: activity.chatId,
-      title: activity.title,
-      status: activity.status,
-    }));
 }
 
 /** The work strip for one reply (`useStripView`), with its files, its summary line, Pause for its

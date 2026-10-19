@@ -17,10 +17,9 @@ import {
   AnsweredWhileWorking,
   drawnOnlyMessageIds,
   noteServerClock,
-  stripOf,
+  RoundStrip,
   useAnsweredWhileWorking,
   useTurnStrips,
-  WorkStrip,
 } from "../../../features/activity";
 import type { ArtifactTarget } from "../../../lib/artifact-open";
 import { quoteDraftForSelection } from "../../../lib/quote-selection";
@@ -146,15 +145,12 @@ const TranscriptView = memo(function Transcript({
   const { strips, drawn } = useTurnStrips(work, workState, museLiveLabel);
   // Live clocks count against the engine's timestamps: learn its clock from what arrives.
   useEffect(() => noteServerClock(messages), [messages]);
+  // The newest work has a strip: the Round the person's newest message opened, or a reply's.
   const lastTurnHasStrip = useMemo(
-    () => Boolean(work.pending) || [...work.turns.values()].some((turn) => turn.last),
-    [work],
-  );
-  // The running turn before a reply names its Activity: its strip after the person's message,
-  // keyed by the Activity so the reply that takes it over carries the same work on.
-  const pendingStrip = useMemo(
-    () => (work.pending ? stripOf(work.pending, workState, museLiveLabel) : null),
-    [work.pending, workState, museLiveLabel],
+    () =>
+      Boolean(messages.findLast((message) => message.role === "user")?.roundId) ||
+      [...work.turns.values()].some((turn) => turn.last),
+    [messages, work],
   );
   // Muse: failed replies in a row read as one "3 failed attempts" line (failureNotes.ts).
   const transcriptRows = useMemo<TranscriptRow[]>(() => {
@@ -482,20 +478,14 @@ const TranscriptView = memo(function Transcript({
                   {answeredWhileWorking.has(message.id) ? <AnsweredWhileWorking /> : null}
                 </div>
               </div>
+              {message.roundId ? (
+                <div className="flex justify-start">
+                  <RoundStrip botId={artifactTarget.botId} roundId={message.roundId} />
+                </div>
+              ) : null}
             </div>
           );
         })}
-        {pendingStrip && work.pending ? (
-          <div data-testid="pending-strip" className="flex justify-start">
-            <WorkStrip
-              key={work.pending.activityId ?? work.pending.anchorId}
-              botId={artifactTarget.botId}
-              helpers={pendingStrip.helpers}
-              turn={pendingStrip.turn}
-              lit={workState.running}
-            />
-          </div>
-        ) : null}
         {running &&
         // The newest reply's strip is lit and says what runs: no second working row.
         !lastTurnHasStrip &&

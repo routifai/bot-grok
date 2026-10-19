@@ -7,11 +7,14 @@ import type { StripHelper } from "./workStripState";
 // of its own. Pure readings of the transcript, so the strip, the transcript and their tests share
 // one interpretation.
 //
+// This reading is for the messages from before Rounds were recorded (ADR 0029): from the first
+// message that opened a Round on, each Round's strip shows its work from the engine's record
+// (RoundStrip), and the Helpers and plans those messages carry are drawn there.
+//
 // A reply is a turn: the assistant's messages after one of the person's. The engine keeps one text
 // per turn (its last, after the turn's cards), and it drops the runtime's notices: the narration a
 // Helper's wake turn writes arrives as a second text after the person's last message. So a text
-// closes the reply's own messages; what follows it belongs to the reply only when it carries the
-// reply's plan (by `id`, even past a message the person steered into the running turn).
+// closes the reply's own messages; what follows it with a plan or a Helper is a wake turn's own.
 
 /** What a step reads (ADR 0027): the engine's `state`, else the model's `status` on a plan from
  * before the engine read it. */
@@ -64,12 +67,9 @@ export interface TranscriptWork {
   /** `<messageId>:<blockIndex>` of every plan card and Helper block a strip draws instead. */
   drawn: Set<string>;
   /** When the work the newest messages belong to began (ms): the header pill's start while a turn
-   * runs, the same start its strip counts from. Null when unknown. */
+   * runs, the same start its strip counts from. Null when unknown or when the newest messages
+   * are a Round's (its own start counts). */
   runningSince?: number | null;
-  /** The running turn before any reply of it names its Activity (ADR 0027): drawn after the
-   * person's message from the Activity the Conversation's status names, until the reply takes it
-   * over. */
-  pending?: TurnWork | null;
 }
 
 export const drawnKey = (messageId: string, index: number) => `${messageId}:${index}`;
@@ -237,32 +237,31 @@ function readTurn(turn: Turn, last: boolean, out: TranscriptWork) {
   });
 }
 
-/** Every reply's strip in a transcript (oldest first): a reply gets one when it started Helpers
- * or published a plan. */
-export function transcriptWork(
-  messages: readonly ThreadMessage[],
-  /** The running turn's Activity, as the Conversation's status names it (null while none runs). */
-  liveActivityId: string | null = null,
-): TranscriptWork {
+/** Every reply's strip in a transcript (oldest first): a reply from before Rounds gets one when
+ * it started Helpers or published a plan. */
+export function transcriptWork(messages: readonly ThreadMessage[]): TranscriptWork {
   if (messages.length === 0) return EMPTY;
   const out: TranscriptWork = { turns: new Map(), drawn: new Set(), runningSince: null };
+  const firstRound = messages.findIndex((message) => message.roundId);
+  if (firstRound >= 0) {
+    for (const message of messages.slice(firstRound)) {
+      message.blocks.forEach((block, index) => {
+        if (block.kind === "helper" || (block.kind === "reply_card" && block.card === "plan")) {
+          out.drawn.add(drawnKey(message.id, index));
+        }
+      });
+    }
+  }
   const turns: Turn[] = [];
-  const byPlanId = new Map<string, Turn>();
   /** The turn the newest messages so far belong to, if any. */
   let newest: Turn | undefined;
-  const segments = segmentsOf(messages);
+  const segments = segmentsOf(firstRound >= 0 ? messages.slice(0, firstRound) : messages);
   for (const segment of segments) {
-    const ids = planRenders(segment.replies).flatMap((render) => (render.id ? [render.id] : []));
-    const continued = ids.map((id) => byPlanId.get(id)).findLast((turn) => turn !== undefined);
     let owner: Turn | undefined;
-    if (continued) {
-      // The reply's plan goes on (the person's message was steered into its turn).
-      owner = continued;
-      owner.replies.push(...segment.replies);
-    } else if (segment.ask) {
+    if (segment.ask) {
       owner = { ask: segment.ask, replies: [...segment.replies] };
       turns.push(owner);
-    } else if (ids.length > 0 || segment.replies.some(hasHelper)) {
+    } else if (planRenders(segment.replies).length > 0 || segment.replies.some(hasHelper)) {
       owner = { ask: undefined, replies: [...segment.replies] };
       turns.push(owner);
     } else if (!segment.replies.some(hasText)) {
@@ -271,29 +270,12 @@ export function transcriptWork(
       owner?.replies.push(...segment.replies);
     }
     // Otherwise a wake turn's narration: no reply's own work.
-    for (const id of ids) if (owner) byPlanId.set(id, owner);
     newest = owner;
   }
-  for (const turn of turns) readTurn(turn, turn === newest, out);
-  // The running turn's Activity, until a reply of the person's newest message names it.
-  if (liveActivityId && newest?.ask && !newest.replies.some((message) => message.activityId)) {
-    const strip = [...out.turns.values()].find((turn) => turn.last);
-    if (strip) strip.activityId = liveActivityId;
-    else {
-      out.pending = {
-        anchorId: newest.ask.id,
-        plan: null,
-        planId: null,
-        fold: 0,
-        activityId: liveActivityId,
-        files: [],
-        helpers: [],
-        startedAt: timeOf(newest.ask.createdAt),
-        endedAt: null,
-        last: true,
-      };
-    }
-  }
+  // Once a Round opened, the newest messages are a Round's: no reply here is the running one.
+  const legacyLast = firstRound < 0 ? newest : undefined;
+  for (const turn of turns) readTurn(turn, turn === legacyLast, out);
+  if (firstRound >= 0) return out;
   const tail = segments.at(-1);
   out.runningSince = timeOf(
     newest?.ask?.createdAt ??

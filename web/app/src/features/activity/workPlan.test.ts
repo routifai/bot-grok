@@ -1,5 +1,6 @@
 import type { MessageBlock, ReplyCardBlock, ThreadMessage } from "@superchat/contracts";
 import { expect, it } from "vitest";
+import { withRounds } from "./rounds";
 import { drawnOnlyMessageIds, markChanges, outcomeOf, transcriptWork } from "./workPlan";
 
 type Item = { text: string; status: "todo" | "doing" | "done" };
@@ -110,26 +111,6 @@ it("leaves a reply without a plan or Helper alone, and a plan card that does not
   expect(work.drawn.size).toBe(0);
 });
 
-it("keeps one strip when the person's message is steered into the running reply", () => {
-  const messages = [
-    message("ask", "user", [text("Make the deck")], 0),
-    message("card-1", "bot", [planCard(v1)], 2),
-    message("steer", "user", [text("Use the blue theme")], 10),
-    message("card-2", "bot", [planCard(v2)], 20),
-    message("reply", "bot", [text("Building it in blue."), helperBlock("h1")], 21),
-  ];
-  const work = transcriptWork(messages);
-  expect([...work.turns.keys()]).toEqual(["reply"]);
-  const turn = work.turns.get("reply");
-  expect(steps(turn?.plan)?.[2]).toEqual(["Build the slides", "doing"]);
-  expect(turn?.helpers.map((helper) => helper.helperId)).toEqual(["h1"]);
-  expect(turn?.startedAt).toBe(Date.parse(messages[0]?.createdAt ?? ""));
-  expect(turn?.last).toBe(true);
-  // The strip draws the plan and the Helpers.
-  expect([...work.drawn]).toEqual(["card-1:0", "card-2:0", "reply:1"]);
-  expect([...drawnOnlyMessageIds(messages, work)]).toEqual(["card-1", "card-2"]);
-});
-
 it("leaves no row for a message holding only the Helpers its reply's strip draws", () => {
   const messages = [
     message("ask", "user", [text("Research it")], 0),
@@ -157,22 +138,6 @@ it("leaves a later reply's strip alone when a Helper's wake narration arrives", 
   expect(second?.endedAt).toBe(Date.parse(messages[4]?.createdAt ?? ""));
   expect(work.turns.get("reply-1")?.last).toBe(false);
   expect(work.runningSince).toBe(Date.parse(messages[5]?.createdAt ?? ""));
-});
-
-it("gives the wake turn to the reply whose plan it carries on", () => {
-  const work = transcriptWork([
-    message("ask-1", "user", [text("Make the deck")], 0),
-    message("card-1", "bot", [planCard(v1)], 1),
-    message("reply-1", "bot", [text("A Helper builds it."), helperBlock("h1")], 2),
-    message("ask-2", "user", [text("What time is it?")], 10),
-    message("reply-2", "bot", [text("Ten.")], 11),
-    message("card-3", "bot", [planCard(v2)], 60),
-    message("wake", "bot", [text("Read it; building now.")], 61),
-  ]);
-  const turn = work.turns.get("reply-1");
-  expect(steps(turn?.plan)?.[0]).toEqual(["Read the file", "done"]);
-  expect(turn?.last).toBe(true);
-  expect(turn?.endedAt).toBe(Date.UTC(2026, 9, 17, 10, 1, 1));
 });
 
 it("reads how the reply ended", () => {
@@ -299,25 +264,28 @@ it("takes the engine's fold, the reply's Activity and the files its turn saved",
   expect([plain?.fold, plain?.activityId, plain?.files]).toEqual([0, null, []]);
 });
 
-it("draws the running turn from the status's Activity until a reply names it, then under the reply", () => {
-  const ask = message("ask", "user", [text("Compare the banks")], 0);
-  // Tools run, nothing written yet: the turn's strip follows the person's message.
-  const before = transcriptWork([ask], "turn:conv:r1");
-  expect(before.pending).toMatchObject({ anchorId: "ask", activityId: "turn:conv:r1", last: true });
-  expect(before.turns.size).toBe(0);
-  // Without a running turn's Activity there is nothing pending.
-  expect(transcriptWork([ask]).pending).toBeUndefined();
-  // The reply arrives naming the same Activity: the same work goes on under it.
-  const reply = {
-    ...message("reply", "bot", [text("Here is the comparison.")], 9),
-    activityId: "turn:conv:r1",
-  };
-  const after = transcriptWork([ask, reply], "turn:conv:r1");
-  expect(after.pending).toBeUndefined();
-  expect(after.turns.get("reply")).toMatchObject({ activityId: "turn:conv:r1", last: true });
-  // A reply with a strip of its own but no Activity yet takes the status's.
-  const plan = message("card", "bot", [planCard(v1)], 2);
-  const planned = transcriptWork([ask, plan], "turn:conv:r1");
-  expect(planned.pending).toBeUndefined();
-  expect(planned.turns.get("card")?.activityId).toBe("turn:conv:r1");
+it("leaves the work from the first Round on to the Rounds' strips, which draw its Helpers and plans", () => {
+  const ask = message("ask", "user", [text("Make the deck")], 10);
+  const messages = withRounds(
+    [
+      message("ask-0", "user", [text("Read the notes")], 0),
+      message("reply-0", "bot", [text("Read."), helperBlock("h0")], 1),
+      ask,
+      message("card", "bot", [planCard(v1)], 11),
+      // Steered into the running Round: no Round of its own.
+      message("steer", "user", [text("Use the blue theme")], 12),
+      message("reply", "bot", [text("Building it in blue."), helperBlock("h1")], 13),
+    ],
+    new Set(["ask"]),
+  );
+  expect(messages.map((m) => m.roundId ?? null)).toEqual([null, null, "ask", null, null, null]);
+  const work = transcriptWork(messages);
+  // Only the reply from before Rounds reads its own strip, and it is not the running one.
+  expect([...work.turns.keys()]).toEqual(["reply-0"]);
+  expect(work.turns.get("reply-0")?.last).toBe(false);
+  expect(work.runningSince).toBeNull();
+  expect([...work.drawn]).toEqual(["card:0", "reply:1", "reply-0:1"]);
+  expect([...drawnOnlyMessageIds(messages, work)]).toEqual(["card"]);
+  // No Round known: the same messages read as before.
+  expect(withRounds([ask], new Set())).toEqual([ask]);
 });
