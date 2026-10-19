@@ -159,9 +159,14 @@ Handler = Callable[[HandlerCtx, dict[str, Any]], Awaitable[str]]
 ResultListener = Callable[[HandlerCtx, str], None]
 #: ``(server_client, conversation_id) -> blocks`` prepended to a Super Chat turn (never raises).
 TurnPrefix = Callable[["httpx.AsyncClient | None", str], Awaitable[list[str]]]
-#: ``(server_client, conversation_id, texts of the turn's own message) -> blocks`` prepended to the
+#: One block a feature builds from the turn's own message: text goes in front of the message, a
+#: content block (an attached image as ``input_image``) goes with the message itself.
+MessageBlock = str | dict[str, Any]
+#: ``(server_client, conversation_id, texts of the turn's own message) -> blocks`` for the
 #: harness body only, closest to the message (never stored; never raises).
-MessagePrefix = Callable[["httpx.AsyncClient | None", str, Sequence[str]], Awaitable[list[str]]]
+MessagePrefix = Callable[
+    ["httpx.AsyncClient | None", str, Sequence[str]], Awaitable[list[MessageBlock]]
+]
 #: ``(server_client, conversation_id, texts of the message) -> None``: the runner accepted a
 #: Conversation message; starts work its turn reads later (never raises, never awaits).
 MessageAccepted = Callable[["httpx.AsyncClient | None", str, Sequence[str]], None]

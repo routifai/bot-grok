@@ -18,12 +18,13 @@ the workspace path the artifact was saved from).
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
 from omnigent.context.labels import is_superside_chat
-from omnigent.superchat.feature import Feature, InstallDeps, ToolManagerCtx
+from omnigent.superchat.feature import Feature, InstallDeps, MessageBlock, ToolManagerCtx
 from omnigent.superchat.knowledge.handlers import handle_knowledge_tool
 from omnigent.superchat.knowledge.tools import KNOWLEDGE_TOOL_NAMES
 
@@ -58,17 +59,24 @@ def _tools(labels: Mapping[str, str] | None, _ctx: ToolManagerCtx) -> list[Tool]
 
 async def _message_prefix(
     server_client: Any, _conversation_id: str, texts: Sequence[str]
-) -> list[str]:
-    """The framed text of the files the turn's message attaches (built here, never stored)."""
+) -> list[MessageBlock]:
+    """The framed text of the files the turn's message attaches and its images as image blocks
+    (built here, never stored)."""
     from omnigent.superchat.knowledge.attachment_context import (
         attachment_context_blocks,
+        image_blocks,
+        image_references,
         references,
     )
     from omnigent.superchat.knowledge.handlers import runtime_for
 
-    if not references(texts):
+    if not references(texts) and not image_references(texts):
         return []
-    return await attachment_context_blocks(runtime_for(server_client).indexer, texts)
+    indexer = runtime_for(server_client).indexer
+    framed, images = await asyncio.gather(
+        attachment_context_blocks(indexer, texts), image_blocks(indexer, texts)
+    )
+    return [*framed, *images]
 
 
 def _needs_own_turn(text: str) -> bool:

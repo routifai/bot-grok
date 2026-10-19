@@ -4,7 +4,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const adapters = vi.hoisted(() => ({
   getOmnigentTranscript: vi.fn(),
   postOmnigentMessage: vi.fn(),
-  readTurnImages: vi.fn(),
   resolveChatOwnership: vi.fn(),
   streamOmnigentFamily: vi.fn(),
   streamOmnigentSession: vi.fn(),
@@ -201,8 +200,6 @@ describe("chats.reset", () => {
 });
 
 describe("chats.send", () => {
-  beforeEach(() => adapters.readTurnImages.mockResolvedValue([]));
-
   it("sends to the Conversation", async () => {
     await run(chatsRouter.chats.send, { botId: "conv_super", text: "hello" });
     expect(adapters.postOmnigentMessage).toHaveBeenCalledWith(
@@ -230,18 +227,6 @@ describe("chats.send", () => {
     expect(text.endsWith("look")).toBe(true);
   });
 
-  it("hands attached images to the model as images", async () => {
-    adapters.readTurnImages.mockResolvedValue([{ mime: "image/png", data: "AA==" }]);
-    await run(chatsRouter.chats.send, { botId: "conv_super", text: "see" });
-    expect(adapters.postOmnigentMessage).toHaveBeenCalledWith(
-      expect.anything(),
-      "",
-      "conv_super",
-      "see",
-      [{ mime: "image/png", data: "AA==" }],
-    );
-  });
-
   it("passes the artifact open beside the chat to the engine", async () => {
     await run(chatsRouter.chats.send, {
       botId: "conv_super",
@@ -253,7 +238,6 @@ describe("chats.send", () => {
       "",
       "conv_super",
       "bigger",
-      undefined,
       { openArtifact: { artifactId: "art_1", version: 2 } },
     );
   });

@@ -1047,6 +1047,17 @@ def _prefix_content_with_tail(content: object, tail: str) -> object:
     :returns: *content* with *tail* prepended, never mutating the input.
     """
     prefix = f"{tail}\n\n"
+    return _edit_latest_user_content(
+        content, lambda blocks: _prefix_blocks_with_tail(blocks, prefix)
+    )
+
+
+def _edit_latest_user_content(content: object, edit: Callable[[object], object]) -> object:
+    """*content* with *edit* applied to the latest user message's content, never mutating it.
+
+    *content* is a flat list of content blocks (a string too), edited whole, or Responses-style
+    history, whose last user message is edited (see :func:`_prefix_content_with_tail`).
+    """
     # History interleaves ``function_call`` / ``function_call_output`` /
     # ``reasoning`` items with messages once a turn used tools, so "history"
     # means every item is a typed Responses item and at least one is a message.
@@ -1061,17 +1072,21 @@ def _prefix_content_with_tail(content: object, tail: str) -> object:
         and any(item.get("type") == "message" for item in content)
     )
     if not is_history:
-        return _prefix_blocks_with_tail(content, prefix)
+        return edit(content)
     messages = cast(list[dict[str, Any]], content)
     for i in range(len(messages) - 1, -1, -1):
         if messages[i].get("role") == "user":
             updated = list(messages)
-            updated[i] = {
-                **messages[i],
-                "content": _prefix_blocks_with_tail(messages[i].get("content"), prefix),
-            }
+            updated[i] = {**messages[i], "content": edit(messages[i].get("content"))}
             return updated
     return content
+
+
+def _with_parts(content: object, parts: Sequence[_JsonObject]) -> object:
+    """A message's *content* as content blocks with *parts* after its own."""
+    if isinstance(content, str):
+        return [{"type": "input_text", "text": content}, *parts]
+    return [*(content if isinstance(content, list) else []), *parts]
 
 
 def _apply_memory_profile_to_body(body: _JsonObject, block: str | None) -> _JsonObject:
@@ -1112,19 +1127,32 @@ def _message_texts(content: object) -> list[str]:
     return []
 
 
-def _prepend_turn_blocks(body: _JsonObject, blocks: Sequence[str], conv_id: str) -> _JsonObject:
-    """Prepend each of *blocks* to *body*'s content in turn (the last ends up first).
+def _prepend_turn_blocks(
+    body: _JsonObject, blocks: Sequence[str | _JsonObject], conv_id: str
+) -> _JsonObject:
+    """Prepend each text one of *blocks* to *body*'s content in turn (the last ends up first);
+    a content block (an attached image) goes after the latest user message's own blocks.
 
     Logs at DEBUG which blocks went in (first line of each), so a turn's prefix can be checked
     without dumping the person's profile.
     """
+    parts = [block for block in blocks if isinstance(block, dict)]
     for block in blocks:
-        body = _apply_memory_profile_to_body(body, block)
+        if isinstance(block, str):
+            body = _apply_memory_profile_to_body(body, block)
+    if parts:
+        content = _edit_latest_user_content(
+            body.get("content"), lambda own: _with_parts(own, parts)
+        )
+        body = {**body, "content": content}
     if _logger.isEnabledFor(logging.DEBUG):
         _logger.debug(
             "turn prefix for %s: %s",
             conv_id,
-            [(b.split("\n", 1)[0][:60], len(b)) for b in blocks],
+            [
+                (b.split("\n", 1)[0][:60], len(b)) if isinstance(b, str) else (b.get("type"), 1)
+                for b in blocks
+            ],
             extra={"session_id": conv_id},
         )
     return body

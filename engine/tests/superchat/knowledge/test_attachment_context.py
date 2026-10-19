@@ -102,6 +102,19 @@ def test_a_file_that_cannot_be_read_does_not_fail_the_turn(tmp_path, monkeypatch
     assert "not read yet: bad.pdf" in block
     (gone,) = blocks(runtime, ref(f"{UP}/gone.txt"))
     assert "not read yet: gone.txt" in gone
+    # an image that is missing, too large, of a type models do not read, or outside the uploads
+    # stays its path line
+    put(runtime, f"{UP}/big.png", b"x" * (ctx.MAX_IMAGE_BYTES + 1))
+    put(runtime, f"{UP}/pic.heic", b"heic")
+    put(runtime, "your_files/other/pic.png", b"png")
+    lines = [
+        ref(f"{UP}/none.png", "image/png"),
+        ref(f"{UP}/big.png", "image/png"),
+        ref(f"{UP}/pic.heic", "image/heic"),
+        ref(f"{UP}/../../other/pic.png", "image/png"),
+        ref("your_files/other/pic.png", "image/png"),
+    ]
+    assert asyncio.run(ctx.image_blocks(runtime.indexer, lines)) == []
 
 
 def test_the_person_message_stays_their_words_whatever_an_older_gateway_stored() -> None:
@@ -138,7 +151,11 @@ def test_the_context_reaches_the_harness_body_next_to_the_message_and_is_never_s
 
     runtime = make_runtime(tmp_path, monkeypatch)
     put(runtime, f"{UP}/note.md", "# Fleet\n\nThe vehicle policy.\n")
-    words = f"{ref(f'{UP}/note.md', 'text/markdown')}\n\nsummarise"
+    put(runtime, f"{UP}/Shot 4.40 PM.png", b"\x89PNG fake")
+    words = (
+        f"{ref(f'{UP}/note.md', 'text/markdown')}\n{ref(f'{UP}/Shot 4.40 PM.png', 'image/png')}"
+        "\n\nsummarise"
+    )
     msg_body = {"content": [{"type": "input_text", "text": words}]}
     stored = copy.deepcopy(msg_body)
     history = [
@@ -163,6 +180,14 @@ def test_the_context_reaches_the_harness_body_next_to_the_message_and_is_never_s
     sent = asyncio.run(go())
     last = sent["content"][-1]["content"][0]["text"]
     assert "<attachment_context>" in last and "The vehicle policy." in last
+    # the image goes with the message as an image, read from its stored path
+    assert sent["content"][-1]["content"][1:] == [
+        {
+            "type": "input_image",
+            "filename": "Shot 4.40 PM.png",
+            "image_url": "data:image/png;base64,iVBORyBmYWtl",
+        }
+    ]
     # closest to the message: the block, then the person's words straight after it
     assert last.endswith(f"{ctx.REMINDER}\n\n{words}")
     assert "attachment_context" not in sent["content"][0]["content"][0]["text"]  # earlier turn

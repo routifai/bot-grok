@@ -14,7 +14,6 @@ import {
   moveOmnigentSessionForPerson,
   OmnigentApiError,
   postOmnigentMessage,
-  readTurnImages,
   resetOmnigentSession,
   resolveChatOwnership,
   setOmnigentHelpersPaused,
@@ -175,8 +174,8 @@ export async function* watchFamily(
 /**
  * The person's message to the Muse's Conversation. Attached
  * files are already in the workspace: the message carries one reference line each (the same lines
- * the Conversation shows back as chips) and any image goes to the model as an image. The engine
- * owns delivery: a message sent while a turn runs is steered into it or queued behind it.
+ * the Conversation shows back as chips); the engine hands an image to the model as an image. The
+ * engine owns delivery: a message sent while a turn runs is steered into it or queued behind it.
  */
 export async function sendToChat(input: {
   botId: string;
@@ -194,21 +193,11 @@ export async function sendToChat(input: {
   );
   if (!text) throw new ORPCError("BAD_REQUEST", { message: "Nothing to send." });
   const client = engineClient();
-  const images = await readTurnImages(client, NO_EMAIL, sessionId, text);
   const context = input.context;
   await onSuperChat(
     context?.openArtifact || context?.cardAnswer || context?.stepComment
-      ? postOmnigentMessage(
-          client,
-          NO_EMAIL,
-          sessionId,
-          text,
-          images.length ? images : undefined,
-          context,
-        )
-      : images.length
-        ? postOmnigentMessage(client, NO_EMAIL, sessionId, text, images)
-        : postOmnigentMessage(client, NO_EMAIL, sessionId, text),
+      ? postOmnigentMessage(client, NO_EMAIL, sessionId, text, context)
+      : postOmnigentMessage(client, NO_EMAIL, sessionId, text),
   );
   return { ok: true as const };
 }
