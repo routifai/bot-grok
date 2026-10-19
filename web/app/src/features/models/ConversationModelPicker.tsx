@@ -20,8 +20,8 @@ import { useEngineModelsStatus } from "./engine-models";
 const DEFAULT_VALUE = "__default__";
 
 /**
- * The model this Conversation runs on, in the toolbar: a quiet button named after the model in
- * use, marked "pinned" while the chat runs on something other than the person's Foundation. It
+ * The model this Conversation runs on, in the toolbar: a quiet button named after the model the
+ * engine runs it on, marked "pinned" while the chat stores a model of its own. It
  * opens the list the engine serves for the Conversation's harness; "Default" returns to the
  * Foundation. Absent when Superchat runs without the engine; asked again whenever the person's
  * models change (Settings > Models).
@@ -31,6 +31,7 @@ export function ConversationModelPicker({ botId }: { botId: string }) {
   const [status] = useEngineModelsStatus();
   const [state, setState] = useState<{
     model: string | null;
+    effectiveModel: string | null;
     catalog: EngineModelCatalog;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -40,7 +41,7 @@ export function ConversationModelPicker({ botId }: { botId: string }) {
     setError(null);
     try {
       const next = await rpc.engineModels.sessionModel({ botId });
-      setState({ model: next.model, catalog: next.catalog });
+      setState({ model: next.model, effectiveModel: next.effectiveModel, catalog: next.catalog });
     } catch (err) {
       setError(errorText(err, t`Could not load models.`));
     }
@@ -57,10 +58,12 @@ export function ConversationModelPicker({ botId }: { botId: string }) {
     if (!state) return;
     const model = value === DEFAULT_VALUE ? null : value;
     const before = state;
-    setState({ ...state, model });
+    setState({ ...state, model, effectiveModel: model ?? foundationOf(state.catalog) });
     setError(null);
     try {
       await rpc.engineModels.setSessionModel({ botId, model });
+      // The engine says which model the chat now runs on.
+      await load();
     } catch (err) {
       setState(before);
       setError(errorText(err, t`Could not switch model.`));
@@ -74,7 +77,8 @@ export function ConversationModelPicker({ botId }: { botId: string }) {
     const row = catalog?.models.find((m) => m.id === id);
     return row ? modelOptionLabel(row) : null;
   };
-  const inUse = state?.model ?? foundation;
+  // The engine's answer; with none the harness runs the connection's default.
+  const inUse = state ? (state.effectiveModel ?? catalog?.defaultModel ?? null) : null;
   const inUseLabel = usable ? labelOf(inUse) : null;
   const defaultLabel = labelOf(foundation);
   // Pinned: the chat stores a model of its own (Default stores none).

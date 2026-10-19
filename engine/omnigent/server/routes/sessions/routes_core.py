@@ -1197,13 +1197,17 @@ def register_core_routes(
         access = await _require_access_and_level(
             user_id, session_id, LEVEL_READ, permission_store, conversation_store
         )
-        return await _get_session_snapshot(
+        # One read of the row, shared by the snapshot and ``effective_model``.
+        conv = access.conversation or await asyncio.to_thread(
+            conversation_store.get_conversation, session_id
+        )
+        snapshot = await _get_session_snapshot(
             conversation_store,
             session_id,
             access.level,
             agent_store,
             agent_cache,
-            conversation=access.conversation,
+            conversation=conv,
             liveness_lookup=liveness_lookup if include_liveness else None,
             include_items=include_items,
             include_usage=include_usage,
@@ -1214,6 +1218,13 @@ def register_core_routes(
             viewer_id=user_id,
             request=request,
         )
+        if conv is not None:
+            from omnigent.server.routes.sandbox_inference import session_model
+
+            snapshot.effective_model = await session_model(
+                request.app.state, conv, conversation_store
+            )
+        return snapshot
 
     @router.get(
         "/sessions/{session_id}/labels",

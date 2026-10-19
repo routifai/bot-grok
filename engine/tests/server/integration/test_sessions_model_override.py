@@ -721,3 +721,75 @@ async def test_smart_routing_overrides_orchestrator_model_for_child_session(
         f"Smart routing should have set the harness to {routed_harness!r}; "
         f"runner body had {captured['body'].get('harness_override')!r}."
     )
+
+
+class _ReadyCatalog:
+    """An inference service whose fresh catalog is always ready (no snapshot is configured)."""
+
+    async def prepare(self, *_: Any, **__: Any) -> dict[str, Any]:
+        return {"catalog": {"status": "ready", "models": [{"id": "claude-foundation"}]}}
+
+
+def _follow_foundation(app: Any, monkeypatch: pytest.MonkeyPatch) -> list[tuple]:
+    """Give *app* a Foundation resolver and a ready catalog; returns the resolver's calls."""
+    from omnigent.server.routes._sessions import helpers
+
+    calls: list[tuple] = []
+
+    async def foundation(user_id: str | None, harness: str, catalog: dict | None) -> str:
+        calls.append((user_id, harness))
+        return "claude-foundation"
+
+    monkeypatch.setattr(app.state, "foundation_model", foundation, raising=False)
+    monkeypatch.setattr(app.state, "inference_catalog", _ReadyCatalog(), raising=False)
+    monkeypatch.setattr(helpers, "_resolve_harness", lambda _conv: "claude-sdk")
+    return calls
+
+
+async def _send(client: httpx.AsyncClient, sid: str) -> None:
+    resp = await client.post(
+        f"/v1/sessions/{sid}/events",
+        json={
+            "type": "message",
+            "data": {"role": "user", "content": [{"type": "input_text", "text": "hi"}]},
+        },
+    )
+    assert resp.status_code == 202, resp.text
+
+
+@pytest.mark.parametrize(
+    ("labels", "foundation"),
+    [
+        ({"omnigent.context.mode": "superside-chat"}, "claude-foundation"),
+        ({"omnigent.context.mode": "superside-chat", "omnigent.subagent": "worker"}, None),
+        ({}, None),
+    ],
+)
+async def test_a_super_chat_without_a_pin_runs_and_shows_its_foundation(
+    client: httpx.AsyncClient,
+    app: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    labels: dict[str, str],
+    foundation: str | None,
+) -> None:
+    """The engine forwards the owner's Foundation for an unpinned Super Chat, and the session
+    read's ``effective_model`` is that same model; a Helper or a plain session gets neither."""
+    captured = _stub_runner_client(monkeypatch)
+    _follow_foundation(app, monkeypatch)
+    agent = await create_test_agent(client)
+    created = await client.post(
+        "/v1/sessions", json={"agent_id": agent["id"], "initial_items": [], "labels": labels}
+    )
+    sid = created.json()["id"]
+
+    await _send(client, sid)
+    assert captured["body"].get("model_override") == foundation
+    got = (await client.get(f"/v1/sessions/{sid}")).json()
+    assert (got["model_override"], got["effective_model"]) == (None, foundation)
+
+    # A stored pin wins, on the turn and in the read.
+    await client.patch(f"/v1/sessions/{sid}", json={"model_override": "claude-opus-4-7"})
+    await _send(client, sid)
+    assert captured["body"].get("model_override") == "claude-opus-4-7"
+    got = (await client.get(f"/v1/sessions/{sid}")).json()
+    assert got["effective_model"] == "claude-opus-4-7"

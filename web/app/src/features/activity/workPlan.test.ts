@@ -298,3 +298,26 @@ it("takes the engine's fold, the reply's Activity and the files its turn saved",
   const plain = [...none.turns.values()][0];
   expect([plain?.fold, plain?.activityId, plain?.files]).toEqual([0, null, []]);
 });
+
+it("draws the running turn from the status's Activity until a reply names it, then under the reply", () => {
+  const ask = message("ask", "user", [text("Compare the banks")], 0);
+  // Tools run, nothing written yet: the turn's strip follows the person's message.
+  const before = transcriptWork([ask], "turn:conv:r1");
+  expect(before.pending).toMatchObject({ anchorId: "ask", activityId: "turn:conv:r1", last: true });
+  expect(before.turns.size).toBe(0);
+  // Without a running turn's Activity there is nothing pending.
+  expect(transcriptWork([ask]).pending).toBeUndefined();
+  // The reply arrives naming the same Activity: the same work goes on under it.
+  const reply = {
+    ...message("reply", "bot", [text("Here is the comparison.")], 9),
+    activityId: "turn:conv:r1",
+  };
+  const after = transcriptWork([ask, reply], "turn:conv:r1");
+  expect(after.pending).toBeUndefined();
+  expect(after.turns.get("reply")).toMatchObject({ activityId: "turn:conv:r1", last: true });
+  // A reply with a strip of its own but no Activity yet takes the status's.
+  const plan = message("card", "bot", [planCard(v1)], 2);
+  const planned = transcriptWork([ask, plan], "turn:conv:r1");
+  expect(planned.pending).toBeUndefined();
+  expect(planned.turns.get("card")?.activityId).toBe("turn:conv:r1");
+});

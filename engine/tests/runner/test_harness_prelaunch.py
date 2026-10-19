@@ -165,3 +165,43 @@ async def test_session_init_launches_the_cli_and_the_first_turn_waits_for_it() -
     assert len(harness.posted_bodies) == 2
     assert harness.order[:3] == ["prelaunch", "prelaunch done", "turn"]
     assert "make the deck" in str(harness.posted_bodies[1])
+
+
+def _launch_fields(body: dict[str, Any]) -> tuple[Any, ...]:
+    """What the Claude CLI is launched with: its instructions, tool names, mode and effort."""
+    tools = sorted(t.get("name") or t.get("function", {}).get("name") for t in body["tools"])
+    return body["instructions"], tools, body.get("context_mode"), body.get("reasoning")
+
+
+@pytest.mark.asyncio
+async def test_the_prelaunch_matches_a_turn_sent_from_the_open_screen() -> None:
+    """A turn sent while the person's screen is subscribed finds the CLI launched for it."""
+    harness = _GatedHarnessClient(_FRAMES)
+    harness.release_first.set()
+    async with _runner_client(_app(harness)) as client:
+        init = await client.post(
+            "/v1/sessions", json=_session_init_payload(suppress_recovery_turn=True)
+        )
+        assert init.status_code == 201, init.text
+        for _ in range(200):
+            if harness.posted_bodies:
+                break
+            await asyncio.sleep(0.01)
+        forwarded = await client.post(
+            f"/v1/sessions/{SESSION_ID}/events",
+            json={
+                "type": "message",
+                "agent_id": AGENT_ID,
+                "browser_renderer_available": True,
+                "content": [{"type": "input_text", "text": "make the deck"}],
+            },
+        )
+        assert forwarded.status_code == 202, forwarded.text
+        for _ in range(300):
+            if len(harness.posted_bodies) == 2:
+                break
+            await asyncio.sleep(0.01)
+
+    prelaunch, turn = harness.posted_bodies
+    assert any("browser" in name for name in _launch_fields(turn)[1])
+    assert _launch_fields(prelaunch) == _launch_fields(turn)

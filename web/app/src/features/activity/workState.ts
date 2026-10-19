@@ -1,6 +1,7 @@
 import type { Activity } from "@superchat/contracts";
 import { useMemo, useSyncExternalStore } from "react";
 import type { ActivitiesState } from "./activityFeed";
+import { buildActivityForest, isNodeRunning } from "./activityTree";
 import { workingSince } from "./superchatWork";
 import { activityFeedFor } from "./useActivities";
 
@@ -36,6 +37,8 @@ export interface WorkState {
   since: number | null;
   /** The newest turn was stopped: its strip reads Cancelled. */
   cancelled: boolean;
+  /** Only Helpers run, and Pause holds every one of them (ADR 0027): the pill reads Paused. */
+  paused: boolean;
 }
 
 export const IDLE_TURN: TurnStatus = {
@@ -71,12 +74,20 @@ export function deriveWorkState({
       : turnLive || since !== null
         ? "running"
         : "idle";
+  const helpers = buildActivityForest(activities).filter(
+    (node) => node.activity.source !== "studio" && isNodeRunning(node),
+  );
   return {
     phase,
     running: phase !== "idle",
     turnRunning: turnLive || sending || stopping,
     since: phase === "idle" ? null : since,
     cancelled: turn.cancelled,
+    paused:
+      phase === "running" &&
+      !turnLive &&
+      helpers.length > 0 &&
+      helpers.every((node) => node.activity.paused === true),
   };
 }
 
@@ -101,7 +112,7 @@ export function useWorkState({
     feed?.getSnapshot ?? noSnapshot,
   );
   const activities = state.status === "ready" ? state.activities : NO_ACTIVITIES;
-  const { phase, running, turnRunning, since, cancelled } = deriveWorkState({
+  const { phase, running, turnRunning, since, cancelled, paused } = deriveWorkState({
     turn,
     sending,
     stopping,
@@ -110,8 +121,8 @@ export function useWorkState({
   });
   // One object while nothing it says changed: the memoised views it is handed keep still.
   return useMemo(
-    () => ({ phase, running, turnRunning, since, cancelled }),
-    [phase, running, turnRunning, since, cancelled],
+    () => ({ phase, running, turnRunning, since, cancelled, paused }),
+    [phase, running, turnRunning, since, cancelled, paused],
   );
 }
 

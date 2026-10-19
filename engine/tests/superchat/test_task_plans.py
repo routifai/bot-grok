@@ -486,6 +486,7 @@ def _fresh_runtime(monkeypatch) -> None:
     monkeypatch.setattr(runtime, "_watching", {})
     monkeypatch.setattr(runtime, "_posts", {})
     monkeypatch.setattr(runtime, "_unsent", {})
+    monkeypatch.setattr(runtime, "_loose", {})
 
 
 async def _sent(session: str) -> None:
@@ -516,7 +517,10 @@ async def test_a_turns_plan_waits_for_its_deliverable_and_carries_its_early_brie
     await _sent("c1")
     await _sent("c1")
     assert [p["event"] for p in posted] == ["start_helper", "plan", "evidence"]
-    assert posted[1]["evidence"] == [{"kind": "brief"}] and posted[1]["task_id"] == "t1"
+    # the brief read first, then the Helper's start: its step is doing at once
+    started = {"kind": "helper_started", "helper_id": "h1"}
+    assert posted[1]["evidence"] == [{"kind": "brief"}, started]
+    assert posted[1]["task_id"] == "t1"
     assert posted[2] == {"event": "evidence", "kind": "read", "task_id": "t1"}
 
 
@@ -552,7 +556,7 @@ async def test_the_tasks_a_turn_closes_are_journaled(monkeypatch) -> None:
     monkeypatch.setattr(runtime, "journal_decision", journal)
     closed = {"id": "t1", "kind": "deck", "title": "T", "status": "done", "fields": {}}
     finished = {"id": "t2", "status": "building", "helper_ids": ["h"], "helper_running": False}
-    view = {"conversation_id": "c2", "tasks": [finished], "by_person": False}
+    view = {"conversation_id": "c2", "tasks": [finished], "by_person": False, "settle": True}
     posted: list[dict[str, Any]] = []
     answers = {
         "turn_start": {"task": closed, "closed": [closed]},

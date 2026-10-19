@@ -5695,3 +5695,57 @@ class TestPrelaunch(unittest.TestCase):
         clients, prompts = self._run([(self._HISTORY, "prompt"), (self._EMPTY, "prompt")])
         self.assertEqual(len(clients), 1)
         self.assertEqual(len(prompts), 1)
+
+    _LOGGER = "omnigent.harnesses.claude_sdk_executor"
+    _NEXT = [
+        *_HISTORY,
+        {"role": "assistant", "content": "the deck", "session_id": "s"},
+        {"role": "user", "content": "and the notes", "session_id": "s"},
+    ]
+
+    def setUp(self):
+        from omnigent.harnesses import claude_sdk_executor
+
+        claude_sdk_executor._client_drop_reasons.clear()
+
+    def _launches(self, logs) -> list[str]:
+        return [r.getMessage() for r in logs.records if "Claude CLI launched" in r.getMessage()]
+
+    def test_a_second_turn_with_nothing_changed_reuses_the_warm_cli(self):
+        with self.assertLogs(self._LOGGER, level="INFO") as logs:
+            clients, prompts = self._run(
+                [(self._EMPTY, "prompt"), (self._HISTORY, "prompt"), (self._NEXT, "prompt")]
+            )
+        self.assertEqual(len(clients), 1, "no CLI launch after the pre-launch")
+        self.assertEqual(prompts[1], "and the notes", "the warm CLI gets only the new message")
+        launches = self._launches(logs)
+        self.assertEqual(len(launches), 1)
+        self.assertIn("pre-launch", launches[0])
+
+    def test_a_relaunch_names_what_differs(self):
+        with self.assertLogs(self._LOGGER, level="INFO") as logs:
+            self._run([(self._EMPTY, "prompt"), (self._HISTORY, "new prompt")])
+        self.assertIn("differs from the first turn in instructions", self._launches(logs)[-1])
+
+    def test_a_launch_after_an_interrupt_says_so(self):
+        from omnigent.harnesses.claude_sdk_executor import ClaudeSDKExecutor
+
+        clients: list = []
+        prompts: list = []
+
+        async def _t():
+            with patch(
+                "omnigent.harnesses.claude_sdk_executor._ensure_sdk",
+                return_value=self._fake_sdk(clients, prompts),
+            ):
+                executor = ClaudeSDKExecutor()
+                executor._force_close_client = AsyncMock()  # type: ignore[method-assign]
+                _ = [e async for e in executor.run_turn(self._HISTORY, [], "prompt")]
+                await executor.interrupt_session("s")
+                # The adapter replaces its executor after an interrupt; the reason survives.
+                _ = [e async for e in ClaudeSDKExecutor().run_turn(self._NEXT, [], "prompt")]
+
+        with self.assertLogs(self._LOGGER, level="INFO") as logs:
+            _run(_t())
+        self.assertEqual(len(clients), 2)
+        self.assertIn("the previous turn was interrupted", self._launches(logs)[-1])

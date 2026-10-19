@@ -98,6 +98,7 @@ class Task:
         """The task as the routes return it."""
         return {
             "id": self.id,
+            "conversation_id": self.conversation_id,
             "kind": self.kind,
             "title": self.title,
             "fields": self.fields,

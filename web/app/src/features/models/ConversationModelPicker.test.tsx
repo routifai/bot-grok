@@ -110,17 +110,28 @@ it("is absent without the engine", async () => {
   }
 });
 
-it("names the model in use and pins the one chosen", async () => {
-  state.sessionModel.mockResolvedValue({ harness: "pi", model: null, catalog });
+it("names the model the engine runs and pins the one chosen", async () => {
+  state.sessionModel.mockResolvedValue({
+    harness: "pi",
+    model: null,
+    effectiveModel: "sonnet-5",
+    catalog,
+  });
   state.setSessionModel.mockResolvedValue({ ok: true });
   const view = await mount();
   try {
     expect(state.sessionModel).toHaveBeenCalledWith({ botId: "bot-1" });
-    // The Foundation, not the connection's default; no marker.
+    // The engine's model in use (the Foundation), not the connection's default; no marker.
     expect(view.trigger()?.textContent).toBe("Sonnet 5");
     expect(view.pinned()).toBeNull();
     const menu = await view.open();
     expect(menu.textContent).toContain("Default · Sonnet 5");
+    state.sessionModel.mockResolvedValue({
+      harness: "pi",
+      model: "haiku-4",
+      effectiveModel: "haiku-4",
+      catalog,
+    });
     await act(async () => item(menu, "Haiku 4").click());
     expect(state.setSessionModel).toHaveBeenCalledWith({ botId: "bot-1", model: "haiku-4" });
     expect(view.trigger()?.textContent).toBe("Haiku 4pinned");
@@ -130,14 +141,24 @@ it("names the model in use and pins the one chosen", async () => {
 });
 
 it("follows the pin, then the Foundation once Default clears it", async () => {
-  state.sessionModel.mockResolvedValue({ harness: "pi", model: "haiku-4", catalog });
+  state.sessionModel.mockResolvedValue({
+    harness: "pi",
+    model: "haiku-4",
+    effectiveModel: "haiku-4",
+    catalog,
+  });
   state.setSessionModel.mockResolvedValue({ ok: true });
   const view = await mount();
   try {
     expect(view.trigger()?.textContent).toContain("Haiku 4");
     expect(view.pinned()?.textContent).toBe("pinned");
     const menu = await view.open();
-    state.sessionModel.mockResolvedValue({ harness: "pi", model: null, catalog });
+    state.sessionModel.mockResolvedValue({
+      harness: "pi",
+      model: null,
+      effectiveModel: "sonnet-5",
+      catalog,
+    });
     await act(async () => item(menu, "Default · Sonnet 5").click());
     expect(state.setSessionModel).toHaveBeenLastCalledWith({ botId: "bot-1", model: null });
     expect(view.trigger()?.textContent).toBe("Sonnet 5");
@@ -149,7 +170,12 @@ it("follows the pin, then the Foundation once Default clears it", async () => {
 
 it("marks a stored model as pinned, even when it is the Foundation, and none without one", async () => {
   // The chat stores Sonnet, which is also the Foundation: it is still the chat's own pick.
-  state.sessionModel.mockResolvedValue({ harness: "pi", model: "sonnet-5", catalog });
+  state.sessionModel.mockResolvedValue({
+    harness: "pi",
+    model: "sonnet-5",
+    effectiveModel: "sonnet-5",
+    catalog,
+  });
   const view = await mount();
   try {
     expect(view.pinned()).not.toBeNull();
@@ -157,9 +183,27 @@ it("marks a stored model as pinned, even when it is the Foundation, and none wit
     state.sessionModel.mockResolvedValue({
       harness: "pi",
       model: null,
+      effectiveModel: "haiku-4",
       catalog: { ...catalog, foundationModel: "haiku-4" },
     });
     await view.statusRefetched();
+    expect(view.trigger()?.textContent).toBe("Haiku 4");
+    expect(view.pinned()).toBeNull();
+  } finally {
+    await view.cleanup();
+  }
+});
+
+it("shows the engine's model in use, never one it works out itself", async () => {
+  // The engine runs the connection's default (it resolved no Foundation): the header says so.
+  state.sessionModel.mockResolvedValue({
+    harness: "pi",
+    model: null,
+    effectiveModel: null,
+    catalog,
+  });
+  const view = await mount();
+  try {
     expect(view.trigger()?.textContent).toBe("Haiku 4");
     expect(view.pinned()).toBeNull();
   } finally {

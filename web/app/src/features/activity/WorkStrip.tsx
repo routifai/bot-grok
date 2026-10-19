@@ -1,6 +1,6 @@
 import { useLingui } from "@lingui/react/macro";
-import type { ActivityStep, Artifact } from "@superchat/contracts";
-import { presentActivityTitle } from "@superchat/core";
+import type { Activity, ActivityStep, Artifact } from "@superchat/contracts";
+import { presentActivityTitle, presentStep } from "@superchat/core";
 import { cn } from "@superchat/ui-web";
 import { ChevronDown, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
@@ -53,7 +53,7 @@ function WorkMark({ live, size = 20 }: { live: boolean; size?: number }) {
 }
 
 /** A running Helper's line, for a reply without a plan (ADR 0022's strip). */
-function WorkLineRow({ line }: { line: WorkLine }) {
+export function WorkLineRow({ line }: { line: WorkLine }) {
   const { t } = useLingui();
   return (
     <div data-testid="work-strip-line" className="flex min-w-0 flex-col gap-1">
@@ -236,10 +236,13 @@ export function WorkStripView({
   drafts = [],
   summary = null,
   pause = null,
+  liveSteps = NO_STEPS,
   onComment,
   onShowDetails,
 }: {
   view: StripView;
+  /** A running turn without a plan or a Helper: its own steps so far, newest last. */
+  liveSteps?: readonly ActivityStep[];
   drafts?: readonly DraftFile[];
   summary?: StripSummary | null;
   /** Shown while the reply has running Helpers. */
@@ -255,8 +258,13 @@ export function WorkStripView({
   const total = plan?.length ?? 0;
   const shown = live || open;
   const current = plan ? currentStep(plan) : undefined;
+  const lastStep = live && !plan ? liveSteps.at(-1) : undefined;
   const now =
-    (current && stepWords(current)) ?? view.lines[0]?.title ?? view.progress ?? t`Working`;
+    (current && stepWords(current)) ??
+    view.lines[0]?.title ??
+    (lastStep ? presentStep(lastStep).title : null) ??
+    view.progress ??
+    t`Working`;
   const settled =
     view.outcome === "failed"
       ? t`Didn't finish`
@@ -358,6 +366,11 @@ export function WorkStripView({
             />
           </div>
         ) : null}
+        {lastStep ? (
+          <div data-testid="work-strip-live-steps">
+            <StepsTimeline steps={[...liveSteps]} running />
+          </div>
+        ) : null}
         {plan && shown ? view.flags.map((flag, index) => <Flag key={index} text={flag} />) : null}
         {plan && shown ? (
           <PlanSteps
@@ -405,7 +418,7 @@ export function draftsOf(
  * state says something does (`lit`). The strip and the session panel both read it. */
 export function useStripView(
   botId: string,
-  helpers: readonly StripHelper[],
+  transcriptHelpers: readonly StripHelper[],
   turn: StripTurn | undefined,
   lit: boolean,
 ) {
@@ -413,6 +426,20 @@ export function useStripView(
   const { state: feedState } = useSyncExternalStore(feed.subscribe, feed.getSnapshot);
   const activities = feedState.status === "ready" ? feedState.activities : undefined;
   const turnLive = Boolean(turn?.live);
+  const activityId = turn?.activityId ?? null;
+  const turnActivity = useMemo(
+    () =>
+      activityId ? (activities?.find((activity) => activity.id === activityId) ?? null) : null,
+    [activities, activityId],
+  );
+  // A running turn no reply speaks for yet: its Helpers are the ones the feed says it started.
+  const helpers = useMemo(
+    () =>
+      transcriptHelpers.length > 0 || !turnLive || !turnActivity
+        ? transcriptHelpers
+        : startedBy(turnActivity, activities ?? []),
+    [transcriptHelpers, turnLive, turnActivity, activities],
+  );
   const firstMissing = useFirstMissing(helpers, activities);
   // The clock ticks while the strip is live; it is told so after the render that finds it live.
   const [ticking, setTicking] = useState(false);
@@ -434,13 +461,25 @@ export function useStripView(
   useEffect(() => {
     if (missing) feed.refresh();
   }, [feed, missing]);
-  const activityId = turn?.activityId ?? null;
-  const turnActivity = useMemo(
-    () =>
-      activityId ? (activities?.find((activity) => activity.id === activityId) ?? null) : null,
-    [activities, activityId],
-  );
   return { view, state, listed, turnActivity, activities };
+}
+
+/** The Helpers a running turn started, as the feed lists them: the Conversation's, since the turn
+ * began. */
+function startedBy(turn: Activity, activities: readonly Activity[]): StripHelper[] {
+  const from = Date.parse(turn.startedAt);
+  return activities
+    .filter(
+      (activity) =>
+        activity.kind === "sub_agent" &&
+        activity.parentChatId === turn.chatId &&
+        Date.parse(activity.startedAt) >= from,
+    )
+    .map((activity) => ({
+      helperId: activity.chatId,
+      title: activity.title,
+      status: activity.status,
+    }));
 }
 
 /** The work strip for one reply (`useStripView`), with its files, its summary line, Pause for its
@@ -504,16 +543,24 @@ export function WorkStrip({
         : undefined,
     [botId, planId],
   );
+  // A settled reply with no plan, no Helper and no steps of its own has nothing to show.
+  if (!view.live && !view.plan && helpers.length === 0 && !turnActivity?.summaryLine) return null;
   return (
     <WorkStripView
       view={view}
       drafts={drafts}
       summary={summary}
       pause={pause}
+      liveSteps={
+        view.live && !view.plan && view.lines.length === 0
+          ? (turnActivity?.steps ?? NO_STEPS)
+          : NO_STEPS
+      }
       onComment={onComment}
-      onShowDetails={() => focusActivity(view.focusId)}
+      onShowDetails={() => focusActivity(view.focusId ?? turnActivity?.id ?? null)}
     />
   );
 }
 
 const NO_FILES: readonly string[] = [];
+const NO_STEPS: readonly ActivityStep[] = [];

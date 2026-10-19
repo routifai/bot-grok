@@ -66,6 +66,10 @@ export interface TranscriptWork {
   /** When the work the newest messages belong to began (ms): the header pill's start while a turn
    * runs, the same start its strip counts from. Null when unknown. */
   runningSince?: number | null;
+  /** The running turn before any reply of it names its Activity (ADR 0027): drawn after the
+   * person's message from the Activity the Conversation's status names, until the reply takes it
+   * over. */
+  pending?: TurnWork | null;
 }
 
 export const drawnKey = (messageId: string, index: number) => `${messageId}:${index}`;
@@ -189,13 +193,19 @@ function readTurn(turn: Turn, last: boolean, out: TranscriptWork) {
       ? renders.filter((render) => render.id === newest.id)
       : [newest]
     : [];
-  if (helpers.length === 0 && mine.length === 0) return;
+  const activityId =
+    replies.find(hasText)?.activityId ?? replies.findLast((m) => m.activityId)?.activityId;
+  // A reply gets a strip for its Helpers, its plan, or the Activity of its turn (ADR 0027).
+  if (helpers.length === 0 && mine.length === 0 && !activityId) return;
   // Under the reply (ADR 0022, ADR 0023): its text once written, before that where its work
   // first showed.
   const anchor =
     replies.find(hasText) ??
     replies.find(
-      (message) => hasHelper(message) || renders.some((render) => render.messageId === message.id),
+      (message) =>
+        hasHelper(message) ||
+        renders.some((render) => render.messageId === message.id) ||
+        message.activityId,
     );
   if (!anchor) return;
   for (const render of mine) out.drawn.add(render.key);
@@ -209,8 +219,7 @@ function readTurn(turn: Turn, last: boolean, out: TranscriptWork) {
     plan: newest ? markChanges(newest.steps, mine.at(-2)?.steps) : null,
     planId: newest ? (newest.id ?? newest.key) : null,
     fold: newest?.fold ?? 0,
-    activityId:
-      anchor.activityId ?? replies.findLast((message) => message.activityId)?.activityId ?? null,
+    activityId: activityId ?? null,
     files: replies.flatMap((message) =>
       message.blocks.flatMap((block) =>
         block.kind === "reply_card" &&
@@ -230,7 +239,11 @@ function readTurn(turn: Turn, last: boolean, out: TranscriptWork) {
 
 /** Every reply's strip in a transcript (oldest first): a reply gets one when it started Helpers
  * or published a plan. */
-export function transcriptWork(messages: readonly ThreadMessage[]): TranscriptWork {
+export function transcriptWork(
+  messages: readonly ThreadMessage[],
+  /** The running turn's Activity, as the Conversation's status names it (null while none runs). */
+  liveActivityId: string | null = null,
+): TranscriptWork {
   if (messages.length === 0) return EMPTY;
   const out: TranscriptWork = { turns: new Map(), drawn: new Set(), runningSince: null };
   const turns: Turn[] = [];
@@ -262,6 +275,25 @@ export function transcriptWork(messages: readonly ThreadMessage[]): TranscriptWo
     newest = owner;
   }
   for (const turn of turns) readTurn(turn, turn === newest, out);
+  // The running turn's Activity, until a reply of the person's newest message names it.
+  if (liveActivityId && newest?.ask && !newest.replies.some((message) => message.activityId)) {
+    const strip = [...out.turns.values()].find((turn) => turn.last);
+    if (strip) strip.activityId = liveActivityId;
+    else {
+      out.pending = {
+        anchorId: newest.ask.id,
+        plan: null,
+        planId: null,
+        fold: 0,
+        activityId: liveActivityId,
+        files: [],
+        helpers: [],
+        startedAt: timeOf(newest.ask.createdAt),
+        endedAt: null,
+        last: true,
+      };
+    }
+  }
   const tail = segments.at(-1);
   out.runningSince = timeOf(
     newest?.ask?.createdAt ??

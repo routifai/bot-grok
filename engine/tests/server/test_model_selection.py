@@ -24,6 +24,7 @@ from omnigent.onboarding.provider_config import ProviderEntry
 from omnigent.server.inference_catalog import SandboxInferenceService
 from omnigent.server.routes.sandbox_inference import (
     prepare_create_inference,
+    session_model,
     snapshot_serves_model,
 )
 from omnigent.superchat.models.selection import (
@@ -240,6 +241,31 @@ async def test_sub_agent_pin_outside_the_catalog_inherits_the_parent(app: FastAP
     assert snapshot_serves_model(None, "anything")
 
 
+@pytest.mark.asyncio
+async def test_session_model_is_the_pin_else_the_owners_foundation(
+    app: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    snapshot, _ = await _create(app)
+    owners = SimpleNamespace(get_session_owner=lambda _id: "local")
+
+    def chat(labels: dict = SUPER_CHAT, pin: str | None = None, snap: dict | None = snapshot):
+        return SimpleNamespace(id="s1", labels=labels, model_override=pin, inference_snapshot=snap)
+
+    async def model(conv: SimpleNamespace) -> str | None:
+        return await session_model(app.state, conv, owners)  # type: ignore[arg-type]
+
+    app.state.model_preference_store.set("local", foundation={"claude-sdk": "claude-haiku-4-5"})
+    assert await model(chat()) == "claude-haiku-4-5"
+    assert await model(chat(pin="claude-sonnet-5-5")) == "claude-sonnet-5-5"
+    # A Helper keeps the connection's default (``None``): its category is the runner's to ask.
+    assert await model(chat(labels={**SUPER_CHAT, SUBAGENT_LABEL_KEY: "worker"})) is None
+    # No saved catalog: the catalog a new session would get, on the session's harness.
+    from omnigent.server.routes._sessions import helpers
+
+    monkeypatch.setattr(helpers, "_resolve_harness", lambda _conv: "claude-sdk")
+    assert await model(chat(snap=None)) == "claude-haiku-4-5"
+
+
 def test_a_model_connection_is_never_filtered_by_name() -> None:
     """A connection's ids are its upstream's names: claude-sdk is offered all of them; an
     operator gateway's curated list keeps the rule for ids recognizably of another vendor."""
@@ -280,7 +306,7 @@ def test_helper_models_answer_the_owners_picks(app: FastAPI) -> None:
         return client.get("/v1/sessions/s1/helper-models", params={"harness": harness}).json()
 
     sonnet, haiku = "claude-sonnet-5-5", "claude-haiku-4-5"
-    # Nothing picked: Light the cheapest, Foundation and Builder the connection's default.
+    # Nothing picked: Foundation the dearest, Builder too (two priced rows), Light the cheapest.
     assert ask("claude-sdk") == {
         "foundation": sonnet,
         "builder": sonnet,

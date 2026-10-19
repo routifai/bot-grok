@@ -2153,6 +2153,10 @@ class SessionResponse(BaseModel):
         ``PATCH /v1/sessions/{id}`` or the REPL's ``/model``
         command; both write the same column so the web UI and
         the TUI stay in sync.
+    :param effective_model: The model the engine runs this session's next
+        turn on: ``model_override``, else for a Super Chat its owner's
+        Foundation pick. ``None`` when the harness runs its connection's
+        default. Filled only by ``GET /v1/sessions/{id}``.
     :param cost_control_mode_override: Per-session cost-control
         switch: ``"on"`` activates the spec's configured cost-control
         mode, ``"off"`` disables cost control for this session.
@@ -2321,6 +2325,7 @@ class SessionResponse(BaseModel):
     llm_model: str | None = None
     harness: str | None = None
     model_override: str | None = None
+    effective_model: str | None = None
     cost_control_mode_override: str | None = None
     subagent_routing_override: str | None = None
     share_workspace_files: bool = False
@@ -3060,6 +3065,9 @@ class SessionStatusEvent(_SSEEventBase):
         number of the turn it started or joined, so a sender can tell that turn's ``idle``
         from an earlier one's. ``idle`` is reported only once no message waits behind the
         turn. ``None`` from a runner that does not number turns.
+    :param activity_id: While a Super Chat turn runs, the id of the Activity it is,
+        ``turn:<conversation_id>:<response_id>`` (``activity/derive.py``), so a client can show
+        the turn's steps before its first word. Absent when no turn runs.
 
     Category: **transient** (SSE-only). Status is rederived on
     reconnect from the cached last-relayed turn lifecycle event
@@ -3076,6 +3084,7 @@ class SessionStatusEvent(_SSEEventBase):
     blocked_on: str | None = None
     turn: int | None = None
     paused: bool | None = None
+    activity_id: str | None = None
 
 
 class SessionUsageEvent(_SSEEventBase):

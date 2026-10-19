@@ -210,3 +210,54 @@ async def test_the_relay_times_a_silent_turn_from_the_persons_message(
     lines = _lines(caplog)
     assert [line.split(" for ")[0] for line in lines] == ["first visible event", "no text"]
     assert all(session_id in line for line in lines)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("labels", "named"),
+    [({"omnigent.context.mode": "superside-chat"}, True), ({}, False)],
+)
+async def test_a_running_super_chat_turn_names_its_activity(
+    db_uri: str, monkeypatch: pytest.MonkeyPatch, labels: dict[str, str], named: bool
+) -> None:
+    """While a Super Chat turn runs its status edges carry ``activity_id``, the turn's Activity
+    id; the idle edge after it, and any other session's edges, carry none."""
+    from omnigent.runtime import session_stream
+    from omnigent.server.routes._sessions.orchestration import _relay_runner_stream_once
+
+    store = SqlAlchemyConversationStore(db_uri)
+    session_id = store.create_conversation(labels=labels).id
+    published: list[dict[str, Any]] = []
+    real_publish = session_stream.publish
+
+    def capture(sid: str, payload: dict[str, Any]) -> None:
+        if payload.get("type") == "session.status":
+            published.append(payload)
+        real_publish(sid, payload)
+
+    monkeypatch.setattr(session_stream, "publish", capture)
+    events = [
+        {"type": "session.status", "status": "running"},
+        {"type": "response.in_progress", "response": {"id": "resp_1", "model": "m"}},
+        {"type": "session.status", "status": "running", "blocked_on": "permission prompt"},
+        _DONE,
+        {"type": "session.status", "status": "idle"},
+    ]
+    try:
+        await asyncio.wait_for(
+            _relay_runner_stream_once(session_id, _Runner(events), store),  # type: ignore[arg-type]
+            timeout=10,
+        )
+    finally:
+        session_stream.close(session_id)
+    activity = f"turn:{session_id}:resp_1"
+    seen = [(p["status"], p.get("activity_id")) for p in published]
+    if named:
+        assert seen == [
+            ("running", None),
+            ("running", activity),
+            ("running", activity),
+            ("idle", None),
+        ]
+    else:
+        assert all(a is None for _, a in seen)

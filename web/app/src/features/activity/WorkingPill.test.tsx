@@ -74,6 +74,20 @@ it("stays while a Helper runs after the turn ended, and is gone once everything 
   expect(pill(container)).toBeNull();
 });
 
+it("reads Paused, not a running clock, while Pause holds every running Helper", async () => {
+  const startedAt = new Date(Date.now() - 65_000).toISOString();
+  const held = (chat: string, paused: boolean) =>
+    helper(chat, { status: "in_progress", startedAt, finishedAt: null, paused });
+  const { container, render } = await mount(null, [held("h1", true), held("h2", false)]);
+  // One still works: the clock runs.
+  expect(pill(container)?.textContent).toMatch(/^Working · 1:0[56]$/);
+  await render(null, [held("h1", true), held("h2", true)]);
+  expect(pill(container)?.textContent).toBe("Paused");
+  // The Conversation's own turn running is never paused.
+  await render(Date.now() - 5_000, [held("h1", true), held("h2", true)]);
+  expect(pill(container)?.textContent).toMatch(/^Working/);
+});
+
 it("counts from the earliest running work", () => {
   const started = Date.parse("2026-10-17T10:00:00.000Z");
   expect(workingSince(null, [])).toBeNull();

@@ -319,6 +319,27 @@ describe("a file's studio chat (ADR 0024)", () => {
   });
 });
 
+describe("the running turn's Activity on the status (ADR 0027)", () => {
+  it("reads it flat or wrapped, in either spelling, and nothing when absent or empty", () => {
+    expect(
+      mapSessionStatusFrame({
+        type: "session.status",
+        status: "running",
+        activity_id: "turn:conv:resp_1",
+      }),
+    ).toEqual({ status: "running", blockedOn: null, activityId: "turn:conv:resp_1" });
+    expect(
+      mapSessionStatusFrame({
+        type: "session.status",
+        data: { status: "running", activityId: "turn:conv:resp_2" },
+      })?.activityId,
+    ).toBe("turn:conv:resp_2");
+    expect(
+      mapSessionStatusFrame({ type: "session.status", status: "idle", activity_id: "" }),
+    ).toEqual({ status: "idle", blockedOn: null });
+  });
+});
+
 describe("the engine's display (ADR 0027)", () => {
   it("carries a reply's Activity id and a plan card's fold", () => {
     const message = mapTranscriptMessage("conv", {

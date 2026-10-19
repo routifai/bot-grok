@@ -2535,6 +2535,7 @@ def register_events_routes(
             # serves this turn; absent, routing keeps its default posture.
             host_store=getattr(request.app.state, "host_store", None),
             persisted_item=persisted_item,
+            app_state=request.app.state,
         )
         if pending_background_title is not None:
             pending_background_title.schedule(expected_seed_title=conv.title)

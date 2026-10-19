@@ -7,7 +7,13 @@ import { useMemo } from "react";
 import { useIsDesktop } from "../../components/ai/orb";
 import { useArtifactPanel } from "../../components/cards/context";
 import type { TurnStrip } from "../activity";
-import { PlanSteps, setStepComment, useConversationFiles, useStripView } from "../activity";
+import {
+  PlanSteps,
+  setStepComment,
+  useConversationFiles,
+  useStripView,
+  WorkLineRow,
+} from "../activity";
 import { ArtifactPreviewThumbnail } from "../artifacts";
 import { usedFamilies } from "./sessionPanelState";
 
@@ -109,6 +115,15 @@ function PanelBody({
             }
           />
         </Section>
+      ) : view.live && view.lines.length > 0 ? (
+        // The reply shows no plan: what its running Helpers are doing, as its strip says.
+        <Section title={t`Progress`} testId="session-progress">
+          <div className="flex flex-col gap-1.5 text-[13.5px]">
+            {view.lines.map((line) => (
+              <WorkLineRow key={line.helperId} line={line} />
+            ))}
+          </div>
+        </Section>
       ) : null}
       {outputs.length > 0 ? (
         <Section title={t`Outputs`} testId="session-outputs">
@@ -146,7 +161,7 @@ export function SessionPanel({
   onClose,
 }: {
   botId: string;
-  /** The strip of the newest reply with a plan (`newestPlanTurn`, features/activity `stripOf`). */
+  /** The newest reply's strip (`newestTurn`, features/activity `stripOf`). */
   strip: TurnStrip | null;
   open: boolean;
   onClose: () => void;

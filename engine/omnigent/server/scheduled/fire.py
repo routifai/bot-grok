@@ -1165,6 +1165,7 @@ def _make_connected_host_dispatch(deps: FireDeps) -> LaunchDispatch:
             file_store=deps.file_store,
             artifact_store=deps.artifact_store,
             created_by=owner,
+            app_state=deps.app_state,
         )
 
     return _dispatch
@@ -1244,6 +1245,7 @@ def _make_managed_sandbox_dispatch(deps: FireDeps) -> LaunchDispatch:
             file_store=deps.file_store,
             artifact_store=deps.artifact_store,
             created_by=owner,
+            app_state=deps.app_state,
         )
 
     return _dispatch

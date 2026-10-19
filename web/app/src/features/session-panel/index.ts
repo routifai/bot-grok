@@ -2,4 +2,4 @@
 // work runs.
 
 export { SessionPanel, SessionPanelToggle } from "./SessionPanel";
-export { newestPlanTurn, useSessionPanelOpen } from "./sessionPanelState";
+export { newestTurn, useSessionPanelOpen } from "./sessionPanelState";
