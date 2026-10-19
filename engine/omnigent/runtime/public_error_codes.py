@@ -37,6 +37,9 @@ MODEL_NOT_SUPPORTED = "model_not_supported"
 MODEL_BUDGET_EXHAUSTED = "model_budget_exhausted"
 # An admin suspended the account behind the request; only an admin can lift it.
 ACCOUNT_SUSPENDED = "account_suspended"
+# The reply was shown live but could not be saved (e.g. the database is full): it is missing
+# from the history after a reload.
+REPLY_NOT_SAVED = "reply_not_saved"
 INTERNAL = "internal"  # anything else: our bug or an unclassified failure
 
 PUBLIC_ERROR_CODES: frozenset[str] = frozenset(
@@ -54,6 +57,7 @@ PUBLIC_ERROR_CODES: frozenset[str] = frozenset(
         MODEL_NOT_SUPPORTED,
         MODEL_BUDGET_EXHAUSTED,
         ACCOUNT_SUSPENDED,
+        REPLY_NOT_SAVED,
         INTERNAL,
     }
 )

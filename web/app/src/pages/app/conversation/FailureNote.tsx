@@ -36,6 +36,8 @@ export function useFailureNoteText(): (code: string) => string {
         return t`This model isn't available — pick another.`;
       case "model_provider_unreachable":
         return t`I couldn't reach the model provider. Try again.`;
+      case "reply_not_saved":
+        return t`I couldn't save that reply, so it won't be here when you come back.`;
       default:
         return t`Something went wrong on my side. Try again.`;
     }

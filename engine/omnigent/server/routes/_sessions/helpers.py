@@ -86,7 +86,7 @@ from omnigent.runtime import (
 )
 from omnigent.runtime.agent_cache import AgentCache
 from omnigent.runtime.policies.engine import PolicyEngine
-from omnigent.runtime.public_error_codes import public_error_code
+from omnigent.runtime.public_error_codes import REPLY_NOT_SAVED, public_error_code
 from omnigent.runtime.tool_output import cap_tool_output
 from omnigent.server import presence, session_live_state, shutdown_state
 from omnigent.server._elicitation_registry import (
@@ -5875,6 +5875,21 @@ async def _relay_persist(
             session_id,
             extra={"session_id": session_id},
         )
+        if (
+            item.type == "message"
+            and isinstance(item.data, MessageData)
+            and item.data.role == "assistant"
+        ):
+            # The person read the reply live; say it is not in the history rather than let it
+            # vanish on the next read. Stored like any turn error, so the transcript shows it.
+            error = ErrorData(
+                source="execution",
+                code=REPLY_NOT_SAVED,
+                message="The assistant's reply could not be saved to the conversation.",
+            )
+            note = NewConversationItem(type="error", response_id=item.response_id, data=error)
+            if await _relay_persist_error_once(conversation_store, session_id, note) == "persisted":
+                _publish_error_event(session_id, error)
 
 
 async def _relay_response_policy_deny_reason(
