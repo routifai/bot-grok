@@ -77,6 +77,8 @@ _PROFILE_GROUP_LABELS = {
     "decision": "Current focus",
     "commitment": "Commitments",
 }
+#: The profile's heading over the person's preferences (a Helper's brief keeps only those lines).
+PROFILE_PREFERENCES = f"{_PROFILE_GROUP_LABELS['preference']}:"
 # A focus/decision claim drops out of the profile (stays searchable) once it has
 # not been reinforced for this long.
 _PROFILE_FOCUS_MAX_AGE_SECONDS = 30 * 24 * 3600

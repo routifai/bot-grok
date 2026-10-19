@@ -26,8 +26,12 @@ The assistant starts one with `start_helper` (`superchat/helpers/tools.py`):
 | `project`, `path` | start in another Project's or file's folder |
 
 The same task from the same chat within 10 seconds is treated as one hand-off. Several calls in one
-step run helpers in parallel. The helper's first message is the memory profile followed by the
-brief; it can read memory and `session_history` but not write memory.
+step run helpers in parallel. The helper's first message is the brief, then a facts block the
+engine appends: the folder, up to five files in play, and the memory profile's preference lines
+that share words with the brief. It never gets the whole profile. Its folder is stored on its
+session record before the brief is posted, and that first message is what launches its harness
+process, so it starts in that folder on both harnesses. It can read memory, `recall`, `recall_get`
+and `session_history` but not write memory.
 
 `message_helper` passes a correction or detail to a helper that is already working; it reads it at
 its next step. If the helper finished by then, the message is refused rather than starting a second
