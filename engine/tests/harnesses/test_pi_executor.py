@@ -3244,6 +3244,19 @@ class TestSessionManagement(unittest.TestCase):
             # turn starts fresh and replays full history (marker included).
             mock_rpc.close.assert_awaited_once()
             self.assertEqual(executor._session_states, {})
+            # The Stop line the runner writes after a Stop between turns reaches
+            # the fresh process's prompt; a warm one would get the question alone.
+            stop_line = "[System: stopped]\nStopped. 'Jazz deck' was still working."
+            history = [
+                {"role": "user", "content": "Make a jazz deck"},
+                {"role": "assistant", "content": "I've started it."},
+                {"role": "user", "content": [{"type": "input_text", "text": stop_line}]},
+                {"role": "user", "content": "Did it finish?"},
+            ]
+            cold = _build_pi_prompt(history, is_first_turn=True)
+            self.assertIn(stop_line, cold)
+            self.assertTrue(cold.endswith("using the conversation above as context."))
+            self.assertEqual(_build_pi_prompt(history, is_first_turn=False), "Did it finish?")
 
         _run(_test())
 

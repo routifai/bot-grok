@@ -129,15 +129,18 @@ def register_reset_routes(
 async def _after_reset(
     request: Request, conversation_store: ConversationStore, session_id: str, item_id: str
 ) -> None:
-    """Tell the runner to drop its warm context, learn from the cleared chat, signal clients."""
+    """Tell the runner to drop its warm context, settle the Rounds no turn will now answer,
+    learn from the cleared chat, signal clients."""
     from omnigent.server.routes._sessions.common import get_server_runner_router
     from omnigent.server.routes._sessions.helpers import _forward_session_change_to_runner
     from omnigent.superchat.family.signals import notify_chat_reset
+    from omnigent.superchat.rounds.record import reset_rounds
 
     # Best-effort: with no runner reachable, the next spawn loads history from the server.
     await _forward_session_change_to_runner(
         session_id, get_server_runner_router(), {"type": "context_reset"}
     )
+    await reset_rounds(session_id)
     coordinator = getattr(request.app.state, "memory_upkeep_coordinator", None)
     if coordinator is not None:
         owner = await asyncio.to_thread(conversation_store.get_session_owner, session_id)

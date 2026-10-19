@@ -19,8 +19,9 @@
 * :func:`close_lost_turns` ends, from the stored conversation, a turn whose stream the relay
   lost (its runner tunnel dropped mid-turn): the relay calls it when its session reports idle
   or its relay ends for good, and :class:`Sweep` every :data:`SWEEP_EVERY` seconds for a turn
-  open longer than :data:`LOST_AFTER` whose session is idle. A Round cannot stay running past
-  its sessions going idle.
+  open longer than :data:`LOST_AFTER` whose session is idle. The sweep also settles a Round no
+  turn is coming for (:func:`settle_stale`), and a reset settles every Round of its
+  Conversation (:func:`reset_rounds`). A Round cannot stay running past its sessions going idle.
 
 Only Superchat sessions are recorded; a session outside a Round records nothing.
 """
@@ -124,6 +125,14 @@ SWEEP_LOOKBACK = 86400.0
 RELAY_LOST = "relay lost"
 #: Newest messages of a session read for a lost turn's reply.
 _REPLIES = 50
+#: Seconds an unsettled Round goes without an event, its Conversation idle and no Helper of it
+#: running, before the :class:`Sweep` reads it as one no turn is coming for.
+STALE_AFTER = 600.0
+#: The reasons on the ``turn.ended`` that settles a Round no turn will run for: its
+#: Conversation was reset, or nothing happened in it for :data:`STALE_AFTER` seconds.
+RESET, NO_TURN = "reset", "no turn"
+#: Newest Rounds of a Conversation a reset reads for those still unsettled.
+_RESET_ROUNDS = 20
 
 
 @dataclass(frozen=True)
@@ -148,6 +157,7 @@ def assign_round(
     by_person: bool,
     turn_running: bool,
     helper_round: str | None = None,
+    current_settled: bool = False,
 ) -> Assignment | None:
     """The Round a message joins, decided once, when the message is stored.
 
@@ -161,7 +171,8 @@ def assign_round(
     3. A Helper's messages (its brief, a send to it) join the Round it was created in.
     4. A notice that is not the person's words (a Helper's wake or progress, a timer) joins the
        Round of the Helper that sent it, else the session's current Round.
-    5. The person's message while a turn runs is a steer: it joins the current Round.
+    5. The person's message while a turn runs is a steer: it joins the current Round, unless
+       that Round has settled (a Stop settles it at once, before its turn winds down).
     6. Any other message from the person opens a new Round whose id is the message's id.
 
     :param item_id: The stored message's id.
@@ -170,6 +181,7 @@ def assign_round(
     :param by_person: The message is the person's words, not a notice.
     :param turn_running: A turn of the session runs as the message is stored.
     :param helper_round: The Round of the Helper a notice came from, when it names one.
+    :param current_settled: The current Round has settled; nothing can steer it.
     :returns: The Round, or ``None`` when the message is in none.
     """
     if not is_superside_chat(labels):
@@ -182,7 +194,7 @@ def assign_round(
     if not by_person:
         joined = helper_round or current
         return Assignment(joined) if joined else None
-    if turn_running and current:
+    if turn_running and current and not current_settled:
         return Assignment(current)
     return Assignment(item_id, opened=True)
 
@@ -264,8 +276,8 @@ class Recorder:
         self._journals: set[asyncio.Task[None]] = set()
         #: ``(round, actor, helper) -> [first chunk ms, conversation, chunks]`` not yet queued.
         self._words: dict[tuple[str, str, str | None], list[Any]] = {}
-        #: ``round -> conversation`` of each Round a turn started in that the :class:`Sweep`
-        #: has not yet seen closed.
+        #: ``round -> conversation`` of each Round opened or a turn started in that the
+        #: :class:`Sweep` has not yet seen settled with no open turn.
         self.turned: dict[str, str] = {}
         #: Held by :func:`close_lost_turns`, so two never end one turn.
         self.closing = asyncio.Lock()
@@ -304,7 +316,7 @@ class Recorder:
     def _queue_event(self, event: RoundEvent) -> None:
         log = _logger.debug if event.kind in (WORDS, TOOL_INPUT) else _logger.info
         log("round %s %s %s %s", event.round_id, event.kind, event.actor, event.body)
-        if event.kind == TURN_STARTED:
+        if event.kind in (ROUND_OPENED, TURN_STARTED):
             self.turned[event.round_id] = event.conversation_id
         self._queue.append(event)
         if self._drain is None or self._drain.done():
@@ -333,6 +345,11 @@ class Recorder:
         """The Round's stored events, once every queued one is written."""
         await self.idle()
         return await asyncio.to_thread(self._store.events, round_id)
+
+    async def recent(self, conversation_id: str, limit: int) -> list[str]:
+        """The Conversation's *limit* newest Rounds, once every queued event is written."""
+        await self.idle()
+        return await asyncio.to_thread(self._store.recent, conversation_id, limit)
 
     async def view(self, round_id: str) -> dict[str, Any]:
         """The Round's view, folded from its stored events once every queued one is written."""
@@ -474,6 +491,7 @@ async def note_message(
             if by_person
             else await _notice_helper(conversation_store, conversation, context)
         )
+        current = labels.get(ROUND_LABEL_KEY)
         assigned = assign_round(
             item_id=item_id,
             labels=labels,
@@ -481,11 +499,18 @@ async def note_message(
             by_person=by_person,
             turn_running=turn_running,
             helper_round=helper_round,
+            current_settled=bool(
+                by_person
+                and turn_running
+                and current
+                and RECORDER is not None
+                and (await RECORDER.view(current))["settled_at"] is not None
+            ),
         )
         if assigned is None:
             return
         waiting = _WAITING.get(conversation.id)
-        if assigned.round_id != labels.get(ROUND_LABEL_KEY) and waiting in (
+        if assigned.round_id != current and waiting in (
             None,
             assigned.round_id,
         ):
@@ -794,13 +819,71 @@ def _end_lost(
         )
 
 
+def _end_unturned(round_id: str, conversation_id: str, reason: str) -> None:
+    """Settle an unsettled Round no turn will run for: the Assistant's part of it ends."""
+    if _WAITING.get(conversation_id) == round_id:
+        del _WAITING[conversation_id]
+    _logger.info("round %s settled with no turn to come (%s)", round_id, reason)
+    _record(round_id, conversation_id, TURN_ENDED, ASSISTANT, status="failed", reason=reason)
+
+
+async def reset_rounds(conversation_id: str) -> None:
+    """A reset cleared the Conversation's context, so no turn will answer a Round of it still
+    unsettled: each ends with ``turn.ended`` failed, reason :data:`RESET`. A Round with a Helper
+    still working settles when the Helper ends. Never raises."""
+    if RECORDER is None:
+        return
+    try:
+        live = _LIVE.get(conversation_id)
+        for round_id in await RECORDER.recent(conversation_id, _RESET_ROUNDS):
+            if live is not None and live.round_id == round_id:
+                continue  # its turn is still relayed and ends there
+            if (await RECORDER.view(round_id))["settled_at"] is None:
+                _end_unturned(round_id, conversation_id, RESET)
+        await RECORDER.idle()
+    except Exception:
+        _logger.warning("rounds of %s not settled at reset", conversation_id, exc_info=True)
+
+
+async def settle_stale(round_id: str, conversation_id: str, *, before_ms: int, idle: Idle) -> bool:
+    """Settle *round_id*, with ``turn.ended`` failed reason :data:`NO_TURN`, when it is
+    unsettled with no turn open, no Helper of it runs, it recorded nothing after *before_ms*
+    and its Conversation is *idle*: its message never got a turn, or the wake that would read a
+    Helper's result was lost.
+
+    :returns: Whether the Round is still unsettled, so the :class:`Sweep` keeps reading it.
+        Never raises.
+    """
+    if RECORDER is None:
+        return False
+    try:
+        events = await RECORDER.events(round_id)
+        view = fold(events, round_id)
+        if view["settled_at"] is not None:
+            return False
+        if open_turns(events) or any(h["status"] == "running" for h in view["helpers"].values()):
+            return True
+        if not events or round(events[-1]["t"] * 1000) > before_ms:
+            return True
+        if not await idle(conversation_id):
+            return True
+        _end_unturned(round_id, conversation_id, NO_TURN)
+        await RECORDER.idle()
+        return False
+    except Exception:
+        _logger.warning("stale round %s not settled", round_id, exc_info=True)
+        return True
+
+
 class Sweep:
     """Every :data:`SWEEP_EVERY` seconds, end each turn the relay lost (:func:`close_lost_turns`)
-    that has been open :data:`LOST_AFTER` seconds while its session is idle.
+    that has been open :data:`LOST_AFTER` seconds while its session is idle, and settle each
+    Round no turn is coming for (:func:`settle_stale`).
 
-    It reads only the Rounds a turn started in since the engine started (the recorder's
-    ``turned``) and, at start, those the store shows with an open turn from the last
-    :data:`SWEEP_LOOKBACK` seconds; a Round leaves the list once it has no open turn.
+    It reads only the Rounds opened or a turn started in since the engine started (the
+    recorder's ``turned``) and, at start, those the store shows with an open turn from the last
+    :data:`SWEEP_LOOKBACK` seconds; a Round leaves the list once it has no open turn and has
+    settled.
     """
 
     def __init__(self, store: SqlAlchemyRoundStore, conversation_store: Any, idle: Idle) -> None:
@@ -838,11 +921,15 @@ class Sweep:
         """One pass over the Rounds a turn started in."""
         if RECORDER is None:
             return
-        before = _now_ms() - int(LOST_AFTER * 1000)
+        now = _now_ms()
+        before = now - int(LOST_AFTER * 1000)
+        stale = now - int(STALE_AFTER * 1000)
         for round_id, conversation_id in list(RECORDER.turned.items()):
-            if not await close_lost_turns(
+            if await close_lost_turns(
                 self._conversations, round_id, conversation_id, before_ms=before, idle=self._idle
             ):
+                continue
+            if not await settle_stale(round_id, conversation_id, before_ms=stale, idle=self._idle):
                 RECORDER.turned.pop(round_id, None)
 
 

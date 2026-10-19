@@ -13,6 +13,9 @@ Helper and events that arrive after settlement are cases of the fold, not rules 
 * After settlement an event is kept in ``after_settle`` and changes nothing, except a
   ``turn.ended`` (it commits the words streamed before it) and a ``helper.finished`` (it keeps
   the late result on its Helper).
+* An Assistant ``turn.ended`` with no Assistant turn running is the engine settling a Round no
+  turn is coming for (a reset, or a Round left without one): no turn reads the Helper results
+  it still holds.
 * Each actor has one live slot (the Assistant, or one Helper by its id): the newest tool it
   started. ``now`` is the slot started last; a settled Round has none.
 """
@@ -241,6 +244,8 @@ def fold(events: Sequence[Mapping[str, Any]], round_id: str | None = None) -> di
             assistant_running, cur_words = True, []
             unconsumed = set()  # an Assistant turn reads the results that woke it
         elif kind == TURN_ENDED and actor == ASSISTANT:
+            if not assistant_running:
+                unconsumed = set()  # an end with no turn running: no turn will read them
             assistant_running = False
             if cur_words:
                 v["words"].append("".join(cur_words))

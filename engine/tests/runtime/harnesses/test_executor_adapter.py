@@ -2341,7 +2341,8 @@ class _InterruptTrackingExecutor:
 
 
 @pytest.mark.asyncio
-async def test_interrupt_drops_inner_session_synchronously() -> None:
+@pytest.mark.parametrize("in_flight", [True, False])
+async def test_interrupt_drops_inner_session_synchronously(in_flight: bool) -> None:
     """An interrupt drops the inner executor session, not just sets cancelled.
 
     Reproduces the off-by-one + post-cancel stream dump: the run loop only
@@ -2352,6 +2353,10 @@ async def test_interrupt_drops_inner_session_synchronously() -> None:
     abandoned generation. ``_handle_interrupt_event`` must drop the session
     itself, synchronously, so neither can happen. Reverting that drop leaves
     ``executor.interrupted == []`` and fails this test.
+
+    A Stop between turns (*in_flight* ``False``) has no turn to cancel and still
+    drops the session: the runner just wrote the Stop line into the history, and a
+    warm Pi process would be sent only the next message, never that line.
     """
     import asyncio as _aio
 
@@ -2360,16 +2365,16 @@ async def test_interrupt_drops_inner_session_synchronously() -> None:
 
     executor = _InterruptTrackingExecutor()
     adapter = ExecutorAdapter(executor_factory=lambda: executor, session_key="sk")
-    # Mark the executor as created (the drop is gated on a live executor) and
-    # register an in-flight turn so the interrupt isn't a 404.
+    # Mark the executor as created (the drop is gated on a live executor).
     adapter._executor = executor  # type: ignore[assignment]
     ctx = TurnContext(response_id="resp_1", event_queue=_aio.Queue(), cancelled=_aio.Event())
-    adapter._in_flight["resp_1"] = ctx
+    if in_flight:
+        adapter._in_flight["resp_1"] = ctx
 
     resp = await adapter._handle_interrupt_event()
 
     assert resp.status_code == 204
-    assert ctx.cancelled.is_set()  # base handling still runs
+    assert ctx.cancelled.is_set() is in_flight  # base handling runs for a live turn
     assert executor.interrupted == ["sk"], (
         "interrupt must drop the inner session so the next turn rebuilds fresh "
         f"instead of resuming the abandoned generation; got {executor.interrupted!r}"

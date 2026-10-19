@@ -668,9 +668,11 @@ def test_a_round_is_written_from_the_message_the_relay_and_the_save(
         system = record.RelayRound(hidden.id, convs)
         await system.observe({"type": "response.in_progress"})
         await system.observe({"type": "response.completed"})
-        # The next ask waits on a cold host; the Helper's late notice lands first. The turn
-        # the host then runs is the ask's, and a steer during it joins it.
-        await record.note_message(convs, convs.rows[root], ask, msg, None, turn_running=False)
+        # The next ask comes while the session still reads busy: the Stop settled its Round,
+        # so the ask opens its own, never steering the stopped one. It waits on a cold host;
+        # the Helper's late notice lands first. The turn the host then runs is the ask's, and
+        # a steer during it joins it.
+        await record.note_message(convs, convs.rows[root], ask, msg, None, turn_running=True)
         await record.note_message(
             convs, convs.rows[root], "9" * 32, wake, notice, turn_running=False
         )
@@ -832,6 +834,8 @@ def test_the_checklist_reads_the_same_from_either_tool(
         pytest.param("relay", True, id="relay-idle-stored"),
         pytest.param("sweep", False, id="sweep-nothing-stored"),
         pytest.param("helper", True, id="sweep-helper"),
+        pytest.param("reset", False, id="reset-no-turn"),
+        pytest.param("stale", False, id="sweep-no-turn"),
     ],
 )
 def test_a_turn_the_relay_lost_ends_from_the_store(
@@ -842,10 +846,14 @@ def test_a_turn_the_relay_lost_ends_from_the_store(
     streamed words and ``done``, or ``failed`` with reason "relay lost" when nothing was stored.
     The Round settles, the relay's late terminal ends nothing twice, and a second pass is a
     no-op. The sweep closes a Helper's lost turn the same way, with its last reply as its
-    result, which then waits for the wake turn that reads it."""
+    result, which then waits for the wake turn that reads it, and the sweep keeps reading that
+    Round until it settles. A Round whose message never got a turn settles too: at once when
+    the Conversation is reset, or from the sweep once it has gone without one while idle."""
     store = SqlAlchemyRoundStore(db_uri)
     monkeypatch.setattr(record, "RECORDER", record.Recorder(store))
     monkeypatch.setattr(record, "LOST_AFTER", 0.0)
+    if by == "stale":
+        monkeypatch.setattr(record, "STALE_AFTER", 0.0)
     root, item, helper_id = "a" * 32, "b" * 32, "c" * 32
     convs = _Conversations(_row(root, SUPER))
     msg = {"role": "user", "content": [{"type": "input_text", "text": "Two things."}]}
@@ -857,6 +865,17 @@ def test_a_turn_the_relay_lost_ends_from_the_store(
 
     async def run() -> None:
         await record.note_message(convs, convs.rows[root], item, msg, None, turn_running=False)
+        assert record.RECORDER is not None
+        if by in ("reset", "stale"):  # the session is interrupted before the turn starts
+            await record.RECORDER.idle()
+            await asyncio.sleep(0.002)
+            for _ in range(2):
+                if by == "reset":
+                    await record.reset_rounds(root)
+                else:
+                    await record.Sweep(store, convs, idle).once()
+            assert item not in record.RECORDER.turned or by == "reset"
+            return
         assistant = record.RelayRound(root, convs)
         await assistant.observe({"type": "response.in_progress"})
         await assistant.observe({"type": "response.output_text.delta", "delta": "Both "})
@@ -866,7 +885,6 @@ def test_a_turn_the_relay_lost_ends_from_the_store(
             record.helper_created(child)
             convs.replies[helper_id] = ["Saved the page."]
             await record.RelayRound(helper_id, convs).observe({"type": "response.in_progress"})
-        assert record.RECORDER is not None
         await record.RECORDER.idle()
         await asyncio.sleep(0.002)  # the turns started before the pass reads them as lost
         for _ in range(2):
@@ -877,10 +895,17 @@ def test_a_turn_the_relay_lost_ends_from_the_store(
                 await record.Sweep(store, convs, idle).once()
         await assistant.observe({"type": "response.completed"})  # a late terminal: ended already
         await record.RECORDER.idle()
-        assert item not in record.RECORDER.turned or by == "relay"
+        # A Round leaves the sweep's list once settled; the Helper's waits for its wake turn.
+        assert (item in record.RECORDER.turned) == (by != "sweep")
 
     asyncio.run(run())
     events = store.events(item)
+    if by in ("reset", "stale"):
+        assert [(e["kind"], e["status"], e["reason"]) for e in events[1:]] == [
+            ("turn.ended", "failed", record.RESET if by == "reset" else record.NO_TURN)
+        ]
+        assert fold(events, item)["settled_at"] is not None
+        return
     ended = [e for e in events if e["kind"] == "turn.ended"]
     assert len(ended) == (2 if by == "helper" else 1)
     mine = next(e for e in ended if e["actor"] == "assistant")

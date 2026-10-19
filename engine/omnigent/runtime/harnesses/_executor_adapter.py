@@ -454,8 +454,14 @@ class ExecutorAdapter(HarnessApp):
         """Cancel the turn and drop the inner executor session synchronously.
 
         Extends the base handler to also call ``interrupt_session`` — ensuring the in-flight
-        generation stops even when the run loop is blocked awaiting the first token.
+        generation stops even when the run loop is blocked awaiting the first token. A Stop
+        between turns has no turn to cancel but still drops the warm session, so the next turn
+        replays the history and reads the Stop line the runner wrote: a warm Pi process would
+        otherwise be sent only the person's next message.
         """
+        if not self._in_flight and self._executor is not None:
+            await self._executor.interrupt_session(self._session_key)
+            return Response(status_code=204)
         response = await super()._handle_interrupt_event()
         if self._executor is not None:
             await self._executor.interrupt_session(self._session_key)
