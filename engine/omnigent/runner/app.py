@@ -2923,6 +2923,9 @@ def create_runner_app(
     _resp_to_conv: dict[str, str] = {}  # harness response_id → conversation_id
     _live_response_id: dict[str, str] = {}
     app.state.live_response_id = _live_response_id
+    # conv_id -> the response id of the turn that has streamed text. A tool call reaches its
+    # handler through /mcp/execute, not this turn's stream, so the turn's words are read here.
+    _turn_said: dict[str, str] = {}
     _session_start_cache: dict[str, float] = {}  # session_id → registered start time
     _session_spec_cache: dict[str, _SpecEntry | None] = {}  # session_id → session AgentSpec
     # session_id → the harness the session actually runs, when it differs from
@@ -4348,6 +4351,7 @@ def create_runner_app(
         pending_approvals.cancel_session(session_id, "session_closed")
         _drop_message_buffer(session_id)
         _live_response_id.pop(session_id, None)
+        _turn_said.pop(session_id, None)
         # Clear all desync/turn state so a recreated same-id session starts clean.
         _turn_bind_epoch.pop(session_id, None)
         _recovery_turn_ids.pop(session_id, None)
@@ -7930,6 +7934,8 @@ def create_runner_app(
                                         if conv_id in _turn_started_mono:
                                             await _log_first_token(conv_id)
                                         _text_acc.append(delta)
+                                        if _response_id and str(delta).strip():
+                                            _turn_said[conv_id] = _response_id
                                 elif _evt_type == "response.completed":
                                     _stream_failed_error = None
                                     if _text_acc:
@@ -8105,9 +8111,6 @@ def create_runner_app(
                                                         ),
                                                         labels=await _tool_labels_for_session(
                                                             conv_id
-                                                        ),
-                                                        turn_said=any(
-                                                            t.strip() for t in _text_acc
                                                         ),
                                                     ),
                                                 )
@@ -10444,6 +10447,11 @@ def create_runner_app(
                         filesystem_registry=filesystem_registry,
                         effective_harness=_session_harness_name(session_id),
                         relay=body.get(RELAY_MARK) is True,
+                        turn_said=(
+                            None
+                            if (live := _live_response_id.get(session_id)) is None
+                            else _turn_said.get(session_id) == live
+                        ),
                     )
                 except Exception as exc:
                     _logger.exception(
