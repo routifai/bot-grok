@@ -4,6 +4,7 @@ route's paging, reset cut and access over a real store."""
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -18,10 +19,15 @@ from omnigent.entities import (
     NewConversationItem,
 )
 from omnigent.errors import OmnigentError
+from omnigent.stores.artifact_store.local import LocalArtifactStore
 from omnigent.stores.conversation_store.sqlalchemy_store import SqlAlchemyConversationStore
-from omnigent.superchat.artifact_kinds import KIND_MIME
+from omnigent.superchat.artifact_kinds import DECK_SUFFIX, KIND_MIME
+from omnigent.superchat.artifacts.store import SqlAlchemyArtifactStore
+from omnigent.superchat.rounds.fold import fold
+from omnigent.superchat.rounds.read import ROUND_FILES_ENV, cards
+from omnigent.superchat.rounds.store import RoundEvent, SqlAlchemyRoundStore
 from omnigent.superchat.transcript.blocks import project_items
-from omnigent.superchat.transcript.routes import register_transcript_routes
+from omnigent.superchat.transcript.routes import read_transcript, register_transcript_routes
 
 _MODE = {"omnigent.context.mode": "superside-chat"}
 
@@ -506,27 +512,174 @@ async def client(conversation_store: SqlAlchemyConversationStore) -> httpx.Async
         yield http
 
 
-async def test_pages_walk_back_with_before_and_unknown_session_is_not_found(
-    client: httpx.AsyncClient, conversation_store: SqlAlchemyConversationStore
+_RECORDED = Path(__file__).parent / "rounds"
+
+
+def _replay_recorded(
+    conversations: SqlAlchemyConversationStore,
+    rounds: SqlAlchemyRoundStore,
+    artifacts: SqlAlchemyArtifactStore,
+    root: str,
+) -> list[str]:
+    """Replay the recorded Round streams five times into one Conversation: its items, its
+    Helpers, its Round events and its saved versions. In every other pass the Assistant saves
+    the file a Helper saved in the recording, with an ``artifact_save`` call in the Conversation.
+
+    :returns: The Round ids, oldest first.
+    """
+    opened: list[str] = []
+    for n, path in enumerate(sorted(_RECORDED.glob("*.jsonl")) * 5):
+        base = n * 100_000
+        ids: dict[str, str] = {}  # recorded Round or Helper id -> stored id
+        events: list[RoundEvent] = []
+        said: list[str] = []
+        names: dict[str, str] = {}
+        for line in path.read_text().splitlines():
+            ev = json.loads(line)
+            kind, actor = ev.pop("kind"), ev.pop("actor")
+            at, recorded = base + int(ev.pop("t") * 1000), ev.pop("round_id")
+            if kind == "round.opened":
+                (asked,) = conversations.append(root, [_say("user", ev["text"])])
+                ids[recorded] = asked.id
+                opened.append(asked.id)
+            rid = ids[recorded]
+            if "helper_id" in ev or (kind == "tool.result" and ev.get("name") == "start_helper"):
+                key = ev.get("helper_id", "h1")
+                if key not in ids:
+                    ids[key] = conversations.create_conversation(
+                        kind="sub_agent",
+                        parent_conversation_id=root,
+                        title=f"Deck {n}",
+                        labels=_MODE,
+                    ).id
+                ev["helper_id"] = ids[key]
+            if kind == "tool.started" and actor == "assistant":
+                names[ev["call_id"]] = ev["name"]
+            elif kind == "tool.result" and actor == "assistant":
+                call_id, output = f"{n}{ev['call_id']}", "{}"
+                if ev["name"] == "start_helper":
+                    output = json.dumps({"started": True, "helper_id": ev.pop("helper_id")})
+                conversations.append(root, _tool(call_id, names[ev["call_id"]], output))
+            elif kind == "words" and actor == "assistant":
+                said.append(ev["text"])
+            elif kind == "turn.ended" and actor == "assistant" and said:
+                conversations.append(root, [_say("assistant", "".join(said))])
+                said = []
+            elif kind == "file.saved":
+                by_assistant = n // 4 % 2 == 1
+                saver = root if by_assistant else ev["helper_id"]
+                name = f"{ev['name']}{DECK_SUFFIX}"
+                saved = artifacts.create(
+                    user_id=None,
+                    parent_session_id=root,
+                    name=name,
+                    title="Uruguay",
+                    kind="html",
+                    mime=KIND_MIME["html"],
+                    data=b"<p>deck</p>",
+                    chat_id=saver,
+                    round_id=rid,
+                )
+                ev.update(name=name, file_kind="html", artifact_id=saved.id, version=saved.version)
+                if by_assistant:
+                    actor = "assistant"
+                    del ev["helper_id"]
+                    result = {"type": "artifact", "id": saved.id, "name": name, "kind": "html"}
+                    result["version"] = saved.version
+                    conversations.append(
+                        root, _tool(f"{n}save", "artifact_save", json.dumps(result))
+                    )
+            events.append(RoundEvent(rid, root, kind, actor, at, ev))
+        rounds.append(events)
+    return opened
+
+
+def _tool(call_id: str, name: str, output: str) -> list[NewConversationItem]:
+    call = FunctionCallData(agent="brain", name=name, arguments="{}", call_id=call_id)
+    return [
+        _new("function_call", call),
+        _new("function_call_output", FunctionCallOutputData(call_id=call_id, output=output)),
+    ]
+
+
+@pytest.mark.parametrize("by_round", [False, True])
+async def test_pages_walk_back_and_draw_each_rounds_cards_at_any_page_size(
+    by_round: bool,
+    client: httpx.AsyncClient,
+    conversation_store: SqlAlchemyConversationStore,
+    db_uri: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """The recorded Rounds, replayed into one Conversation, page back to their first message at
+    40, 100 and 500 items a page. With the file cards drawn from the save calls, the cards are
+    the Assistant's own saves; drawn from each Round's record, they are every file of its view,
+    the Assistant's and its Helper's, in order on the Round's last reply. Either way a page's
+    size never moves a card, and the two ways agree on the Assistant's saves."""
+    if by_round:
+        monkeypatch.setenv(ROUND_FILES_ENV, "1")
+    else:
+        monkeypatch.delenv(ROUND_FILES_ENV, raising=False)
+    rounds = SqlAlchemyRoundStore(db_uri)
+    blobs = LocalArtifactStore(str(tmp_path / "blobs"))
+    artifacts = SqlAlchemyArtifactStore(db_uri, lambda: blobs)
     root = conversation_store.create_conversation(kind="default", title="S", labels=_MODE)
-    conversation_store.append(root.id, [_say("user", f"m{i}") for i in range(5)])
-    first = (await client.get(f"/v1/sessions/{root.id}/transcript?limit=2")).json()
-    assert [m["blocks"][0]["text"] for m in first["data"]] == ["m3", "m4"]
-    assert first["has_more"] is True and first["lineage"]["kind"] == "super"
-    second = (
-        await client.get(
-            f"/v1/sessions/{root.id}/transcript?limit=2&before={first['older_cursor']}"
-        )
-    ).json()
-    assert [m["blocks"][0]["text"] for m in second["data"]] == ["m1", "m2"]
-    last = (
-        await client.get(
-            f"/v1/sessions/{root.id}/transcript?limit=2&before={second['older_cursor']}"
-        )
-    ).json()
-    assert [m["blocks"][0]["text"] for m in last["data"]] == ["m0"]
-    assert last["has_more"] is False and last["older_cursor"] is None
+    opened = _replay_recorded(conversation_store, rounds, artifacts, root.id)
+    assert len(conversation_store.list_items(root.id, limit=500).data) > 100
+
+    def read_all(limit: int) -> list[dict[str, Any]]:
+        messages: list[dict[str, Any]] = []
+        before = None
+        while True:
+            page = read_transcript(
+                conversation_store,
+                root,
+                before=before,
+                limit=limit,
+                rounds=rounds,
+                artifacts=artifacts,
+            )
+            messages = page["data"] + messages
+            if not page["has_more"]:
+                assert page["older_cursor"] is None and page["lineage"]["kind"] == "super"
+                return messages
+            before = page["older_cursor"]
+
+    def by_message(messages: list[dict[str, Any]]) -> list[tuple[str, list[Any]]]:
+        return [(m["id"], cards([m])) for m in messages if cards([m])]
+
+    whole = read_all(500)
+    assert [m["id"] for m in whole if m["role"] == "user"] == opened
+    for limit in (9, 40, 100):
+        paged = read_all(limit)
+        if limit >= 40:  # a smaller page can split a turn from its last text, so shows more
+            assert [m["id"] for m in paged] == [m["id"] for m in whole]
+        assert by_message(paged) == by_message(whole)
+    views = {rid: fold(rounds.events(rid, root.id), rid)["files"] for rid in opened}
+    recorded = [(f["artifact_id"], f["version"]) for rid in opened for f in views[rid]]
+    assistants = [
+        (f["artifact_id"], f["version"])
+        for rid in opened
+        for f in views[rid]
+        if f["helper_id"] is None
+    ]
+    assert (len(assistants), len(recorded)) == (4, 10)
+    drawn = cards(whole)
+    assert drawn == (recorded if by_round else assistants)
+    assert [c for c in drawn if c in assistants] == assistants
+    if by_round:
+        current, per_round = None, {}
+        for message in whole:
+            if message["role"] == "user":
+                current = message["id"]
+            elif cards([message]):
+                assert message["blocks"][0]["type"] == "text"  # after the reply's words
+                per_round.setdefault(current, []).extend(cards([message]))
+        assert per_round == {
+            rid: [(f["artifact_id"], f["version"]) for f in views[rid]]
+            for rid in opened
+            if views[rid]
+        }
     with pytest.raises(OmnigentError, match="not found"):
         await client.get("/v1/sessions/ad563e906854634c49e1a6fd2fbb31d4/transcript")
 

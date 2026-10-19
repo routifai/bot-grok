@@ -201,7 +201,7 @@ def _secure_entry_block(output: str | None) -> dict[str, Any] | None:
 
 
 def _file_block(output: str | None) -> dict[str, Any] | None:
-    return _file_block_of(_object(output))
+    return file_block(_object(output))
 
 
 def _delivered_file_block(item: Item) -> dict[str, Any] | None:
@@ -211,11 +211,12 @@ def _delivered_file_block(item: Item) -> dict[str, Any] | None:
         or item.get("resource_type") != DELIVERED_ARTIFACT_RESOURCE
     ):
         return None
-    block = _file_block_of(item.get("resource"))
+    block = file_block(item.get("resource"))
     return {**block, "by": "user"} if block else None
 
 
-def _file_block_of(saved: Any) -> dict[str, Any] | None:
+def file_block(saved: Any) -> dict[str, Any] | None:
+    """The ``file`` block of a saved version (``{"type": "artifact", "id", "name", ...}``)."""
     if not isinstance(saved, dict) or saved.get("type") != "artifact":
         return None
     artifact_id, name = saved.get("id"), saved.get("name")

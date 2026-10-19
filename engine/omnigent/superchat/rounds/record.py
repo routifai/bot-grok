@@ -361,7 +361,7 @@ def _is_helper(conversation: Any) -> bool:
     return conversation.kind == "sub_agent" and not any(k in labels for k in BACKGROUND_LABELS)
 
 
-def _round_of(labels: Mapping[str, str] | None) -> str | None:
+def round_of(labels: Mapping[str, str] | None) -> str | None:
     """The Round a session's labels say it is in, for a Superchat session."""
     if not is_superside_chat(labels):
         return None
@@ -391,7 +391,7 @@ async def _notice_helper(
     helper = await asyncio.to_thread(conversation_store.get_conversation, named)
     if helper is None or helper.parent_conversation_id != conversation.id:
         return None, None
-    return named, _round_of(helper.labels)
+    return named, round_of(helper.labels)
 
 
 async def note_message(
@@ -459,7 +459,7 @@ def helper_labels(
     """The Round label a child session gets at creation: a Helper belongs to the Round its
     parent is in. A file's studio and a run no person started (a scheduled Helper) get none.
     """
-    round_id = _round_of(parent_labels)
+    round_id = round_of(parent_labels)
     if round_id is None or is_artifact_chat(child_labels):
         return {}
     if any(key in child_labels for key in BACKGROUND_LABELS):
@@ -469,7 +469,7 @@ def helper_labels(
 
 def helper_created(conversation: Any) -> None:
     """Record ``helper.started`` for a Helper session just created in a Round."""
-    round_id = _round_of(conversation.labels)
+    round_id = round_of(conversation.labels)
     if round_id is None or conversation.parent_conversation_id is None:
         return
     _record(
@@ -485,7 +485,7 @@ def helper_created(conversation: Any) -> None:
 
 def file_saved(saver: Any, artifact: Any) -> None:
     """Record ``file.saved`` for an artifact version saved by a session in a Round."""
-    round_id = _round_of(saver.labels)
+    round_id = round_of(saver.labels)
     if round_id is None:
         return
     helper = _is_helper(saver)
@@ -527,13 +527,13 @@ async def stop_round(conversation: Any, live_helpers: Sequence[Any]) -> Stopped 
     :returns: The Round and its line, or ``None`` outside a Round (every Helper is stopped,
         as before Rounds). Never raises.
     """
-    current = _round_of(conversation.labels)
+    current = round_of(conversation.labels)
     if RECORDER is None or current is None or conversation.kind == "sub_agent":
         return None
     try:
         rounds = [current]
         for helper in live_helpers:
-            round_id = _round_of(helper.labels)
+            round_id = round_of(helper.labels)
             if round_id is not None and round_id not in rounds:
                 rounds.append(round_id)
         views = {round_id: await RECORDER.view(round_id) for round_id in rounds}
@@ -649,7 +649,7 @@ class RelayRound:
         conv = await asyncio.to_thread(self._store.get_conversation, self._session_id)
         if conv is not None:
             self._superside = is_superside_chat(conv.labels)
-        round_id = _round_of(conv.labels) if conv is not None else None
+        round_id = round_of(conv.labels) if conv is not None else None
         if conv is None or round_id is None:
             self._turn = None
             return
