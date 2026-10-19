@@ -113,7 +113,7 @@ class HandlerCtx:
     :param labels: The calling session's labels, when the dispatcher has them.
     :param sub_agents: The runner's sub-agent launcher (``None`` outside a runner).
     :param turn_said: Whether the running turn has streamed any text before this call
-        (``None`` when the call did not come from a turn's stream, e.g. an engine relay).
+        (``None`` when the session has no running turn).
     """
 
     tool_name: str

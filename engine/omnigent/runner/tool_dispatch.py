@@ -6922,7 +6922,6 @@ async def dispatch_tool_locally(
     filesystem_registry: FilesystemRegistry | None = None,
     effective_harness: str | None = None,
     labels: Mapping[str, str] | None = None,
-    turn_said: bool | None = None,
 ) -> str:
     """Execute a tool once and POST its result to the harness.
 
@@ -6946,8 +6945,6 @@ async def dispatch_tool_locally(
         observe tool-launched terminals.
     :param effective_harness: Harness the session actually runs, forwarded to
         ``execute_tool`` for the granted-surface check.
-    :param turn_said: Whether the turn streamed text before this call, forwarded to
-        ``execute_tool``.
     :returns: The tool output string.
     """
     if not conversation_id:
@@ -6976,7 +6973,6 @@ async def dispatch_tool_locally(
         publish_event=publish_event,
         effective_harness=effective_harness,
         labels=labels,
-        turn_said=turn_said,
     )
 
     # A file-mutating tool just ran — nudge the web to refetch the
