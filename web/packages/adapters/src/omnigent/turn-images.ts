@@ -35,8 +35,8 @@ export async function readTurnImages(
           mimeType: ref.mimeType,
           dataBase64: bytesToBase64(file.bytes),
         });
-      } catch (error) {
-        console.error("omnigent: could not read an attached image back", error);
+      } catch {
+        // Best effort: an unreadable image stays a path line in the text.
       }
     }
   }

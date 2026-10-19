@@ -1,7 +1,7 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import { ORPCError } from "@orpc/server";
 import { Button, Skeleton } from "@superchat/ui-web";
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { LoadingState } from "./components/ai/primitives";
 import { loadMe, resetMe } from "./lib/bootstrap";

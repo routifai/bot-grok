@@ -168,7 +168,10 @@ export function MediaArt({ kind }: { kind: ArtifactKind }) {
       {bars.map((bar, index) => (
         <span
           key={index}
-          className={cn("w-[34px] rounded-t-[10px]", bar.key ? "superchat-media-key" : "superchat-media-bar")}
+          className={cn(
+            "w-[34px] rounded-t-[10px]",
+            bar.key ? "superchat-media-key" : "superchat-media-bar",
+          )}
           style={{ height: bar.height }}
         />
       ))}
