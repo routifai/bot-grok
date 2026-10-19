@@ -15,13 +15,12 @@ out. The rules a client would otherwise copy:
 * a ``start_helper`` call becomes a ``helper`` block under the next assistant message;
 * the pages a ``files_search`` / ``files_vsearch`` / ``files_query`` call found become one
   ``passages`` card (citation chips) under the next assistant message;
-* a turn shows one assistant text: its last. Text the Muse wrote between tool calls earlier in
-  the same turn (a user message starts a turn) is interim narration and is not a message; the
-  Helper rows and citation chips it would have carried move to the turn's last text. A short
-  text (under :data:`NOTE_WORDS` words) that more work follows is a working note even while it
-  is the turn's last text so far (a turn still running): it is not a message either. The
-  turn's first text before any work is its spoken opener, never a note: it shows until a later
-  text replaces it;
+* a turn shows one assistant text: its last (a user message starts a turn). Text the
+  Assistant wrote earlier in the same turn is neither hidden nor promoted: it is the Round's
+  trail, which the Round view carries, so it is not a message here. The Helper rows and
+  citation chips it would have carried move to the turn's last text. No word count and no card
+  decides which text is the reply; a turn still running shows its newest text;
+* a ``suggest_follow_ups`` card comes last in its turn, after the reply, whenever it was called;
 * the person's latest turn that made a page from a data file (a ``.csv``, ``.xlsx``… named in
   their message or the turn's calls) and showed no chips ends with one "Keep this page updated
   when <file> changes" chip;
@@ -54,6 +53,7 @@ from omnigent.superchat.artifact_kinds import KIND_MIME, is_deck_name
 from omnigent.superchat.cards.tools import (
     CARD_TOOL_NAME,
     FOLLOW_UP_MAX_CHARS,
+    FOLLOW_UPS_TOOL_NAME,
     build_follow_ups,
 )
 from omnigent.superchat.helpers.tools import START_HELPER_TOOL_NAME
@@ -375,79 +375,27 @@ def _message(item: Item, role: str, blocks: list[dict[str, Any]]) -> dict[str, A
     }
 
 
-#: Tools whose card result ends the turn (``deck_new`` shows its "Which look?" card this way).
-_TURN_ENDING_CARD_TOOLS = tuple(sorted(ENDS_TURN_TOOLS))
-#: Calls that show the person something (a card, a file, a secure entry, a Helper row): the text
-#: before one is the answer it belongs to, not a working note.
-_SHOWING_TOOLS = (
-    CARD_TOOL_NAME,
-    VAULT_REQUEST_TOOL_NAME,
-    START_HELPER_TOOL_NAME,
-    *FILE_RESULT_TOOL_NAMES,
-)
-#: A text this short that more work follows is the model's note to itself ("Shorten the label.").
-NOTE_WORDS = 12
+#: Instant card tools: the card appears with its result, never as a skeleton (``deck_new``
+#: shows its "Which look?" card this way).
+_INSTANT_CARD_TOOLS = (*sorted(ENDS_TURN_TOOLS), FOLLOW_UPS_TOOL_NAME)
 
 
-def _is_work(item: Item, outputs: Mapping[str, str]) -> bool:
-    """Whether the call *item* is work rather than something shown (a turn-ending tool counts as
-    shown only when it answered with its card)."""
-    if any(_is_call(item, name) for name in _SHOWING_TOOLS):
-        return False
-    if any(_is_call(item, name) for name in _TURN_ENDING_CARD_TOOLS):
-        result = _object(outputs.get(str(item.get("call_id") or "")))
-        return not (result and result.get("type") == "card")
-    return True
+def _last_text_ids(items: list[Item]) -> set[str]:
+    """Ids of each turn's last assistant text (a user message starts a turn).
 
-
-def _final_text_ids(items: list[Item], outputs: Mapping[str, str]) -> set[str]:
-    """Ids of the assistant text items that end their turn (a user message starts a turn).
-
-    A turn that shows an ``ask_clarification`` or ``suggest_follow_ups`` card (or any other
-    :data:`ENDS_TURN_TOOLS` card) ends there: the
-    card belongs to the answer written before it, so text the model adds after the card is
-    dropped instead of replacing the answer (and pushing the chips off the last message).
-    A short text that work follows is a working note, so it never ends its turn, even while
-    the turn is still running and it is the newest text. The turn's first text before any work
-    is its spoken opener ("Building the deck now."), never a note: it is the turn's text until
-    a later text replaces it, and a working note folded later falls back to the turn's last text
-    that was not a note.
+    Nothing else decides which text is the reply: no word count, no card that closes the turn.
+    A turn still running shows its newest text until a later one replaces it.
     """
-    final: dict[int, str] = {}
-    kept: dict[int, str] = {}  # the turn's last text that is not a note
-    notes: set[str] = set()
-    closed: set[int] = set()
-    worked: set[int] = set()
+    last: dict[int, str] = {}
     turn = 0
     for item in items:
-        if item.get("type") == "function_call":
-            if any(_is_call(item, name) for name in _TURN_ENDING_CARD_TOOLS):
-                result = _object(outputs.get(str(item.get("call_id") or "")))
-                if result and result.get("type") == "card":
-                    closed.add(turn)
-            if _is_work(item, outputs):
-                worked.add(turn)
-                if final.get(turn) in notes:
-                    del final[turn]  # a working note, not the answer
-                    if turn in kept:
-                        final[turn] = kept[turn]
-            continue
         if item.get("type") != "message" or item.get("is_meta") is True:
             continue
         if item.get("role") == "user":
             turn += 1
-        elif (
-            item.get("role") == "assistant"
-            and turn not in closed
-            and item_text(item)
-            and "id" in item
-        ):
-            final[turn] = item["id"]
-            if turn in worked and len(item_text(item).split()) < NOTE_WORDS:
-                notes.add(item["id"])
-            else:
-                kept[turn] = item["id"]
-    return set(final.values())
+        elif item.get("role") == "assistant" and item_text(item) and "id" in item:
+            last[turn] = item["id"]
+    return set(last.values())
 
 
 def project_items(
@@ -476,7 +424,8 @@ def project_items(
     helpers: list[dict[str, Any]] = []
     cited: list[dict[str, Any]] = []
     seen_calls: set[str] = set()
-    final_text = _final_text_ids(items, outputs)
+    final_text = _last_text_ids(items)
+    chips: list[dict[str, Any]] = []  # the turn's follow-ups, shown after its last message
     for item in items:
         kind = item.get("type")
         if kind == "function_call":
@@ -499,9 +448,11 @@ def project_items(
                 block = _card_block(item, output)
                 if block:
                     block = _with_states(block, call_id, plan_views or {})
-            elif any(_is_call(item, name) for name in _TURN_ENDING_CARD_TOOLS):
-                # Instant tools: the card appears with its result, never as a skeleton.
+            elif any(_is_call(item, name) for name in _INSTANT_CARD_TOOLS):
                 block = _card_block(item, output) if output is not None else None
+                if block and _is_call(item, FOLLOW_UPS_TOOL_NAME):
+                    chips.append(_message(item, "assistant", [block]))
+                    continue
             elif _is_call(item, VAULT_REQUEST_TOOL_NAME):
                 block = _secure_entry_block(output)
             elif any(_is_call(item, name) for name in FILE_RESULT_TOOL_NAMES):
@@ -523,6 +474,9 @@ def project_items(
             role = item.get("role")
             if role not in ("user", "assistant") or item.get("is_meta") is True:
                 continue
+            if role == "user":
+                messages.extend(chips)  # chips come last in the turn they were offered in
+                chips = []
             text = item_text(item)
             if not text:
                 continue
@@ -534,7 +488,7 @@ def project_items(
                     messages.append(_message(item, "system", [notice]))
                 continue
             if role == "assistant" and item.get("id") not in final_text:
-                continue  # interim narration: the turn's last text is its reply
+                continue  # earlier text of the turn: the Round's trail carries it
             blocks: list[dict[str, Any]] = [{"type": "text", "text": text}]
             if role == "user":
                 cited = []
@@ -547,6 +501,7 @@ def project_items(
                     blocks.append(citations)
                 cited = []
             messages.append(_message(item, role, blocks))
+    messages.extend(chips)
     _offer_keep_updated(items, messages)
     if conversation_id:
         turns = {i.get("id"): i.get("response_id") for i in items if i.get("response_id")}

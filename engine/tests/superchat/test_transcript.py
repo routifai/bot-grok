@@ -105,55 +105,35 @@ def test_a_turn_shows_only_its_last_text_and_keeps_cards_and_chips() -> None:
     assert out[2]["blocks"][1]["card"]["card"] == "passages"
 
 
-def test_a_short_working_note_before_more_work_is_never_a_message() -> None:
+def test_the_turns_last_text_is_its_reply_however_short() -> None:
     check = {"slides": 5, "errors": ["Slide 2: runs past the edge"]}
     running = [
         _msg("u1", "user", "Academic Paper"),
+        _msg("a0", "assistant", "Building the deck now."),
         _call("c1", "deck_check", "k1"),
         _out("o1", "k1", check),
-        _msg("a1", "assistant", "Likely the long label/value wraps; shorten."),
+        _msg("a1", "assistant", "Shorten."),
         _call("c2", "sys_os_edit", "k2"),
         _out("o2", "k2", {"replacements": 1}),
     ]
-    # mid-turn: the note is the newest text, yet the turn has no reply to show yet
-    assert [m["id"] for m in project_items(running)] == ["u1"]
+    # mid-turn: the newest text shows, however short, until a later one replaces it
+    assert [m["id"] for m in project_items(running)] == ["u1", "a1"]
     done = [*running, _msg("a2", "assistant", "Your 5-slide deck is ready.")]
     assert [m["id"] for m in project_items(done)] == ["u1", "a2"]
-    # a short answer before a card, a file or a Helper is the answer, not a note
-    card = {"type": "card", "card": "follow_ups", "data": {"suggestions": ["x"]}}
+
+
+def test_chips_come_last_and_text_after_them_is_the_reply() -> None:
+    card = {"type": "card", "card": "follow_ups", "data": {"suggestions": ["x"]}, "fallback": "x"}
     answered = [
         _msg("u1", "user", "hi"),
         _msg("a1", "assistant", "Done, it is saved."),
         _call("c1", "suggest_follow_ups", "k1"),
         _out("o1", "k1", card),
     ]
-    assert [m["id"] for m in project_items(answered)][:2] == ["u1", "a1"]
-    # a longer text before more work stays the turn's text until a later one replaces it
-    long = "I am reading the spreadsheet first, then I will build the five slides from it."
-    reading = [_msg("u1", "user", "deck"), _msg("a1", "assistant", long), _call("c1", "x", "k")]
-    assert [m["id"] for m in project_items(reading)] == ["u1", "a1"]
-
-
-def test_the_spoken_opener_is_the_turn_text_until_the_answer_replaces_it() -> None:
-    opener = "Building the TD vs BMO deck now with mock figures."
-    running = [
-        _msg("u1", "user", "TD vs BMO deck"),
-        _msg("a1", "assistant", opener),
-        _call("c1", "deck_new", "k1"),  # no output yet
-    ]
-    out = project_items(running)
-    assert [m["id"] for m in out] == ["u1", "a1"]
-    assert out[1]["blocks"] == [{"type": "text", "text": opener}]
-    # a working note after more work folds back to the opener
-    noted = [
-        *running,
-        _out("o1", "k1", {"slides": 6}),
-        _msg("a2", "assistant", "Shorten slide 3."),
-        _call("c2", "sys_os_edit", "k2"),
-    ]
-    assert [m["id"] for m in project_items(noted)] == ["u1", "a1"]
-    done = [*noted, _msg("a3", "assistant", "Here is the TD vs BMO deck.")]
-    assert [m["id"] for m in project_items(done)] == ["u1", "a3"]
+    assert [m["id"] for m in project_items(answered)] == ["u1", "a1", "c1"]
+    # the model kept going after the chips: its last text is the reply, the chips still last
+    later = [*answered, _msg("a2", "assistant", "I added a chart."), _msg("u2", "user", "ok")]
+    assert [m["id"] for m in project_items(later)] == ["u1", "a2", "c1", "u2"]
 
 
 def test_system_notice_and_hidden_context_are_dropped() -> None:

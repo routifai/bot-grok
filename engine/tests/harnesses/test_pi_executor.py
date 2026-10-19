@@ -949,6 +949,9 @@ class TestToolServer(unittest.TestCase):
             # top-level result does.
             page = {"ends_turn": True}
             self.assertIs((await _run_with(page, tool="web_search"))["terminate"], False)
+            # Chips and a Helper start leave the turn to the model (ADR 0029).
+            for tool in ("suggest_follow_ups", "start_helper"):
+                self.assertIs((await _run_with(page, tool=tool))["terminate"], False)
             nested = {"result": json.dumps(page)}
             self.assertIs((await _run_with(nested))["terminate"], False)
             # A call batched with a card agrees to end the turn with it (Pi stops only when
