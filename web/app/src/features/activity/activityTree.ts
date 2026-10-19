@@ -1,6 +1,11 @@
 import type { Activity } from "@superchat/contracts";
 import { presentStep } from "@superchat/core";
-import { isHelperActivity, isRunning } from "./activityGrouping";
+import {
+  type ActivityEntry,
+  groupStudioTurns,
+  isHelperActivity,
+  isRunning,
+} from "./activityGrouping";
 
 // Helpers nest: a Helper that hands part of its task to others (docs/glossary.md "Helper") lists those
 // parts under it, and a Helper a Round started sits under that Round's row (ADR 0029). Pure, so
@@ -56,6 +61,68 @@ function growForest(activities: readonly Activity[]): ActivityNode[] {
     );
   }
   return roots;
+}
+
+/** A file's studio turns under its name (groupStudioTurns). */
+export type FileEntry = Extract<ActivityEntry, { kind: "file" }>;
+
+/** A Round's row: the person's request, as opposed to a Helper or a studio turn. */
+function isRequestRow(activity: Activity): boolean {
+  return !isHelperActivity(activity) && activity.source !== "studio" && !!activity.roundId;
+}
+
+/** For the panel: a file's studio turns move under the request that created the file (its
+ * `artifact.roundId`), when that request's row is among the roots, so one request reads as one
+ * line with its work, its file and the file's later edits beneath it. Returns the roots left and
+ * each request's files, by Round. Kept out of the forest, so the chat's strips never count a
+ * file's edits as their Round's work. */
+export function gatherRequestFiles(roots: readonly ActivityNode[]): {
+  roots: ActivityNode[];
+  filesByRound: Map<string, FileEntry[]>;
+} {
+  const requests = new Set(
+    roots.flatMap((node) => (isRequestRow(node.activity) ? [node.activity.roundId] : [])),
+  );
+  const moved: Activity[] = [];
+  const kept = roots.filter((node) => {
+    const roundId = node.activity.source === "studio" ? node.activity.artifact?.roundId : undefined;
+    if (!roundId || !requests.has(roundId)) return true;
+    moved.push(node.activity);
+    return false;
+  });
+  const filesByRound = new Map<string, FileEntry[]>();
+  for (const entry of groupStudioTurns(moved)) {
+    if (entry.kind !== "file") continue;
+    const roundId = entry.activities[0]?.artifact?.roundId as string;
+    const files = filesByRound.get(roundId);
+    if (files) files.push(entry);
+    else filesByRound.set(roundId, [entry]);
+  }
+  return { roots: kept, filesByRound };
+}
+
+/** What a request's row says once its own turn has settled: the Helper it handed the work to
+ * finished later, so that Helper's end is the request's ("It has started on the deck." would be
+ * stale); otherwise the row itself. */
+export function requestEnd(node: ActivityNode): Activity {
+  let end = node.activity;
+  for (const child of node.children) {
+    const finished = Date.parse(child.activity.finishedAt ?? "");
+    if (!Number.isNaN(finished) && finished >= Date.parse(end.finishedAt ?? "")) {
+      end = child.activity;
+    }
+  }
+  return end;
+}
+
+/** The part of a node that is running right now: itself, else its first running part. */
+export function runningActivity(node: ActivityNode): Activity | undefined {
+  if (isRunning(node.activity)) return node.activity;
+  for (const child of node.children) {
+    const found = runningActivity(child);
+    if (found) return found;
+  }
+  return undefined;
 }
 
 /** A node is running while it, or any part under it, is. */

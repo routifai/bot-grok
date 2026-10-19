@@ -65,8 +65,11 @@ export const ActivitySchema = z.object({
   /** For a Helper, the chat that started it: the Conversation, or — for a part of a bigger
    * task — another Helper's chat (its `chatId`), which is how parts nest under it. */
   parentChatId: Id.nullable().optional(),
-  /** A studio turn's file (`source: "studio"`): the panel groups its turns under the name. */
-  artifact: z.object({ groupId: z.string().min(1), name: z.string() }).optional(),
+  /** A studio turn's file (`source: "studio"`): the panel groups its turns under the name, and
+   * under the request that created the file (`roundId`, that Round) when it is listed. */
+  artifact: z
+    .object({ groupId: z.string().min(1), name: z.string(), roundId: z.string().optional() })
+    .optional(),
   /** Present (possibly empty) on `activities.get`; omitted on the `activities.list` summary. */
   steps: z.array(ActivityStepSchema).optional(),
   /** What the work did, in one line under the reply ("Created 2 files, searched the web, and 12

@@ -86,6 +86,9 @@ SOURCE_STUDIO = "studio"
 #: The file's name for a studio's group id (``None`` when unknown), filled in by the artifacts
 #: capability: the activity read has the conversation store only.
 FILE_NAMES: dict[str, Callable[[str], str | None]] = {}
+#: The Round that created a studio's file (``None`` when unknown or made outside a Round),
+#: filled in by the artifacts capability: the web hangs the file's edits under that request.
+FILE_ROUNDS: dict[str, Callable[[str], str | None]] = {}
 #: ``(conversation id, its item ids oldest first) -> the Round each item is in``, filled in by
 #: the rounds capability (``rounds.read.item_rounds``): a turn's row carries its Round.
 ROUND_IDS: dict[str, Callable[[str, list[str]], list[str | None]]] = {}
@@ -204,7 +207,8 @@ class Activity:
     :param parent_chat_id: For a Sub-agent, the chat that started it (the Super Chat, or
         another Sub-agent when it is a sub-worker); ``None`` for a turn.
     :param artifact: For a studio turn (:data:`SOURCE_STUDIO`), the file it changed:
-        ``{"group_id": ..., "name": ...}``; ``None`` otherwise.
+        ``{"group_id": ..., "name": ...}`` plus ``"round_id"`` (the Round that created the
+        file) when known; ``None`` otherwise.
     :param summary_line: What the work did, in one line under the reply (ADR 0027), e.g.
         ``"Created 2 files, searched the web, and 12 more steps"``; ``None`` with no steps.
     :param paused: For a Helper, whether it is paused (its ``superchat.paused`` label is set);
@@ -1011,7 +1015,8 @@ def _item_rounds(conversation_id: str, items: list[ConversationItem]) -> dict[st
 
 
 def _studio_file(conversation: Conversation) -> dict[str, str]:
-    """The file a studio edits: its group id and name (the group id when no name is known)."""
+    """The file a studio edits: its group id and name (the group id when no name is known),
+    and the Round that created it when known."""
     group_id = conversation.labels.get(ARTIFACT_CHAT_LABEL_KEY, "")
     name: str | None = None
     for namer in FILE_NAMES.values():
@@ -1021,7 +1026,16 @@ def _studio_file(conversation: Conversation) -> dict[str, str]:
             name = None
         if name:
             break
-    return {"group_id": group_id, "name": name or group_id}
+    file = {"group_id": group_id, "name": name or group_id}
+    for rounder in FILE_ROUNDS.values():
+        try:
+            round_id = rounder(group_id)
+        except Exception:  # noqa: BLE001 - grouping only, never a reason to fail a read
+            round_id = None
+        if round_id:
+            file["round_id"] = round_id
+            break
+    return file
 
 
 def _zone(tz: str | None) -> tzinfo:

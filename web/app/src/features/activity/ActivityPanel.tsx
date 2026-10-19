@@ -3,7 +3,7 @@ import type { Activity } from "@superchat/contracts";
 import { presentActivityTitle } from "@superchat/core";
 import { Button } from "@superchat/ui-web";
 import type { RefObject } from "react";
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { PanelRowSkeletonList } from "../../components/chrome/PanelSkeleton";
 import { useNow } from "../../components/chrome/useNow";
 import { ActivityBranch, ActivityLine } from "./ActivityLine";
@@ -21,34 +21,45 @@ import {
 import {
   type ActivityNode,
   buildActivityForest,
+  type FileEntry,
+  gatherRequestFiles,
   isNodeRunning,
   latestStepTitle,
+  requestEnd,
+  runningActivity,
 } from "./activityTree";
 import type { ActivitiesState } from "./useActivities";
 
 /** One Activity as the "Working" line (ActivityLine): a status dot, its title, and a mono
  * figure on the right. Working, the line under the title is "Now · <live step>" and the figure
  * is how long it has gone; settled, the line is the outcome's gist and the figure is the clock.
- * A Helper's parts hang beneath it on a connector line. */
+ * A Helper's parts, and a request's files, hang beneath it on a connector line. A request whose
+ * work outlives its own turn reads as running until that work ends, then as its end. */
 function ActivityRow({
   node,
+  files = [],
   depth = 0,
   now,
   onOpen,
 }: {
   node: ActivityNode;
+  files?: readonly FileEntry[];
   depth?: number;
   now: number;
   onOpen: (activityId: string) => void;
 }) {
   const { activity, children } = node;
   const { t, i18n } = useLingui();
-  const live = isRunning(activity);
-  const duration = live ? activityDurationMs(activity, now) : null;
+  const running = runningActivity(node);
+  const live = running !== undefined;
+  const end = live ? activity : requestEnd(node);
+  const duration = live
+    ? activityDurationMs({ ...activity, status: "in_progress" as const }, now)
+    : null;
   return (
     <>
       <ActivityLine
-        status={activity.status}
+        status={live ? "in_progress" : end.status}
         source={activity.source}
         title={presentActivityTitle(activity.title)}
         meta={
@@ -62,8 +73,8 @@ function ActivityRow({
             </time>
           )
         }
-        liveStep={live ? (latestStepTitle(activity) ?? t`Starting`) : undefined}
-        detail={activityLineText(activity, {
+        liveStep={live ? (latestStepTitle(running) ?? t`Starting`) : undefined}
+        detail={activityLineText(end, {
           in_progress: t`Working`,
           done: t`Done`,
           failed: t`Didn't finish`,
@@ -74,12 +85,21 @@ function ActivityRow({
         testId="activity-row"
         activityId={activity.id}
       />
-      {children.length > 0 ? (
+      {children.length > 0 || files.length > 0 ? (
         <ActivityBranch>
           {children.map((child) => (
             <ActivityRow
               key={child.activity.id}
               node={child}
+              depth={depth + 1}
+              now={now}
+              onOpen={onOpen}
+            />
+          ))}
+          {files.map((file) => (
+            <FileRows
+              key={`file:${file.groupId}`}
+              file={file}
               depth={depth + 1}
               now={now}
               onOpen={onOpen}
@@ -91,16 +111,55 @@ function ActivityRow({
   );
 }
 
-/** The Activities of one stretch of the panel, a file's studio turns under its name (ADR 0024):
- * the name as a header line, its turns as nested rows titled from each request. */
+/** A file's studio turns under its name (ADR 0024): the name as a header line, its turns as
+ * nested rows titled from each request. */
+function FileRows({
+  file,
+  depth = 0,
+  now,
+  onOpen,
+}: {
+  file: FileEntry;
+  depth?: number;
+  now: number;
+  onOpen: (activityId: string) => void;
+}) {
+  return (
+    <>
+      <ActivityLine
+        status={file.activities.some(isRunning) ? "in_progress" : "done"}
+        source="studio"
+        title={file.name}
+        nested={depth > 0}
+        testId="activity-file"
+      />
+      <ActivityBranch>
+        {file.activities.map((activity) => (
+          <ActivityRow
+            key={activity.id}
+            node={{ activity, children: [] }}
+            depth={depth + 1}
+            now={now}
+            onOpen={onOpen}
+          />
+        ))}
+      </ActivityBranch>
+    </>
+  );
+}
+
+/** The Activities of one stretch of the panel: a request with its work and files beneath it,
+ * and a file not tied to a listed request under its own name. */
 function ActivityEntries({
   activities,
   nodeByActivityId,
+  filesByRound,
   now,
   onOpen,
 }: {
   activities: readonly Activity[];
   nodeByActivityId: ReadonlyMap<string, ActivityNode>;
+  filesByRound: ReadonlyMap<string, FileEntry[]>;
   now: number;
   onOpen: (activityId: string) => void;
 }) {
@@ -111,29 +170,12 @@ function ActivityEntries({
       <ActivityRow
         key={entry.activity.id}
         node={nodeOf(entry.activity)}
+        files={entry.activity.roundId ? filesByRound.get(entry.activity.roundId) : undefined}
         now={now}
         onOpen={onOpen}
       />
     ) : (
-      <Fragment key={`file:${entry.groupId}`}>
-        <ActivityLine
-          status={entry.activities.some(isRunning) ? "in_progress" : "done"}
-          source="studio"
-          title={entry.name}
-          testId="activity-file"
-        />
-        <ActivityBranch>
-          {entry.activities.map((activity) => (
-            <ActivityRow
-              key={activity.id}
-              node={nodeOf(activity)}
-              depth={1}
-              now={now}
-              onOpen={onOpen}
-            />
-          ))}
-        </ActivityBranch>
-      </Fragment>
+      <FileRows key={`file:${entry.groupId}`} file={entry} now={now} onOpen={onOpen} />
     ),
   );
 }
@@ -242,8 +284,9 @@ export function ActivityPanel({
   const { t, i18n } = useLingui();
   const [openActivityId, setOpenActivityId] = useState<string | null>(null);
   const activities = state.status === "ready" ? state.activities : EMPTY_ACTIVITIES;
-  // Helpers nest under the Helper that started them; whatever is running sits above the days.
-  const { working, groups, nodeByActivityId } = useMemo(() => {
+  // Helpers nest under the Helper or request that started them, and a file's edits under the
+  // request that made it; whatever is running sits above the days.
+  const { working, groups, nodeByActivityId, filesByRound } = useMemo(() => {
     const forest = buildActivityForest(activities);
     const byId = new Map<string, ActivityNode>();
     const index = (node: ActivityNode) => {
@@ -251,14 +294,21 @@ export function ActivityPanel({
       node.children.forEach(index);
     };
     forest.forEach(index);
+    const { roots, filesByRound } = gatherRequestFiles(forest);
+    const busy = (node: ActivityNode) =>
+      isNodeRunning(node) ||
+      (filesByRound.get(node.activity.roundId ?? "") ?? []).some((file) =>
+        file.activities.some(isRunning),
+      );
     return {
-      working: forest.filter(isNodeRunning),
+      working: roots.filter(busy),
       groups: groupActivitiesByDate(
-        forest.filter((node) => !isNodeRunning(node)).map((node) => node.activity),
+        roots.filter((node) => !busy(node)).map((node) => node.activity),
         new Date(),
         i18n.locale,
       ),
       nodeByActivityId: byId,
+      filesByRound,
     };
   }, [activities, i18n.locale]);
   const now = useNow(working.length > 0);
@@ -297,6 +347,7 @@ export function ActivityPanel({
             <ActivityEntries
               activities={working.map((node) => node.activity)}
               nodeByActivityId={nodeByActivityId}
+              filesByRound={filesByRound}
               now={now}
               onOpen={setOpenActivityId}
             />
@@ -316,6 +367,7 @@ export function ActivityPanel({
             <ActivityEntries
               activities={group.activities}
               nodeByActivityId={nodeByActivityId}
+              filesByRound={filesByRound}
               now={now}
               onOpen={setOpenActivityId}
             />
