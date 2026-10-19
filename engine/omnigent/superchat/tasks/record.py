@@ -3,9 +3,9 @@ well.
 
 Pure: no store, no HTTP. The runner writes :func:`prefix_lines` in front of the person's
 message: the pick on a card, then one :func:`round_line` per Round still working (ADR 0029,
-read from the Round record), and judges each turn with :func:`ends_well` (the scenario evals
-import the same function). The task records of ADR 0025 are gone; the ``tasks`` table keeps only
-old rows, dropped with their Conversation.
+read from the Round record). The scenario evals judge each turn with :func:`ends_well`. The
+task records of ADR 0025 are gone; the ``tasks`` table keeps only old rows, dropped with their
+Conversation.
 """
 
 from __future__ import annotations
@@ -107,7 +107,6 @@ class Turn:
     :param saved: A file was saved (``artifact_save``).
     :param asked: A question card was shown (``ask_clarification``).
     :param helper_started: A Helper was started (``start_helper``).
-    :param refused: The step limit refused a call.
     """
 
     by_person: bool
@@ -116,23 +115,15 @@ class Turn:
     saved: bool = False
     asked: bool = False
     helper_started: bool = False
-    refused: bool = False
 
 
 def ends_well(turn: Turn) -> bool:
     """Whether a turn ends as ADR 0025 says; ``False`` is a **stall**. The one definition.
 
     Only a turn a person opened is judged, and never one answered while a Helper of its task
-    runs. It stalls when the step limit refused it and it started no Helper, or when it began on
-    an open task and ended without a save, a question card or a started Helper.
+    runs. It stalls when it began on an open task and ended without a save, a question card or a
+    started Helper.
     """
     if not turn.by_person or turn.helper_running:
         return True
-    if turn.refused and not turn.helper_started:
-        return False
     return turn.task_id is None or turn.saved or turn.asked or turn.helper_started
-
-
-def is_stall(turn: Turn) -> bool:
-    """A turn that does not end well (:func:`ends_well`)."""
-    return not ends_well(turn)

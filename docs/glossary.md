@@ -46,7 +46,7 @@ them; where code still uses one, the entry says so.
 - **Sandbox**: only the OS process jail (bubblewrap). "Sandbox provider" and the server config's `sandbox:` block are old names for the host provider and its `hosts:` block. Some code still says sandbox for the host (`sandbox_id`, `sandbox_provider`, `sandbox_status`, `managed_sandbox_reaper`).
 - **Side chat**: deprecated and removed ([ADR 0021](adr/0021-one-conversation-messages-link-to-artifacts.md)); there is one conversation.
 - **Steer**: a message sent while a turn runs, delivered into that turn instead of starting a new one.
-- **Step limit**: a conversation turn may make 3 work tool calls; the next is refused with an instruction to hand the rest to a helper ([ADR 0007](adr/0007-the-muse-delegates-multi-step-work.md)).
+- **Step limit**: retired by [ADR 0029](adr/0029-a-round-is-recorded-and-the-harness-owns-the-words.md). It refused a conversation turn's fourth work tool call ([ADR 0007](adr/0007-the-muse-delegates-multi-step-work.md)); delegation is now judgement, a line in the prompt.
 - **Sub-agent**: deprecated, now **helper**; still the engine's word in code.
 - **Superchat**: the product.
 - **Tenant**: the organisation a request belongs to, sent by a sign-in broker in `X-Omnigent-Tenant`; one conversation per person per tenant.

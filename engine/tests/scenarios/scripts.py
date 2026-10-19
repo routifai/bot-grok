@@ -1,8 +1,8 @@
 """The ten scenarios of ADR 0025 and ADR 0029's Round matrix, as data.
 
 Each turn is the person's opener followed by what a well-behaved assistant does (the scripted
-model). The offline harness runs the assistant's calls through the step-limit policy; the live
-runner sends only the openers and observes what the real assistant does.
+model). The offline tests judge the scripts as written; the live runner sends only the openers
+and observes what the real assistant does.
 """
 
 from __future__ import annotations
@@ -19,7 +19,6 @@ class Scenario:
     :param name: Short id, used on the command line and in the table.
     :param turns: The turns in order, each a list of events (see :mod:`tests.scenarios.rules`).
     :param max_asks: How many question cards the whole conversation may show.
-    :param refusals: How many calls the step limit refuses offline.
     :param deliverable: ``"deck"`` when the scenario makes a new deck: the live runner then
         measures the message to its first save, in the turn or in the Helper it started.
     """
@@ -27,7 +26,6 @@ class Scenario:
     name: str
     turns: tuple[tuple[Event, ...], ...]
     max_asks: int = 0
-    refusals: int = 0
     deliverable: str = ""
 
 
@@ -145,20 +143,15 @@ SCENARIOS: tuple[Scenario, ...] = (
         max_asks=1,
     ),
     Scenario(
-        "step-limit",
+        "parallel-work",
         (
             (
                 ("request", "Compare the pricing pages of these four vendors in a sheet"),
                 ("reply", "I'll put the four vendors' pricing side by side in a sheet."),
-                ("tool_call", "web_search"),
-                ("tool_call", "browser_navigate"),
-                ("tool_call", "browser_navigate"),
-                ("tool_call", "browser_navigate"),
                 ("helper_started", ""),
-                ("reply", "I'm reading the rest of the pricing pages and building the sheet."),
+                ("reply", "I'm reading the four pricing pages and building the sheet."),
             ),
         ),
-        refusals=1,
     ),
     Scenario(
         "helper-flags",

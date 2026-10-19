@@ -7461,14 +7461,7 @@ async def _evaluate_input_policy(
     # default policies AND no session policies. Without this, default/
     # session policies (e.g. deny_pii_in_llm_request added via the UI)
     # are silently skipped for agents without a guardrails: YAML block.
-    # A Super Chat turn always passes the gate: its step-limit policy resets per user message
-    # (a Helper has no step limit, so it takes the normal skip).
-    if (
-        not spec.guardrails
-        and not get_caps().default_policies
-        and get_policy_store() is None
-        and not is_super_chat(conv.labels)
-    ):
+    if not spec.guardrails and not get_caps().default_policies and get_policy_store() is None:
         return None
 
     # Text-like attachments (e.g. an uploaded CSV) arrive as ``input_file`` blocks

@@ -10,7 +10,7 @@ One file per decision, numbered in order. A superseded record keeps its file wit
 | [0004](0004-engine-owns-the-host.md) | The engine owns the host | Current |
 | [0005](0005-proactive-work-is-scheduled-helper-runs.md) | Proactive work is scheduled helper runs | Current |
 | [0006](0006-omnigent-owns-everything.md) | Omnigent owns everything; the engine only runs the model loop | Current; moved from the engine's own records 2026-10-17, side chats gone after 0021 |
-| [0007](0007-the-muse-delegates-multi-step-work.md) | The Muse delegates multi-step work | Current; narration added by 0022; the step limit's ending rule amended by 0025 |
+| [0007](0007-the-muse-delegates-multi-step-work.md) | The Muse delegates multi-step work | Current; narration added by 0022; the step limit's ending rule amended by 0025; amended by 0029: the limit is gone, delegation is judgement |
 | [0008](0008-projects-are-folders-the-muse-opens.md) | Projects are folders the Muse opens | Current |
 | [0009](0009-the-engine-is-the-whole-backend.md) | The engine is the whole backend | Current |
 | [0010](0010-a-fork-is-a-side-chat-with-an-anchor.md) | A fork is a side chat with an anchor | Superseded by 0021 |
@@ -32,6 +32,6 @@ One file per decision, numbered in order. A superseded record keeps its file wit
 | [0026](0026-a-turn-speaks-in-a-second.md) | A turn speaks in a second | Built 2026-10-17; the latency budget, warm Chromium, look as a record, bounded metadata calls, loop never stalls, Stop that stops; measured rerun pending |
 | [0027](0027-super-chat-is-an-agentic-layer.md) | Super Chat is an agentic layer | Accepted 2026-10-17; three model categories, the context brief, an evidence-ticked plan, review before hand-back, display owned by the engine, Pause; amends 0007, 0022, 0023, 0025, 0026; amended by 0029 (context is pulled, not ordered; the evidence-ticked plan goes) |
 | 0028 | Progress is an Omnigent capability | Never merged; superseded by 0029 (branch `wave4`) |
-| [0029](0029-a-round-is-recorded-and-the-harness-owns-the-words.md) | A Round is recorded and the harness owns the words | Accepted 2026-10-18; Rounds recorded and folded, words from the harness, context pulled, Helpers as Omnigent sessions, Stop per Round, one vocabulary; supersedes 0028, amends 0022, 0023, 0027 |
+| [0029](0029-a-round-is-recorded-and-the-harness-owns-the-words.md) | A Round is recorded and the harness owns the words | Accepted 2026-10-18; Rounds recorded and folded, words from the harness, context pulled, Helpers as Omnigent sessions, Stop per Round, one vocabulary; supersedes 0028, amends 0007, 0022, 0023, 0027 |
 
 The pages that explain the current system are listed in [../README.md](../README.md).

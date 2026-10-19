@@ -44,13 +44,10 @@ Limits:
   `subworker`s, which start nothing (`refuse_subagent_nesting` in `superchat/subagents.py`).
 - **Concurrency.** 10 live helpers per conversation tree (`OMNIGENT_SUBAGENT_MAX_CONCURRENT`), plus
   each type's `max_sessions`. The count is read from the engine's child-session rows.
-- **Step limit.** A conversation turn may make 3 work tool calls (search and fetch, browser, shell
-  and files, artifact writes, and `deck_new`, `deck_theme_set` and `deck_export`); the next is
-  refused with an instruction to hand the rest to a helper (`superchat/step_limit/policy.py`,
-  `superchat/work_tools.py`). Reads (`artifact_list`, `artifact_outline`, `deck_check`,
-  `deck_themes`), memory, cards, scheduling, vault and helper management never count. The person saying "do it here" lifts it for that turn. A turn that is refused
-  must start the helper in the same turn; one that ends without it is a stall
-  ([ADR 0025](adr/0025-act-by-default-tasks-have-state.md)).
+- **Delegation.** Judgement, not a limit: one deliverable that fits one turn is done in the
+  conversation; work in another folder, long work and parallel work go to a helper. It is a line
+  in the prompt and the engine refuses nothing for it
+  ([ADR 0029](adr/0029-a-round-is-recorded-and-the-harness-owns-the-words.md)).
 - **Approvals.** Sending, posting, deleting, spending, uploading and sharing in the person's name
   ask first, for helpers too (`superchat/approvals/`). A helper's ask is shown where the
   conversation's asks show (`GET /v1/me/asks`) and waits up to 7 days; after 120 seconds the parent
@@ -82,7 +79,7 @@ runs on the bundle's harness. No type pins a model.
 | `worker` | `start_helper` from the assistant | 5 | the work toolset: `sys_os_*`, `artifact_save`, `artifact_list`, `deck_*` authoring, `files_*`, the live-update tools, `memory_search`, `memory_get`, `session_history`, `vault_fill`, plus `start_helper` for parts |
 | `subworker` | `start_helper` from a `worker` | 5 | the worker set without `start_helper` |
 | `notes` | the engine only, for the daily-note passes | 2 | `daily_note_get`, `daily_note_update`, `memory_*` (read, remember, forget), `session_history` |
-| `editor` | the engine only, one per file, when its studio is first used (`POST /v1/artifacts/{id}/chat`, [ADR 0024](adr/0024-the-artifact-studio.md)) | none (outside helper caps and the step limit) | `artifact_save` (with `base_version`), `artifact_list`, `deck_check`, `deck_export`, `files_*`, `sys_os_*`, `session_history`, `memory_search`, `memory_get`, `memory_remember`; never wakes the conversation, never listed as its helper |
+| `editor` | the engine only, one per file, when its studio is first used (`POST /v1/artifacts/{id}/chat`, [ADR 0024](adr/0024-the-artifact-studio.md)) | none (outside helper caps) | `artifact_save` (with `base_version`), `artifact_list`, `deck_check`, `deck_export`, `files_*`, `sys_os_*`, `session_history`, `memory_search`, `memory_get`, `memory_remember`; never wakes the conversation, never listed as its helper |
 
 ## Scheduled runs
 

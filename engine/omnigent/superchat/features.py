@@ -5,7 +5,7 @@ here; ``tools/manager.py``, ``runner/tool_dispatch.py`` and ``server/app.py`` ne
 
 This module is the product's composition root (ADR 0019): the tool manager and the policy builder
 are SHARED and never import Superchat, so importing this module registers the features' tools,
-the approvals and step-limit policies and the owner budgets with them. ``server/app.py`` and
+the approvals policy and the owner budgets with them. ``server/app.py`` and
 ``runner/app.py`` import it.
 """
 
@@ -31,7 +31,6 @@ from omnigent.superchat.feature import (
     ToolManagerCtx,
 )
 from omnigent.superchat.models.budget import get_budgets
-from omnigent.superchat.step_limit import policy as step_limit_policy
 from omnigent.tools.manager import register_tool_source
 
 if TYPE_CHECKING:
@@ -62,7 +61,6 @@ def _load() -> list[Feature]:
     from omnigent.superchat.rounds import FEATURE as rounds
     from omnigent.superchat.sheets import FEATURE as sheets
     from omnigent.superchat.state_file import FEATURE as state_file
-    from omnigent.superchat.step_limit import FEATURE as step_limit
     from omnigent.superchat.system_jobs import FEATURE as system_jobs
     from omnigent.superchat.tasks import FEATURE as tasks
     from omnigent.superchat.transcript import FEATURE as transcript
@@ -86,7 +84,6 @@ def _load() -> list[Feature]:
         projects,
         recall_hint,
         context_brief,
-        step_limit,
         state_file,
         tasks,
         transcript,
@@ -116,20 +113,6 @@ def notify_result(ctx: HandlerCtx, output: str) -> None:
     for feature in FEATURES:
         if feature.on_result is not None:
             feature.on_result(ctx, output)
-
-
-def notify_denied(ctx: HandlerCtx, tool_name: str, reason: str) -> None:
-    """Tell every feature that listens (``Feature.on_tool_denied``) that a policy denied a call.
-
-    A listener's failure is logged and never reaches the call.
-    """
-    for feature in FEATURES:
-        if feature.on_tool_denied is None:
-            continue
-        try:
-            feature.on_tool_denied(ctx, tool_name, reason)
-        except Exception:  # a listener is bookkeeping, never a reason to fail a call
-            _logger.warning("%s tool denial failed", feature.name, exc_info=True)
 
 
 def notify_turn_end(conversation_id: str) -> None:
@@ -188,5 +171,4 @@ async def stop_feature_jobs(app: FastAPI) -> None:
 # The engine's product seams, filled once at import (registration is by name, so idempotent).
 register_tool_source("superchat", _superchat_tools)
 register_session_policy(SessionPolicy(approvals_policy.POLICY_SPEC, approvals_policy.applies))
-register_session_policy(SessionPolicy(step_limit_policy.POLICY_SPEC, step_limit_policy.applies))
 register_owner_budgets(get_budgets)

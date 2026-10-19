@@ -185,6 +185,9 @@ RETIRED = (
     "sys_read_inbox",
     "browser_snapshot",
     "vault_",
+    "work calls is refused",
+    "hand the rest over",
+    "limit",
 )
 #: Tools the Conversation never needs (config.yaml.tmpl says why for each).
 LEFT_OUT = {

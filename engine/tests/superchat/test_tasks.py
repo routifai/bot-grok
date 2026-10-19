@@ -21,21 +21,17 @@ from fastapi.testclient import TestClient
 from omnigent.context.labels import ROUND_LABEL_KEY, SCHEDULED_HELPER_LABEL_KEY
 from omnigent.entities import MessageData, NewConversationItem
 from omnigent.errors import OmnigentError
-from omnigent.runner.app import _evaluate_policy_via_omnigent
-from omnigent.runner.proxy_mcp_manager import ProxyMcpManager
 from omnigent.server.schemas import SessionEventInput
 from omnigent.stores.conversation_store.sqlalchemy_store import SqlAlchemyConversationStore
 from omnigent.superchat.cards.handlers import handle_clarification_tool
 from omnigent.superchat.feature import HandlerCtx
 from omnigent.superchat.rounds.store import RoundEvent, SqlAlchemyRoundStore
-from omnigent.superchat.step_limit.policy import REFUSAL as STEP_LIMIT_REFUSAL
 from omnigent.superchat.tasks import runtime
 from omnigent.superchat.tasks.record import (
     MAX_LINES,
     CardAnswer,
     Turn,
     ends_well,
-    is_stall,
     kind_for_name,
     parse_card_answer,
     prefix_lines,
@@ -106,13 +102,10 @@ def test_a_saved_files_kind_is_read_from_its_name() -> None:
         (Turn(by_person=True), True),
         (Turn(by_person=False, task_id="t"), True),  # a notice or a Helper's wake
         (Turn(by_person=True, task_id="t", helper_running=True), True),  # a steer
-        (Turn(by_person=True, refused=True), False),
-        (Turn(by_person=True, task_id="t", refused=True, saved=True), False),
-        (Turn(by_person=True, refused=True, helper_started=True), True),
     ],
 )
 def test_the_one_stall_rule(turn: Turn, well: bool) -> None:
-    assert ends_well(turn) is well and is_stall(turn) is not well
+    assert ends_well(turn) is well
 
 
 # ---------------------------------------------------------------- the service and routes
@@ -316,7 +309,6 @@ def _server(view: dict[str, Any] | None):
 @pytest.fixture(autouse=True)
 def _fresh_runtime(monkeypatch) -> None:
     monkeypatch.setattr(runtime, "_turns", {})
-    monkeypatch.setattr(runtime, "STALLS", 0)
 
 
 async def test_the_turn_gets_the_pick_then_one_line_per_working_round() -> None:
@@ -351,82 +343,6 @@ async def test_a_card_names_the_round_the_turn_is_in() -> None:
     assert "round_id" not in json.loads(await handle_clarification_tool(ctx, args))
 
 
-def _mcp_proxy(session: str, error: str) -> ProxyMcpManager:
-    """The runner's MCP proxy, against a server whose TOOL_CALL gate answers *error*."""
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        rpc = json.loads(request.content)
-        return httpx.Response(
-            200,
-            json={"jsonrpc": "2.0", "id": rpc["id"], "error": {"code": -32000, "message": error}},
-        )
-
-    client = httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="http://srv")
-    return ProxyMcpManager(session, client)
-
-
-async def _harness_tool_denied(session: str, reason: str) -> None:
-    """A harness-native tool call (Pi's bash, a connector tool) the server's gate denies."""
-
-    class _Server:
-        async def post(self, _url: str, *, json: dict[str, Any], timeout: Any) -> httpx.Response:
-            return httpx.Response(200, json={"result": "POLICY_ACTION_DENY", "reason": reason})
-
-    class _Harness:
-        async def post(self, _url: str, *, json: dict[str, Any], timeout: Any) -> httpx.Response:
-            return httpx.Response(200, json={})
-
-    await _evaluate_policy_via_omnigent(
-        server_client=_Server(),  # type: ignore[arg-type]
-        harness_client=_Harness(),  # type: ignore[arg-type]
-        conversation_id=session,
-        evaluation_id="poleval_test",
-        phase="PHASE_TOOL_CALL",
-        data={"name": "bash", "arguments": {}},
-    )
-
-
-async def test_a_step_limit_deny_with_no_helper_is_a_stall() -> None:
-    session = "conv-refused"
-    no_task = _wire([], at=session)
-    denied = f"Denied by policy: {STEP_LIMIT_REFUSAL}"
-    # the proxied call is denied before any handler runs; then a save but no Helper: a stall
-    await runtime.message_prefix(_server(no_task), session, ["compare four vendors"])
-    out = await _mcp_proxy(session, denied).call_tool(None, "browser_navigate", {})
-    assert json.loads(out) == {"error": denied}  # what the model reads
-    saved = {"type": "artifact", "name": "a.csv", "group_id": "g"}
-    runtime.on_result(HandlerCtx("artifact_save", None, session), json.dumps(saved))
-    runtime.turn_ended(session)
-    assert runtime.STALLS == 1
-    # a harness-native tool denied the same way, then the Helper the refusal asks for: ends well
-    await runtime.message_prefix(_server(no_task), session, ["compare four vendors"])
-    await _harness_tool_denied(session, STEP_LIMIT_REFUSAL)
-    started = {"started": True, "helper_id": "h"}
-    runtime.on_result(HandlerCtx("start_helper", None, session), json.dumps(started))
-    runtime.turn_ended(session)
-    assert runtime.STALLS == 1
-    # a harness-native deny with no Helper after it: a stall
-    await runtime.message_prefix(_server(no_task), session, ["compare four vendors"])
-    await _harness_tool_denied(session, STEP_LIMIT_REFUSAL)
-    runtime.turn_ended(session)
-    assert runtime.STALLS == 2
-    # another policy's deny, or a tool's own error, is not the step limit
-    await runtime.message_prefix(_server(no_task), session, ["send it"])
-    await _mcp_proxy(session, "Denied by policy: needs approval").call_tool(None, "x", {})
-    await _harness_tool_denied(session, "Blocked domain")
-    await _mcp_proxy(session, STEP_LIMIT_REFUSAL).call_tool(None, "x", {})  # not a DENY
-    runtime.turn_ended(session)
-    # a runtime notice's turn is never judged, nor a steer while a Round's Helper works
-    notice = _wire([], at=session, by_person=False)
-    await runtime.message_prefix(_server(notice), session, ["[System: timer fired]"])
-    await _mcp_proxy(session, denied).call_tool(None, "web_fetch", {})
-    runtime.turn_ended(session)
-    await runtime.message_prefix(_server(_wire([_working()], at=session)), session, ["faster"])
-    await _mcp_proxy(session, denied).call_tool(None, "web_fetch", {})
-    runtime.turn_ended(session)
-    assert runtime.STALLS == 2
-
-
 # ---------------------------------------------------------------- bounded calls (ADR 0026)
 
 
@@ -443,7 +359,6 @@ async def test_a_slow_server_never_holds_the_read_and_no_result_is_posted(monkey
     loop = asyncio.get_running_loop()
     start = loop.time()
     assert await runtime.read_tasks(client, "conv5") is None
-    runtime.on_result(HandlerCtx("deck_check", client, "conv5"), json.dumps({"ok": True}))
     await asyncio.sleep(0)
     assert loop.time() - start < 1
     # the Round record has the check from the relay: the runner posts nothing

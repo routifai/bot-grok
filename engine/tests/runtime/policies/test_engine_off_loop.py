@@ -1,7 +1,7 @@
 """
 Policy evaluation keeps its database writes off the event loop (ADR 0026).
 
-A step-limit style policy writes session state on every counted tool call.
+A policy that counts tool calls writes session state on every counted call.
 The write takes the session row lock (``SELECT … FOR UPDATE``), so a slow or
 contended write must wait on a worker thread, never on the loop, and the row
 lock must be released inside that one thread call.
