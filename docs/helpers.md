@@ -27,7 +27,7 @@ The assistant starts one with `start_helper` (`superchat/helpers/tools.py`):
 
 The same task from the same chat within 10 seconds is treated as one hand-off. Several calls in one
 step run helpers in parallel. The helper's first message is the memory profile followed by the
-brief; it can read memory and `session_history` but not write memory.
+brief; it can read memory and `session_history` but not write memory. Under [ADR 0029](adr/0029-a-round-is-recorded-and-the-harness-owns-the-words.md) the brief carries the folder, the files in play and the preference lines that apply instead of the whole profile, and workers also get `recall` and `recall_get`.
 
 `message_helper` passes a correction or detail to a helper that is already working; it reads it at
 its next step. If the helper finished by then, the message is refused rather than starting a second
