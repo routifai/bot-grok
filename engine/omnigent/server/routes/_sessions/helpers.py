@@ -922,11 +922,6 @@ def _owner_from_grants(grants: list[SessionPermission]) -> str | None:
     return next((g.user_id for g in grants if g.level >= LEVEL_OWNER), None)
 
 
-#: Called with the session id when a turn fails on the server before any runner relays it
-#: (setup, dispatch, launch), so a feature can settle what waited for that turn.
-ON_TURN_FAILED: dict[str, Callable[[str], None]] = {}
-
-
 def _session_status_from_cache(
     conversation_id: str,
     db_status: str | None = None,
@@ -3074,11 +3069,6 @@ def _publish_status(
             error_code=error.code if error is not None else None,
             error=error.message if error is not None else None,
         )
-        for on_failed in ON_TURN_FAILED.values():
-            try:
-                on_failed(session_id)
-            except Exception:
-                _logger.warning("turn-failed hook raised for %s", session_id, exc_info=True)
     # Track the in-flight response id for snapshot-based reconnect (see
     # _session_active_response_cache). A running/waiting edge that names a
     # turn opens it; any idle/failed edge closes it.

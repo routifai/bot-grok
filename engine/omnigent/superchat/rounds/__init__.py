@@ -64,7 +64,6 @@ def _install(app: FastAPI, deps: InstallDeps) -> None:
 
     from omnigent.server.routes._sessions.common import get_server_runner_router
     from omnigent.server.routes._sessions.helpers import (
-        ON_TURN_FAILED,
         _get_runner_client,
         _session_status_from_cache,
     )
@@ -119,7 +118,6 @@ def _install(app: FastAPI, deps: InstallDeps) -> None:
 
     ROUND_VIEWS["rounds"] = views
     ON_SESSION_DELETED["rounds"] = store.delete_conversation
-    ON_TURN_FAILED["rounds"] = record.turn_never_started
 
     async def idle(session_id: str) -> bool:
         """Whether the session runs no turn, as its relay last reported."""
