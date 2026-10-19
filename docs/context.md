@@ -29,8 +29,9 @@ In the order the model reads it:
      one gap line on the first message back from an idle break;
    - feature notes, such as "the person edited this file by hand" (see
      [artifacts.md](artifacts.md#write-back));
-   - the open tasks, one line each: `Open task: deck "RBC vs TD" · look Pitch Deck · data: mock ·
-     next: build`;
+   - the Rounds still working, one line each, read from the Round record: a Round counts while
+     a Helper it started still runs, so a finished or failed one never lingers (`Open task: "a
+     deck on RBC vs TD" · helper "RBC vs TD deck" · next: wait for the helper`);
    - the Projects list: one line per `PROJECT.md` card under `~/workspace/projects/`, the 15 most
      recent plus the open one;
    - the memory profile (below);
@@ -43,8 +44,9 @@ runner starts building it when the message is accepted (a Conversation-only `mes
 adds no block; a runtime notice starts none) and keeps it per session and message until the turn
 ends or two minutes pass, so the call returns at once and a second call gets the same text. It
 reads, in parallel within 1.5 seconds, what we made before (artifact groups whose name or title
-shares the message's subject words, newest version, the deck's look from its task, who saved it and
-when), the Conversation's open tasks and last five done ones with their decision (the tasks view),
+shares the message's subject words, newest version, who saved it and when), the Conversation's
+Rounds still working (what was asked and the Helpers still running on it; a settled Round is in the
+journal instead),
 earlier work (the recall pull with the planner's sub-queries, planned once per message, as at most
 six dated pointers; none with recall off), the top three matching files with their page count, and
 the working list's `p-` lines on the subject (the memory profile is only pointed to). A part that

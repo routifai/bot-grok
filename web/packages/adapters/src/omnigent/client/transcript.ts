@@ -15,8 +15,6 @@ export type OmnigentTranscriptBlock =
         data: Record<string, unknown>;
         fallback: string;
       };
-      /** A `plan` card: how many leading done steps fold away (ADR 0027). */
-      fold?: number;
       pending?: boolean;
     }
   | { type: "helper"; call_id: string; session_id: string; title: string; status: string }

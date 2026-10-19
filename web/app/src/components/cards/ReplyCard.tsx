@@ -40,8 +40,6 @@ export function ReplyCard({
       return <catalog.sources title={title} data={parsed.data} />;
     case "compare":
       return <catalog.compare title={title} data={parsed.data} />;
-    case "plan":
-      return <catalog.plan title={title} data={parsed.data} />;
     case "ask":
       return <catalog.ask title={title} data={parsed.data} answer={answer} cardId={cardId} />;
     case "follow_ups":

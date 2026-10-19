@@ -24,7 +24,6 @@ import { ArtifactPanelProvider, AskPreviewsProvider } from "../components/cards/
 import { SuperchatLogo } from "../components/SuperchatLogo";
 import {
   runningRoundSince,
-  stripOf,
   transcriptWork,
   useRounds,
   useWorkState,
@@ -307,12 +306,7 @@ export function ShellPage() {
   // The session panel (ADR 0027) opens beside the transcript when work runs (desktop only; a
   // phone opens it from the header), and stays closed once the viewer closed it.
   const sessionPanel = useSessionPanelOpen(running && _isDesktop);
-  const planTurn = useMemo(() => newestTurn(work), [work]);
-  // The panel follows the newest reply (never an older one's plan) and reads the same strip (its plan, fold and the latest line of the work).
-  const panelStrip = useMemo(
-    () => (planTurn ? stripOf(planTurn, workState, undefined) : null),
-    [planTurn, workState],
-  );
+  const lastTurn = useMemo(() => newestTurn(work), [work]);
   const orbHome = orbPlacement({
     startPage: shownStart,
     sidebarVisible: false,
@@ -356,7 +350,6 @@ export function ShellPage() {
   const composerEl = (
     <Composer
       key={`bot:${active?.id}`}
-      botId={active?.id}
       activeName={active?.name}
       phase={workState.phase}
       stopFailed={stopFailed && running}
@@ -404,7 +397,7 @@ export function ShellPage() {
       <div className="app-no-drag flex shrink-0 items-center gap-2">
         {/* Running work shows here too, for when its strip is scrolled away (ADR 0023). */}
         <WorkingPill work={workState} />
-        {running || planTurn ? (
+        {running || lastTurn ? (
           <SessionPanelToggle
             open={sessionPanel.open}
             onToggle={sessionPanel.open ? sessionPanel.close : sessionPanel.show}
@@ -502,12 +495,7 @@ export function ShellPage() {
             ) : null}
           </div>
           {active && !chatArtifacts.isOpen ? (
-            <SessionPanel
-              botId={active.id}
-              strip={panelStrip}
-              open={sessionPanel.open}
-              onClose={sessionPanel.close}
-            />
+            <SessionPanel botId={active.id} open={sessionPanel.open} onClose={sessionPanel.close} />
           ) : null}
           {active ? chatArtifacts.panel : null}
           {active && !chatArtifacts.isOpen && !sessionPanel.open ? (

@@ -61,10 +61,10 @@ def _out(item_id: str, call_id: str, output: Any) -> dict[str, Any]:
 
 _CARD = {
     "type": "card",
-    "card": "plan",
-    "id": "plan-1",
+    "card": "progress",
+    "id": "progress-1",
     "data": {"steps": ["a"]},
-    "fallback": " the plan ",
+    "fallback": " the progress ",
     "note": "internal",
 }
 
@@ -225,18 +225,18 @@ def test_card_call_becomes_a_card_message_without_internal_fields() -> None:
     (message,) = project_items(items)
     assert message["role"] == "assistant"
     (block,) = message["blocks"]
-    assert block["type"] == "card" and block["card_id"] == "plan-1"
+    assert block["type"] == "card" and block["card_id"] == "progress-1"
     assert block["card"] == {
-        "card": "plan",
-        "id": "plan-1",
+        "card": "progress",
+        "id": "progress-1",
         "data": {"steps": ["a"]},
-        "fallback": "the plan",
+        "fallback": "the progress",
     }
     assert "pending" not in block
 
 
 def test_card_without_output_is_pending_and_failed_card_is_skipped() -> None:
-    args = {"card": "plan", "fallback": "wait", "data": {"x": 1}}
+    args = {"card": "progress", "fallback": "wait", "data": {"x": 1}}
     (pending,) = project_items([_call("c1", "render_card", "k1", args)])
     assert pending["blocks"][0]["pending"] is True
     assert pending["blocks"][0]["card"]["data"] == {}
@@ -595,7 +595,9 @@ async def test_pages_walk_back_and_draw_each_rounds_cards_at_any_page_size(
     40, 100 and 500 items a page. With the file cards drawn from the save calls, the cards are
     the Assistant's own saves; drawn from each Round's record, they are every file of its view,
     the Assistant's and its Helper's, in order on the Round's last reply. Either way a page's
-    size never moves a card, and the two ways agree on the Assistant's saves."""
+    size never moves a card, and the two ways agree on the Assistant's saves. Every message
+    carries the Round it is in (``round_id``, the id of the message that opened it), whatever the
+    page size."""
     if by_round:
         monkeypatch.setenv(ROUND_FILES_ENV, "1")
     else:
@@ -630,11 +632,17 @@ async def test_pages_walk_back_and_draw_each_rounds_cards_at_any_page_size(
 
     whole = read_all(500)
     assert [m["id"] for m in whole if m["role"] == "user"] == opened
+    in_round, current = {}, None
+    for message in whole:
+        current = message["id"] if message["role"] == "user" else current
+        in_round[message["id"]] = current
+    assert {m["id"]: m["round_id"] for m in whole} == in_round
     for limit in (9, 40, 100):
         paged = read_all(limit)
         if limit >= 40:  # a smaller page can split a turn from its last text, so shows more
             assert [m["id"] for m in paged] == [m["id"] for m in whole]
         assert by_message(paged) == by_message(whole)
+        assert all(in_round.get(m["id"], m["round_id"]) == m["round_id"] for m in paged)
     views = {rid: fold(rounds.events(rid, root.id), rid)["files"] for rid in opened}
     recorded = [(f["artifact_id"], f["version"]) for rid in opened for f in views[rid]]
     assistants = [

@@ -36,7 +36,7 @@ def test_lists_every_kind_with_its_schema() -> None:
     assert [c["kind"] for c in body["cards"]] == list(CARD_DATA_SCHEMAS)
     by_kind = {c["kind"]: c for c in body["cards"]}
     assert by_kind["quote"]["data_schema"] == CARD_DATA_SCHEMAS["quote"]
-    assert by_kind["plan"]["ends_reply"] is False
+    assert by_kind["progress"]["ends_reply"] is False
     assert by_kind["sources"]["ends_reply"] is True
 
 

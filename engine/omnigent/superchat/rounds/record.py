@@ -42,6 +42,7 @@ from omnigent.context.labels import (
 from omnigent.context.tool_digest import short_arguments
 from omnigent.entities.session_project import project_slug_from_workspace
 from omnigent.runner.tool_starts import STOPPED_OUTPUT
+from omnigent.superchat.artifact_kinds import is_deck_name
 from omnigent.superchat.rounds.fold import (
     ASSISTANT,
     CHECKLIST_CREATED,
@@ -66,6 +67,7 @@ from omnigent.superchat.rounds.fold import (
     fold,
 )
 from omnigent.superchat.rounds.store import RoundEvent, SqlAlchemyRoundStore
+from omnigent.superchat.tasks.record import CHECK_TOOLS
 from omnigent.superchat.titles import clip, one_line_summary
 
 _logger = logging.getLogger(__name__)
@@ -163,14 +165,24 @@ def assign_round(
     return Assignment(item_id, opened=True)
 
 
+def checked(view: Mapping[str, Any]) -> bool | None:
+    """Whether the Round's deck was checked: a ``deck_check`` in its trail, the Assistant's or a
+    Helper's, came back clean; ``None`` for a Round that saved no deck and ran no check."""
+    check = CHECK_TOOLS["deck"]
+    checks = [t for t in view["trail"] if str(t.get("name") or "").rsplit("__", 1)[-1] == check]
+    if not checks and not any(is_deck_name(str(f.get("name") or "")) for f in view["files"]):
+        return None
+    return any(t.get("ok") for t in checks)
+
+
 def journal_entry(round_id: str, view: Mapping[str, Any]) -> dict[str, Any] | None:
     """The journal entry of a settled Round, built only from its view (:func:`fold`).
 
     :returns: ``round_id``, ``date`` (the settlement's, UTC), ``ask`` (the first line of the
         person's message, clipped), ``outcome`` (the first sentence of the last Assistant
         text), ``stopped``, ``files`` (names), ``helpers`` (titles), ``folder`` (the Helpers'
-        folders), ``seconds`` and ``refs``; ``None`` for a Round not settled or hidden (a run no
-        person started writes no entry).
+        folders), ``seconds``, ``checked`` (:func:`checked`) and ``refs``; ``None`` for a Round
+        not settled or hidden (a run no person started writes no entry).
     """
     if view.get("settled_at") is None or view.get("hidden"):
         return None
@@ -190,6 +202,7 @@ def journal_entry(round_id: str, view: Mapping[str, Any]) -> dict[str, Any] | No
         "helpers": [h["title"] for h in helpers if h.get("title")],
         "folder": ", ".join(shown),
         "seconds": view["elapsed"],
+        "checked": checked(view),
         "refs": {
             "artifacts": [
                 f"{f['artifact_id']}@v{f['version']}"
@@ -579,11 +592,12 @@ def _args(raw: Any) -> dict[str, Any]:
 
 
 def _ok(output: Any) -> bool:
-    """Whether a tool's output reads as success: not the stopped marker, not ``{"error"}``."""
+    """Whether a tool's output reads as success: not the stopped marker, not ``{"error"}``, not
+    ``{"ok": false}`` (a ``deck_check`` that found errors)."""
     if output == STOPPED_OUTPUT:
         return False
     parsed = _args(output)
-    return not parsed.get("error")
+    return not parsed.get("error") and parsed.get("ok") is not False
 
 
 @dataclass

@@ -13,7 +13,7 @@ from omnigent.tools.base import Tool
 DECK_TOOL_NAMES = ("deck_export", "deck_new", "deck_check", "deck_themes", "deck_theme_set")
 DECK_AUTHORING_TOOL_NAMES = ("deck_new", "deck_check", "deck_themes", "deck_theme_set")
 DECK_EXPORT_FORMATS = ("pptx", "pdf")
-#: Where a new deck's template came from (``deck_new``'s ``look_from``), recorded on its task as
+#: Where a new deck's template came from (``deck_new``'s ``look_from``), recorded in its result as
 #: given (ADR 0026); never a reason to change the template. The one list: ``decks.look`` reads it.
 LOOK_SOURCES = ("named", "picked", "you_choose", "background")
 

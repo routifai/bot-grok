@@ -3,10 +3,10 @@
 Layout: ``fold`` (the Round view, a pure fold over its events), ``store`` (the ``round_events``
 table), ``record`` (the Round rule and the writers, called where the engine sees each fact,
 and Stop, which reads its Round back), ``read`` (what reads a Round once its events are stored:
-the family stream's ``round.updated`` and the development shadow diff), ``routes`` (the Round
-reads). A settled Round's journal entry goes to the host through the relay op
-:data:`JOURNAL_OP`, which writes it with :func:`omnigent.runner.memory.sync.record_round`. No
-tool reads the record.
+the family stream's ``round.updated``, the Round each transcript message and Activity row is in,
+the Rounds still working and the development shadow diff), ``routes`` (the Round reads). A
+settled Round's journal entry goes to the host through the relay op :data:`JOURNAL_OP`, which
+writes it with :func:`omnigent.runner.memory.sync.record_round`. No tool reads the record.
 """
 
 from __future__ import annotations
@@ -57,8 +57,9 @@ def _install(app: FastAPI, deps: InstallDeps) -> None:
     from omnigent.server.routes._sessions.common import get_server_runner_router
     from omnigent.server.routes._sessions.helpers import _get_runner_client
     from omnigent.server.routes._sessions.orchestration import ON_SESSION_DELETED
+    from omnigent.superchat.activity.derive import ROUND_IDS
     from omnigent.superchat.rounds import record
-    from omnigent.superchat.rounds.read import Announcer, Shadow, shadow_on
+    from omnigent.superchat.rounds.read import Announcer, Shadow, item_rounds, shadow_on
     from omnigent.superchat.rounds.routes import register_round_routes
     from omnigent.superchat.rounds.store import SqlAlchemyRoundStore
 
@@ -95,6 +96,9 @@ def _install(app: FastAPI, deps: InstallDeps) -> None:
             reader.written(batch)
 
     record.RECORDER = record.Recorder(store, on_written=written, on_settled=journal)
+    ROUND_IDS["rounds"] = lambda conversation_id, item_ids: item_rounds(
+        store, deps.conversation_store, conversation_id, item_ids
+    )
     ON_SESSION_DELETED["rounds"] = store.delete_conversation
     router = APIRouter()
     register_round_routes(

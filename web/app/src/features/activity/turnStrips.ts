@@ -38,9 +38,6 @@ export function stripOf(
   return {
     helpers: found.helpers,
     turn: {
-      plan: found.plan,
-      planId: found.planId,
-      fold: found.fold,
       activityId: found.activityId,
       files: found.files,
       live,
@@ -56,7 +53,7 @@ export function stripOf(
 /**
  * Each reply's strip from the transcript's work and the Conversation's work state, keeping the
  * previous strip object (and drawn set) wherever nothing it says changed: a transcript update (a
- * streamed word, another reply's plan) then re-renders only the messages whose strip it touched.
+ * streamed word, another reply's Helper) then re-renders only the messages whose strip it touched.
  */
 export function nextTurnStrips(
   previous: TurnStrips,

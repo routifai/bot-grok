@@ -2,7 +2,8 @@
 
 Built by code plus one Light planner call (none with recall off), within
 :data:`BUDGET_SECONDS`. Five parts, each optional: what we made before (artifact groups whose
-name or title shares the message's subject words), the Conversation's task records, earlier work
+name or title shares the message's subject words), the Conversation's Rounds still working (the
+Round record: the ask and the Helpers still running), earlier work
 (the recall pull with the planner's sub-queries, dated one-line pointers), sources in the
 person's files, and standing preferences (the working list's ``p-`` lines on the subject; the
 memory profile is already in the prefix).
@@ -25,7 +26,7 @@ from typing import Any, Protocol, TypeVar
 from omnigent.context.state_file import PREFERENCE, Entry, parse
 from omnigent.superchat.knowledge.db import query_terms
 from omnigent.superchat.recall_hint.hint import TurnPlan, hit_line
-from omnigent.superchat.tasks.record import ACTIVE, DONE, kind_for_name
+from omnigent.superchat.tasks.record import kind_for_name
 
 _logger = logging.getLogger(__name__)
 
@@ -35,7 +36,6 @@ BUDGET_SECONDS = 1.5
 MAX_LINES = 40
 MAX_CHARS = 2_500
 MAX_ARTIFACTS = 5
-MAX_DONE_TASKS = 5
 MAX_EARLIER = 6
 MAX_SOURCES = 3
 _LINE_CHARS = 200
@@ -109,24 +109,9 @@ def _saved_by(artifact: Mapping[str, Any]) -> str:
     return "saved by the assistant"
 
 
-def _task_for(artifact: Mapping[str, Any], tasks: Sequence[Mapping[str, Any]]) -> Mapping | None:
-    group = artifact.get("group_id") or artifact.get("id")
-    for task in tasks:
-        fields = task.get("fields") or {}
-        if group in (task.get("artifact_group_ids") or []) or (
-            fields.get("file") and fields.get("file") == artifact.get("name")
-        ):
-            return task
-    return None
-
-
-def made_lines(
-    artifacts: Sequence[Mapping[str, Any]],
-    tasks: Sequence[Mapping[str, Any]],
-    words: Sequence[str],
-) -> list[str]:
+def made_lines(artifacts: Sequence[Mapping[str, Any]], words: Sequence[str]) -> list[str]:
     """Artifact groups (newest version each) whose name or title shares subject words, most
-    shared first, then newest: what it is, its look for a deck, who saved it and when, its id."""
+    shared first, then newest: what it is, who saved it and when, its id."""
     scored = []
     for artifact in artifacts:
         name = str(artifact.get("name") or "")
@@ -139,32 +124,20 @@ def made_lines(
         name = str(artifact.get("name") or "")
         label = artifact.get("title") or name
         parts = [f'"{label}"', f"{kind_for_name(name)} v{artifact.get('version') or 1}"]
-        task = _task_for(artifact, tasks)
-        look = (task.get("fields") or {}).get("look") if task else None
-        if look:
-            parts.append(f"look {look}")
         parts.append(f"{_saved_by(artifact)} {_day(created)}".strip())
         parts.append(str(artifact.get("id") or ""))
         lines.append(_clip("- " + " · ".join(p for p in parts if p)))
     return lines
 
 
-def task_lines(tasks: Sequence[Mapping[str, Any]]) -> list[str]:
-    """The open tasks, then the last :data:`MAX_DONE_TASKS` done ones with their decision line."""
+def round_lines(rounds: Sequence[Mapping[str, Any]]) -> list[str]:
+    """The Rounds still working (``rounds.read.open_rounds``): what was asked and the Helpers
+    still running on it."""
     lines = []
-    open_tasks = [t for t in tasks if t.get("status") in ACTIVE]
-    done = [t for t in tasks if t.get("status") == DONE][:MAX_DONE_TASKS]
-    for task in [*open_tasks, *done]:
-        fields = task.get("fields") or {}
-        status = str(task.get("status"))
-        parts = [
-            f"{status} {_day(task.get('updated_at'))}" if status == DONE else status,
-            f'{task.get("kind") or "file"} "{task.get("title") or ""}"',
-        ]
-        if fields.get("look"):
-            parts.append(f"look {fields['look']}")
-        if fields.get("decision"):
-            parts.append(f"decision: {fields['decision']}")
+    for row in rounds:
+        parts = ["working", f'asked "{" ".join(str(row.get("ask") or "").split())}"']
+        helpers = [h for h in row.get("helpers") or () if isinstance(h, Mapping)]
+        parts += [f'helper "{h["title"]}"' if h.get("title") else "helper" for h in helpers]
         lines.append(_clip("- " + " · ".join(parts)))
     return lines
 
@@ -223,8 +196,8 @@ class BriefSources(Protocol):
         """The owner's artifact groups, newest version each (``GET /v1/artifacts``)."""
         ...
 
-    def tasks(self, session_id: str) -> Awaitable[list[dict[str, Any]]]:
-        """The Conversation's open tasks and its recent done ones, newest first."""
+    def rounds(self, session_id: str) -> Awaitable[list[dict[str, Any]]]:
+        """The Conversation's Rounds still working, newest first."""
         ...
 
     def plan(self, session_id: str, message: str) -> Awaitable[TurnPlan]:
@@ -265,16 +238,16 @@ class Brief:
         words = subject_words(message)
         loop = asyncio.get_running_loop()
         artifacts = loop.create_task(_quiet(sources.artifacts(), []))
-        tasks = loop.create_task(_quiet(sources.tasks(session_id), []))
+        rounds = loop.create_task(_quiet(sources.rounds(session_id), []))
         plan = (
             loop.create_task(_quiet(sources.plan(session_id, message), None)) if message else None
         )
 
         async def made() -> list[str]:
-            return made_lines(await artifacts, await tasks, words) if words else []
+            return made_lines(await artifacts, words) if words else []
 
         async def task_part() -> list[str]:
-            return task_lines(await tasks)
+            return round_lines(await rounds)
 
         async def earlier() -> list[Any]:
             found = await plan if plan is not None else None
@@ -307,7 +280,7 @@ class Brief:
                 _logger.warning("context brief: %s failed", name, exc_info=part.exception())
             else:
                 got[name] = part.result()
-        for task in (*parts.values(), artifacts, tasks, *([plan] if plan else [])):
+        for task in (*parts.values(), artifacts, rounds, *([plan] if plan else [])):
             task.cancel()
         found_files = got.get("files") or []
         return cls(

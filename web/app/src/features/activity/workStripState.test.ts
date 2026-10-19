@@ -2,7 +2,7 @@ import type { MessageBlock, ThreadMessage } from "@superchat/contracts";
 import { afterEach, expect, it, vi } from "vitest";
 import { activity, helper } from "./activityTestKit";
 import { noteServerClock, resetServerClock, serverNow } from "./superchatWork";
-import type { PlanStep, TurnOutcome } from "./workPlan";
+import type { TurnOutcome } from "./workPlan";
 import {
   answeredWhileWorking,
   composeStrip,
@@ -187,43 +187,28 @@ it("settles a Helper the loaded feed does not list once the turn ends and a grac
   expect(deriveWorkStrip(helpers, [], foundAt, { lit: false }).kind).toBe("settled");
 });
 
-const plan = (...statuses: PlanStep["status"][]): PlanStep[] =>
-  statuses.map((status, i) => ({ text: `Step ${i + 1}`, status, added: false }));
-const settledPlan = (outcome: TurnOutcome | undefined) =>
+const settledTurn = (outcome: TurnOutcome | undefined) =>
   composeStrip(
     deriveWorkStrip([], [], 0),
     [],
-    {
-      plan: plan("done", "doing", "todo"),
-      live: false,
-      startedAt: 0,
-      endedAt: 1000,
-      ...(outcome ? { outcome } : {}),
-    },
+    { live: false, startedAt: 0, endedAt: 1000, ...(outcome ? { outcome } : {}) },
     0,
   );
 
-it("counts the running step done only when a plan-only reply finished normally", () => {
-  const done = settledPlan("done");
-  expect(done.outcome).toBe("done");
-  expect(done.plan?.map((step) => step.status)).toEqual(["done", "done", "todo"]);
-  const cancelled = settledPlan("cancelled");
-  expect(cancelled.outcome).toBe("cancelled");
-  expect(cancelled.plan?.map((step) => step.status)).toEqual(["done", "doing", "todo"]);
-  expect(settledPlan("failed").outcome).toBe("failed");
-  expect(settledPlan("failed").plan?.[1]?.status).toBe("doing");
-  // Waiting on the person's answer: the step is not done yet.
-  expect(settledPlan("asked").outcome).toBe("done");
-  expect(settledPlan("asked").plan?.[1]?.status).toBe("doing");
-  // A failed Helper fails the strip on the plan path too.
+it("reads how a reply settled, and a waiting answer as a normal finish", () => {
+  expect(settledTurn("done").outcome).toBe("done");
+  expect(settledTurn("cancelled").outcome).toBe("cancelled");
+  expect(settledTurn("failed").outcome).toBe("failed");
+  expect(settledTurn("asked").outcome).toBe("done");
+  expect(settledTurn(undefined).clockMs).toBe(1000);
+  // A failed Helper fails the strip.
   const failed = composeStrip(
     deriveWorkStrip([{ helperId: "h1", title: "One" }], [helper("h1", { status: "failed" })], 0),
     [],
-    { plan: plan("doing"), live: false, startedAt: 0, endedAt: 1000, outcome: "done" },
+    { live: false, startedAt: 0, endedAt: 1000, outcome: "done" },
     0,
   );
   expect(failed.outcome).toBe("failed");
-  expect(failed.plan?.[0]?.status).toBe("doing");
 });
 
 it("counts the live clock on the engine's clock, so settling does not jump", () => {
@@ -235,7 +220,7 @@ it("counts the live clock on the engine's clock, so settling does not jump", () 
   const start = Date.parse(ask.createdAt);
   const clientNow = Date.parse(at(2)) + 7_000;
   expect(serverNow(clientNow)).toBe(Date.parse(at(2)));
-  const turn = { plan: plan("doing"), startedAt: start, endedAt: Date.parse(at(2)) };
+  const turn = { startedAt: start, endedAt: Date.parse(at(2)) };
   const live = composeStrip(deriveWorkStrip([], [], 0), [], { ...turn, live: true }, clientNow);
   const settled = composeStrip(deriveWorkStrip([], [], 0), [], { ...turn, live: false }, clientNow);
   expect(live.clockMs).toBe(120_000);

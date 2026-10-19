@@ -33,7 +33,7 @@ os_env:
 
 tools:
   # Edit the one file, check and export a deck, read the person's files and memory. No Helpers,
-  # no progress notices or flags, no plan card.
+  # no progress notices or flags.
   allow:
     - "sys_os_*"
     - artifact_patch

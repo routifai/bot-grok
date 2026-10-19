@@ -14,9 +14,8 @@ A turn is a list of events, ``(kind, detail)`` pairs. The first event opens the 
 - ``steer``: a message about work a Helper of the open task is running;
 - ``notice``: a Helper's progress, flag or result waking the conversation.
 
-What follows is what the assistant did: ``tool_call`` (detail: the tool name), ``plan`` (a plan
-card; detail: its items' done criteria, comma separated, e.g. ``brief,helper_done,check_ran``),
-``card`` (a question card; detail: what it asks about), ``helper_started``, ``message_helper``,
+What follows is what the assistant did: ``tool_call`` (detail: the tool name), ``card`` (a
+question card; detail: what it asks about), ``helper_started``, ``message_helper``,
 ``save``, ``reply`` (detail: the text), and what the engine adds: ``refused`` (the step limit
 refused a call; detail: the tool name), ``cancelled`` (the person stopped the turn), and the
 work a Helper reported while it ran: ``helper_save`` (it saved a draft) and ``check`` (it ran a
@@ -25,20 +24,11 @@ check; detail: the tool).
 
 from __future__ import annotations
 
-import json
 import re
 from collections.abc import Sequence
 from typing import Any
 
-from omnigent.superchat.tasks.record import (
-    CHECK_RAN,
-    DONE,
-    HELPER_DONE,
-    Turn,
-    evidence_for,
-    needs_check,
-    replay,
-)
+from omnigent.superchat.tasks.record import CHECK_TOOLS, Turn
 from omnigent.superchat.tasks.record import ends_well as turn_ends_well
 
 Event = tuple[str, str]
@@ -52,7 +42,7 @@ DELIVERABLE_OPENERS = frozenset({"request", "answer"})
 #: Assistant events that do work; a deliverable turn says something before the first of them.
 WORK = frozenset({"tool_call", "helper_started", "save"})
 #: Assistant events the person sees as the turn's first words.
-SPOKEN = frozenset({"reply", "plan"})
+SPOKEN = frozenset({"reply"})
 #: Words that hand the work back to the person instead of doing it.
 GIVING_UP = (
     "send a message to continue",
@@ -145,7 +135,7 @@ def ends_well(turn_events: Sequence[Event]) -> bool:
 
 
 def speaks_first(turn_events: Sequence[Event]) -> bool:
-    """Whether a deliverable turn says something (a reply or a plan) before its first work call.
+    """Whether a deliverable turn says something (a reply) before its first work call.
 
     A turn that is not on a deliverable, or that does no work (it ends on a question card), passes.
     """
@@ -164,80 +154,23 @@ def asks(turns: Sequence[Sequence[Event]]) -> list[str]:
     return [detail for turn in turns for kind, detail in turn if kind == "card"]
 
 
-#: A scripted Helper's session id.
-_HELPER = "helper"
-#: What a scripted tool call returned, read by the engine's own parser (``evidence_for``).
-_OUTPUTS = {
-    "context_brief": "Nothing made on this before.",
-    "recall": '{"results": []}',
-    "files_search": '{"type": "file_search", "results": []}',
-    "deck_new": '{"deck": {"title": "Deck"}}',
-    "deck_check": '{"problems": []}',
-    "artifact_save": '{"type": "artifact", "name": "deliverable.deck.html", "id": "a1"}',
-    "start_helper": json.dumps({"started": True, "helper_id": _HELPER}),
-}
-#: The tool behind a scripted event that is not a ``tool_call``.
-_TOOLS = {
-    "save": "artifact_save",
-    "helper_save": "artifact_save",
-    "helper_started": "start_helper",
-}
+#: Events that ran the deck's check tool, in the Conversation or a Helper.
+_CHECKS = frozenset({(kind, CHECK_TOOLS["deck"]) for kind in ("tool_call", "check")})
 
 
-def _card(detail: str) -> str:
-    """The ``render_card`` result of a scripted plan: one step per done criterion."""
-    items = [
-        {
-            "text": done_when,
-            "done_when": done_when,
-            "owner": "helper" if done_when in (HELPER_DONE, CHECK_RAN) else "me",
-        }
-        for done_when in (w.strip() for w in detail.split(","))
-        if done_when
-    ]
-    return json.dumps({"type": "card", "card": "plan", "id": "p1", "data": {"items": items}})
+def checked(events: Sequence[Event]) -> bool:
+    """Whether a deck conversation's last build or save is followed by a check that ran.
 
-
-def _plan_event(kind: str, detail: str) -> dict[str, Any] | None:
-    """The engine's plan event for one scripted event, if it is one."""
-    if kind == "plan":
-        return evidence_for("render_card", _card(detail))
-    if (kind, detail) == ("notice", "result"):
-        return {"kind": "helper_done", "helper_id": _HELPER, "ok": True}
-    if kind == "answer":
-        return {"kind": "answered"}
-    tool = detail if kind in ("tool_call", "check") else _TOOLS.get(kind)
-    return evidence_for(tool, _OUTPUTS.get(tool)) if tool else None
-
-
-def plan_spans(turns: Sequence[Sequence[Event]]) -> list[list[Event]]:
-    """Each turn that shows a plan, with the Helpers' notice turns after it (until the next
-    plan): the events the engine ticks that plan from, as one list."""
-    spans: list[list[Event]] = []
-    for turn in turns:
-        if any(kind == "plan" for kind, _ in turn):
-            spans.append(list(turn))
-        elif spans and turn and turn[0][0] == "notice":
-            spans[-1].extend(turn)
-    return spans
-
-
-def checked(turn_events: Sequence[Event]) -> bool:
-    """Whether a deliverable turn's plan ends with a check step that a check backs (ADR 0027).
-
-    The engine's rule decides (:func:`omnigent.superchat.tasks.record.tick`, the scripted
-    results read by ``evidence_for``): the check counts only after the deliverable was built or
-    saved, and only a deliverable with a check tool (a deck) needs a check step. A turn with no
-    plan, or one the person stopped, is not judged; *turn_events* may run on into the Helpers'
-    notice turns (:func:`plan_spans`).
+    *events* are the conversation's turns, flattened: a Helper's check arrives in the notice
+    turn after the one that started it. A conversation that is not on a deliverable, that the
+    person stopped, or that built nothing is not judged.
     """
-    if not is_deliverable_turn(turn_events) or any(k == "cancelled" for k, _ in turn_events):
+    if not is_deliverable_turn(events) or any(kind == "cancelled" for kind, _ in events):
         return True
-    events = [e for e in (_plan_event(k, d) for k, d in turn_events) if e is not None]
-    plan = replay(events)
-    if plan is None:
-        return True
-    if not any(item.get("done_when") == CHECK_RAN for item in plan["items"]):
-        return not needs_check(plan)  # a deliverable with no check tool needs no check step
-    last = plan["items"][-1]
-    return last.get("done_when") == CHECK_RAN and last.get("evidence") == DONE
+    unchecked = False
+    for kind, detail in events:
+        if (kind, detail) == ("tool_call", "deck_new") or kind in ("save", "helper_save"):
+            unchecked = True
+        elif (kind, detail) in _CHECKS:
+            unchecked = False
+    return not unchecked
