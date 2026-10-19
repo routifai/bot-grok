@@ -540,9 +540,15 @@ def test_a_round_is_written_from_the_message_the_relay_and_the_save(
     db_uri: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A person's message opens the Round, its Helper inherits it, the relayed streams of both
-    become events in order, the save and the Stop are recorded, and the fold reads them back."""
+    become events in order, the save and the Stop are recorded, and the fold reads them back.
+    The Stop settles it: one journal entry, never a second, and none for a hidden Round."""
     store = SqlAlchemyRoundStore(db_uri)
-    monkeypatch.setattr(record, "RECORDER", record.Recorder(store))
+    journaled: list[tuple[str, dict[str, Any]]] = []
+
+    async def sink(conversation_id: str, entry: dict[str, Any]) -> None:
+        journaled.append((conversation_id, entry))
+
+    monkeypatch.setattr(record, "RECORDER", record.Recorder(store, on_settled=sink))
     root = "a" * 32
     item = "b" * 32
     helper_id = "c" * 32
@@ -582,9 +588,18 @@ def test_a_round_is_written_from_the_message_the_relay_and_the_save(
         record.stop_requested(convs.rows[root])
         assert record.RECORDER is not None
         await record.RECORDER.idle()
+        await helper.observe({"type": "response.in_progress"})  # settled: a late turn ends
+        await helper.observe({"type": "response.cancelled"})
+        hidden = _row("e" * 32, {**SUPER, SCHEDULED_FIRE_LABEL_KEY: "s1"})
+        convs.rows[hidden.id] = hidden
+        await record.note_message(convs, hidden, "f" * 32, msg, None, turn_running=False)
+        system = record.RelayRound(hidden.id, convs)
+        await system.observe({"type": "response.in_progress"})
+        await system.observe({"type": "response.completed"})
+        await record.RECORDER.idle()
 
     asyncio.run(run())
-    events = store.events(item)
+    events = store.events(item)[:15]
     assert [(e["kind"], e["actor"]) for e in events] == [
         ("round.opened", "person"),
         ("turn.started", "assistant"),
@@ -608,6 +623,21 @@ def test_a_round_is_written_from_the_message_the_relay_and_the_save(
     view = fold(events, item)
     assert view["status"] == "stopped" and view["ask"] == "Make a deck."
     assert [f["name"] for f in view["files"]] == ["deck"]
+    assert len(journaled) == 1 and journaled[0][0] == root
+    entry = journaled[0][1]
+    assert entry == record.journal_entry(item, view)
+    keys = ("round_id", "ask", "outcome", "stopped", "files", "helpers")
+    assert {k: entry[k] for k in keys} == {
+        "round_id": item,
+        "ask": "Make a deck.",
+        "outcome": "On it.",
+        "stopped": True,
+        "files": ["deck"],
+        "helpers": ["Deck"],
+    }
+    assert entry["refs"] == {"artifacts": ["v1@v1"], "project": [], "helpers": [helper_id]}
+    hidden_view = fold(store.events("f" * 32))
+    assert hidden_view["hidden"] is True and hidden_view["settled_at"] is not None
     assert convs.rows[helper_id].labels[ROUND_LABEL_KEY] == item
     # A scheduled Helper and a file's studio are not in their parent's Round.
     assert record.helper_labels(IN_ROUND, {SCHEDULED_HELPER_LABEL_KEY: "s1"}) == {}
