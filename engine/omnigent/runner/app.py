@@ -557,7 +557,7 @@ def _get_runner_llm_client() -> LLMClient:
 # to dispatch locally. See designs/RUNNER_MCP.md §Explicit dispatch
 # marker.
 _RUNNER_DISPATCHED_FIELD = "omnigent_runner_dispatched"
-#: Longest a turn waits on the session's Claude CLI pre-launch; past it the pre-launch is
+#: Longest a turn waits on the session's harness pre-launch; past it the pre-launch is
 #: stopped and the turn launches the CLI itself, so a hung one never costs more than this.
 _PRELAUNCH_WAIT_SECONDS = 3.0
 #: A turn's setup (before the prefix) slower than this logs where its time went.
@@ -3910,7 +3910,7 @@ def create_runner_app(
             )
 
         _session_start_cache.setdefault(session_id, time.time())
-        if harness_name == "claude-sdk" and spec is not None:
+        if harness_name in ("claude-sdk", "pi") and spec is not None:
             _harness_prelaunches[session_id] = asyncio.create_task(
                 _prelaunch_harness(
                     session_id, harness_client, harness_name, _model_override, agent_id
@@ -7433,8 +7433,8 @@ def create_runner_app(
                 },
             )
 
-    #: The Claude CLI launched at session init, by session (ADR 0026: cold start is paid before
-    #: the person speaks). A turn waits for it before posting, so its message never lands inside
+    #: The harness's agent (the Claude CLI, the Pi process) launched at session init, by session
+    #: (ADR 0026: cold start is paid before the person speaks). A turn waits for it before posting, so its message never lands inside
     #: the launch.
     _harness_prelaunches: dict[str, asyncio.Task[None]] = {}
 
@@ -7447,8 +7447,9 @@ def create_runner_app(
     ) -> None:
         """Post an empty first message carrying what the session's turns will send.
 
-        The executor launches its CLI for it and answers nothing; a first turn whose options
-        differ relaunches, and any failure here leaves the first turn to launch it as before.
+        The executor launches its CLI (Claude) or process (Pi) for it and answers nothing; a
+        first turn whose options differ relaunches, and any failure here leaves the first turn
+        to launch it as before.
         """
         try:
             entry = _session_spec_cache.get(conv)
@@ -7481,6 +7482,10 @@ def create_runner_app(
                 supported = efforts_for_harness(harness_name)
                 if supported is None or reasoning["effort"] in supported:
                     body["reasoning"] = reasoning
+            if conv in _active_turns:
+                # The first turn came during init and launches it itself; an empty message now
+                # would land in that turn as a steer.
+                return
             started = time.monotonic()
             try:
                 async with client.stream(
@@ -7513,7 +7518,7 @@ def create_runner_app(
             )
 
     async def _await_harness_prelaunch(conv_id: str) -> None:
-        """Wait for the session's CLI pre-launch, if one is still running."""
+        """Wait for the session's harness pre-launch, if one is still running."""
         prelaunch = _harness_prelaunches.pop(conv_id, None)
         if prelaunch is None or prelaunch.done():
             return

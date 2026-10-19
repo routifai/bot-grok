@@ -2564,15 +2564,6 @@ class PiExecutor(Executor):
             yield ExecutorError(message=f"Failed to start Pi: {exc}")
             return
 
-        turn_state = self._session_states.get(session_key)
-        if turn_state is not None:
-            try:
-                await self._apply_thinking_level(
-                    turn_state, rpc, thinking, spawned=rpc is not prior_rpc
-                )
-            except Exception as exc:  # noqa: BLE001 — executor boundary: an effort failure must not sink the turn
-                logger.warning("PiExecutor: could not apply thinking level: %s", exc)
-
         # Build the prompt to send to Pi.  On the first turn of a new Pi
         # process, if there are prior messages (e.g. parent history passed
         # to a sub-agent), we serialize the full conversation so Pi has
@@ -2584,10 +2575,22 @@ class PiExecutor(Executor):
         prompt = _build_pi_prompt(messages, is_first_turn=is_first_turn)
 
         if not prompt:
-            # No prompt built (e.g. empty message list on a resumed session) —
-            # end the turn with no assistant text rather than fabricating one.
+            # No prompt built (a resumed session with nothing new, or the runner launching
+            # Pi ahead of the first turn, ADR 0026) — end the turn with no assistant text.
+            # Pi boots in the background meanwhile; a fresh spawn's thinking level is checked
+            # by the turn that speaks, so this one never waits on the boot.
+            if state is not None and rpc is not prior_rpc:
+                state.applied_thinking = None
             yield TurnComplete(response=None)
             return
+
+        if state is not None:
+            try:
+                await self._apply_thinking_level(
+                    state, rpc, thinking, spawned=rpc is not prior_rpc
+                )
+            except Exception as exc:  # noqa: BLE001 — executor boundary: an effort failure must not sink the turn
+                logger.warning("PiExecutor: could not apply thinking level: %s", exc)
 
         if state is not None:
             state._has_sent_prompt = True

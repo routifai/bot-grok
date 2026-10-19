@@ -216,6 +216,10 @@ class ExecutorAdapter(HarnessApp):
         # matching the key used by enqueue_session_message (steering delivery depends on this).
         for message in messages:
             message["session_id"] = self._session_key
+        if not messages:
+            # An empty message (the runner launching the harness ahead of the first turn,
+            # ADR 0026) still names the session, so what it launches is keyed as the turns are.
+            messages = [{"role": "user", "content": "", "session_id": self._session_key}]
         extra: dict[str, Any] = {}
         if request.reasoning is not None:
             effort = request.reasoning.get("effort")
