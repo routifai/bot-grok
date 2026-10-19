@@ -561,10 +561,18 @@ def test_a_round_is_written_from_the_message_the_relay_and_the_save(
     """A person's message opens the Round, its Helper inherits it, the relayed streams of both
     become events in order, the save and the Stop are recorded, each stored batch is handed on,
     and the fold reads them back. The Helper the Stop interrupts reads stopped though its
-    executor called the turn done, and its late wake is a stopped Round's."""
+    executor called the turn done, and its late wake is a stopped Round's. The Stop settles it:
+    one journal entry, never a second, and none for a hidden Round."""
     store = SqlAlchemyRoundStore(db_uri)
     written: list[Any] = []
-    monkeypatch.setattr(record, "RECORDER", record.Recorder(store, on_written=written.extend))
+    journaled: list[tuple[str, dict[str, Any]]] = []
+
+    async def sink(conversation_id: str, entry: dict[str, Any]) -> None:
+        journaled.append((conversation_id, entry))
+
+    monkeypatch.setattr(
+        record, "RECORDER", record.Recorder(store, on_written=written.extend, on_settled=sink)
+    )
     root = "a" * 32
     item = "b" * 32
     helper_id = "c" * 32
@@ -606,9 +614,18 @@ def test_a_round_is_written_from_the_message_the_relay_and_the_save(
         assert not await record.stopped_wake(convs, convs.rows[root], msg, None)
         assert record.RECORDER is not None
         await record.RECORDER.idle()
+        await helper.observe({"type": "response.in_progress"})  # settled: a late turn ends
+        await helper.observe({"type": "response.cancelled"})
+        hidden = _row("e" * 32, {**SUPER, SCHEDULED_FIRE_LABEL_KEY: "s1"})
+        convs.rows[hidden.id] = hidden
+        await record.note_message(convs, hidden, "f" * 32, msg, None, turn_running=False)
+        system = record.RelayRound(hidden.id, convs)
+        await system.observe({"type": "response.in_progress"})
+        await system.observe({"type": "response.completed"})
+        await record.RECORDER.idle()
 
     asyncio.run(run())
-    events = store.events(item)
+    events = store.events(item)[:14]
     assert [(e["kind"], e["actor"]) for e in events] == [
         ("round.opened", "person"),
         ("turn.started", "assistant"),
@@ -626,12 +643,28 @@ def test_a_round_is_written_from_the_message_the_relay_and_the_save(
         ("helper.finished", "helper"),
     ]
     assert [e["seq"] for e in events] == list(range(1, 15))
-    assert [e.kind for e in written] == [e["kind"] for e in events]  # handed on once stored
+    stored = [e["kind"] for e in store.events(item)]
+    assert [e.kind for e in written if e.round_id == item] == stored  # handed on once stored
     assert events[2]["text"] == "On it." and events[5]["digest"] == "title=Deck"
     assert events[13]["status"] == "stopped" and events[13]["helper_id"] == helper_id
     view = fold(events, item)
     assert view["status"] == "stopped" and view["ask"] == "Make a deck."
     assert [f["name"] for f in view["files"]] == ["deck"]
+    assert len(journaled) == 1 and journaled[0][0] == root
+    entry = journaled[0][1]
+    assert entry == record.journal_entry(item, view)
+    keys = ("round_id", "ask", "outcome", "stopped", "files", "helpers")
+    assert {k: entry[k] for k in keys} == {
+        "round_id": item,
+        "ask": "Make a deck.",
+        "outcome": "On it.",
+        "stopped": True,
+        "files": ["deck"],
+        "helpers": ["Deck"],
+    }
+    assert entry["refs"] == {"artifacts": ["v1@v1"], "project": [], "helpers": [helper_id]}
+    hidden_view = fold(store.events("f" * 32))
+    assert hidden_view["hidden"] is True and hidden_view["settled_at"] is not None
     assert convs.rows[helper_id].labels[ROUND_LABEL_KEY] == item
     # A scheduled Helper and a file's studio are not in their parent's Round.
     assert record.helper_labels(IN_ROUND, {SCHEDULED_HELPER_LABEL_KEY: "s1"}) == {}

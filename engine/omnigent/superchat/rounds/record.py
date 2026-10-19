@@ -1,4 +1,4 @@
-"""Write a Round's events where the engine sees each fact (ADR 0029).
+"""Write a Round's events where the engine sees each fact (ADR 0029), and journal it once settled.
 
 * :func:`assign_round` is the one rule for which Round a stored message belongs to.
 * :class:`Recorder` appends events in order on a background task: a write never blocks the
@@ -12,6 +12,10 @@
 * :func:`stop_round` is Stop: it picks the Round the person stops, records ``stop.requested``
   and returns the Stop line; :func:`stopped_wake` tells a Helper's late notice of a stopped
   Round from one that may still start a turn.
+* Settlement is detected where the settling events are written: after the :class:`Recorder`
+  stored a ``turn.ended``, ``helper.finished`` or ``stop.requested``, it folds that Round and,
+  the first time the fold says settled, hands :func:`journal_entry` of the view to its
+  ``on_settled`` sink (the Round's one journal entry, written in the host).
 
 Only Superchat sessions are recorded; a session outside a Round records nothing.
 """
@@ -24,8 +28,9 @@ import json
 import logging
 import re
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 from omnigent.context.labels import (
@@ -35,6 +40,7 @@ from omnigent.context.labels import (
     is_superside_chat,
 )
 from omnigent.context.tool_digest import short_arguments
+from omnigent.entities.session_project import project_slug_from_workspace
 from omnigent.runner.tool_starts import STOPPED_OUTPUT
 from omnigent.superchat.rounds.fold import (
     ASSISTANT,
@@ -60,7 +66,7 @@ from omnigent.superchat.rounds.fold import (
     fold,
 )
 from omnigent.superchat.rounds.store import RoundEvent, SqlAlchemyRoundStore
-from omnigent.superchat.titles import clip
+from omnigent.superchat.titles import clip, one_line_summary
 
 _logger = logging.getLogger(__name__)
 
@@ -84,6 +90,16 @@ _CHECKLIST_CREATE, _CHECKLIST_UPDATE = "TaskCreate", "TaskUpdate"
 _TASK_NUMBER = re.compile(r"#(\d+)")
 #: The tool whose arguments are the follow-up chips.
 _CHIPS_TOOL = "suggest_follow_ups"
+#: Events after which a Round may have settled; the fold decides.
+_SETTLING = frozenset({TURN_ENDED, HELPER_FINISHED, STOP_REQUESTED})
+#: Longest ask kept in a journal entry.
+ASK_LIMIT = 120
+#: Settled Rounds remembered, so a late event does not fold a settled Round again.
+_SETTLED_KEPT = 4096
+_IN_WORKSPACE = re.compile(r"(?:^|/)workspace/(.+)$")
+
+#: ``(conversation id, journal entry) -> None``: where a settled Round's entry goes.
+Settled = Callable[[str, dict[str, Any]], Awaitable[None]]
 
 
 @dataclass(frozen=True)
@@ -147,6 +163,47 @@ def assign_round(
     return Assignment(item_id, opened=True)
 
 
+def journal_entry(round_id: str, view: Mapping[str, Any]) -> dict[str, Any] | None:
+    """The journal entry of a settled Round, built only from its view (:func:`fold`).
+
+    :returns: ``round_id``, ``date`` (the settlement's, UTC), ``ask`` (the first line of the
+        person's message, clipped), ``outcome`` (the first sentence of the last Assistant
+        text), ``stopped``, ``files`` (names), ``helpers`` (titles), ``folder`` (the Helpers'
+        folders), ``seconds`` and ``refs``; ``None`` for a Round not settled or hidden (a run no
+        person started writes no entry).
+    """
+    if view.get("settled_at") is None or view.get("hidden"):
+        return None
+    asked = [line.strip() for line in str(view.get("ask") or "").splitlines() if line.strip()]
+    said = [w for w in view.get("words") or [] if w.strip()]
+    helpers = list(view["helpers"].values())
+    folders = list(dict.fromkeys(h["folder"] for h in helpers if h.get("folder")))
+    shown = [m.group(1) if (m := _IN_WORKSPACE.search(f)) else f for f in folders]
+    files = [f for f in view["files"] if f.get("name")]
+    return {
+        "round_id": round_id,
+        "date": f"{datetime.fromtimestamp(view['settled_at'], UTC):%Y-%m-%d}",
+        "ask": clip(asked[0], ASK_LIMIT) if asked else "",
+        "outcome": (one_line_summary(said[-1]) or "") if said else "",
+        "stopped": view["status"] == "stopped",
+        "files": [f["name"] for f in files],
+        "helpers": [h["title"] for h in helpers if h.get("title")],
+        "folder": ", ".join(shown),
+        "seconds": view["elapsed"],
+        "refs": {
+            "artifacts": [
+                f"{f['artifact_id']}@v{f['version']}"
+                for f in files
+                if f.get("artifact_id") and f.get("version")
+            ],
+            "project": list(
+                dict.fromkeys(p for f in folders if (p := project_slug_from_workspace(f)))
+            ),
+            "helpers": [h["id"] for h in helpers],
+        },
+    }
+
+
 class Recorder:
     """Appends Round events in order on one background task; never blocks, never raises."""
 
@@ -154,14 +211,20 @@ class Recorder:
         self,
         store: SqlAlchemyRoundStore,
         on_written: Callable[[Sequence[RoundEvent]], None] | None = None,
+        on_settled: Settled | None = None,
     ) -> None:
         """
         :param on_written: Called on the loop with each batch once it is stored.
+        :param on_settled: Given each settled Round's :func:`journal_entry`, once per Round in
+            this process; the writer it reaches keeps it once across processes too.
         """
         self._store = store
         self._on_written = on_written
         self._queue: list[RoundEvent] = []
         self._drain: asyncio.Task[None] | None = None
+        self._on_settled = on_settled
+        self._settled: dict[str, None] = {}
+        self._journals: set[asyncio.Task[None]] = set()
         #: ``(round, actor, helper) -> [first chunk ms, conversation, chunks]`` not yet queued.
         self._words: dict[tuple[str, str, str | None], list[Any]] = {}
 
@@ -220,6 +283,7 @@ class Recorder:
                     self._on_written(batch)
                 except Exception:
                     _logger.warning("round events stored, not announced", exc_info=True)
+            await self._settle(batch)
 
     async def view(self, round_id: str) -> dict[str, Any]:
         """The Round's view, folded from its stored events once every queued one is written."""
@@ -227,12 +291,49 @@ class Recorder:
         events = await asyncio.to_thread(self._store.events, round_id)
         return fold(events, round_id)
 
+    async def _settle(self, batch: list[RoundEvent]) -> None:
+        """Fold each Round a settling event of *batch* is in; journal the newly settled ones."""
+        if self._on_settled is None:
+            return
+        maybe = {
+            e.round_id: e.conversation_id
+            for e in batch
+            if e.kind in _SETTLING and e.round_id not in self._settled
+        }
+        for round_id, conversation_id in maybe.items():
+            try:
+                view = fold(await asyncio.to_thread(self._store.events, round_id), round_id)
+            except Exception:
+                _logger.warning("round %s not folded", round_id, exc_info=True)
+                continue
+            if view["settled_at"] is None:
+                continue
+            self._settled[round_id] = None
+            while len(self._settled) > _SETTLED_KEPT:
+                del self._settled[next(iter(self._settled))]
+            entry = journal_entry(round_id, view)
+            if entry is not None:
+                task = asyncio.get_running_loop().create_task(
+                    _journal(self._on_settled, conversation_id, entry)
+                )
+                self._journals.add(task)
+                task.add_done_callback(self._journals.discard)
+
     async def idle(self) -> None:
-        """Wait until every queued event is written (for tests and shutdown)."""
+        """Wait until every queued event is written and every entry journaled (tests, shutdown)."""
         for round_id in {k[0] for k in self._words}:
             self._flush_words(round_id)
         while self._drain is not None and not self._drain.done():
             await asyncio.shield(self._drain)
+        if self._journals:
+            await asyncio.gather(*self._journals)
+
+
+async def _journal(sink: Settled, conversation_id: str, entry: dict[str, Any]) -> None:
+    try:
+        await sink(conversation_id, entry)
+    except Exception:
+        _logger.warning("round %s not journaled", entry["round_id"], exc_info=True)
 
 
 #: The engine's recorder, set when the rounds feature is installed; ``None`` records nothing.

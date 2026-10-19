@@ -103,10 +103,10 @@ async def test_superside_chat_wake_inlines_result(_no_wake_backoff: list[float])
 
 
 @pytest.mark.asyncio
-async def test_a_delivered_helper_result_adds_one_journal_line(
+async def test_a_delivered_helper_result_adds_no_journal_line(
     _no_wake_backoff: list[float], _isolated_knowledge_workspace: Path
 ) -> None:
-    """The line names the Helper, its outcome and session id, never the Result text."""
+    """The Round's one journal entry names the Helper (ADR 0029); the wake itself writes none."""
     from omnigent.runner import app as runner_app
 
     parent_id = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"
@@ -124,22 +124,17 @@ async def test_a_delivered_helper_result_adds_one_journal_line(
         title="auth",
         superside_chat=True,
     )
-    journal_dir = _isolated_knowledge_workspace / "memory" / "journal"
     try:
         async with _runner_client(app):
             _complete_child(app, child_id, "FINDINGS: the vault key rotated on March 3.")
             deadline = asyncio.get_running_loop().time() + 5.0
-            while not list(journal_dir.glob("*.md")):
+            while not server_client.posts:
                 if asyncio.get_running_loop().time() > deadline:
-                    raise AssertionError("no journal line within 5s")
+                    raise AssertionError("no wake POST observed within 5s")
                 await asyncio.sleep(0.01)
+            await asyncio.sleep(0.05)
 
-        (day_file,) = journal_dir.glob("*.md")
-        lines = [ln for ln in day_file.read_text().splitlines() if ln.startswith("- ")]
-        assert len(lines) == 1
-        assert f'Helper "auth" completed (session {child_id})' in lines[0]
-        assert f"main <!-- {parent_id} helpers:{child_id} -->" in lines[0]
-        assert "vault key" not in lines[0]
+        assert not list((_isolated_knowledge_workspace / "memory" / "journal").glob("*.md"))
     finally:
         runner_app.unregister_subagent_work(child_id)
         runner_app._session_inboxes_ref.pop(parent_id, None)

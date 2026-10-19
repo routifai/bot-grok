@@ -6049,7 +6049,6 @@ def create_runner_app(
         created_by: str | None,
         *,
         is_rewake: bool = False,
-        journal_result: tuple[str, str] | None = None,
     ) -> None:
         delivered = await _deliver_subagent_wake_post(
             server_client, parent_id, notice, created_by=created_by, helper_id=child_id
@@ -6059,16 +6058,6 @@ def create_runner_app(
             _stranded_wake_parents.discard(parent_id)
             if is_rewake:
                 _last_rewake_notice[parent_id] = notice
-            elif journal_result is not None:
-                from omnigent.runner.memory.sync import record_helper_result
-
-                await record_helper_result(
-                    server_client,
-                    parent_id,
-                    title=journal_result[0],
-                    outcome=journal_result[1],
-                    session_id=child_id,
-                )
         else:
             _subagent_wake_pending.discard(parent_id)
             _stranded_wake_parents.add(parent_id)
@@ -6129,7 +6118,6 @@ def create_runner_app(
                 entry.child_session_id,
                 entry.created_by,
                 is_rewake=is_rewake,
-                journal_result=(entry.title, entry.status) if entry.superside_chat else None,
             )
         )
         _wake_task.add_done_callback(_background_tasks.discard)
