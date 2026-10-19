@@ -19,7 +19,6 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import os
-import re
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from pydantic import BaseModel, Field
@@ -53,7 +52,6 @@ MUSE_KEY_LABEL_KEY = "omnigent.superchat.muse.key"
 
 #: Candidates read per lookup; normally one, more only if labels were copied by hand.
 _LOOKUP_LIMIT = 10
-_SWITCH_SUFFIX_RE = re.compile(r" \(switch [^)]*\)$")
 
 
 class MuseResponse(BaseModel):
@@ -89,11 +87,6 @@ def muse_key(user_id: str, tenant: str | None) -> str:
 
 #: A new Super Chat's session id is its key.
 muse_session_id = muse_key
-
-
-def _agent_name(raw: str) -> str:
-    """A bound agent's display name (a switch clone is named ``"<name> (switch ag_…)"``)."""
-    return _SWITCH_SUFFIX_RE.sub("", raw)
 
 
 def find_super_chat(
@@ -155,7 +148,7 @@ def register_muse_routes(
 
     async def _current_agent(conv: Conversation) -> str:
         agent = await asyncio.to_thread(agent_store.get, conv.agent_id) if conv.agent_id else None
-        return _agent_name(agent.name) if agent is not None else ""
+        return agent.name if agent is not None else ""
 
     async def _found(conv: Conversation) -> MuseResponse:
         return MuseResponse(session_id=conv.id, agent=await _current_agent(conv), created=False)

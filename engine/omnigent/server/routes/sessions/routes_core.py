@@ -3300,13 +3300,23 @@ def register_core_routes(
                 code=ErrorCode.NOT_FOUND,
             )
 
-        # Reject a no-op switch to the built-in the session is already running:
-        # its session-scoped clone shares the built-in's ``bundle_location``, so
-        # switching would delete + re-clone the same agent and tear the terminal
-        # down for nothing. The contract is that the target differs from the
-        # current agent; the picker already hides the current one, so this only
-        # guards a direct API call.
-        if target_agent.bundle_location == current_agent.bundle_location:
+        # The built-in the session runs now: the bound agent itself, or — for a
+        # fork's session-scoped copy — the built-in its bundle was copied from.
+        # Offered to the UI as a one-click "Switch back" (None → none offered).
+        if current_agent.session_id is None:
+            previous_builtin_id: str | None = current_agent.id
+        else:
+            source = await asyncio.to_thread(
+                agent_store.get, current_agent.bundle_location.split("/", 1)[0]
+            )
+            previous_builtin_id = (
+                source.id if source is not None and source.session_id is None else None
+            )
+
+        # Reject a no-op switch to the built-in the session is already running
+        # (it would tear the terminal down for nothing). The picker already
+        # hides the current one, so this only guards a direct API call.
+        if target_agent.id == previous_builtin_id:
             raise OmnigentError(
                 "Session is already running this agent — pick a different one.",
                 code=ErrorCode.INVALID_INPUT,
@@ -3350,35 +3360,13 @@ def register_core_routes(
             _same_provider_family, current_agent, target_agent
         )
 
-        # Resolve the built-in the session is leaving so the UI can offer a
-        # one-click "Switch back". The current agent is a session-scoped clone
-        # whose bundle_location was copied verbatim from its source built-in,
-        # so match on that. Page through the full template-agent list (not a
-        # single bounded scan) so the match isn't missed when there are many
-        # built-ins. Best-effort: None when no built-in matches (e.g. its
-        # source built-in was removed) → no switch-back offered.
-        previous_builtin_id: str | None = None
-        _after: str | None = None
-        while True:
-            _page = await asyncio.to_thread(agent_store.list, 100, _after)
-            previous_builtin_id = next(
-                (a.id for a in _page.data if a.bundle_location == current_agent.bundle_location),
-                None,
-            )
-            if previous_builtin_id is not None or not _page.has_more or not _page.data:
-                break
-            _after = _page.last_id
-
-        cloned_agent_id = generate_agent_id()
-        cloned_agent_name = f"{target_agent.name} (switch {cloned_agent_id[:10]})"
+        # Bind the built-in itself, as a new session does: a per-session copy
+        # would freeze its bundle and miss every later refresh of the built-in.
         try:
             updated = await asyncio.to_thread(
                 conversation_store.switch_conversation_agent,
                 session_id,
-                new_agent_id=cloned_agent_id,
-                new_agent_name=cloned_agent_name,
-                new_agent_bundle_location=target_agent.bundle_location,
-                new_agent_description=target_agent.description,
+                new_agent_id=target_agent.id,
                 copy_model_settings=copy_model_settings,
                 presentation_labels={},
                 previous_builtin_id=previous_builtin_id,
@@ -3410,10 +3398,7 @@ def register_core_routes(
         switch_event = SessionAgentChangedEvent(
             type="session.agent_changed",
             conversation_id=session_id,
-            agent_id=cloned_agent_id,
-            # Clean target name, not the clone row's "<name> (switch ag_…)":
-            # the suffix only disambiguates agent rows; clients render
-            # agent_name verbatim (same choice as the session snapshot).
+            agent_id=target_agent.id,
             agent_name=target_agent.name,
         )
         # Access session_stream through the facade so monkeypatches on

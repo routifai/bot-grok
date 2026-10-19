@@ -4915,15 +4915,12 @@ class SqlAlchemyConversationStore(ConversationStore):
         conversation_id: str,
         *,
         new_agent_id: str,
-        new_agent_name: str,
-        new_agent_bundle_location: str,
-        new_agent_description: str | None,
         copy_model_settings: bool,
         presentation_labels: dict[str, str],
         previous_builtin_id: str | None,
     ) -> Conversation:
         """
-        Rebind a session in place to a different (cloned) agent.
+        Rebind a session in place to a different built-in agent.
 
         See :meth:`ConversationStore.switch_conversation_agent` for the
         full contract. The AP binding and label phase commits before the
@@ -4931,10 +4928,7 @@ class SqlAlchemyConversationStore(ConversationStore):
         independently because the two databases cannot share a commit.
 
         :param conversation_id: Session to switch, e.g. ``"conv_abc123"``.
-        :param new_agent_id: Pre-generated id for the new agent row.
-        :param new_agent_name: Name for the new agent row.
-        :param new_agent_bundle_location: Artifact-store key to clone.
-        :param new_agent_description: Optional spec description.
+        :param new_agent_id: Id of the built-in agent to bind.
         :param copy_model_settings: Keep model settings when ``True``,
             else reset to ``None`` (cross-family switch).
         :param presentation_labels: Target-harness ui/wrapper labels.
@@ -4957,7 +4951,6 @@ class SqlAlchemyConversationStore(ConversationStore):
         upserts: dict[str, str] = dict(presentation_labels)
         if previous_builtin_id is not None:
             upserts[SWITCH_PREVIOUS_BUILTIN_LABEL_KEY] = previous_builtin_id
-        encoded_agent_kind = encode_agent_kind("session")
 
         # AP holds the conversation (agent binding + overrides) + labels;
         # Omnigent holds agent+metadata. Read old_agent_id before overwriting it.
@@ -5010,24 +5003,6 @@ class SqlAlchemyConversationStore(ConversationStore):
                 old_agent = session.get(SqlAgent, (current_workspace_id(), old_agent_id))
                 if old_agent is not None and old_agent.kind == encode_agent_kind("session"):
                     session.delete(old_agent)
-                    session.flush()
-
-            session.add(
-                # created_by is left unset. A switch only binds a vetted
-                # built-in, and an unowned session-scoped agent is admin-only to
-                # mutate (see require_agent_owner), so a shared editor who
-                # switches cannot then edit the replacement. Assigning the
-                # session owner here is left to a full switch implementation.
-                SqlAgent(
-                    id=new_agent_id,
-                    created_at=now,
-                    name=new_agent_name,
-                    bundle_location=new_agent_bundle_location,
-                    version=1,
-                    kind=encoded_agent_kind,
-                    description=new_agent_description,
-                )
-            )
 
             meta_query = select(SqlConversationMetadata).where(
                 SqlConversationMetadata.workspace_id == current_workspace_id(),
@@ -5057,6 +5032,67 @@ class SqlAlchemyConversationStore(ConversationStore):
         if conv is None:
             raise LookupError(f"conversation not found: {conversation_id!r}")
         return conv
+
+    def rebind_switch_clones(self) -> int:
+        """See :meth:`ConversationStore.rebind_switch_clones`."""
+        session_kind = encode_agent_kind("session")
+        with self._session("rebind_switch_clones") as session:
+            # A copy is named "<built-in name> (switch ag_…)".
+            source_names = {
+                clone_id: name.rsplit(" (switch ", 1)[0]
+                for clone_id, name in session.execute(
+                    select(SqlAgent.id, SqlAgent.name).where(
+                        SqlAgent.workspace_id == current_workspace_id(),
+                        SqlAgent.kind == session_kind,
+                        SqlAgent.name.like("% (switch %)"),
+                    )
+                ).all()
+            }
+            builtin_ids = dict(
+                session.execute(
+                    select(SqlAgent.name, SqlAgent.id).where(
+                        SqlAgent.workspace_id == current_workspace_id(),
+                        SqlAgent.kind == encode_agent_kind("template"),
+                        SqlAgent.name.in_(set(source_names.values())),
+                    )
+                ).all()
+            )
+        targets = {
+            clone_id: builtin_ids[name]
+            for clone_id, name in source_names.items()
+            if name in builtin_ids
+        }
+        if not targets:
+            return 0
+
+        # AP first: once no session points at a copy, deleting it is safe.
+        def rebind(ap_sess: Session) -> int:
+            moved = 0
+            for clone_id, builtin_id in targets.items():
+                result = ap_sess.execute(
+                    update(SqlConversation)
+                    .where(
+                        SqlConversation.workspace_id == current_workspace_id(),
+                        SqlConversation.agent_id == clone_id,
+                    )
+                    .values(agent_id=builtin_id)
+                )
+                moved += result.rowcount or 0
+            return moved
+
+        moved = run_write_transaction(self._conv_session_immediate, "rebind_switch_clones", rebind)
+
+        def drop_clones(session: Session) -> None:
+            session.execute(
+                delete(SqlAgent).where(
+                    SqlAgent.workspace_id == current_workspace_id(),
+                    SqlAgent.id.in_(list(targets)),
+                    SqlAgent.kind == session_kind,
+                )
+            )
+
+        run_write_transaction(self._session_immediate, "drop_switch_clones", drop_clones)
+        return moved
 
     def has_other_live_session_in_workspace(
         self,
