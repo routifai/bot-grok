@@ -48,6 +48,7 @@ from omnigent.context.labels import (
     ARTIFACT_CHAT_LABEL_KEY,
     CONTEXT_MODE_LABEL,
     PAUSED_LABEL_KEY,
+    ROLLOVER_KEEP_TOKENS_LABEL,
     SCHEDULED_HELPER_LABEL_KEY,
     SUBAGENT_DISPATCH_ID_LABEL_KEY,
     SUBAGENT_LABEL_KEY,
@@ -4426,25 +4427,31 @@ def create_runner_app(
 
         Reads from the latest checkpoint's anchor on, not from item 1 (see
         ``iter_items_from_checkpoint``); the record before it stays reachable
-        through ``session_history``. With *keep_tokens*, only the newest whole
-        turns after the checkpoint that fit it are kept (the hard-limit trim).
-        *tail_tokens_out* receives the token count of the items after the
-        checkpoint, counted as the kept tail is (the idle-return size check).
+        through ``session_history``. Only the newest whole turns after the
+        checkpoint that fit *keep_tokens* are kept. A superside-chat session
+        always trims, to its kept-tail budget by default: this load is what a
+        relaunched harness replays, so it gets the checkpoint's summary plus the
+        recent turns, never the whole record since. *tail_tokens_out* receives
+        the token count of the items after the checkpoint, before the trim
+        (the idle-return size check).
         """
         from omnigent.context.labels import is_superside_chat
+        from omnigent.context.rollover import resolve_keep_tokens
         from omnigent.superchat.rollover import (
             ItemsPageFetchError,
             iter_items_from_checkpoint,
         )
 
+        rollover_labels = await _rollover_labels_for_session(session_id)
+        superside = is_superside_chat(rollover_labels)
+        if superside and keep_tokens is None:
+            keep_tokens = resolve_keep_tokens(rollover_labels)
         all_items: list[_JsonObject] = []
         try:
             async for page_items in iter_items_from_checkpoint(
                 server_client,
                 session_id,
-                skip_placeholders=is_superside_chat(
-                    await _rollover_labels_for_session(session_id)
-                ),
+                skip_placeholders=superside,
             ):
                 all_items.extend(page_items)
                 last_id = page_items[-1].get("id")
@@ -6262,10 +6269,11 @@ def create_runner_app(
         """
         if labels is None:
             return
-        # Fixed at creation: the mode, and the file a studio session edits (ADR 0024).
+        # Fixed at creation: the mode, the kept-tail budget, and the file a studio
+        # session edits (ADR 0024).
         _session_rollover_labels_cache[session_id] = {
             key: labels[key]
-            for key in (CONTEXT_MODE_LABEL, ARTIFACT_CHAT_LABEL_KEY)
+            for key in (CONTEXT_MODE_LABEL, ROLLOVER_KEEP_TOKENS_LABEL, ARTIFACT_CHAT_LABEL_KEY)
             if key in labels
         }
 
