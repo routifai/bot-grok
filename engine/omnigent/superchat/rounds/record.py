@@ -859,6 +859,20 @@ def _end_unturned(round_id: str, conversation_id: str, reason: str) -> None:
     _record(round_id, conversation_id, TURN_ENDED, ASSISTANT, status="failed", reason=reason)
 
 
+def turn_never_started(conversation_id: str) -> None:
+    """The server failed the turn a Round was waiting for before any runner ran it, so the
+    Round ends now, failed with reason :data:`NO_TURN`, instead of reading "working" until the
+    Sweep. A Round whose turn is relayed ends from its own stream. Never raises."""
+    try:
+        round_id = _WAITING.get(conversation_id)
+        live = _LIVE.get(conversation_id)
+        if round_id is None or (live is not None and live.round_id == round_id):
+            return
+        _end_unturned(round_id, conversation_id, NO_TURN)
+    except Exception:
+        _logger.warning("round of %s not settled after a failed turn", conversation_id, exc_info=True)
+
+
 async def reset_rounds(conversation_id: str) -> None:
     """A reset cleared the Conversation's context, so no turn will answer a Round of it still
     unsettled: each ends with ``turn.ended`` failed, reason :data:`RESET`. A Round with a Helper
