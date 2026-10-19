@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -17,6 +17,7 @@ from omnigent.db.utils import (
     make_named_managed_session_maker,
     run_write_transaction,
 )
+from omnigent.superchat.rounds.fold import ROUND_OPENED, WAKE
 
 #: Attempts at an append whose sequence numbers another writer took first.
 _APPEND_ATTEMPTS = 3
@@ -133,6 +134,36 @@ class SqlAlchemyRoundStore:
                     .limit(limit)
                 ).scalars()
             )
+
+    def item_rounds(self, conversation_id: str, item_ids: Sequence[str]) -> dict[str, str]:
+        """The Round each of *item_ids* opened or woke: ``{item id: round id}``.
+
+        A person's message that opened a Round is that Round's id; a Helper's notice is the
+        ``wake`` of the Round that Helper is in. Any other item is in neither.
+        """
+        if not item_ids:
+            return {}
+        wanted = set(item_ids)
+        with self._session("round_events_items") as session:
+            rows = session.execute(
+                select(SqlRoundEvent.round_id, SqlRoundEvent.kind, SqlRoundEvent.body).where(
+                    SqlRoundEvent.workspace_id == current_workspace_id(),
+                    SqlRoundEvent.conversation_id == conversation_id,
+                    or_(
+                        and_(
+                            SqlRoundEvent.kind == ROUND_OPENED,
+                            SqlRoundEvent.round_id.in_(list(wanted)),
+                        ),
+                        SqlRoundEvent.kind == WAKE,
+                    ),
+                )
+            ).all()
+        found: dict[str, str] = {}
+        for round_id, kind, body in rows:
+            item_id = round_id if kind == ROUND_OPENED else json.loads(body).get("item_id")
+            if item_id in wanted:
+                found[item_id] = round_id
+        return found
 
     def delete_conversation(self, conversation_id: str) -> None:
         """Drop every Round event of a deleted Conversation."""

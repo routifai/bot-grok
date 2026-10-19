@@ -25,7 +25,7 @@ class ContextBriefTool(Tool):
         """:returns: Human-readable description of the tool."""
         return (
             "What already exists on the subject of the person's message: what you made before, "
-            "open and recent tasks, earlier turns and notes, matching files and standing "
+            "work still running, earlier turns and notes, matching files and standing "
             "preferences. Built when the message arrived, so it returns at once. Call it first "
             "in a turn that will use tools."
         )

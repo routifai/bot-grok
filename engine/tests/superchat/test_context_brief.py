@@ -84,21 +84,16 @@ class _Sources:
             _artifact(3, "revenue.csv", origin="manual"),
             _artifact(4, "dana-notes.md", chat_id="helper_1"),
         ]
-        self.task_rows: list[dict[str, Any]] = [
+        self.round_rows: list[dict[str, Any]] = [
             {
-                "kind": "deck",
-                "title": "Q3 revenue review",
-                "status": "building",
-                "fields": {"look": "Pitch Deck", "file": "q3-revenue-review.deck.html"},
-                "artifact_group_ids": ["g1"],
-                "updated_at": DAY,
+                "round_id": "r2",
+                "ask": "A pricing page,\n tier B",
+                "helpers": [{"id": "h2", "title": "Pricing page"}],
             },
             {
-                "kind": "page",
-                "title": "Pricing",
-                "status": "done",
-                "fields": {"decision": "go with tier B"},
-                "updated_at": DAY,
+                "round_id": "r1",
+                "ask": "Build the Q3 revenue review deck",
+                "helpers": [{"id": "h1", "title": "Q3 deck"}, {"id": "h3", "title": None}],
             },
         ]
 
@@ -113,8 +108,8 @@ class _Sources:
     async def artifacts(self) -> list[dict[str, Any]]:
         return await self._read("artifacts", self.artifact_rows)
 
-    async def tasks(self, session_id: str) -> list[dict[str, Any]]:
-        return await self._read("tasks", self.task_rows)
+    async def rounds(self, session_id: str) -> list[dict[str, Any]]:
+        return await self._read("rounds", self.round_rows)
 
     async def plan(self, session_id: str, message: str) -> TurnPlan:
         plan = Plan(need=True, queries=(Query("q3 revenue"),))
@@ -175,16 +170,19 @@ async def test_every_part_renders_under_four_headings_fenced_as_data() -> None:
         "Earlier work and sources:",
         "Preferences:",
     ]
-    # Shares two words with the message, so first; the deck's look comes from its task.
+    # Shares two words with the message, so first.
     assert lines[3] == (
-        '- "Q3 revenue review" · deck v2 · look Pitch Deck · saved by the assistant 2026-09-21'
-        " · a" + "0" * 30 + "1"
+        '- "Q3 revenue review" · deck v2 · saved by the assistant 2026-09-21 · a' + "0" * 30 + "1"
     )
     assert any("revenue.csv" in line and "edited by the person" in line for line in lines)
     assert any("dana-notes.md" in line and "saved by a helper" in line for line in lines)
     assert not any("Garden" in line for line in lines)
-    assert '- building · deck "Q3 revenue review" · look Pitch Deck' in lines
-    assert '- done 2026-09-21 · page "Pricing" · decision: go with tier B' in lines
+    # The Rounds still working: what was asked and the Helpers on it, never a stale status.
+    assert '- working · asked "A pricing page, tier B" · helper "Pricing page"' in lines
+    assert (
+        '- working · asked "Build the Q3 revenue review deck" · helper "Q3 deck" · helper' in lines
+    )
+    assert not any("building" in line or "decision" in line for line in lines)
     # Dated pointers, never bodies; a file listed under sources is not repeated.
     assert any(line.startswith("- 2026-09-14 · conversation") for line in lines)
     assert "ASSISTANT SAID" not in text and "f_board@" not in text
@@ -197,12 +195,12 @@ async def test_every_part_renders_under_four_headings_fenced_as_data() -> None:
     assert "calls in the morning" not in text and "USD" not in text
 
 
-@pytest.mark.parametrize("missing", ["artifacts", "tasks", "plan", "recall", "files"])
+@pytest.mark.parametrize("missing", ["artifacts", "rounds", "plan", "recall", "files"])
 async def test_each_part_missing_in_turn_leaves_the_others(missing: str) -> None:
     text = (await Brief.build(CHAT, MESSAGE, _Sources(fail=missing))).render()
     present = {
         "artifacts": 'Q3 revenue review" · deck',
-        "tasks": "decision: go with tier B",
+        "rounds": 'helper "Pricing page"',
         "plan": "[p-revenue-units]",
         "recall": "· conversation ·",
         "files": "- file · revenue.xlsx",
@@ -223,7 +221,7 @@ async def test_a_slow_part_is_left_out_within_the_budget() -> None:
 
 async def test_nothing_found_says_so() -> None:
     sources = _Sources()
-    sources.artifact_rows, sources.task_rows = [], []
+    sources.artifact_rows, sources.round_rows = [], []
     sources.fail = "recall"
     sources.files = _empty  # type: ignore[method-assign]
     text = (await Brief.build(CHAT, "hello there, how are things", sources)).render()
@@ -238,7 +236,7 @@ def test_the_cap_holds_lines_and_characters() -> None:
     long = "revenue " * 40
     brief = Brief(
         made=tuple(f"- {long} {n}" for n in range(30)),
-        tasks=tuple(f"- open · deck {n}" for n in range(30)),
+        tasks=tuple(f'- working · asked "deck {n}"' for n in range(30)),
         earlier=tuple(f"- 2026-09-{n % 28 + 1:02d} · {long}" for n in range(30)),
         sources=("- file · a.pdf · 2 pages · f_a",),
         preferences=tuple(f"- [p-x{n}] {long}" for n in range(30)),
@@ -313,8 +311,10 @@ class _Engine(_Server):
     def __init__(self, **kw: Any) -> None:
         super().__init__(**kw)
         self.view: dict[str, Any] = {
-            "active": [{"kind": "deck", "title": "Q3 revenue review", "status": "open"}],
-            "done": [{"kind": "page", "title": "Pricing", "status": "done", "updated_at": DAY}],
+            "rounds": [
+                {"round_id": "r1", "ask": "Q3 revenue review", "helpers": [{"title": "Deck"}]},
+                "not a row",
+            ],
         }
 
     async def get(self, path: str, params: dict | None = None, timeout: float | None = None):
@@ -358,13 +358,12 @@ def index(monkeypatch: pytest.MonkeyPatch) -> _Search:
     return fake
 
 
-async def test_runner_sources_read_the_tasks_views_active_and_done_lists() -> None:
+async def test_runner_sources_read_the_views_working_rounds() -> None:
     engine = _Engine()
-    rows = await RunnerSources(engine).tasks(CHAT)  # type: ignore[arg-type]
-    assert [t["title"] for t in rows] == ["Q3 revenue review", "Pricing"]
-    # Until the view names its active list ``active``, ``tasks`` is read, and no ``done`` is fine.
+    rows = await RunnerSources(engine).rounds(CHAT)  # type: ignore[arg-type]
+    assert [r["round_id"] for r in rows] == ["r1"]
     engine.view = {"tasks": [{"kind": "deck", "title": "Old shape", "status": "open"}]}
-    assert [t["title"] for t in await RunnerSources(engine).tasks(CHAT)] == ["Old shape"]  # type: ignore[arg-type]
+    assert await RunnerSources(engine).rounds(CHAT) == []  # type: ignore[arg-type]
 
 
 async def test_the_runner_brief_end_to_end(index: _Search) -> None:
@@ -373,7 +372,8 @@ async def test_the_runner_brief_end_to_end(index: _Search) -> None:
     await turn_plan(engine, CHAT, MESSAGE, chat=chat)  # type: ignore[arg-type]
     text = (await Brief.build(CHAT, MESSAGE, RunnerSources(engine))).render()  # type: ignore[arg-type]
     assert len(chat.calls) == 1  # the brief reused the message's plan
-    assert '"Q3 revenue" · deck v2' in text and '- open · deck "Q3 revenue review"' in text
+    assert '"Q3 revenue" · deck v2' in text
+    assert '- working · asked "Q3 revenue review" · helper "Deck"' in text
     assert "- file · f_board.pdf · 4 pages · f_board" in text
     assert "· conversation ·" in text
     pull = [c for c in index.calls if "conversation" in c["sources"]]
@@ -387,7 +387,7 @@ async def test_with_recall_off_no_planner_and_no_recall_pull(index: _Search) -> 
     text = (await Brief.build(CHAT, MESSAGE, RunnerSources(engine))).render()  # type: ignore[arg-type]
     assert chat.calls == []
     assert all(c["sources"] == {"files"} for c in index.calls)  # files only, no recall pull
-    assert '"Q3 revenue" · deck v2' in text and "Pricing" in text and "- file · " in text
+    assert '"Q3 revenue" · deck v2' in text and "- working · " in text and "- file · " in text
     assert "· conversation ·" not in text
 
 

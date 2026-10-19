@@ -102,7 +102,7 @@ def _look_note(look: Look, written: bool) -> str:
 
 
 def _deck_record(look: Look, title: str, slides: object, target: Path | None) -> dict[str, Any]:
-    """What the tasks feature records about this deck (``deck`` in the result)."""
+    """What the result records about this deck (``deck``)."""
     count = slides.count('<section class="slide') if isinstance(slides, str) else 0
     record: dict[str, Any] = {
         "title": title.strip(),

@@ -12,7 +12,7 @@ import json
 
 import pytest
 
-from omnigent.context.labels import is_superside_chat
+from omnigent.context.labels import ROUND_LABEL_KEY, is_superside_chat
 from omnigent.entities import (
     Conversation,
     ConversationItem,
@@ -23,6 +23,7 @@ from omnigent.entities import (
 )
 from omnigent.superchat.activity.derive import (
     ITEMS_SCAN_LIMIT_ENV,
+    ROUND_IDS,
     STATUS_CANCELLED,
     STATUS_DONE,
     STATUS_FAILED,
@@ -272,6 +273,12 @@ def test_sub_agent_conversation_becomes_one_activity() -> None:
     [activity] = _activities_for_conversation(
         _FakeItemsStore(items), conv, include_step_detail=False
     )
+    assert activity.round_id is None
+    conv.labels[ROUND_LABEL_KEY] = "msg_round"  # started in a Round: the row is in it
+    [in_round] = _activities_for_conversation(
+        _FakeItemsStore(items), conv, include_step_detail=False
+    )
+    assert in_round.round_id == "msg_round"
     assert activity.kind == "sub_agent"
     assert activity.id == "sub_agent:conv_child"
     assert activity.title == "auth-flow"
@@ -488,7 +495,11 @@ def test_flagged_notice_without_the_legacy_prefix_is_still_system_started() -> N
     assert activities[0].title == "Here is the result"
 
 
-def test_turn_titled_by_request_stored_outside_its_response_group() -> None:
+def test_turn_titled_by_request_stored_outside_its_response_group(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The request carried forward names the turn, and the turn's row is in the Round its first
+    item is in (the rounds capability reads it from the record)."""
     conv = _conv(title="Main chat")
     items = [
         _msg("u1", "user", "check the Q4 totals", created_at=1, response_id="resp_user"),
@@ -500,6 +511,15 @@ def test_turn_titled_by_request_stored_outside_its_response_group() -> None:
         _FakeItemsStore(items), conv, include_step_detail=False
     )
     assert activities[0].title == "Check the Q4 totals"
+    assert activities[0].round_id is None  # no rounds capability: no Round
+
+    def read(conversation_id: str, item_ids: list[str]) -> list[str | None]:
+        assert conversation_id == conv.id and item_ids == ["u1", "fc1", "fo1", "a1"]
+        return ["u1"] * len(item_ids)  # the person's message opened the Round
+
+    monkeypatch.setitem(ROUND_IDS, "rounds", read)
+    [row] = _activities_for_conversation(_FakeItemsStore(items), conv, include_step_detail=False)
+    assert row.round_id == "u1"
 
 
 # ── model-written titles, sources, summaries ─────────────────────────────

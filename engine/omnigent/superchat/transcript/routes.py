@@ -29,7 +29,12 @@ from omnigent.superchat.artifacts.links import attach_links
 from omnigent.superchat.artifacts.store import SqlAlchemyArtifactStore
 from omnigent.superchat.family.tree import sub_agent_status
 from omnigent.superchat.lineage import session_lineage
-from omnigent.superchat.rounds.read import attach_round_files, round_files_on
+from omnigent.superchat.rounds.read import (
+    attach_round_files,
+    attach_round_ids,
+    item_rounds,
+    round_files_on,
+)
 from omnigent.superchat.rounds.store import SqlAlchemyRoundStore
 from omnigent.superchat.tasks.record import PlanViews, plan_reader
 from omnigent.superchat.transcript.blocks import helper_session_ids, project_items
@@ -79,8 +84,10 @@ def read_transcript(
     """One page of a session's transcript, oldest message first.
 
     :param plan_views: The tasks service's plan projection; without it a plan shows no states.
-    :param rounds: The Round record; with :data:`~omnigent.superchat.rounds.read.ROUND_FILES_ENV`
-        set, a Conversation's file cards are drawn from it (:func:`attach_round_files`).
+    :param rounds: The Round record: each message's ``round_id`` is read from it
+        (:func:`attach_round_ids`) and, with
+        :data:`~omnigent.superchat.rounds.read.ROUND_FILES_ENV` set, a Conversation's file
+        cards are drawn from it (:func:`attach_round_files`).
     :param artifacts: Where those cards' titles and sizes are read.
 
     Pages walk back from the newest items (``before`` is the ``older_cursor`` of the page
@@ -131,14 +138,15 @@ def read_transcript(
         plan_views=plan_views(conversation.id, items) if plan_views else None,
         conversation_id=conversation.id,
     )
+    if rounds is not None:
+        attach_round_ids(rounds, conv_store, conversation, items, messages)
     if rounds is not None and conversation.kind != "sub_agent" and round_files_on():
+        newer_round = item_rounds(rounds, conv_store, conversation.id, [newer]) if newer else []
         attach_round_files(
             rounds,
-            conv_store,
             conversation.id,
             messages,
-            first_item_id=items[0]["id"] if items else None,
-            newer_item_id=newer,
+            newer_round_id=newer_round[0] if newer_round else None,
             artifacts=artifacts,
         )
     return _page(
@@ -208,7 +216,9 @@ def register_transcript_routes(
             is whether a turn is in flight. A user message still waiting behind the running
             turn has ``delivered: "queued"`` (from the runner's live queue). A person's message
             linked to an artifact has ``artifact`` (``{artifact_id, name, version, how}``, or
-            ``None`` when the person said it is about none).
+            ``None`` when the person said it is about none). Every message has ``round_id``: the
+            Round it is in (the id of the person's message that opened it), ``None`` outside
+            any Round.
         :raises OmnigentError: 403 without READ; 404 if no session exists.
         """
         user_id = _get_user_id(request, auth_provider)

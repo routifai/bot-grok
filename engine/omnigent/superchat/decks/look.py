@@ -3,17 +3,18 @@
 ADR 0026 (amending ADR 0025): ``look_from`` is a record, never a gate. ``deck_new`` builds any
 valid ``template`` the model passed, whatever ``look_from`` says, and records ``look_from`` as
 given (one of :data:`LOOK_SOURCES`, else :data:`MODEL`). Only when ``template`` is missing does
-the engine settle it: the theme the person picked on the task's card (:data:`PICKED`, read from
+the engine settle it: the theme the person picked on the Round's card (:data:`PICKED`, read from
 the option id), else its own choice (:func:`choose_look`, from the topic and the person's taste,
 :data:`CHOSEN`), and the result says which look it used and why. Nothing here forces a second
-call. The look reaches the task on the ``deck_new`` event (``tasks`` never reads decks).
+call.
 
 The one refusal is :data:`HELPER_REFUSAL`: background work (a scheduled or ad-hoc Helper run, or
 a scheduled fire) with no template and no topic to choose from.
 
-The latest message, the card answer and the background flag come from the server's task view of
-the Conversation (a Helper's: the chat that started it), see :mod:`omnigent.superchat.tasks`; it
-is read only when there is no template.
+The latest message, the card answer the Round's message carried and the background flag come
+from the server's view of the Conversation (a Helper's: the chat that started it, and the Round
+it was started in), see :mod:`omnigent.superchat.tasks`; it is read only when there is no
+template.
 
 Limits: matching is on words, case-insensitive. A mood word in passing ("the tech team") counts
 as naming that mood.
@@ -62,7 +63,7 @@ HELPER_REFUSAL = (
 CHOSEN = "chosen"
 #: Recorded as ``look_from`` when the model passed a template and did not say where it came from.
 MODEL = "model"
-#: Recorded as ``look_from`` for the theme the person picked on the task's card.
+#: Recorded as ``look_from`` for the theme the person picked on the Round's card.
 PICKED = "picked"
 #: The budget for each server read the engine's choice needs (ADR 0026: bounded metadata calls).
 _READ_BUDGET = 2.0
@@ -232,18 +233,12 @@ def choose_look(topic_text: str, memory_order: Sequence[str] = ()) -> str:
 
 
 def picked_look(view: dict) -> str | None:
-    """The theme the person picked on the open task's card, by the option's id (a ``deck-theme``
-    option's id is its theme id), or ``None``. This turn's answer counts first, then the open
-    deck task's latest one."""
-    templates = kit.templates()
+    """The theme the person picked on a card in this Round, by the option's id (a ``deck-theme``
+    option's id is its theme id), or ``None``. The pick is the card answer the Round's message
+    carried (the view's ``answer``), so a Helper the Round started reads it too."""
     answer = view.get("answer")
-    picks = [answer.get("option_id")] if isinstance(answer, dict) else []
-    for task in view.get("tasks") or ():
-        if isinstance(task, dict) and task.get("kind") == "deck":
-            answers = (task.get("fields") or {}).get("answers") or []
-            picks += [a.get("option_id") for a in reversed(answers) if isinstance(a, dict)]
-            break
-    return next((p for p in picks if isinstance(p, str) and p in templates), None)
+    pick = answer.get("option_id") if isinstance(answer, dict) else None
+    return pick if isinstance(pick, str) and pick in kit.templates() else None
 
 
 @dataclass(frozen=True)
@@ -251,7 +246,7 @@ class Look:
     """How a new deck's look was settled.
 
     :param theme: The theme to build in.
-    :param look_from: What the task records: the model's ``look_from``, :data:`MODEL`,
+    :param look_from: What the deck records: the model's ``look_from``, :data:`MODEL`,
         :data:`PICKED` or :data:`CHOSEN`.
     :param refusal: Why nothing may be built (background work with no topic), else ``None``.
     :param why: Why the engine chose, for the model (empty unless :attr:`chosen`).

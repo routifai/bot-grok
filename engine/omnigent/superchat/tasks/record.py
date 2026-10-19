@@ -1,23 +1,13 @@
-"""The task record (ADR 0025): what a deliverable in progress is, how it reads in a turn, and the
-one rule for when a turn on it ends well.
+"""What a turn reads in front of the person's message, and the one rule for when a turn ends
+well.
 
-Pure: no store, no HTTP. The store keeps :class:`Task` rows; the service applies events to them
-with the functions here; the runner writes :func:`task_line` in front of the person's message and
-judges each turn with :func:`ends_well` (the scenario evals import the same function).
+Pure: no store, no HTTP. The runner writes :func:`prefix_lines` in front of the person's
+message: the pick on a card, then one :func:`round_line` per Round still working (ADR 0029,
+read from the Round record), and judges each turn with :func:`ends_well` (the scenario evals
+import the same function). :class:`Task` is the ADR 0025 record the ``tasks`` table still holds;
+nothing creates or settles one any more.
 
-The lifecycle, written by the engine from what happened, never from the model's word:
-
-* **open** on creation, when work starts: ``deck_new`` (a deck), ``start_helper`` (the kind its
-  brief names, :func:`kind_for_brief`), or a Conversation turn's first ``artifact_save`` with no
-  open task.
-* **building** while the turn that works on it runs, or while a Helper started for it runs.
-* **done** when the Conversation turn that saved it ends, or when its Helpers have finished (read
-  when the turn their completion notice opens reports its start; a read never closes a task). A
-  Helper's own saves are drafts: they add the artifact group and touch ``updated_at``, never
-  close it.
-* **dropped** after :data:`STALE_AFTER` untouched.
-
-The task also keeps the plan of the turn that worked on it (ADR 0027), ticked only by evidence:
+A task also keeps the plan of the turn that worked on it (ADR 0027), ticked only by evidence:
 :func:`evidence_for` reads a tool result as an event, :func:`tick` applies it, :func:`project`
 reads each item's ``state``; the runner, the service, the transcript, the activity and the
 scenario evals use these same functions.
@@ -26,14 +16,13 @@ scenario evals use these same functions.
 from __future__ import annotations
 
 import json
-import re
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
-from difflib import SequenceMatcher
 from typing import Any
 
 from omnigent.entities.conversation import is_system_notice_text
 from omnigent.superchat.artifact_kinds import is_deck_name
+from omnigent.superchat.titles import truncate
 
 KINDS = ("deck", "page", "document", "sheet", "file")
 OPEN, BUILDING, DONE, DROPPED = "open", "building", "done", "dropped"
@@ -45,15 +34,14 @@ ACTIVE = (OPEN, BUILDING)
 STALE_AFTER = 24 * 3600
 #: At most this many task lines go in front of a message.
 MAX_LINES = 5
-#: How alike a saved file's title and a task's title must be to count as the same deliverable.
-MATCH_AT = 0.5
 LINE_OPEN = "Open task: "
 PICKED_LINE = "They picked {label}. Continue the task; do not plan it again."
 #: A comment the person left on one plan step, in front of the message it travelled with.
 STEP_LINE = 'About the step "{step}": {comment}'
 #: Comments kept on one step.
 _MAX_COMMENTS = 10
-_NEXT = {OPEN: "build", BUILDING: "check and save"}
+#: Longest ask a line quotes.
+_ASK_CHARS = 80
 _KIND_BY_SUFFIX = {
     ".html": "page",
     ".htm": "page",
@@ -64,18 +52,11 @@ _KIND_BY_SUFFIX = {
     ".csv": "sheet",
     ".xlsx": "sheet",
 }
-#: Words of a Helper's brief -> the kind of deliverable it makes (the first kind named wins).
-_KIND_BY_WORD = (
-    ("deck", ("deck", "slides", "presentation", "pitch")),
-    ("sheet", ("sheet", "spreadsheet", "csv", "xlsx")),
-    ("page", ("page", "website", "landing", "dashboard", "html")),
-    ("document", ("document", "doc", "report", "memo", "letter", "essay", "pdf")),
-)
 
 
 @dataclass
 class Task:
-    """One deliverable in progress (see ``SqlTask``).
+    """One deliverable in progress, as ADR 0025 recorded it (see ``SqlTask``).
 
     :param helper_running: A Helper started for it is still running; read from the Helpers when
         the task is read, never stored.
@@ -190,82 +171,30 @@ def kind_for_name(name: str) -> str:
     return next((k for suffix, k in _KIND_BY_SUFFIX.items() if low.endswith(suffix)), "file")
 
 
-def kind_for_brief(brief: str) -> str:
-    """The task kind a Helper started with this brief makes, else ``file``."""
-    words = set(re.findall(r"[a-z0-9]+", brief.lower()))
-    return next((kind for kind, keys in _KIND_BY_WORD if words & set(keys)), "file")
-
-
-def _norm(text: str) -> str:
-    return " ".join(re.findall(r"[a-z0-9]+", text.lower()))
-
-
-def _stem(name: str) -> str:
-    """A file name without its extensions, as words (``rbc-vs-td.deck.html`` -> ``rbc vs td``)."""
-    return _norm(name.split(".", 1)[0].replace("-", " ").replace("_", " "))
-
-
-def similarity(a: str, b: str) -> float:
-    """How alike two titles are, 0 to 1 (case, punctuation and file extensions ignored)."""
-    left, right = _norm(a), _norm(b)
-    if not left or not right:
-        return 0.0
-    return SequenceMatcher(None, left, right).ratio()
-
-
-def best_match(tasks: Iterable[Task], kind: str, title: str, name: str = "") -> Task | None:
-    """The active task of *kind* this deliverable is, by file name or title, else ``None``."""
-    best: tuple[float, Task] | None = None
-    for task in tasks:
-        if task.kind != kind or task.status not in ACTIVE:
-            continue
-        if name and task.fields.get("file") == name:
-            return task
-        score = max(similarity(task.title, title), similarity(task.title, _stem(name)))
-        if score >= MATCH_AT and (best is None or score > best[0]):
-            best = (score, task)
-    return best[1] if best else None
-
-
-def record_answer(task: Task, answer: CardAnswer, item_id: str) -> None:
-    """Note the person's pick on the task its card asked for.
-
-    What the pick means for the deliverable (a deck's look) is read from the option id by the
-    capability that builds it, and comes back on that capability's own event.
-    """
-    answers = task.fields.setdefault("answers", [])
-    answers.append({**answer.to_wire(), "item_id": item_id})
-    del answers[:-10]
-    task.fields["answered"] = answer.label
-
-
-def task_line(task: Task) -> str:
-    """One line naming an active task and what comes next, e.g.
-    ``Open task: deck "RBC vs TD" · look Pitch Deck · data: mock · next: build``."""
-    parts = [f'{LINE_OPEN}{task.kind} "{task.title}"' if task.title else LINE_OPEN + task.kind]
-    fields = task.fields
-    if fields.get("look"):
-        parts.append(f"look {fields['look']}")
-    if fields.get("data"):
-        parts.append(f"data: {fields['data']}")
-    if isinstance(fields.get("slides"), int) and fields["slides"] > 0:
-        parts.append(f"{fields['slides']} slides")
-    if fields.get("answered"):
-        parts.append(f"answered: {fields['answered']}")
-    nxt = "wait for the helper" if task.helper_running else _NEXT.get(task.status, "build")
-    parts.append(f"next: {nxt}")
+def round_line(row: Mapping[str, Any]) -> str:
+    """One line naming a Round still working (``rounds.read.open_rounds``) and what comes next,
+    e.g. ``Open task: "make a deck on Uruguay" · helper "Uruguay deck" · next: wait for the
+    helper``."""
+    ask = truncate(str(row.get("ask") or ""), _ASK_CHARS)
+    parts = [f'{LINE_OPEN}"{ask}"' if ask else LINE_OPEN.rstrip(": ")]
+    helpers = [h for h in row.get("helpers") or () if isinstance(h, Mapping)]
+    parts += [f'helper "{h["title"]}"' if h.get("title") else "helper" for h in helpers]
+    parts.append("next: wait for the helper")
     return " · ".join(parts)
 
 
 def prefix_lines(
-    tasks: Iterable[Task], answer: CardAnswer | None, comment: Mapping[str, str] | None = None
+    rounds: Iterable[Mapping[str, Any]],
+    answer: CardAnswer | None,
+    comment: Mapping[str, str] | None = None,
 ) -> list[str]:
     """What goes in front of the person's message: the pick first, then the comment on a plan
-    step (``{"step", "text"}``), then the active tasks (at most :data:`MAX_LINES` lines)."""
+    step (``{"step", "text"}``), then the Rounds still working (at most :data:`MAX_LINES`
+    lines)."""
     lines = [PICKED_LINE.format(label=answer.label)] if answer is not None else []
     if comment and comment.get("text"):
         lines.append(STEP_LINE.format(step=comment.get("step") or "", comment=comment["text"]))
-    lines += [task_line(t) for t in tasks if t.status in ACTIVE]
+    lines += [round_line(r) for r in rounds]
     return lines[:MAX_LINES]
 
 
@@ -310,12 +239,6 @@ def ends_well(turn: Turn) -> bool:
 def is_stall(turn: Turn) -> bool:
     """A turn that does not end well (:func:`ends_well`)."""
     return not ends_well(turn)
-
-
-def watched(turn: Turn) -> bool:
-    """Whether *turn*'s ending can make it a stall: a person's turn on an open task with no Helper
-    of it running. (A step-limit refusal can stall any person's turn.)"""
-    return turn.by_person and turn.task_id is not None and not turn.helper_running
 
 
 # ---------------------------------------------------------------------------------------- plan
@@ -713,20 +636,3 @@ def checked(plan: Mapping[str, Any] | None) -> bool | None:
     """Whether the plan's check ran (``None`` when it has no check step)."""
     checks = [i for i in (plan or {}).get("items", ()) if i.get("done_when") == CHECK_RAN]
     return all(i.get("evidence") == DONE for i in checks) if checks else None
-
-
-def decision_line(task: Task) -> str:
-    """The one line a finished task leaves in the working list and the journal, e.g.
-    ``RBC vs TD (deck): look Swiss Grid, data mock, 6 slides, checked``; ``checked`` or
-    ``not checked`` only for a kind that has a check tool."""
-    title = " ".join(task.title.split()) or "Untitled"
-    fields = task.fields
-    parts = [f"{key} {fields[key]}" for key in ("look", "data") if fields.get(key)]
-    slides = fields.get("slides")
-    if isinstance(slides, int) and not isinstance(slides, bool) and slides > 0:
-        parts.append(f"{slides} slides")
-    if task.kind in CHECK_TOOLS:
-        plan = fields.get("plan") if isinstance(fields.get("plan"), Mapping) else None
-        parts.append("checked" if checked(plan) is True else "not checked")
-    head = f"{title} ({task.kind})"
-    return f"{head}: {', '.join(parts)}" if parts else head

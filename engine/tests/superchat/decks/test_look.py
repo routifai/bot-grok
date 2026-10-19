@@ -121,18 +121,18 @@ async def test_no_template_is_chosen_and_says_why() -> None:
     assert (look.theme, look.look_from, look.chosen) == ("bauhaus", MODEL, False)
 
 
-async def test_no_template_builds_the_theme_picked_on_the_tasks_card(workspace: Path) -> None:
+async def test_no_template_builds_the_theme_picked_on_the_rounds_card(workspace: Path) -> None:
     """A pick is read by its option id (a deck-theme option's id is the theme id), never by
-    its label."""
+    its label. It is the answer the Round's message carried, so a later turn of the Round, or a
+    Helper it started, reads it too."""
     picked = ctx(view("Nord", answer="Nord, the cool one", option_id="nord"))
     out = await _new(None, None, picked, title="RBC vs TD")
     assert out["template"] == "nord" and out["deck"]["look_from"] == PICKED
     assert "look_note" not in out
     (workspace / "d.deck.html").unlink()
-    # an earlier pick on the open deck task counts too
-    answers = [{"option_id": "bauhaus"}, {"option_id": "mock"}]
-    task = {"kind": "deck", "fields": {"answers": answers}}
-    look = await settle_look(ctx(view("go on", tasks=[task])), None, None, "RBC vs TD")
+    # the Round's pick holds while the newest message is another (a Helper's brief, a notice)
+    later = ctx(view("[System: worker/Deck saved a draft]", answer="Bauhaus", option_id="bauhaus"))
+    look = await settle_look(later, None, None, "RBC vs TD")
     assert (look.theme, look.look_from) == ("bauhaus", PICKED)
     # a label naming a theme is not a pick
     look = await settle_look(ctx(view("Nord", answer="Nord")), None, None, "RBC vs TD")
