@@ -29,6 +29,8 @@ from omnigent.superchat.artifacts.links import attach_links
 from omnigent.superchat.artifacts.store import SqlAlchemyArtifactStore
 from omnigent.superchat.family.tree import sub_agent_status
 from omnigent.superchat.lineage import session_lineage
+from omnigent.superchat.rounds.read import attach_round_files, round_files_on
+from omnigent.superchat.rounds.store import SqlAlchemyRoundStore
 from omnigent.superchat.tasks.record import PlanViews, plan_reader
 from omnigent.superchat.transcript.blocks import helper_session_ids, project_items
 from omnigent.superchat.transcript.reset import latest_reset_item
@@ -71,10 +73,15 @@ def read_transcript(
     limit: int,
     before_reset: bool = False,
     plan_views: PlanViews | None = None,
+    rounds: SqlAlchemyRoundStore | None = None,
+    artifacts: SqlAlchemyArtifactStore | None = None,
 ) -> dict[str, Any]:
     """One page of a session's transcript, oldest message first.
 
     :param plan_views: The tasks service's plan projection; without it a plan shows no states.
+    :param rounds: The Round record; with :data:`~omnigent.superchat.rounds.read.ROUND_FILES_ENV`
+        set, a Conversation's file cards are drawn from it (:func:`attach_round_files`).
+    :param artifacts: Where those cards' titles and sizes are read.
 
     Pages walk back from the newest items (``before`` is the ``older_cursor`` of the page
     after). Paging stops at the latest reset; ``before_reset`` pages the items older than it
@@ -86,6 +93,7 @@ def read_transcript(
     live = conversation.live_status in _MID_TURN_LIVE_STATUSES
     if before_reset and reset is None:
         return _page([], has_more=False, older_cursor=None, lineage=lineage, reset=None, live=live)
+    newer = before  # the oldest item of the newer page; the reset item below is a cut, not a page
     if before_reset and before is None:
         before = reset.id if reset else None
     # Newest first, so "further along" the store's sort is older: the older page is `after`.
@@ -115,15 +123,26 @@ def read_transcript(
     if helper_ids:
         for helper_id, helper in conv_store.get_conversations(helper_ids).items():
             statuses[helper_id] = sub_agent_status(helper)
+    # A file's studio shows its runtime lines (ADR 0024); every other chat hides them.
+    messages = project_items(
+        items,
+        helper_statuses=statuses,
+        keep_notices=is_artifact_chat(conversation.labels),
+        plan_views=plan_views(conversation.id, items) if plan_views else None,
+        conversation_id=conversation.id,
+    )
+    if rounds is not None and conversation.kind != "sub_agent" and round_files_on():
+        attach_round_files(
+            rounds,
+            conv_store,
+            conversation.id,
+            messages,
+            first_item_id=items[0]["id"] if items else None,
+            newer_item_id=newer,
+            artifacts=artifacts,
+        )
     return _page(
-        # A file's studio shows its runtime lines (ADR 0024); every other chat hides them.
-        project_items(
-            items,
-            helper_statuses=statuses,
-            keep_notices=is_artifact_chat(conversation.labels),
-            plan_views=plan_views(conversation.id, items) if plan_views else None,
-            conversation_id=conversation.id,
-        ),
+        messages,
         has_more=has_more,
         older_cursor=newest_first[-1]["id"] if newest_first and has_more else None,
         lineage=lineage,
@@ -158,11 +177,13 @@ def register_transcript_routes(
     auth_provider: AuthProvider | None = None,
     permission_store: PermissionStore | None = None,
     artifact_store: SqlAlchemyArtifactStore | None = None,
+    round_store: SqlAlchemyRoundStore | None = None,
 ) -> None:
     """Register ``GET /sessions/{session_id}/transcript``.
 
     :param artifact_store: Where the person's messages' artifact links are read from; without
         it no message carries ``artifact``.
+    :param round_store: The Round record file cards may be drawn from (:func:`read_transcript`).
     """
 
     @router.get("/sessions/{session_id}/transcript", response_model=None)
@@ -207,6 +228,8 @@ def register_transcript_routes(
             limit=limit,
             before_reset=before_reset,
             plan_views=plan_reader(request.app.state),
+            rounds=round_store,
+            artifacts=artifact_store,
         )
         if artifact_store is not None:
             await asyncio.to_thread(attach_links, artifact_store, conversation.id, page["data"])

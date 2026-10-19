@@ -1764,6 +1764,8 @@ class SqlArtifact(OmnigentBase):
         was started from. ``None`` for hand edits, restores and unknown turns.
     :param group_id: The deliverable's stable id, the same on every version: its first version's
         id (ADR 0024).
+    :param round_id: The Round of the chat that saved it (ADR 0029), stamped at save; ``None``
+        for a save outside a Round and for older versions.
     """
 
     __tablename__ = "artifacts"
@@ -1797,6 +1799,7 @@ class SqlArtifact(OmnigentBase):
     chat_id: Mapped[str | None] = mapped_column(Uuid16, nullable=True)
     item_id: Mapped[str | None] = mapped_column(Uuid16, nullable=True)
     group_id: Mapped[str | None] = mapped_column(Uuid16, nullable=True)
+    round_id: Mapped[str | None] = mapped_column(Uuid16, nullable=True)
 
     __table_args__ = (
         Index(
@@ -1817,6 +1820,7 @@ class SqlArtifact(OmnigentBase):
         ),
         Index("ix_artifacts_owner", "workspace_id", "user_id", "created_at"),
         Index("ix_artifacts_group_id", "workspace_id", "group_id", "version"),
+        Index("ix_artifacts_round", "workspace_id", "parent_session_id", "round_id"),
     )
 
 
