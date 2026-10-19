@@ -86,6 +86,11 @@ class _ClosableIterator(Protocol):
 # Config
 # ---------------------------------------------------------------------------
 
+#: The Omnigent tool the model keeps its checklist with on a harness without native checklist
+#: tools. The engine offers it to a Conversation's turns only, so a turn that has it is one whose
+#: work the engine wants kept as a checklist (:attr:`ExecutorConfig.checklist`).
+CHECKLIST_TOOL = "checklist"
+
 
 @dataclass
 class ExecutorConfig:
