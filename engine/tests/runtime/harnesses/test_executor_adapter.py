@@ -1987,15 +1987,26 @@ async def test_executor_adapter_builds_config_from_request() -> None:
     assert captured["model"] is None
 
 
+_BUNDLE = Path(__file__).resolve().parents[3] / "agents" / "bundles" / "superchat-claude"
+
+
 @pytest.mark.asyncio
-async def test_executor_adapter_forwards_context_mode_to_config() -> None:
+@pytest.mark.parametrize(
+    ("spec_dir", "helper", "checklist"),
+    [(_BUNDLE, False, True), (_BUNDLE / "agents" / "worker", True, False)],
+    ids=["conversation", "helper"],
+)
+async def test_executor_adapter_forwards_context_mode_to_config(
+    spec_dir: Path, helper: bool, checklist: bool
+) -> None:
     """``request.context_mode`` (the runner's forwarded ``omnigent.context.
     mode`` label) reaches ``ExecutorConfig.extra`` so the claude-sdk
     executor can tell a superside-chat turn apart from a plain one, and a
-    turn offered the ``checklist`` tool (a Conversation's, never a Helper's)
-    asks for a checklist."""
+    Conversation turn sent the tools the runner builds for it asks for a
+    checklist while a Helper's does not."""
+    import omnigent.superchat.features  # noqa: F401  (registers the feature tools)
+    from omnigent.context.labels import SUBAGENT_LABEL_KEY
     from omnigent.harnesses.executor import (
-        Executor,
         ExecutorConfig,
         Message,
         ToolSpec,
@@ -2004,6 +2015,8 @@ async def test_executor_adapter_forwards_context_mode_to_config() -> None:
     from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
     from omnigent.runtime.harnesses._scaffold import TurnContext
     from omnigent.server.schemas import CreateResponseRequest
+    from omnigent.spec import parse
+    from omnigent.tools.manager import ToolManager
 
     captured: dict[str, object] = {}
 
@@ -2020,6 +2033,11 @@ async def test_executor_adapter_forwards_context_mode_to_config() -> None:
             captured["checklist"] = config.checklist
             yield TurnComplete(response="ok")
 
+    labels = {"omnigent.context.mode": "superside-chat"}
+    if helper:
+        labels[SUBAGENT_LABEL_KEY] = "1"
+    # What the runner sends a harness turn (``_ensure_session_tool_schemas``).
+    tools = ToolManager(parse(spec_dir), labels=labels, os_env_schema_only=True).get_tool_schemas()
     adapter = ExecutorAdapter(executor_factory=lambda: _CaptureExecutor())
     import asyncio
 
@@ -2027,13 +2045,10 @@ async def test_executor_adapter_forwards_context_mode_to_config() -> None:
         response_id="resp_ctx_mode", event_queue=asyncio.Queue(), cancelled=asyncio.Event()
     )
     request = CreateResponseRequest(
-        model="my_coding_agent",
-        input="hi",
-        context_mode="superside-chat",
-        tools=[{"type": "function", "function": {"name": "checklist", "parameters": {}}}],
+        model="my_coding_agent", input="hi", context_mode="superside-chat", tools=tools
     )
     await adapter.run_turn(request, ctx)
-    assert captured == {"extra": {"context_mode": "superside-chat"}, "checklist": True}
+    assert captured == {"extra": {"context_mode": "superside-chat"}, "checklist": checklist}
 
 
 @pytest.mark.asyncio

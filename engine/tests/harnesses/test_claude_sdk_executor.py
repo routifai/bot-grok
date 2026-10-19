@@ -5844,8 +5844,10 @@ class TestPrelaunch(unittest.TestCase):
                 return_value=self._fake_sdk(clients, prompts),
             ):
                 executor = ClaudeSDKExecutor()
-                for messages, system_prompt in turns:
-                    events = [e async for e in executor.run_turn(messages, [], system_prompt)]
+                for messages, system_prompt, *config in turns:
+                    events = [
+                        e async for e in executor.run_turn(messages, [], system_prompt, *config)
+                    ]
                     self.assertIsInstance(events[-1], TurnComplete)
 
         _run(_t())
@@ -5905,6 +5907,24 @@ class TestPrelaunch(unittest.TestCase):
         with self.assertLogs(self._LOGGER, level="INFO") as logs:
             self._run([(self._EMPTY, "prompt"), (self._HISTORY, "new prompt")])
         self.assertIn("differs from the first turn in instructions", self._launches(logs)[-1])
+
+    def test_a_warm_cli_without_the_checklist_is_relaunched_when_it_turns_on(self):
+        from omnigent.harnesses.executor import ExecutorConfig
+
+        with self.assertLogs(self._LOGGER, level="INFO") as logs:
+            clients, prompts = self._run(
+                [
+                    (self._HISTORY, "prompt"),
+                    (self._NEXT, "prompt", ExecutorConfig(checklist=True)),
+                    (self._NEXT, "prompt", ExecutorConfig(checklist=True)),
+                ]
+            )
+        self.assertEqual(len(clients), 2, "the flag relaunches once, then the CLI stays warm")
+        self.assertEqual(clients[1].env.get("CLAUDE_CODE_ENABLE_TODO_TOOLS"), "1")
+        self.assertIn("TaskCreate", clients[1].tools)
+        self.assertNotIn("CLAUDE_CODE_ENABLE_TODO_TOOLS", clients[0].env)
+        self.assertIn("first question", str(prompts[1]), "the new CLI gets the whole history")
+        self.assertIn("the turn's mode changed", self._launches(logs)[-1])
 
     def test_a_launch_after_an_interrupt_says_so(self):
         from omnigent.harnesses.claude_sdk_executor import ClaudeSDKExecutor

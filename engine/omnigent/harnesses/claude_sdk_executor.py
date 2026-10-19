@@ -1839,6 +1839,18 @@ class ClaudeSDKExecutor(Executor):
             reason = f"the pre-launched CLI differs from the first turn in {', '.join(differs)}"
             await self._close_live_client(session_key)
             state = None
+        if (
+            state is not None
+            and state.launch_key is not None
+            and launch_key is not None
+            and state.launch_key.get("mode") != launch_key.get("mode")
+        ):
+            # The mode (context mode, turn cap, checklist) is fixed in the CLI's env and base
+            # tools at launch; a warm CLI keeps the one it started with, so a turn that turns
+            # the checklist on would never get the task tools.
+            reason = "the turn's mode changed"
+            await self._close_live_client(session_key)
+            state = None
         new_instructions_hash = (
             _composed_instructions_hash(getattr(options, "system_prompt", None))
             if rebuild_on_instructions_change
