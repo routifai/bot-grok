@@ -1850,7 +1850,8 @@ class TestBuildEnvAndDir(unittest.TestCase):
             self.assertTrue(settings_path.is_file())
             with open(settings_path) as f:
                 settings = json.load(f)
-            self.assertIn("retry", settings)
+            # One model request may take the whole stdout idle budget.
+            self.assertEqual(settings["retry"]["provider"], {"timeoutMs": 120_000})
         finally:
             import shutil
 
@@ -2543,6 +2544,10 @@ class TestRunTurn(unittest.TestCase):
         _run(_test())
 
     def test_message_end_with_error_stop_reason(self):
+        """An errored call pi retries itself (``agent_end.willRetry``) stays in
+        the turn; the turn fails with the last attempt's own message only once
+        pi gives up."""
+
         async def _test():
             executor = self._make_executor()
 
@@ -2553,17 +2558,21 @@ class TestRunTurn(unittest.TestCase):
             fake_rpc.process.stdin = _FakeStreamWriter()
             fake_rpc._stderr_lines = []
 
-            errored = {
+            timed_out = {
                 "role": "assistant",
                 "content": [],
                 "stopReason": "error",
-                "errorMessage": "Rate limited",
+                "errorMessage": "Request timed out.",
             }
+            errored = {**timed_out, "errorMessage": "Rate limited"}
             lines = [
                 json.dumps({"type": "response", "success": True}),
+                json.dumps({"type": "message_end", "message": timed_out}),
+                json.dumps({"type": "agent_end", "messages": [timed_out], "willRetry": True}),
+                json.dumps({"type": "auto_retry_start", "attempt": 1, "delayMs": 2000}),
                 json.dumps({"type": "message_end", "message": errored}),
                 # Pi's agent loop always emits agent_end after an errored call.
-                json.dumps({"type": "agent_end", "messages": [errored]}),
+                json.dumps({"type": "agent_end", "messages": [errored], "willRetry": False}),
             ]
             for line in lines:
                 fake_rpc._line_queue.put_nowait(line)
@@ -2584,7 +2593,7 @@ class TestRunTurn(unittest.TestCase):
 
             self.assertEqual(len(events), 1)
             self.assertIsInstance(events[0], ExecutorError)
-            self.assertIn("Rate limited", events[0].message)
+            self.assertEqual(events[0].message, "Rate limited")
 
         _run(_test())
 

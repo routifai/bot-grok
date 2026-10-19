@@ -2810,8 +2810,14 @@ class PiExecutor(Executor):
                 )
                 continue
 
-            # Agent ended — the turn is complete.
+            # Agent ended — the turn is complete, unless pi retries the errored
+            # call itself (``willRetry``, pi >= 0.80): its retry streams on as
+            # this same turn, so a transient failure (e.g. "Request timed out.")
+            # is not surfaced while pi still has attempts left.
             if event_type == "agent_end":
+                if event.get("willRetry") is True:
+                    pending_error = None
+                    continue
                 if state is not None:
                     state.turn_streaming = False
                     for outcome in await self._settle_steers_at_agent_end(session_key, state, rpc):
