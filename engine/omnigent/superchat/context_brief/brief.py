@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol, TypeVar
 
 from omnigent.context.state_file import PREFERENCE, Entry, parse
+from omnigent.memory.service import PROFILE_PREFERENCES
 from omnigent.superchat.knowledge.db import query_terms
 from omnigent.superchat.recall_hint.hint import TurnPlan, hit_line
 from omnigent.superchat.tasks.record import kind_for_name
@@ -184,6 +185,20 @@ def preference_lines(summary: str | None, words: Sequence[str]) -> list[str]:
         and not line.done
         and _shared(line.body, words)
     ]
+
+
+def profile_preference_lines(profile: str | None, words: Sequence[str]) -> list[str]:
+    """The memory profile's ``Preferences:`` lines that mention a subject word."""
+    if not profile or not words:
+        return []
+    lines, inside = [], False
+    for raw in profile.split("\n"):
+        line = raw.strip()
+        if not line.startswith("- "):
+            inside = line == PROFILE_PREFERENCES
+        elif inside and _shared(line, words):
+            lines.append(_clip(line))
+    return lines
 
 
 # ── the brief ────────────────────────────────────────────────────────────────────────────────
