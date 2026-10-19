@@ -5,7 +5,6 @@ Pytest fixtures shared across ``tests/harnesses/`` test files.
 from __future__ import annotations
 
 import asyncio
-import faulthandler
 import gc
 import inspect
 import json
@@ -64,30 +63,14 @@ def _stub_executor_catalog_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("omnigent.models.model_catalog.listing_for_provider", _listing)
 
 
-# Diagnostic: dump every thread's stack every 90s. The dispatcher's
-# stderr lands in the workflow log directly, but xdist workers route
-# their stderr through execnet -- faulthandler writing to sys.stderr
-# in a worker silently disappears. Route worker dumps to a file in
-# PYTEST_PROGRESS_LOG_DIR (uploaded as an artifact by integration.yml)
-# so each gw{N}'s stack frames are recoverable post-mortem.
 _worker = os.environ.get("PYTEST_XDIST_WORKER", "main")
 _log_dir_env = os.environ.get("PYTEST_PROGRESS_LOG_DIR")
-if _log_dir_env:
-    _log_dir = pathlib.Path(_log_dir_env)
-    _log_dir.mkdir(parents=True, exist_ok=True)
-    _faulthandler_file = open(  # noqa: SIM115  -- kept open for the process lifetime
-        _log_dir / f"faulthandler-{_worker}.log", "w", buffering=1
-    )
-else:
-    _faulthandler_file = sys.stderr
-faulthandler.dump_traceback_later(90, repeat=True, file=_faulthandler_file)
 
 
 # Diagnostic: dump asyncio.all_tasks() every 60s during async tests.
-# faulthandler shows C frames for live threads, but async coroutines
-# that have yielded sit in the loop's task list without any C frame --
-# the main thread's stack just shows ``select()``. To see which awaits
-# are stuck, schedule a periodic ``loop.call_later`` from inside an
+# Async coroutines that have yielded sit in the loop's task list without
+# any C frame, so a thread dump only shows ``select()``. To see which
+# awaits are stuck, schedule a periodic ``loop.call_later`` from inside an
 # autouse fixture and dump every Task's stack.
 if _log_dir_env:
     _asyncio_tasks_path: pathlib.Path | None = (

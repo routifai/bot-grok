@@ -320,7 +320,7 @@ addopts = "-p no:structlog_config --ignore=tests/e2e_ui --ignore=tests/browser_u
 # (SIGALRM doesn't reach blocked-on-pty children) — see
 # pytest-timeout README.
 timeout = 300
-timeout_method = "thread"
+timeout_method = "signal"
 # SDK tests under ``tests/frontends/sdk/`` import the
 # ``omnigent_client`` package that lives in ``sdks/python-client/``.
 # Without this pythonpath the imports fail at collection time
