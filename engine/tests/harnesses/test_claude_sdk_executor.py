@@ -165,6 +165,29 @@ class TestPromptExtraction(unittest.TestCase):
         joined = " ".join(b.get("text", "") for b in prompt if b.get("type") == "text")
         self.assertIn("describe this", joined)
         self.assertIn("and this too", joined)
+        # The engine's turn start puts an attached image after the message's text, with its
+        # name; warm or cold, the model gets it as an image block.
+        engine_turn = {
+            "role": "user",
+            "content": [
+                {"type": "input_text", "text": "what is this?"},
+                {
+                    "type": "input_image",
+                    "filename": "Screenshot 4.40.50 PM.png",
+                    "image_url": "data:image/png;base64,aGVsbG8=",
+                },
+            ],
+        }
+        image = {
+            "type": "image",
+            "source": {"type": "base64", "media_type": "image/png", "data": "aGVsbG8="},
+        }
+        for resume in (True, False):
+            with self.subTest(resume_session=resume):
+                self.assertEqual(
+                    executor._build_prompt([engine_turn], resume_session=resume),
+                    [{"type": "text", "text": "what is this?"}, image],
+                )
 
     def test_empty_messages(self):
         executor = self._make_executor()

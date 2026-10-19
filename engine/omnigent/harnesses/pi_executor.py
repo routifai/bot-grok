@@ -1510,8 +1510,10 @@ def _build_pi_prompt(messages: list[Message], *, is_first_turn: bool) -> str | l
 
     On the first turn with prior history (e.g. sub-agent with
     ``pass_history=True``), serializes the full conversation so
-    the Pi process has context. Otherwise returns just the
-    latest user message content (may be multimodal).
+    the Pi process has context, followed by the latest user
+    message's images so they still reach the model. Otherwise
+    returns just the latest user message content (may be
+    multimodal).
 
     :param messages: Omnigent conversation history for the
         turn.
@@ -1532,6 +1534,14 @@ def _build_pi_prompt(messages: list[Message], *, is_first_turn: bool) -> str | l
         lines.append(
             "Respond to the latest user message, using the conversation above as context."
         )
+        latest = _extract_latest_user_content(messages)
+        images = (
+            [block for block in latest if block.get("type") == "input_image"]
+            if isinstance(latest, list)
+            else []
+        )
+        if images:
+            return [{"type": "input_text", "text": "\n".join(lines)}, *images]
         return "\n".join(lines)
 
     return _extract_latest_user_content(messages)

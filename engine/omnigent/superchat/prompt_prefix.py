@@ -32,7 +32,7 @@ from omnigent.superchat.recall_hint.hint import FOOTER as HINT_FOOTER
 from omnigent.superchat.recall_hint.hint import HEADER as HINT_HEADER
 
 if TYPE_CHECKING:
-    from omnigent.superchat.feature import Feature
+    from omnigent.superchat.feature import Feature, MessageBlock
 
 _logger = logging.getLogger(__name__)
 
@@ -232,13 +232,13 @@ async def _message_prefix_blocks(
     conversation_id: str,
     texts: Sequence[str],
     helper: bool = False,
-) -> list[str]:
+) -> list[MessageBlock]:
     """Every feature's ``message_prefix`` blocks for the turn's own message, fetched together and
     kept in feature order. A Helper's turn (*helper*) skips the Conversation-only ones
     (``Feature.conversation_only``). Never fails a turn."""
     from omnigent.superchat.features import FEATURES
 
-    async def _blocks(feature: Feature) -> list[str]:
+    async def _blocks(feature: Feature) -> list[MessageBlock]:
         assert feature.message_prefix is not None
         try:
             return await feature.message_prefix(server_client, conversation_id, texts)
@@ -268,14 +268,15 @@ async def turn_prefix_blocks(
     sent_now: dict[str, str] | None = None,
     studio: bool = False,
     helper: bool = False,
-) -> list[str]:
+) -> list[MessageBlock]:
     """The blocks to prepend to a Super Chat turn, in application order.
 
     Each block is prepended in turn, so the last one ends up first: ``[message blocks (the files
     it attaches), memory profile (when any), Projects (when any), feature notes such as hand edits
     (when any), local time]`` renders as local time, then the feature notes, then the Projects,
-    then the profile, then the message blocks, then the person's message. Nothing from recall:
-    earlier work reaches the model through the ``context_brief`` tool (ADR 0027).
+    then the profile, then the message blocks, then the person's message. A message block that is
+    a content block (an attached image) is not text: it goes with the message itself. Nothing from
+    recall: earlier work reaches the model through the ``context_brief`` tool (ADR 0027).
 
     :param workspace: The session's current working directory (marks the open Project).
     :param message_texts: Text parts of the turn's own message; features build blocks from them
@@ -323,10 +324,10 @@ async def turn_prefix_blocks(
                 "studio": studio_turn_blocks(server_client, conversation_id),
             },
         )
-        message_blocks = cast(list[str], got.get("message", []))
+        message_blocks = cast("list[MessageBlock]", got.get("message", []))
         profile = cast(str | None, got.get("profile"))
         studio_blocks = cast(list[str], got.get("studio", []))
-        blocks = list(message_blocks)
+        blocks: list[MessageBlock] = list(message_blocks)
         if profile:
             blocks.append(
                 _delta_block("profile", profile, PROFILE_UNCHANGED_LINE, last_sent, sent_now)
@@ -355,12 +356,12 @@ async def turn_prefix_blocks(
     )
     if not features.done():
         _late_feature_blocks[conversation_id] = features
-    message_blocks = cast(list[str], got.get("message", []))
+    message_blocks = cast("list[MessageBlock]", got.get("message", []))
     profile = cast(str | None, got.get("profile"))
     projects = cast(str | None, got.get("projects"))
     feature_blocks = _merge_carried(carried, cast(list[str], got.get("features", [])))
     local_time = cast(str | None, got.get("local_time")) or late_local_time_line()
-    blocks = list(message_blocks)
+    blocks: list[MessageBlock] = list(message_blocks)
     if profile:
         blocks.append(
             _delta_block("profile", profile, PROFILE_UNCHANGED_LINE, last_sent, sent_now)

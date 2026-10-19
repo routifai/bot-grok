@@ -360,6 +360,7 @@ describe("engine attachment upload", () => {
     expect(safeUploadName("../../etc/passwd", "text/plain")).toBe("passwd.txt");
     expect(safeUploadName("..\\x\\.hidden.png", "image/png")).toBe("hidden.png");
     expect(safeUploadName("", "application/pdf")).toBe("file.pdf");
+    expect(safeUploadName("Shot 4.40.50\u202fPM.png", "image/png")).toBe("Shot 4.40.50 PM.png");
     expect(dedupeUploadName("a.pdf", new Set(["a.pdf"]))).toBe("a (2).pdf");
     expect(dedupeUploadName("noext", new Set(["noext", "noext (2)"]))).toBe("noext (3)");
   });

@@ -292,6 +292,21 @@ _TRANSIENT_AUDIT_EVENT_TYPES = frozenset(
 )
 
 
+def _plain_spaces(content: Any) -> Any:
+    """A person's message *content* with each U+202F (the narrow no-break space macOS writes in a
+    screenshot's name) as a plain space, so a name the model retypes is the name it was given."""
+    if isinstance(content, str):
+        return content.replace("\u202f", " ")
+    if isinstance(content, list):
+        return [
+            {**block, "text": block["text"].replace("\u202f", " ")}
+            if isinstance(block, dict) and isinstance(block.get("text"), str)
+            else block
+            for block in content
+        ]
+    return content
+
+
 def _is_batchable_external_item(event: SessionEventInput) -> bool:
     """
     Whether a batch entry can skip :func:`_post_event_impl` and be appended
@@ -970,6 +985,8 @@ def register_events_routes(
             await _require_helper_writer(request, user_id, conv)
             if body.data.get("role", "user") == "user":
                 mark_accepted(session_id)
+                if "content" in body.data:
+                    body.data["content"] = _plain_spaces(body.data["content"])
         if in_flight is not None:
             # Marked only after authorization, so an unauthorized caller
             # cannot flip a session to "running" even transiently.

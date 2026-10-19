@@ -62,6 +62,8 @@ export function safeUploadName(name: string, mimeType: string): string {
   const base = (name.split(/[\\/]/).pop() ?? "")
     // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping control characters is the point
     .replace(/[\u0000-\u001f\u007f]/g, "")
+    // A screenshot's name has U+202F before "PM"; the model retypes it as a plain space.
+    .replace(/\u202f/g, " ")
     .replace(/^\.+/, "")
     .trim();
   let result = base || "file";

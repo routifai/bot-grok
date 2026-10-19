@@ -145,11 +145,13 @@ async def harness(monkeypatch: pytest.MonkeyPatch):
 
 @pytest.mark.asyncio
 async def test_post_acks_with_the_stored_item_while_the_wake_is_still_running(harness):
-    resp = await asyncio.wait_for(harness.send(), timeout=5)
+    # A screenshot's name carries U+202F before "PM"; the stored words have a plain space.
+    resp = await asyncio.wait_for(harness.send("see Shot 4.40.50\u202fPM.png"), timeout=5)
 
     assert resp.status_code == 202
     assert resp.json() == {"queued": True, "item_id": harness.store.appended[0].id}
     assert len(harness.store.appended) == 1
+    assert harness.store.appended[0].data.content[0]["text"] == "see Shot 4.40.50 PM.png"
     assert harness.dispatched == []  # the wake has not finished, nothing forwarded yet
 
     harness.wake_gate.set()

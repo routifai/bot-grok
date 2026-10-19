@@ -35,6 +35,7 @@ from omnigent.harnesses.pi_executor import (
     PiExecutor,
     PiSubprocessConfig,
     _build_models_json,
+    _build_pi_prompt,
     _generate_extension_js,
     _only_configured_family,
     _pi_provider_for_model,
@@ -431,16 +432,33 @@ class TestPiProviderForModel(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 
-def test_split_pi_prompt_separates_text_and_images():
+@pytest.mark.parametrize("cold_with_history", [False, True])
+def test_split_pi_prompt_separates_text_and_images(cold_with_history):
     # #515: multimodal blocks must go to Pi's native message + images, not be
     # JSON-encoded into the text (which the model reads as a literal blob).
-    message, images = _split_pi_prompt(
-        [
+    # A fresh Pi process replays the history as text and still carries the
+    # latest message's image as an image.
+    latest = {
+        "role": "user",
+        "content": [
             {"type": "input_text", "text": "what is in this image?"},
-            {"type": "input_image", "image_url": "data:image/png;base64,AAAA"},
-        ]
-    )
-    assert message == "what is in this image?"
+            {
+                "type": "input_image",
+                "filename": "a.png",
+                "image_url": "data:image/png;base64,AAAA",
+            },
+        ],
+    }
+    history = [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "hello"}]
+    messages = [*history, latest] if cold_with_history else [latest]
+    prompt = _build_pi_prompt(messages, is_first_turn=True)
+    assert isinstance(prompt, list)
+    message, images = _split_pi_prompt(prompt)
+    if cold_with_history:
+        assert message.startswith("Conversation so far:") and "what is in this image?" in message
+        assert "base64" not in message
+    else:
+        assert message == "what is in this image?"
     assert images == [{"type": "image", "data": "AAAA", "mimeType": "image/png"}]
 
 
