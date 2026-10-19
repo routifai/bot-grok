@@ -55,6 +55,7 @@ from omnigent.entities.session_project import project_slug_from_workspace
 from omnigent.harnesses.executor import CHECKLIST_TOOL
 from omnigent.runner.tool_starts import STOPPED_OUTPUT
 from omnigent.superchat.artifact_kinds import is_deck_name
+from omnigent.superchat.cards.tools import CARD_TOOL_NAME
 from omnigent.superchat.projects.card import workspace_root
 from omnigent.superchat.rounds.checklist import STATUSES
 from omnigent.superchat.rounds.fold import (
@@ -1220,7 +1221,12 @@ class RelayRound:
                 args = _args(item.get("arguments"))
                 self._calls[call_id] = (name, args)
                 self._emit(
-                    turn, TOOL_CALLED, call_id=call_id, name=name, digest=call_digest(name, args)
+                    turn,
+                    TOOL_CALLED,
+                    call_id=call_id,
+                    name=name,
+                    digest=call_digest(name, args),
+                    card=args.get("card") if name == CARD_TOOL_NAME else None,  # its kind
                 )
             turn.text.clear()  # the words before a call are not the turn's last text
         elif item.get("type") == "function_call_output":

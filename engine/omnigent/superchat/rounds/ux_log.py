@@ -2,10 +2,10 @@
 
 With ``OMNIGENT_UX_LOG_DIR`` set, :func:`shown` appends one JSONL line per Round view the
 Announcer, the Round list or the Round view sends, when it differs from the last line written for
-that Round: the time, where it was sent from, the conversation, the Round, its status and
-``settled_at``, its Helpers (id, title, status), its file names, its checklist (subject, status),
-the tool running now and the last :data:`_WORDS_TAIL` characters of its live words. No other
-message text is written. Read it with ``engine/scripts/ux_log.py``.
+that Round: the time, where it was sent from, the conversation, the Round, its status,
+``settled_at`` and ``delivered_at``, its Helpers (id, title, status), its file names, its
+checklist (subject, status), the tool running now and the last :data:`_WORDS_TAIL` characters of
+its live words. No other message text is written. Read it with ``engine/scripts/ux_log.py``.
 """
 
 from __future__ import annotations
@@ -42,6 +42,7 @@ def shown(source: str, conversation_id: str, round_id: str, view: Mapping[str, A
         "round_id": round_id,
         "status": view.get("status"),
         "settled_at": view.get("settled_at"),
+        "delivered_at": view.get("delivered_at"),
         "helpers": [
             {"id": helper_id, "title": h.get("title"), "status": h.get("status")}
             for helper_id, h in (view.get("helpers") or {}).items()

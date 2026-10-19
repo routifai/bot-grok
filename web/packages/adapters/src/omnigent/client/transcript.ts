@@ -153,6 +153,7 @@ export interface OmnigentRoundView {
   started_at: number | null;
   settled_at: number | null;
   elapsed: number;
+  delivered_at?: number | null;
   stop_line: string | null;
   now: (OmnigentRoundActor & { name: string | null; digest: string | null }) | null;
   trail: Array<

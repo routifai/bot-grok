@@ -729,6 +729,7 @@ describe("the Round's strip (ADR 0029)", () => {
     status: "running",
     startedAt: Date.now() - 12_000,
     settledAt: null,
+    deliveredAt: null,
     elapsedMs: 12_000,
     stopLine: null,
     now: { actor: "assistant", helperId: null, name: "web_search", digest: "banks" },

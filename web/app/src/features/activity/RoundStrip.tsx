@@ -21,7 +21,8 @@ import { formatClock } from "./workStripState";
 // Round began, one row per Helper with its folder and its own latest tool, the model's checklist if
 // it wrote one, and the files as they land; never a fraction or a count of steps as progress.
 // Settled, one line (the files it saved, or how it ended, and how long it took) that unfolds to
-// the trail. The Stop line is in the transcript where the engine wrote it, not here.
+// the trail; a Round that has delivered its answer reads settled while its turn winds down. The
+// Stop line is in the transcript where the engine wrote it, not here.
 
 type Tool = Pick<RoundView["trail"][number], "name" | "digest">;
 
@@ -198,7 +199,7 @@ function useRoundPause(botId: string, view: RoundView | null) {
 export function RoundStrip({ botId, roundId }: { botId: string; roundId: string }) {
   const { t } = useLingui();
   const view = useRoundView(botId, roundId);
-  const live = view?.status === "running";
+  const live = view?.status === "running" && view.deliveredAt === null;
   const now = useNow(live);
   const drafts = useRoundDrafts(botId, view);
   const pause = useRoundPause(botId, view);
@@ -218,11 +219,14 @@ export function RoundStrip({ botId, roundId }: { botId: string; roundId: string 
     view.files.length > 0 ||
     view.checklist.length > 0;
   if (!live && !worked) return null;
+  // A delivered Round's time is its time to the answer, before and after its turn ends.
   const clockMs = live
     ? view.startedAt === null
       ? null
       : Math.max(0, serverNow(now) - view.startedAt)
-    : view.elapsedMs;
+    : view.deliveredAt !== null && view.startedAt !== null
+      ? Math.max(0, view.deliveredAt - view.startedAt)
+      : view.elapsedMs;
   const clock =
     clockMs === null ? (
       <span className="ms-auto" />

@@ -31,6 +31,9 @@ export const RoundViewSchema = z.object({
   startedAt: z.number().nullable(),
   settledAt: z.number().nullable(),
   elapsedMs: z.number(),
+  /** When the Round delivered its answer (a terminal card, the chips or a question, with no
+   * Helper of it running); it may still run until its turn ends, but its strip reads settled. */
+  deliveredAt: z.number().nullable(),
   stopLine: z.string().nullable(),
   /** The tool running now. */
   now: z
