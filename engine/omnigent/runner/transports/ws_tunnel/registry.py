@@ -86,9 +86,11 @@ class RunnerSession:
         enqueues writes here instead of calling ``ws.send_text``
         directly.
     :param connected_at: Unix epoch float of connect time.
-    :param last_frame_at: Unix epoch float of the most recent frame
+    :param last_frame_at: ``time.monotonic()`` of the most recent frame
         from this runner. Updated on every receive — feeds the
-        watchdog inactivity check.
+        watchdog inactivity check. Monotonic so time the server itself
+        spent suspended (a laptop's Docker VM paused in sleep) never
+        reads as runner silence once it wakes.
     :param owner: Authenticated user who established the tunnel,
         e.g. ``"alice@example.com"``. ``None`` when auth is
         disabled (single-user mode). Used to enforce runner
@@ -277,7 +279,7 @@ class TunnelRegistry:
             loop=loop,
             outbound_queue=asyncio.Queue(),
             connected_at=now,
-            last_frame_at=now,
+            last_frame_at=time.monotonic(),
             owner=owner,
         )
         with self._lock:
@@ -513,7 +515,7 @@ class TunnelRegistry:
         with self._lock:
             if self._sessions.get(session.runner_id) is not session:
                 return False
-            session.last_frame_at = time.time()
+            session.last_frame_at = time.monotonic()
             return True
 
     def seconds_since_last_frame(self, session: RunnerSession) -> float | None:
@@ -526,7 +528,7 @@ class TunnelRegistry:
         with self._lock:
             if self._sessions.get(session.runner_id) is not session:
                 return None
-            return time.time() - session.last_frame_at
+            return time.monotonic() - session.last_frame_at
 
     # ── Per-request lifecycle ────────────────────────────
 
@@ -655,7 +657,7 @@ class TunnelRegistry:
             current = self._sessions.get(runner_id)
             if current is None or (session is not None and current is not session):
                 return False
-            current.last_frame_at = time.time()
+            current.last_frame_at = time.monotonic()
             if not isinstance(frame, (WSFrame, WSCloseFrame)):
                 return False
             channel = current.ws_channels.get(frame.ch_id)
@@ -748,7 +750,7 @@ class TunnelRegistry:
             current = self._sessions.get(runner_id)
             if current is None or (session is not None and current is not session):
                 return False
-            current.last_frame_at = time.time()
+            current.last_frame_at = time.monotonic()
             if not isinstance(frame, ResponseHeadFrame | ResponseBodyFrame | ResponseEndFrame):
                 return False
             req_id = frame.id

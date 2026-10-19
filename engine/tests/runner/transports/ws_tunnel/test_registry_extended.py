@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import time
 
 import pytest
 
@@ -99,14 +100,23 @@ async def test_mark_frame_seen_returns_false_for_stale_session() -> None:
 
 
 @pytest.mark.asyncio
-async def test_seconds_since_last_frame_returns_positive_float() -> None:
-    """Active session reports a small idle time."""
+async def test_seconds_since_last_frame_ignores_a_wall_clock_jump(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Idle time counts only time the server was awake, not a wall-clock jump.
+
+    A laptop's Docker VM pauses in sleep and its wall clock jumps on wake. Read
+    off the wall clock, that jump looked like 179 s of runner silence and the
+    ping loop closed a healthy tunnel with 4003.
+    """
     reg = TunnelRegistry()
     session = reg.register("r1", _NoopWS(), _hello())
     await asyncio.sleep(0.01)
+    woke_at = time.time() + 179.0
+    monkeypatch.setattr(time, "time", lambda: woke_at)
     idle = reg.seconds_since_last_frame(session)
     assert idle is not None
-    assert idle >= 0.01
+    assert 0.01 <= idle < 60.0
 
 
 @pytest.mark.asyncio

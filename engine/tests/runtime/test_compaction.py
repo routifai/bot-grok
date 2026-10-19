@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
 import copy
+import json
+import threading
 from typing import Any
 
 import pytest
 
+import omnigent.runtime.compaction as compaction
 from omnigent.entities import (
     CompactionData,
     ConversationItem,
@@ -33,6 +37,7 @@ from omnigent.runtime.compaction import (
 from omnigent.runtime.content_resolver import _resolve_file_id_block
 from omnigent.runtime.workflow import _route_bare_model_for_compaction
 from omnigent.spec.types import CompactionConfig, LLMConfig
+from tests.budgets import budget
 
 # ---------------------------------------------------------------------------
 # LLM client stubs
@@ -1249,12 +1254,43 @@ def test_count_tokens_returns_positive_integer() -> None:
     assert result > 0
 
 
-def test_count_tokens_unknown_model_falls_back() -> None:
-    """Unknown model falls back to cl100k_base encoding without raising."""
-    messages = [{"role": "user", "content": "test"}]
-    # Should not raise even for completely unknown model names.
-    result = count_tokens(messages, "unknown/totally-fake-model-xyz")
-    assert result > 0
+async def test_count_tokens_never_downloads_a_tokenizer_on_the_event_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unloaded tokenizer is fetched off the loop and a failed fetch only estimates.
+
+    An unknown model falls back to cl100k_base without raising.
+
+    tiktoken's first load is a blocking download with no timeout. On the
+    runner's loop that starved the tunnel, and a failed download (no DNS just
+    after a laptop wakes) turned session init into a 500.
+    """
+    loop_thread = threading.get_ident()
+    fetched = threading.Event()
+    fetch_threads: list[int] = []
+
+    def unreachable(name: str) -> Any:
+        assert name == "cl100k_base"
+        fetch_threads.append(threading.get_ident())
+        fetched.set()
+        raise OSError(f"cannot download {name}")
+
+    monkeypatch.setattr(compaction, "_encodings", {})
+    monkeypatch.setattr(compaction, "_encoding_retry_at", {})
+    monkeypatch.setattr(compaction.tiktoken, "get_encoding", unreachable)
+    messages = [{"role": "user", "content": "x" * 40}]
+
+    estimate = -(-len(json.dumps(messages)) // 4)
+    assert count_tokens(messages, "unknown/totally-fake-model-xyz") == estimate
+    assert await asyncio.to_thread(fetched.wait, budget(2.0))
+    assert fetch_threads and loop_thread not in fetch_threads
+    # The failure is remembered: no retry storm, inline or in the background.
+    assert count_tokens(messages, "unknown/totally-fake-model-xyz") == estimate
+    assert (
+        await asyncio.to_thread(lambda: count_tokens(messages, "unknown/totally-fake-model-xyz"))
+        == estimate
+    )
+    assert len(fetch_threads) == 1
 
 
 async def test_layer3_truncation_preserves_tool_call_pairs(
