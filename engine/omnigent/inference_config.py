@@ -292,6 +292,42 @@ def load_runtime_inference_config(
     return base
 
 
+#: Model limits a provider family tells pi (see ``FamilyConfig``). A session's snapshot freezes
+#: which provider it runs on, but these are deployment tuning: they follow the current config,
+#: or a long-lived session keeps the limits of the day it was created.
+_LIVE_LIMIT_KEYS = ("context_window", "max_output_tokens")
+#: Each sandbox target's current ``providers`` block, by snapshot ``target_id``.
+_live_providers: dict[str, dict[str, Any]] = {}
+
+
+def register_live_providers(target_id: str, providers: object) -> None:
+    """Record a sandbox target's current providers, for :func:`snapshot_runtime_config`."""
+    _live_providers[target_id] = copy.deepcopy(providers) if isinstance(providers, dict) else {}
+
+
 def snapshot_runtime_config(snapshot: dict[str, Any] | None) -> dict[str, object] | None:
-    """Return only the runtime portion; discovery credentials remain server-side."""
-    return copy.deepcopy(snapshot["runtime_config"]) if snapshot is not None else None
+    """Return only the runtime portion; discovery credentials remain server-side.
+
+    Every reader (host config, runner launch, session init) goes through here, so they agree.
+    """
+    if snapshot is None:
+        return None
+    runtime = copy.deepcopy(snapshot["runtime_config"])
+    live = _live_providers.get(str(snapshot.get("target_id")))
+    providers = runtime.get("providers")
+    if live is None or not isinstance(providers, dict):
+        return runtime
+    for name, entry in providers.items():
+        current = live.get(name)
+        if not isinstance(entry, dict) or not isinstance(current, dict):
+            continue
+        for family_name, family in entry.items():
+            current_family = current.get(family_name)
+            if not isinstance(family, dict) or not isinstance(current_family, dict):
+                continue
+            for key in _LIVE_LIMIT_KEYS:
+                if key in current_family:
+                    family[key] = current_family[key]
+                else:
+                    family.pop(key, None)
+    return runtime

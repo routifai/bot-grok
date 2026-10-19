@@ -40,6 +40,7 @@ from omnigent.entities import (
 )
 from omnigent.entities.permission import SessionPermission
 from omnigent.errors import ErrorCategory, ErrorCode, ErrorImpact, ErrorPhase, OmnigentError
+from omnigent.inference_config import snapshot_runtime_config
 from omnigent.models.model_fallbacks import ROLLOVER_SUMMARY_FALLBACK_MODEL
 from omnigent.models.model_metadata import concrete_reported_model
 from omnigent.models.model_override import validate_model_override
@@ -533,11 +534,7 @@ def register_core_routes(
                 # spawning. None (agent not resolvable) skips the
                 # host-side check.
                 harness=harness,
-                inference_config=(
-                    target.conv.inference_snapshot["runtime_config"]
-                    if target.conv.inference_snapshot
-                    else None
-                ),
+                inference_config=snapshot_runtime_config(target.conv.inference_snapshot),
             )
         )
         try:

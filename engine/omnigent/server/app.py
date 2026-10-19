@@ -1562,6 +1562,14 @@ def create_app(
         )
     app.state.agent_store = agent_store
     app.state.sandbox_config = sandbox_config
+    if sandbox_config is not None:
+        from omnigent.inference_config import register_live_providers
+
+        for target in sandbox_config.configs:
+            register_live_providers(
+                f"sandbox:{target.provider or 'default'}",
+                (target.host_config or {}).get("providers"),
+            )
     app.state.branding_snapshot = branding_snapshot
     app.state.feature_flags = resolved_feature_flags
     # Deployment base path (e.g. "/proxy/6767"), so route handlers that build
