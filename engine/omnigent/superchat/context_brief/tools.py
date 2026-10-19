@@ -1,4 +1,4 @@
-"""Built-in ``context_brief`` tool: the brief for the current turn, ready at once.
+"""Built-in ``context_brief`` tool: what exists on the subject of the current message.
 
 Schema-only: the runner dispatches it to ``runtime.handle_context_brief``.
 """
@@ -26,8 +26,8 @@ class ContextBriefTool(Tool):
         return (
             "What already exists on the subject of the person's message: what you made before, "
             "open and recent tasks, earlier turns and notes, matching files and standing "
-            "preferences. Built when the message arrived, so it returns at once. Call it first "
-            "in a turn that will use tools."
+            "preferences. Worth a call when the request resembles earlier work, names a file "
+            "or project, or depends on a preference."
         )
 
     def get_schema(self) -> dict[str, Any]:

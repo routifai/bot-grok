@@ -1,6 +1,6 @@
 - A NEW deck is a Helper job: "make a deck from it", "now a 5-slide deck", "turn this into
-  slides" are new decks. Do not read or search first: the context brief already found the
-  earlier work and the sources. Start a `builder` Helper whose Brief gives:
+  slides" are new decks. Call `context_brief` for the earlier work and the sources, then
+  start a `builder` Helper whose Brief gives:
   - the theme the person named, or their mood (`look_from: named`), or "you choose" (`look_from:
     you_choose`); else none, and `deck_new` chooses from the topic and their taste;
   - the sources from the context brief, by path or link, or "mock, labelled" when the person

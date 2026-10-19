@@ -133,7 +133,7 @@ from omnigent.spec.skill_sources import resolve_session_skills
 from omnigent.spec.types import AgentSpec, LocalToolInfo, SkillSpec
 from omnigent.superchat.artifacts.studio import STUDIO_TYPE
 from omnigent.superchat.feature import HandlerCtx, is_helper, is_super_chat
-from omnigent.superchat.features import notify_accept, notify_denied, notify_turn_end
+from omnigent.superchat.features import notify_denied, notify_turn_end
 from omnigent.superchat.helpers.notices import take_waiting_progress
 from omnigent.superchat.helpers.saved_files import (
     collect_saved_files,
@@ -6968,10 +6968,6 @@ def create_runner_app(
         conv: str,
     ) -> None:
         _setup_started = time.monotonic()
-        _accept_labels = await _tool_labels_for_session(conv)
-        if is_super_chat(_accept_labels) and ARTIFACT_CHAT_LABEL_KEY not in _accept_labels:
-            # First, so what the turn reads later (the context brief) builds while it sets up.
-            notify_accept(server_client, conv, _message_texts(msg_body.get("content")))
         _superside, _turn_labels, _idle_seconds = await _superside_chat_turn_reads(conv)
         _setup_reads = time.monotonic() - _setup_started
         # Cheap no-op for a session with no pending superside-chat rollover;
