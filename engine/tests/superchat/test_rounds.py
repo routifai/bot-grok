@@ -616,6 +616,7 @@ def test_a_round_is_written_from_the_message_the_relay_and_the_save(
     root = "a" * 32
     item = "b" * 32
     helper_id = "c" * 32
+    ask = "d" * 32
     convs = _Conversations(_row(root, SUPER))
     msg = {"role": "user", "content": [{"type": "input_text", "text": "Make a deck."}]}
     assistant = record.RelayRound(root, convs)
@@ -667,6 +668,16 @@ def test_a_round_is_written_from_the_message_the_relay_and_the_save(
         system = record.RelayRound(hidden.id, convs)
         await system.observe({"type": "response.in_progress"})
         await system.observe({"type": "response.completed"})
+        # The next ask waits on a cold host; the Helper's late notice lands first. The turn
+        # the host then runs is the ask's, and a steer during it joins it.
+        await record.note_message(convs, convs.rows[root], ask, msg, None, turn_running=False)
+        await record.note_message(
+            convs, convs.rows[root], "9" * 32, wake, notice, turn_running=False
+        )
+        cold = record.RelayRound(root, convs)
+        await cold.observe({"type": "response.in_progress"})
+        await record.note_message(convs, convs.rows[root], "8" * 32, msg, None, turn_running=True)
+        await cold.observe({"type": "response.completed"})
         await record.RECORDER.idle()
 
     asyncio.run(run())
@@ -707,7 +718,7 @@ def test_a_round_is_written_from_the_message_the_relay_and_the_save(
     view = fold(events, item)
     assert view["status"] == "stopped" and view["ask"] == "Make a deck."
     assert [f["name"] for f in view["files"]] == ["deck"]
-    assert len(journaled) == 1 and journaled[0][0] == root
+    assert [(c, e["round_id"]) for c, e in journaled] == [(root, item), (root, ask)]
     entry = journaled[0][1]
     assert entry == record.journal_entry(item, view)
     keys = ("round_id", "ask", "outcome", "stopped", "files", "helpers")
@@ -722,6 +733,12 @@ def test_a_round_is_written_from_the_message_the_relay_and_the_save(
     assert entry["folder"] == "projects/q3"
     assert entry["refs"] == {"artifacts": ["v1@v1"], "project": ["q3"], "helpers": [helper_id]}
     assert entry["checked"] is None  # no deck saved, no check run
+    assert [(e["kind"], e["actor"]) for e in store.events(ask)] == [
+        ("round.opened", "person"),
+        ("turn.started", "assistant"),
+        ("turn.ended", "assistant"),
+    ]
+    assert [e["kind"] for e in store.events(item)][-2:] == ["helper.finished", "wake"]
     hidden_view = fold(store.events("f" * 32))
     assert hidden_view["hidden"] is True and hidden_view["settled_at"] is not None
     assert convs.rows[helper_id].labels[ROUND_LABEL_KEY] == item

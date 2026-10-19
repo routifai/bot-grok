@@ -454,7 +454,9 @@ async def note_message(
 
     A person's message that opens a Round records ``round.opened``; a Helper's notice records
     ``wake``. When the Round is not the session's current one, the session's
-    :data:`ROUND_LABEL_KEY` moves to it before the turn starts. Never raises.
+    :data:`ROUND_LABEL_KEY` moves to it before the turn starts, except that a notice never moves
+    it off a Round still waiting for its first turn: that turn is the person's message's, though
+    the notice came in while a cold host started. Never raises.
 
     :param conversation: The session's row.
     :param item_id: The stored message's id.
@@ -482,7 +484,11 @@ async def note_message(
         )
         if assigned is None:
             return
-        if assigned.round_id != labels.get(ROUND_LABEL_KEY):
+        waiting = _WAITING.get(conversation.id)
+        if assigned.round_id != labels.get(ROUND_LABEL_KEY) and waiting in (
+            None,
+            assigned.round_id,
+        ):
             await asyncio.to_thread(
                 conversation_store.set_labels,
                 conversation.id,
@@ -490,6 +496,7 @@ async def note_message(
             )
         root = conversation.root_conversation_id or conversation.id
         if assigned.opened:
+            _WAITING[conversation.id] = assigned.round_id
             text = _text(data)
             _record(
                 assigned.round_id, root, ROUND_OPENED, assigned.actor, text=text, item_id=item_id
@@ -660,6 +667,8 @@ class _Turn:
 
 #: ``session id -> its turn a relay records``, so a turn ended from the store is never ended twice.
 _LIVE: dict[str, _Turn] = {}
+#: ``session id -> the Round it opened`` until a turn of the session starts (:func:`note_message`).
+_WAITING: dict[str, str] = {}
 #: Running :meth:`RelayRound.lost` checks, kept so none is collected mid-run.
 _CHECKS: set[asyncio.Task[None]] = set()
 
@@ -888,6 +897,7 @@ class RelayRound:
 
     async def _begin(self) -> None:
         self._turn = None
+        _WAITING.pop(self._session_id, None)
         if self._superside is False:
             return
         conv = await asyncio.to_thread(self._store.get_conversation, self._session_id)
