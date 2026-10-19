@@ -1,4 +1,4 @@
-"""Write a Round's events where the engine sees each fact (ADR 0029). Nothing here reads them.
+"""Write a Round's events where the engine sees each fact (ADR 0029). Only Stop reads them back.
 
 * :func:`assign_round` is the one rule for which Round a stored message belongs to.
 * :class:`Recorder` appends events in order on a background task: a write never blocks the
@@ -6,9 +6,11 @@
   words are joined per :data:`WORDS_EVERY` seconds.
 * :class:`RelayRound` turns one session's runner stream, as the server relays it, into events:
   turns, words, tool calls, a Helper's finish, chips and checklist changes.
-* :func:`note_message`, :func:`helper_created`, :func:`file_saved` and
-  :func:`stop_requested` are the writers at a stored message, a Helper's creation, an artifact
-  save and Stop.
+* :func:`note_message`, :func:`helper_created` and :func:`file_saved` are the writers at a
+  stored message, a Helper's creation and an artifact save.
+* :func:`stop_round` is Stop: it picks the Round the person stops, records ``stop.requested``
+  and returns the Stop line; :func:`stopped_wake` tells a Helper's late notice of a stopped
+  Round from one that may still start a turn.
 
 Only Superchat sessions are recorded; a session outside a Round records nothing.
 """
@@ -21,7 +23,7 @@ import json
 import logging
 import re
 import time
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -54,6 +56,7 @@ from omnigent.superchat.rounds.fold import (
     TURN_STARTED,
     WAKE,
     WORDS,
+    fold,
 )
 from omnigent.superchat.rounds.store import RoundEvent, SqlAlchemyRoundStore
 from omnigent.superchat.titles import clip
@@ -203,6 +206,12 @@ class Recorder:
             except Exception:
                 _logger.warning("round events not stored (%d dropped)", len(batch), exc_info=True)
 
+    async def view(self, round_id: str) -> dict[str, Any]:
+        """The Round's view, folded from its stored events once every queued one is written."""
+        await self.idle()
+        events = await asyncio.to_thread(self._store.events, round_id)
+        return fold(events, round_id)
+
     async def idle(self) -> None:
         """Wait until every queued event is written (for tests and shutdown)."""
         for round_id in {k[0] for k in self._words}:
@@ -252,6 +261,23 @@ def _text(data: Mapping[str, Any]) -> str:
     )
 
 
+def _by_person(data: Mapping[str, Any]) -> bool:
+    return data.get("role", "user") == "user" and data.get("is_system_notice") is not True
+
+
+async def _notice_helper(
+    conversation_store: Any, conversation: Any, context: Mapping[str, Any] | None
+) -> tuple[str | None, str | None]:
+    """The Helper of *conversation* a notice names in its ``context``, and that Helper's Round."""
+    named = (context or {}).get("helper_id")
+    if not isinstance(named, str) or not named:
+        return None, None
+    helper = await asyncio.to_thread(conversation_store.get_conversation, named)
+    if helper is None or helper.parent_conversation_id != conversation.id:
+        return None, None
+    return named, _round_of(helper.labels)
+
+
 async def note_message(
     conversation_store: Any,
     conversation: Any,
@@ -277,13 +303,12 @@ async def note_message(
         labels = conversation.labels
         if not is_superside_chat(labels):
             return
-        by_person = data.get("role", "user") == "user" and data.get("is_system_notice") is not True
-        named = (context or {}).get("helper_id")
-        helper_id = helper_round = None
-        if not by_person and isinstance(named, str) and named:
-            helper = await asyncio.to_thread(conversation_store.get_conversation, named)
-            if helper is not None and helper.parent_conversation_id == conversation.id:
-                helper_id, helper_round = named, _round_of(helper.labels)
+        by_person = _by_person(data)
+        helper_id, helper_round = (
+            (None, None)
+            if by_person
+            else await _notice_helper(conversation_store, conversation, context)
+        )
         assigned = assign_round(
             item_id=item_id,
             labels=labels,
@@ -361,12 +386,73 @@ def file_saved(saver: Any, artifact: Any) -> None:
     )
 
 
-def stop_requested(conversation: Any) -> None:
-    """Record ``stop.requested`` when the person stops the Conversation's Round."""
-    round_id = _round_of(conversation.labels)
-    if round_id is None or conversation.kind == "sub_agent":
-        return
-    _record(round_id, conversation.id, STOP_REQUESTED, PERSON, scope="round")
+@dataclass(frozen=True)
+class Stopped:
+    """What a person's Stop came to.
+
+    :param round_id: The Round it stops; only that Round's Helpers are interrupted.
+    :param line: The Stop line for the Conversation's history; ``None`` when the Round had
+        already settled, so nothing was stopped.
+    """
+
+    round_id: str
+    line: str | None
+
+
+async def stop_round(conversation: Any, live_helpers: Sequence[Any]) -> Stopped | None:
+    """Stop a Conversation's Round (ADR 0029, "Stop stops the whole Round").
+
+    The Round stopped is the Conversation's current one while it runs, else the newest Round
+    one of *live_helpers* is still working in; others are left alone. ``stop.requested`` is
+    recorded once, on that Round, and the Stop line is read from its folded record.
+
+    :param conversation: The Conversation's row (a Helper's own Stop is not a Round's).
+    :param live_helpers: The Conversation's Helpers still running.
+    :returns: The Round and its line, or ``None`` outside a Round (every Helper is stopped,
+        as before Rounds). Never raises.
+    """
+    current = _round_of(conversation.labels)
+    if RECORDER is None or current is None or conversation.kind == "sub_agent":
+        return None
+    try:
+        rounds = [current]
+        for helper in live_helpers:
+            round_id = _round_of(helper.labels)
+            if round_id is not None and round_id not in rounds:
+                rounds.append(round_id)
+        views = {round_id: await RECORDER.view(round_id) for round_id in rounds}
+        open_rounds = [r for r in rounds if views[r]["settled_at"] is None]
+        if not open_rounds:
+            return Stopped(current, None)
+        target = (
+            current
+            if current in open_rounds
+            else max(open_rounds, key=lambda r: views[r]["started_at"] or 0)
+        )
+        RECORDER.record(target, conversation.id, STOP_REQUESTED, PERSON, scope="round")
+        return Stopped(target, (await RECORDER.view(target))["stop_line"])
+    except Exception:
+        _logger.warning("Stop not recorded for %s", conversation.id, exc_info=True)
+        return Stopped(current, None)
+
+
+async def stopped_wake(
+    conversation_store: Any,
+    conversation: Any,
+    data: Mapping[str, Any],
+    context: Mapping[str, Any] | None,
+) -> bool:
+    """Whether a message is a Helper's notice (its result, progress or flag) from a Round the
+    person stopped. Stop ends a Round's pending wakes, so such a notice starts no turn.
+    Never raises."""
+    if RECORDER is None or _by_person(data) or not is_superside_chat(conversation.labels):
+        return False
+    try:
+        _helper_id, round_id = await _notice_helper(conversation_store, conversation, context)
+        return round_id is not None and (await RECORDER.view(round_id))["status"] == "stopped"
+    except Exception:
+        _logger.warning("wake of %s not checked against Stop", conversation.id, exc_info=True)
+        return False
 
 
 def _args(raw: Any) -> dict[str, Any]:
@@ -410,8 +496,13 @@ class RelayRound:
         self._called: set[str] = set()
         self._inputs: dict[str, list[float]] = {}
 
-    async def observe(self, event: Mapping[str, Any]) -> None:
-        """Record what *event* says happened, if this session's turn is in a Round."""
+    async def observe(self, event: Mapping[str, Any], *, stopped: bool = False) -> None:
+        """Record what *event* says happened, if this session's turn is in a Round.
+
+        :param stopped: The engine stopped this turn. Its end reads ``stopped`` whatever the
+            executor reported: a Helper interrupted while the executor called its turn done
+            (the stop lost the race) is recorded stopped, never done.
+        """
         if RECORDER is None:
             return
         kind = event.get("type")
@@ -431,7 +522,7 @@ class RelayRound:
             elif kind == "response.output_item.done" and isinstance(event.get("item"), Mapping):
                 self._item(turn, event["item"])
             elif kind in _TERMINAL:
-                self._end(turn, _TERMINAL[str(kind)])
+                self._end(turn, "stopped" if stopped else _TERMINAL[str(kind)])
         except Exception:
             _logger.warning("round event not recorded for %s", self._session_id, exc_info=True)
 
