@@ -42,12 +42,15 @@ vi.mock("../activity/useActivities", () => ({
     loadingEarlier: false,
   }),
 }));
-const rpcMock = vi.hoisted(() => ({ list: vi.fn() }));
-vi.mock("../../lib/rpc", () => ({ rpc: { artifacts: { list: rpcMock.list } } }));
+const rpcMock = vi.hoisted(() => ({ list: vi.fn(), round: vi.fn() }));
+vi.mock("../../lib/rpc", () => ({
+  rpc: { artifacts: { list: rpcMock.list }, chats: { round: rpcMock.round } },
+}));
 vi.mock("../../lib/family-stream", () => ({ watchFamily: () => () => undefined }));
 
 import { activity, helper } from "../activity/activityTestKit";
 import { madeFiles, resetConversationFiles } from "../activity/conversationFiles";
+import { resetRounds } from "../activity/rounds";
 import type { TranscriptWork, TurnWork } from "../activity/workPlan";
 import { SessionPanel } from "./SessionPanel";
 import {
@@ -71,8 +74,10 @@ beforeEach(() => {
 afterEach(() => {
   for (const unmount of mounted.splice(0)) unmount();
   rpcMock.list.mockReset();
+  rpcMock.round.mockReset();
   stored.clear();
   resetConversationFiles();
+  resetRounds();
 });
 
 async function mount(node: ReactElement) {
@@ -206,13 +211,13 @@ describe("opening", () => {
 });
 
 describe("the panel", () => {
-  it("shows the outputs and the tools used; the work itself is in its strip", async () => {
+  it("shows the outputs (the running Round's, else the Conversation's) and the tools used", async () => {
     rpcMock.list.mockResolvedValue([
       file("a", "notes.md", "ai", "2026-10-01T00:00:00Z"),
       file("b", "rbc.deck.html", "ai", "2026-10-02T00:00:00Z"),
     ]);
     fake.set([activity({ families: ["web", "files"] })]);
-    const { container } = await mount(
+    const { container, render } = await mount(
       <SessionPanel botId="bot-1" open onClose={() => undefined} />,
     );
     await act(async () => undefined);
@@ -225,6 +230,21 @@ describe("the panel", () => {
         (chip) => chip.textContent,
       ),
     ).toEqual(["Web search", "Files"]);
+    // While a Round runs, its own files are the outputs, once the Library lists them.
+    rpcMock.round.mockResolvedValue({
+      roundId: "m1",
+      status: "running",
+      files: [
+        { artifactId: "b", name: "rbc.deck.html", version: 1, helperId: null },
+        { artifactId: "unlisted", name: "draft.md", version: 1, helperId: null },
+      ],
+    });
+    await render(<SessionPanel botId="bot-1" roundId="m1" open onClose={() => undefined} />);
+    await act(async () => undefined);
+    expect(rpcMock.round).toHaveBeenCalledWith({ botId: "bot-1", roundId: "m1" });
+    expect(
+      [...container.querySelectorAll("[data-testid=session-output]")].map((row) => row.textContent),
+    ).toEqual(["rbc.deck.htmlrbc.deck.html"]);
   });
 
   it("draws nothing while closed, and closes from its button", async () => {

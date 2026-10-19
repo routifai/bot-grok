@@ -81,18 +81,6 @@ it("does not read the host while idle", async () => {
   expect(latest?.label).toBeUndefined();
 });
 
-it("returns the active run's real start from startedAt, falling back to createdAt", async () => {
-  const { runStartMs } = await import("./useMuseLiveState");
-  expect(
-    runStartMs({ id: "r", status: "running", startedAt: "2026-01-01T00:00:00Z", createdAt: "x" }),
-  ).toBe(Date.parse("2026-01-01T00:00:00Z"));
-  expect(
-    runStartMs({ id: "r", status: "running", startedAt: null, createdAt: "2026-01-01T00:01:00Z" }),
-  ).toBe(Date.parse("2026-01-01T00:01:00Z"));
-  expect(runStartMs({ id: "r", status: "running" })).toBeUndefined();
-  expect(runStartMs(undefined)).toBeUndefined();
-});
-
 it("refetches the open Asks when a run starts waiting on the person", async () => {
   api.host.status.mockResolvedValue({});
   await mount("running");
@@ -136,7 +124,7 @@ it("names the step the Muse is on from what it has written since the person's la
   expect(latest?.label).toBe("Working…");
 });
 
-it("runs a turn only while it is running, from the moment it was first seen running", async () => {
+it("runs a turn only while it is running, the same run while it does", async () => {
   let runs: MuseLiveRun[] = [];
   function Turn({ running }: { running: boolean }) {
     runs = useTurnRuns("conversation:bot-1", running);
@@ -148,7 +136,7 @@ it("runs a turn only while it is running, from the moment it was first seen runn
   const first = runs[0];
   expect(first).toMatchObject({ id: "conversation:bot-1", status: "running" });
   await act(async () => root.render(<Turn running />));
-  expect(runs[0]?.startedAtMs).toBe(first?.startedAtMs);
+  expect(runs[0]).toBe(first);
   await act(async () => root.render(<Turn running={false} />));
   expect(runs).toEqual([]);
 });

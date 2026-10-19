@@ -5,31 +5,14 @@ import { notifyAsksChanged, useAsks } from "../features/approvals";
 import { useHostLaunch } from "../features/files/useHostLaunch";
 import { currentToolName, deriveMuseState, museActivityLabel } from "./museState";
 
-/** A run as the Muse surfaces see it. `startedAt`/`createdAt` is when it really began, so every
- * surface (the working row, a remounted pane) counts elapsed time from the run, not from mount. */
-export type MuseLiveRun = Pick<Run, "id" | "status"> &
-  Partial<Pick<Run, "startedAt" | "createdAt">> & {
-    /** Epoch ms the run began, when the caller knows it better than the run's timestamps. */
-    startedAtMs?: number;
-  };
+/** A run as the Muse surfaces see it. */
+export type MuseLiveRun = Pick<Run, "id" | "status">;
 
 export interface MuseLiveState {
   state: MuseState;
   /** `undefined` while idle — every surface shows nothing rather than a caption. */
   label: string | undefined;
   askCount: number;
-  /** Epoch ms the active run began; `undefined` while idle or when unknown. */
-  runStartedAt: number | undefined;
-}
-
-export function runStartMs(run: MuseLiveRun | undefined): number | undefined {
-  if (!run) return undefined;
-  if (run.startedAtMs !== undefined) return run.startedAtMs;
-  for (const stamp of [run.startedAt, run.createdAt]) {
-    const ms = stamp ? Date.parse(stamp) : Number.NaN;
-    if (Number.isFinite(ms)) return ms;
-  }
-  return undefined;
 }
 
 /** What the open Asks depend on in the live data: runs waiting on the person and the open
@@ -47,26 +30,13 @@ export function waitingKey(
   return [...waiting, ...open].join(",");
 }
 
-/** The engine only says a chat is running, not since when: the first time it was seen running is
- * remembered here (outliving the pane), so switching to another chat and back keeps the timer. */
-const turnStarts = new Map<string, number>();
-
 /** The turn in flight in a chat, as the live-state surfaces (`useMuseLiveState`) read a run:
- * none while idle. `key` names the chat for the remembered start. */
+ * none while idle. `key` names the chat. How long it has run is the work state's `since`. */
 export function useTurnRuns(key: string, running: boolean): MuseLiveRun[] {
-  const runs = useMemo<MuseLiveRun[]>(() => {
-    if (!running) return [];
-    let startedAtMs = turnStarts.get(key);
-    if (startedAtMs === undefined) {
-      startedAtMs = Date.now();
-      turnStarts.set(key, startedAtMs);
-    }
-    return [{ id: key, status: "running", startedAtMs }];
-  }, [running, key]);
-  useEffect(() => {
-    if (!running) turnStarts.delete(key);
-  }, [running, key]);
-  return runs;
+  return useMemo<MuseLiveRun[]>(
+    () => (running ? [{ id: key, status: "running" }] : []),
+    [running, key],
+  );
 }
 
 /** The message the Muse is writing now: what comes after the person's last one, if anything. */
@@ -115,5 +85,5 @@ export function useMuseLiveState({
   const label = starting
     ? t`Starting your machine…`
     : museActivityLabel(state, currentToolName(activityMessage?.blocks));
-  return { state, label, askCount, runStartedAt: runStartMs(activeRun) };
+  return { state, label, askCount };
 }

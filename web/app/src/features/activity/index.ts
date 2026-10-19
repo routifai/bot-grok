@@ -9,7 +9,7 @@ export { AnsweredWhileWorking, useAnsweredWhileWorking } from "./AnsweredWhileWo
 export { focusActivity, useActivityFocus } from "./activityFocus";
 export { useConversationFiles } from "./conversationFiles";
 export { RoundStrip } from "./RoundStrip";
-export { runningRoundSince, useRounds, useRoundView, withRounds } from "./rounds";
+export { useRounds, useRoundView, withRounds } from "./rounds";
 export { noteServerClock, serverNow, workingSince } from "./superchatWork";
 export type { TurnStrip, TurnStrips } from "./turnStrips";
 export { stripOf, useTurnStrips } from "./turnStrips";

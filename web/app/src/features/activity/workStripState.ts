@@ -296,7 +296,8 @@ function helperBlocks(message: ThreadMessage): StripHelper[] {
  * The replies the assistant gave while earlier work was still going (ADR 0022 "Questions are
  * answered on the main turn"): the first reply to a person's message sent while Helpers an
  * earlier message started ran (or a part they handed on). Only a reply with words is marked; a
- * reply that starts Helpers of its own is new work, not an answer on the side.
+ * reply that starts Helpers of its own is new work, not an answer on the side. A reply to a
+ * message that opened a Round is never marked: its Round's strip says what runs (ADR 0029).
  */
 export function answeredWhileWorking(
   messages: readonly ThreadMessage[],
@@ -334,6 +335,7 @@ export function answeredWhileWorking(
     }
     if (replied || personIndex < 0 || progressOnly(message)) return;
     replied = true;
+    if (messages[personIndex]?.roundId) return;
     if (!message.blocks.some((block) => block.kind === "text")) return;
     if (helperBlocks(message).length > 0) return;
     const asked = Date.parse(messages[personIndex]?.createdAt ?? "");

@@ -454,7 +454,7 @@ it("falls back to the transcript's status for a Helper the feed does not list", 
   expect(fake.refresh).toHaveBeenCalled();
 });
 
-it("puts the quiet meta line under a reply given while the work continues", async () => {
+it("puts the quiet meta line under a reply given while the work continues, never in a Round", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const messages: ThreadMessage[] = [
     {
@@ -488,7 +488,7 @@ it("puts the quiet meta line under a reply given while the work continues", asyn
   fake.set(
     ready([helper("h-deck", { status: "in_progress", startedAt: ago(59_000), finishedAt: null })]),
   );
-  function Replies() {
+  function Replies({ messages }: { messages: ThreadMessage[] }) {
     const answered = useAnsweredWhileWorking("bot-1", messages);
     return (
       <>
@@ -504,11 +504,15 @@ it("puts the quiet meta line under a reply given while the work continues", asyn
   document.body.append(container);
   const root = createRoot(container);
   mounted.push(() => act(() => root.unmount()));
-  await act(async () => root.render(<Replies />));
+  await act(async () => root.render(<Replies messages={messages} />));
   const lines = container.querySelectorAll("[data-testid=answered-while-working]");
   expect(lines).toHaveLength(1);
   expect(lines[0]?.closest("[data-id]")?.getAttribute("data-id")).toBe("reply-2");
   expect(lines[0]?.textContent).toBe("Answered while the work continues");
+  // The question opened a Round: its strip is the only word on what runs.
+  const inRound = messages.map((m) => (m.id === "ask-2" ? { ...m, roundId: "ask-2" } : m));
+  await act(async () => root.render(<Replies messages={inRound} />));
+  expect(container.querySelector("[data-testid=answered-while-working]")).toBeNull();
 });
 
 describe("the strip's motion (ADR 0023)", () => {

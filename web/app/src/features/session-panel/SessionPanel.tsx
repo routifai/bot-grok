@@ -1,18 +1,19 @@
 import { useLingui } from "@lingui/react/macro";
-import type { Activity, Artifact, ToolFamily } from "@superchat/contracts";
+import type { Activity, Artifact, RoundView, ToolFamily } from "@superchat/contracts";
 import { Button, Sheet, SheetContent, SheetTitle } from "@superchat/ui-web";
 import { PanelRight, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useMemo } from "react";
 import { useIsDesktop } from "../../components/ai/orb";
 import { useArtifactPanel } from "../../components/cards/context";
-import { useActivities, useConversationFiles } from "../activity";
+import { useActivities, useConversationFiles, useRoundView } from "../activity";
 import { ArtifactPreviewThumbnail } from "../artifacts";
-import { usedFamilies } from "./sessionPanelState";
+import { roundOutputs, usedFamilies } from "./sessionPanelState";
 
-// The session panel (ADR 0027): beside the transcript while work runs, the files the Conversation
-// made (Outputs) and the kinds of tool its work used; the work itself is in its strip. A side
-// column on desktop, a sheet on a phone. Section names only: no explainer copy.
+// The session panel (ADR 0027): beside the transcript while work runs, the files the running
+// Round saved, else the ones the Conversation made (Outputs), and the kinds of tool its work used;
+// the work itself is in its strip. A side column on desktop, a sheet on a phone. Section names
+// only: no explainer copy.
 
 function Section({
   title,
@@ -52,13 +53,48 @@ function OutputRow({ artifact }: { artifact: Artifact }) {
   );
 }
 
-const NO_ACTIVITIES: readonly Activity[] = [];
+function Outputs({ outputs }: { outputs: readonly Artifact[] }) {
+  const { t } = useLingui();
+  if (outputs.length === 0) return null;
+  return (
+    <Section title={t`Outputs`} testId="session-outputs">
+      <ul className="m-0 flex list-none flex-col gap-1 p-0">
+        {outputs.map((artifact) => (
+          <OutputRow key={artifact.id} artifact={artifact} />
+        ))}
+      </ul>
+    </Section>
+  );
+}
 
-function PanelBody({ botId, onClose }: { botId: string; onClose: () => void }) {
+/** The files the Round saved, from its record. */
+function RoundOutputs({ botId, roundId }: { botId: string; roundId: string }) {
+  const view = useRoundView(botId, roundId);
+  const files = view?.files ?? NO_FILES;
+  const rows = useConversationFiles(botId, files.length > 0);
+  const outputs = useMemo(() => roundOutputs(files, rows), [files, rows]);
+  return <Outputs outputs={outputs} />;
+}
+
+function ConversationOutputs({ botId }: { botId: string }) {
+  return <Outputs outputs={useConversationFiles(botId)} />;
+}
+
+const NO_ACTIVITIES: readonly Activity[] = [];
+const NO_FILES: RoundView["files"] = [];
+
+function PanelBody({
+  botId,
+  roundId,
+  onClose,
+}: {
+  botId: string;
+  roundId: string | undefined;
+  onClose: () => void;
+}) {
   const { t } = useLingui();
   const { state } = useActivities(botId);
   const activities = state.status === "ready" ? state.activities : NO_ACTIVITIES;
-  const outputs = useConversationFiles(botId);
   const used = useMemo(() => usedFamilies(activities), [activities]);
   const familyName: Record<ToolFamily, string> = {
     web: t`Web search`,
@@ -80,15 +116,11 @@ function PanelBody({ botId, onClose }: { botId: string; onClose: () => void }) {
           <X size={16} strokeWidth={1.8} />
         </Button>
       </div>
-      {outputs.length > 0 ? (
-        <Section title={t`Outputs`} testId="session-outputs">
-          <ul className="m-0 flex list-none flex-col gap-1 p-0">
-            {outputs.map((artifact) => (
-              <OutputRow key={artifact.id} artifact={artifact} />
-            ))}
-          </ul>
-        </Section>
-      ) : null}
+      {roundId ? (
+        <RoundOutputs key={roundId} botId={botId} roundId={roundId} />
+      ) : (
+        <ConversationOutputs botId={botId} />
+      )}
       {used.length > 0 ? (
         <Section title={t`Used in this conversation`} testId="session-used">
           <ul className="m-0 flex list-none flex-wrap gap-1.5 p-0">
@@ -111,17 +143,20 @@ function PanelBody({ botId, onClose }: { botId: string; onClose: () => void }) {
 /** The session panel: a column beside the transcript on desktop, a sheet on a phone. */
 export function SessionPanel({
   botId,
+  roundId,
   open,
   onClose,
 }: {
   botId: string;
+  /** The running Round, whose files are the Outputs; else the Conversation's are. */
+  roundId?: string;
   open: boolean;
   onClose: () => void;
 }) {
   const { t } = useLingui();
   const desktop = useIsDesktop();
   if (!open) return null;
-  const body = <PanelBody botId={botId} onClose={onClose} />;
+  const body = <PanelBody botId={botId} roundId={roundId} onClose={onClose} />;
   if (!desktop) {
     return (
       <Sheet open onOpenChange={(next) => (next ? undefined : onClose())}>

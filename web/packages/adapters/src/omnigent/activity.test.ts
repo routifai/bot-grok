@@ -82,7 +82,7 @@ describe("mapActivity", () => {
     expect(mapped.families).toEqual(["web", "decks", "files"]);
   });
 
-  it("marks a Helper held by Pause, and nothing for any other value", () => {
+  it("marks a Helper held by Pause and the Round it is in, and nothing for any other value", () => {
     const raw = {
       id: "sub_agent:h1",
       kind: "sub_agent" as const,
@@ -99,6 +99,9 @@ describe("mapActivity", () => {
     expect(mapActivity({ ...raw, paused: true }).paused).toBe(true);
     expect(mapActivity({ ...raw, paused: "yes" })).not.toHaveProperty("paused");
     expect(mapActivity({ ...raw, paused: false })).not.toHaveProperty("paused");
+    expect(mapActivity({ ...raw, round_id: "m1" }).roundId).toBe("m1");
+    expect(mapActivity({ ...raw, round_id: null })).not.toHaveProperty("roundId");
+    expect(mapActivity(raw)).not.toHaveProperty("roundId");
   });
 
   it("maps a studio turn's file (ADR 0024), and none when the engine sends none", () => {

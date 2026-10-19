@@ -146,11 +146,6 @@ export function withRounds(messages: ThreadMessage[], ids: ReadonlySet<string>):
   );
 }
 
-/** When the newest running Round began (ms, the engine's clock), or null when none runs. */
-export function runningRoundSince(rounds: readonly RoundSummary[]): number | null {
-  return rounds.find((round) => round.status === "running")?.startedAt ?? null;
-}
-
 /** Forget every reader (tests). */
 export function resetRounds(): void {
   for (const store of [...lists.values(), ...views.values()]) store.stop?.();

@@ -3,7 +3,8 @@ import { presentStep } from "@superchat/core";
 import { isHelperActivity, isRunning } from "./activityGrouping";
 
 // Helpers nest: a Helper that hands part of its task to others (docs/glossary.md "Helper") lists those
-// parts under it. Pure, so the panel row and the chat's tracker share one reading of the feed.
+// parts under it, and a Helper a Round started sits under that Round's row (ADR 0029). Pure, so
+// the panel row and the chat's tracker share one reading of the feed.
 
 export interface ActivityNode {
   activity: Activity;
@@ -15,8 +16,9 @@ const forests = new WeakMap<readonly Activity[], ActivityNode[]>();
 const helperIndexes = new WeakMap<readonly ActivityNode[], Map<string, ActivityNode>>();
 
 /** The feed as a forest: a Helper whose `parentChatId` is another listed Helper's chat hangs
- * under it; everything else (turns, studio turns, Helpers started from the Conversation or a Side Chat, and
- * parts whose parent is not loaded) is a root, in the order given. Built once per feed snapshot
+ * under it, else under its Round's row when that is listed; everything else (turns, studio turns,
+ * Helpers started from the Conversation or a Side Chat, and parts whose parent is not loaded) is
+ * a root, in the order given. Built once per feed snapshot
  * (the same array gives the same forest), so every strip reading one snapshot shares it. */
 export function buildActivityForest(activities: readonly Activity[]): ActivityNode[] {
   let forest = forests.get(activities);
@@ -30,18 +32,21 @@ export function buildActivityForest(activities: readonly Activity[]): ActivityNo
 function growForest(activities: readonly Activity[]): ActivityNode[] {
   const nodes = new Map<string, ActivityNode>();
   const helperByChat = new Map<string, ActivityNode>();
+  const roundRows = new Map<string, ActivityNode>();
   for (const activity of activities) {
     const node: ActivityNode = { activity, children: [] };
     nodes.set(activity.id, node);
     if (isHelperActivity(activity)) helperByChat.set(activity.chatId, node);
+    else if (activity.roundId && activity.source !== "studio")
+      roundRows.set(activity.roundId, node);
   }
   const roots: ActivityNode[] = [];
   for (const activity of activities) {
     const node = nodes.get(activity.id) as ActivityNode;
-    const parent =
-      isHelperActivity(activity) && activity.parentChatId
-        ? helperByChat.get(activity.parentChatId)
-        : undefined;
+    const parent = isHelperActivity(activity)
+      ? ((activity.parentChatId ? helperByChat.get(activity.parentChatId) : undefined) ??
+        (activity.roundId ? roundRows.get(activity.roundId) : undefined))
+      : undefined;
     if (parent && parent !== node) parent.children.push(node);
     else roots.push(node);
   }

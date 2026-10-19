@@ -1,15 +1,30 @@
-import type { Activity, ToolFamily } from "@superchat/contracts";
+import type { Activity, Artifact, RoundView, ToolFamily } from "@superchat/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { TranscriptWork, TurnWork } from "../activity";
 
 // The session panel's readings (ADR 0027): whether the newest reply from before Rounds has work,
-// the kinds of tool the Conversation's work used, and whether the panel is open.
+// the files a Round saved, the kinds of tool the Conversation's work used, and whether the panel
+// is open.
 
 /** The reply the newest messages belong to, never an older one. Null when that reply has no
  * strip (a Round's work is in its own strip). */
 export function newestTurn(work: TranscriptWork): TurnWork | null {
   for (const turn of work.turns.values()) if (turn.last) return turn;
   return null;
+}
+
+/** The Library rows of the files a Round saved (ADR 0029), in the Round's order; a file the
+ * Library has not listed yet is left out until it is. */
+export function roundOutputs(files: RoundView["files"], rows: readonly Artifact[]): Artifact[] {
+  const seen = new Set<string>();
+  return files.flatMap((file) => {
+    const row = file.artifactId
+      ? rows.find((r) => r.id === file.artifactId || r.groupId === file.artifactId)
+      : undefined;
+    if (!row || seen.has(row.id)) return [];
+    seen.add(row.id);
+    return [row];
+  });
 }
 
 /** The order the families are listed in. */

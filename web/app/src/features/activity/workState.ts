@@ -1,13 +1,16 @@
-import type { Activity } from "@superchat/contracts";
+import type { Activity, RoundSummary } from "@superchat/contracts";
 import { useMemo, useSyncExternalStore } from "react";
 import type { ActivitiesState } from "./activityFeed";
+import { isHelperActivity, isRunning } from "./activityGrouping";
 import { buildActivityForest, isNodeRunning } from "./activityTree";
 import { workingSince } from "./superchatWork";
 import { activityFeedFor } from "./useActivities";
 
 // The Conversation's work state: the one reading of "is Superchat working" that the header pill,
 // the work strips, the working row, the orbs and the composer's Stop all take as a prop. Fed by
-// the engine only: the transcript's turn status, the interrupt's answer and the Activity feed.
+// the engine only: in a Conversation that records Rounds (ADR 0029), the newest Round's status and
+// start, and Pause from the Activity feed; before Rounds, the transcript's turn status and the
+// Activity feed.
 
 /** Idle, a message on its way, work running, or a Stop on its way. */
 export type WorkPhase = "idle" | "sending" | "running" | "stopping";
@@ -41,6 +44,8 @@ export interface WorkState {
   paused: boolean;
 }
 
+const NO_ROUNDS: readonly RoundSummary[] = [];
+
 export const IDLE_TURN: TurnStatus = {
   running: false,
   awaiting: false,
@@ -54,6 +59,8 @@ export function deriveWorkState({
   stopping,
   activities,
   turnStartedAt,
+  rounds = NO_ROUNDS,
+  roundId,
 }: {
   turn: TurnStatus;
   /** The composer's message is on its way (its upload or its post). */
@@ -64,7 +71,13 @@ export function deriveWorkState({
   activities: readonly Activity[];
   /** When the newest turn began (ms, the engine's clock): workPlan.ts `runningSince`. */
   turnStartedAt: number | null;
+  /** The Conversation's Rounds, newest first (`useRounds`); none before Rounds. */
+  rounds?: readonly RoundSummary[];
+  /** The Round the person's newest message opened, once it has one. */
+  roundId?: string;
 }): WorkState {
+  const newest = rounds[0];
+  if (newest) return roundWorkState({ newest, roundId, turn, sending, stopping, activities });
   const turnLive = !turn.stopped && (turn.running || turn.awaiting);
   const since = turn.stopped ? null : workingSince(turnLive ? turnStartedAt : null, activities);
   const phase: WorkPhase = stopping
@@ -91,6 +104,53 @@ export function deriveWorkState({
   };
 }
 
+/** A Conversation that records Rounds: working while its newest Round runs, counted from that
+ * Round's start. A message whose Round has not arrived yet runs on the transcript's word alone;
+ * a Helper outside the Round never lights it. Paused while Pause holds every running Helper of
+ * the Round. */
+function roundWorkState({
+  newest,
+  roundId,
+  turn,
+  sending,
+  stopping,
+  activities,
+}: {
+  newest: RoundSummary;
+  roundId: string | undefined;
+  turn: TurnStatus;
+  sending: boolean;
+  stopping: boolean;
+  activities: readonly Activity[];
+}): WorkState {
+  const roundRuns = newest.status === "running";
+  const unopened = roundId === undefined && !turn.stopped && (turn.running || turn.awaiting);
+  const phase: WorkPhase = stopping
+    ? "stopping"
+    : sending
+      ? "sending"
+      : roundRuns || unopened
+        ? "running"
+        : "idle";
+  const helpers = roundRuns
+    ? activities.filter(
+        (activity) =>
+          activity.roundId === newest.roundId && isHelperActivity(activity) && isRunning(activity),
+      )
+    : [];
+  return {
+    phase,
+    running: phase !== "idle",
+    turnRunning: phase !== "idle",
+    since: roundRuns ? newest.startedAt : null,
+    cancelled: turn.cancelled,
+    paused:
+      phase === "running" &&
+      helpers.length > 0 &&
+      helpers.every((activity) => activity.paused === true),
+  };
+}
+
 /** The Conversation's work state (`deriveWorkState`), reading the shared Activity feed. */
 export function useWorkState({
   botId,
@@ -98,6 +158,8 @@ export function useWorkState({
   sending,
   stopping,
   turnStartedAt,
+  rounds,
+  roundId,
 }: {
   /** None before a Muse is open: nothing runs. */
   botId: string | undefined;
@@ -105,6 +167,8 @@ export function useWorkState({
   sending: boolean;
   stopping: boolean;
   turnStartedAt: number | null;
+  rounds: readonly RoundSummary[];
+  roundId: string | undefined;
 }): WorkState {
   const feed = botId ? activityFeedFor(botId) : null;
   const { state } = useSyncExternalStore(
@@ -118,6 +182,8 @@ export function useWorkState({
     stopping,
     activities,
     turnStartedAt,
+    rounds,
+    roundId,
   });
   // One object while nothing it says changed: the memoised views it is handed keep still.
   return useMemo(

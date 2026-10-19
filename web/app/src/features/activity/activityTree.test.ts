@@ -28,10 +28,20 @@ it("nests a Helper's parts under it, oldest part first, and lists nothing twice"
   expect(forest[1]?.children.map((node) => node.activity.chatId)).toEqual(["b", "a"]);
 });
 
-it("keeps a Helper started from the Conversation, or whose coordinator isn't loaded, at the top", () => {
+it("keeps a Helper with no listed coordinator or Round at the top, else under its Round's row", () => {
   const orphan = helper("orphan", { parentChatId: "not-loaded" });
-  const forest = buildActivityForest([orphan, lead]);
-  expect(forest.map((node) => node.activity.chatId)).toEqual(["orphan", "lead"]);
+  expect(buildActivityForest([orphan, lead]).map((node) => node.activity.chatId)).toEqual([
+    "orphan",
+    "lead",
+  ]);
+  const round = activity({ id: "round:m1", roundId: "m1" });
+  const started = helper("lead", { roundId: "m1", status: "in_progress", finishedAt: null });
+  const unlisted = helper("other", { roundId: "m2" });
+  const forest = buildActivityForest([started, round, partA, unlisted]);
+  expect(forest.map((node) => node.activity.id)).toEqual(["round:m1", "sub_agent:other"]);
+  expect(forest[0]?.children.map((node) => node.activity.chatId)).toEqual(["lead"]);
+  expect(forest[0]?.children[0]?.children.map((node) => node.activity.chatId)).toEqual(["a"]);
+  expect(forest[0] && isNodeRunning(forest[0])).toBe(true);
 });
 
 it("reads a node as running while it or any part under it is", () => {

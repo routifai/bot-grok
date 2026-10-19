@@ -23,7 +23,6 @@ import {
 import { ArtifactPanelProvider, AskPreviewsProvider } from "../components/cards/context";
 import { SuperchatLogo } from "../components/SuperchatLogo";
 import {
-  runningRoundSince,
   transcriptWork,
   useRounds,
   useWorkState,
@@ -252,7 +251,9 @@ export function ShellPage() {
     turn: museTranscript.turn,
     sending,
     stopping,
-    turnStartedAt: runningRoundSince(rounds) ?? work.runningSince ?? null,
+    turnStartedAt: work.runningSince ?? null,
+    rounds,
+    roundId: transcriptMessages.findLast((message) => message.role === "user")?.roundId,
   });
   const running = workState.running;
   const turnRuns = useTurnRuns(`conversation:${active?.id}`, workState.turnRunning);
@@ -495,7 +496,12 @@ export function ShellPage() {
             ) : null}
           </div>
           {active && !chatArtifacts.isOpen ? (
-            <SessionPanel botId={active.id} open={sessionPanel.open} onClose={sessionPanel.close} />
+            <SessionPanel
+              botId={active.id}
+              roundId={rounds[0]?.status === "running" ? rounds[0].roundId : undefined}
+              open={sessionPanel.open}
+              onClose={sessionPanel.close}
+            />
           ) : null}
           {active ? chatArtifacts.panel : null}
           {active && !chatArtifacts.isOpen && !sessionPanel.open ? (
