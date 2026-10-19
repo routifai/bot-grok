@@ -6096,6 +6096,9 @@ async def _relay_runner_stream(
     deadline: float | None = None
     outage_started = 0.0
     retries = 0
+    # One Round recorder across reconnects: a turn the runner keeps streaming after the tunnel
+    # comes back is still recorded, and one whose stream is gone is ended from the store.
+    round_record = rounds.RelayRound(session_id, conversation_store)
     while True:
         started = loop.time()
         try:
@@ -6104,7 +6107,9 @@ async def _relay_runner_stream(
                 runner_client,
                 conversation_store,
                 ready,
+                round_record,
             )
+            round_record.lost()
             return
         except _RelayTransportLost as lost:
             now = loop.time()
@@ -6175,6 +6180,9 @@ async def _relay_runner_stream(
                     retries=retries,
                 ),
             )
+            if decision not in ("server_shutdown", "live_elsewhere"):
+                # No relay of this process streams the session's turn again.
+                round_record.lost()
             if decision == "intentional_stop":
                 # User clicked Stop: the Stop handler brought this runner's
                 # tunnel down on purpose (see _stop_session_host_runner), so
@@ -6259,6 +6267,7 @@ async def _relay_runner_stream_once(
     runner_client: httpx.AsyncClient,
     conversation_store: ConversationStore,
     ready: asyncio.Event | None = None,
+    round_record: rounds.RelayRound | None = None,
 ) -> None:
     """
     Subscribe to the runner's SSE stream and relay events locally.
@@ -6285,6 +6294,8 @@ async def _relay_runner_stream_once(
         slot is registered. ``None`` is accepted for direct unit tests
         that exercise relay parsing/persistence without asserting on
         startup readiness.
+    :param round_record: The session's Round recorder, kept across the
+        supervisor's reconnects; ``None`` makes one for this attempt.
     """
     text_acc: list[str] = []
     current_response_id: str | None = None
@@ -6307,7 +6318,8 @@ async def _relay_runner_stream_once(
     # The person's wait per turn, from their message (ADR 0026).
     turn_clock = TurnClock(session_id)
     # What the turns of a Superchat session do, recorded as their Round's events (ADR 0029).
-    round_record = rounds.RelayRound(session_id, conversation_store)
+    if round_record is None:
+        round_record = rounds.RelayRound(session_id, conversation_store)
     _logger.info(
         "Relay: connecting to runner GET /stream for session=%s",
         session_id,
@@ -6399,6 +6411,9 @@ async def _relay_runner_stream_once(
 
                     if evt_type == "session.status":
                         status = event.get("status", "")
+                        if status == "idle":
+                            # A turn whose stream this relay lost ends from the store.
+                            round_record.lost()
                         if status:
                             # Forward the runner's failure detail on a
                             # ``failed`` transition so a SETUP-phase

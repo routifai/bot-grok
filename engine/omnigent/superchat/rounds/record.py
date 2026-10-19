@@ -16,6 +16,11 @@
   stored a ``turn.ended``, ``helper.finished`` or ``stop.requested``, it folds that Round and,
   the first time the fold says settled, hands :func:`journal_entry` of the view to its
   ``on_settled`` sink (the Round's one journal entry, written in the host).
+* :func:`close_lost_turns` ends, from the stored conversation, a turn whose stream the relay
+  lost (its runner tunnel dropped mid-turn): the relay calls it when its session reports idle
+  or its relay ends for good, and :class:`Sweep` every :data:`SWEEP_EVERY` seconds for a turn
+  open longer than :data:`LOST_AFTER` whose session is idle. A Round cannot stay running past
+  its sessions going idle.
 
 Only Superchat sessions are recorded; a session outside a Round records nothing.
 """
@@ -102,6 +107,18 @@ _IN_WORKSPACE = re.compile(r"(?:^|/)workspace/(.+)$")
 
 #: ``(conversation id, journal entry) -> None``: where a settled Round's entry goes.
 Settled = Callable[[str, dict[str, Any]], Awaitable[None]]
+#: ``session id -> whether it runs no turn``: what :func:`close_lost_turns` asks of a session.
+Idle = Callable[[str], Awaitable[bool]]
+#: Seconds between two passes of the :class:`Sweep`.
+SWEEP_EVERY = 30.0
+#: Seconds a turn stays open before the :class:`Sweep` reads it as lost when its session is idle.
+LOST_AFTER = 60.0
+#: Seconds back the :class:`Sweep` looks, when it starts, for Rounds left with an open turn.
+SWEEP_LOOKBACK = 86400.0
+#: The reason on the ``turn.ended`` of a lost turn whose session stored no reply.
+RELAY_LOST = "relay lost"
+#: Newest messages of a session read for a lost turn's reply.
+_REPLIES = 50
 
 
 @dataclass(frozen=True)
@@ -240,6 +257,11 @@ class Recorder:
         self._journals: set[asyncio.Task[None]] = set()
         #: ``(round, actor, helper) -> [first chunk ms, conversation, chunks]`` not yet queued.
         self._words: dict[tuple[str, str, str | None], list[Any]] = {}
+        #: ``round -> conversation`` of each Round a turn started in that the :class:`Sweep`
+        #: has not yet seen closed.
+        self.turned: dict[str, str] = {}
+        #: Held by :func:`close_lost_turns`, so two never end one turn.
+        self.closing = asyncio.Lock()
 
     def record(
         self, round_id: str, conversation_id: str, kind: str, actor: str, **body: Any
@@ -275,6 +297,8 @@ class Recorder:
     def _queue_event(self, event: RoundEvent) -> None:
         log = _logger.debug if event.kind in (WORDS, TOOL_INPUT) else _logger.info
         log("round %s %s %s %s", event.round_id, event.kind, event.actor, event.body)
+        if event.kind == TURN_STARTED:
+            self.turned[event.round_id] = event.conversation_id
         self._queue.append(event)
         if self._drain is None or self._drain.done():
             try:
@@ -298,11 +322,14 @@ class Recorder:
                     _logger.warning("round events stored, not announced", exc_info=True)
             await self._settle(batch)
 
+    async def events(self, round_id: str) -> list[dict[str, Any]]:
+        """The Round's stored events, once every queued one is written."""
+        await self.idle()
+        return await asyncio.to_thread(self._store.events, round_id)
+
     async def view(self, round_id: str) -> dict[str, Any]:
         """The Round's view, folded from its stored events once every queued one is written."""
-        await self.idle()
-        events = await asyncio.to_thread(self._store.events, round_id)
-        return fold(events, round_id)
+        return fold(await self.events(round_id), round_id)
 
     async def _settle(self, batch: list[RoundEvent]) -> None:
         """Fold each Round a settling event of *batch* is in; journal the newly settled ones."""
@@ -607,6 +634,188 @@ class _Turn:
     actor: str
     helper_id: str | None
     text: list[str] = field(default_factory=list)
+    started_ms: int = field(default_factory=_now_ms)
+    #: Ended from the store (:func:`close_lost_turns`): the relay records no more of it.
+    closed: bool = False
+
+
+#: ``session id -> its turn a relay records``, so a turn ended from the store is never ended twice.
+_LIVE: dict[str, _Turn] = {}
+#: Running :meth:`RelayRound.lost` checks, kept so none is collected mid-run.
+_CHECKS: set[asyncio.Task[None]] = set()
+
+
+def open_turns(events: Sequence[Mapping[str, Any]]) -> list[Mapping[str, Any]]:
+    """The ``turn.started`` of each actor's turn (the Assistant's, or one Helper's) that no
+    ``turn.ended`` followed yet."""
+    started: dict[str | None, Mapping[str, Any]] = {}
+    for ev in events:
+        if ev["kind"] == TURN_STARTED:
+            started[ev.get("helper_id")] = ev
+        elif ev["kind"] == TURN_ENDED:
+            started.pop(ev.get("helper_id"), None)
+    return list(started.values())
+
+
+def _replies(conversation_store: Any, session_id: str, since: float) -> list[str]:
+    """The texts of the session's assistant messages stored at or after *since* (seconds)."""
+    page = conversation_store.list_items(session_id, limit=_REPLIES, order="desc", type="message")
+    texts = [
+        _text({"content": item.data.content})
+        for item in reversed(page.data)
+        if item.created_at >= int(since) and getattr(item.data, "role", None) == "assistant"
+    ]
+    return [t for t in texts if t.strip()]
+
+
+async def close_lost_turns(
+    conversation_store: Any,
+    round_id: str,
+    conversation_id: str,
+    *,
+    before_ms: int,
+    idle: Idle,
+    assistant_session: str | None = None,
+) -> bool:
+    """End each open turn of *round_id* that started by *before_ms* and whose session is
+    *idle*, from what that session stored, never from a guess.
+
+    The turn's missing ``words`` are its stored assistant messages past what was streamed; its
+    ``turn.ended`` reads ``done`` when it stored a reply, else ``failed`` with reason
+    :data:`RELAY_LOST`. A Helper's turn also records ``helper.finished`` with its last reply.
+    Idempotent: an ended turn is never ended again, here or by the relay. Never raises.
+
+    :param conversation_id: The Conversation the Round is in; the Assistant's session.
+    :param before_ms: Only turns started by then (epoch ms) are read as lost.
+    :param idle: Whether a session (the Conversation, or a Helper) runs no turn.
+    :param assistant_session: The session of the Assistant's turns when it is not the
+        Conversation (a run no person started in a child session).
+    :returns: Whether the Round still has an open turn.
+    """
+    if RECORDER is None:
+        return False
+    try:
+        async with RECORDER.closing:
+            events = await RECORDER.events(round_id)
+            still_open = False
+            for start in open_turns(events):
+                helper_id = start.get("helper_id")
+                session_id = helper_id or assistant_session or conversation_id
+                if round(start["t"] * 1000) > before_ms or not await idle(session_id):
+                    still_open = True
+                    continue
+                live = _LIVE.get(session_id)
+                if live is not None and live.round_id == round_id and live.started_ms <= before_ms:
+                    live.closed = True
+                    del _LIVE[session_id]
+                replies = await asyncio.to_thread(
+                    _replies, conversation_store, session_id, start["t"]
+                )
+                _end_lost(round_id, conversation_id, start, events, replies)
+            await RECORDER.idle()
+            return still_open
+    except Exception:
+        _logger.warning("lost turns of round %s not closed", round_id, exc_info=True)
+        return True
+
+
+def _end_lost(
+    round_id: str,
+    conversation_id: str,
+    start: Mapping[str, Any],
+    events: Sequence[Mapping[str, Any]],
+    replies: Sequence[str],
+) -> None:
+    actor, helper_id = start["actor"], start.get("helper_id")
+    streamed = "".join(
+        e.get("text") or ""
+        for e in events
+        if e["seq"] > start["seq"]
+        and e["kind"] == WORDS
+        and e["actor"] == actor
+        and e.get("helper_id") == helper_id
+    )
+    stored = "".join(replies)
+    if stored.startswith(streamed):
+        missing = stored[len(streamed) :]
+    else:
+        missing = replies[-1] if replies and replies[-1] not in streamed else ""
+    _logger.info("round %s: a %s turn the relay lost is ended from the store", round_id, actor)
+    if missing:
+        _record(round_id, conversation_id, WORDS, actor, text=missing, helper_id=helper_id)
+    status = "done" if replies else "failed"
+    _record(
+        round_id,
+        conversation_id,
+        TURN_ENDED,
+        actor,
+        helper_id=helper_id,
+        status=status,
+        reason=None if replies else RELAY_LOST,
+    )
+    if actor == HELPER:
+        result = clip(replies[-1].strip(), RESULT_LIMIT) if replies else ""
+        _record(
+            round_id,
+            conversation_id,
+            HELPER_FINISHED,
+            actor,
+            helper_id=helper_id,
+            status=status,
+            result=result,
+        )
+
+
+class Sweep:
+    """Every :data:`SWEEP_EVERY` seconds, end each turn the relay lost (:func:`close_lost_turns`)
+    that has been open :data:`LOST_AFTER` seconds while its session is idle.
+
+    It reads only the Rounds a turn started in since the engine started (the recorder's
+    ``turned``) and, at start, those the store shows with an open turn from the last
+    :data:`SWEEP_LOOKBACK` seconds; a Round leaves the list once it has no open turn.
+    """
+
+    def __init__(self, store: SqlAlchemyRoundStore, conversation_store: Any, idle: Idle) -> None:
+        self._store = store
+        self._conversations = conversation_store
+        self._idle = idle
+        self._task: asyncio.Task[None] | None = None
+
+    def start(self) -> None:
+        """Start the sweep on the running loop."""
+        self._task = asyncio.get_running_loop().create_task(self._run())
+
+    async def shutdown(self) -> None:
+        """Stop the sweep."""
+        if self._task is not None:
+            self._task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._task
+
+    async def _run(self) -> None:
+        if RECORDER is None:
+            return
+        try:
+            since = _now_ms() - int(SWEEP_LOOKBACK * 1000)
+            left = await asyncio.to_thread(self._store.open_turn_rounds, since)
+            for round_id, conversation_id in left:
+                RECORDER.turned.setdefault(round_id, conversation_id)
+        except Exception:
+            _logger.warning("rounds with open turns not read", exc_info=True)
+        while True:
+            await asyncio.sleep(SWEEP_EVERY)
+            await self.once()
+
+    async def once(self) -> None:
+        """One pass over the Rounds a turn started in."""
+        if RECORDER is None:
+            return
+        before = _now_ms() - int(LOST_AFTER * 1000)
+        for round_id, conversation_id in list(RECORDER.turned.items()):
+            if not await close_lost_turns(
+                self._conversations, round_id, conversation_id, before_ms=before, idle=self._idle
+            ):
+                RECORDER.turned.pop(round_id, None)
 
 
 class RelayRound:
@@ -640,6 +849,8 @@ class RelayRound:
             if kind == "response.in_progress":
                 await self._begin()
             turn = self._turn
+            if turn is not None and turn.closed:
+                turn = self._turn = None
             if turn is None:
                 return
             if kind == "response.output_text.delta" and isinstance(event.get("delta"), str):
@@ -675,7 +886,47 @@ class RelayRound:
             conv.id if helper else None,
         )
         self._calls, self._called, self._inputs = {}, set(), {}
+        _LIVE[self._session_id] = self._turn
         self._emit(self._turn, TURN_STARTED)
+
+    def lost(self) -> None:
+        """End, from the store, this session's turn whose stream the relay lost: called when the
+        session reports idle and when its relay ends for good. A no-op when the turn ended."""
+        if RECORDER is None or self._superside is False:
+            return
+        before = _now_ms()
+        session_id = self._session_id
+
+        async def idle(candidate: str) -> bool:
+            return candidate == session_id
+
+        async def check() -> None:
+            turn = self._turn
+            if turn is not None:
+                round_id, conversation_id = turn.round_id, turn.conversation_id
+                helper = turn.actor == HELPER
+            else:
+                conv = await asyncio.to_thread(self._store.get_conversation, session_id)
+                round_id = round_of(conv.labels) if conv is not None else None
+                if conv is None or round_id is None:
+                    return
+                conversation_id = conv.root_conversation_id or conv.id
+                helper = _is_helper(conv)
+            await close_lost_turns(
+                self._store,
+                round_id,
+                conversation_id,
+                before_ms=before,
+                idle=idle,
+                assistant_session=None if helper else session_id,
+            )
+
+        try:
+            task = asyncio.get_running_loop().create_task(check())
+        except RuntimeError:
+            return
+        _CHECKS.add(task)
+        task.add_done_callback(_CHECKS.discard)
 
     def _emit(self, turn: _Turn, kind: str, **body: Any) -> None:
         if RECORDER is not None:
@@ -754,6 +1005,8 @@ class RelayRound:
             )
 
     def _end(self, turn: _Turn, status: str) -> None:
+        if _LIVE.get(self._session_id) is turn:
+            del _LIVE[self._session_id]
         self._emit(turn, TURN_ENDED, status=status)
         if turn.actor == HELPER:
             result = clip("".join(turn.text).strip(), RESULT_LIMIT)
