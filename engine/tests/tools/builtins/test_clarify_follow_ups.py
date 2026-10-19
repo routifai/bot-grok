@@ -61,12 +61,13 @@ def test_clarification_rejects_bad_input(args: dict, needle: str) -> None:
     assert needle in build_clarification(args)["error"]
 
 
-def test_follow_ups_builds_a_chip_card_that_ends_the_turn() -> None:
+def test_follow_ups_builds_a_chip_card_that_leaves_the_turn_open() -> None:
     out = _follow(suggestions=["Compare with last year", " Show by region "])
     assert out["card"] == "follow_ups" and out["type"] == "card"
     assert out["data"] == {"suggestions": ["Compare with last year", "Show by region"]}
     assert out["fallback"] == "- Compare with last year\n- Show by region"
-    assert out["ends_turn"] is True
+    # chips never end the turn: the model ends it (ADR 0029)
+    assert "ends_turn" not in out
 
 
 @pytest.mark.parametrize(
@@ -161,17 +162,16 @@ def test_hidden_control_characters_are_stripped_from_buttons() -> None:
     )
 
 
-def test_text_after_a_follow_ups_card_does_not_replace_the_answer() -> None:
+def test_text_after_a_follow_ups_card_is_the_answer_and_the_chips_stay_last() -> None:
     items = [
         _msg("u1", "user", "How is the backlog?"),
         _msg("a1", "assistant", "It fell from 84 to 61."),
         _call("suggest_follow_ups", "k1"),
         _output("k1", build_follow_ups({"suggestions": ["By auditor"]})),
-        _msg("a2", "assistant", "Here are some things you can ask next."),
+        _msg("a2", "assistant", "It fell from 84 to 61, mostly in March."),
     ]
     out = project_items(items)
-    assert [m["id"] for m in out] == ["u1", "a1", "i-k1"]
-    assert out[1]["blocks"][0]["text"] == "It fell from 84 to 61."
+    assert [m["id"] for m in out] == ["u1", "a2", "i-k1"]
     # The chips are the last message, which is what the client keys "latest answer" on.
     assert out[-1]["blocks"][0]["card"]["card"] == "follow_ups"
 
@@ -187,7 +187,7 @@ def test_a_rejected_follow_ups_call_leaves_the_turns_last_text_as_its_answer() -
     assert [m["id"] for m in project_items(items)] == ["u1", "a2"]
 
 
-def test_text_after_a_clarification_card_is_dropped_too() -> None:
+def test_text_after_a_clarification_card_is_shown_too() -> None:
     items = [
         _msg("u1", "user", "Pull the numbers"),
         _msg("a1", "assistant", "I need one thing first."),
@@ -195,7 +195,7 @@ def test_text_after_a_clarification_card_is_dropped_too() -> None:
         _output("k1", build_clarification({"question": "Which?", "options": ["A", "B"]})),
         _msg("a2", "assistant", "Let me know."),
     ]
-    assert [m["id"] for m in project_items(items)] == ["u1", "a1", "i-k1"]
+    assert [m["id"] for m in project_items(items)] == ["u1", "i-k1", "a2"]
 
 
 def _msg(item_id: str, role: str, text: str) -> dict:
