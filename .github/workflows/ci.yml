@@ -106,7 +106,12 @@ jobs:
       - name: Layer contracts (ADR 0019)
         run: uv run --no-sync lint-imports
       - name: Tests
-        run: uv run --no-sync pytest tests -q -p no:randomly -n auto -m "not databricks"
+        run: uv run --no-sync pytest tests -q -p no:randomly -n auto -m "not databricks" --durations=30
+      # xdist reports a killed worker only as "node down"; the kernel log says
+      # whether the OOM killer chose it.
+      - name: Kernel kills during tests
+        if: always()
+        run: sudo dmesg | grep -iE "out of memory|killed process" || echo "no OOM kills"
 
   host-tests:
     name: Host scripts
