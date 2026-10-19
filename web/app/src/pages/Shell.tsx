@@ -23,11 +23,13 @@ import {
 import { ArtifactPanelProvider, AskPreviewsProvider } from "../components/cards/context";
 import { SuperchatLogo } from "../components/SuperchatLogo";
 import {
+  runningRoundSince,
   stripOf,
   transcriptWork,
-  useLiveTurnActivity,
+  useRounds,
   useWorkState,
   WorkingPill,
+  withRounds,
 } from "../features/activity";
 import { ApprovalCards } from "../features/approvals";
 import { appsExtension } from "../features/apps";
@@ -194,21 +196,17 @@ export function ShellPage() {
   revealMessageRef.current = museTranscript.reveal;
   // The person's message on its way, then the reply as it streams, until the transcript has them.
   const { messages: storedMessages, pendingMessage, liveMessage } = museTranscript;
+  // The Conversation's Rounds (ADR 0029): the message that opened one carries its id.
+  const rounds = useRounds(active?.id);
+  // Only a new Round changes the transcript; its updates are its strip's.
+  const roundKey = rounds.map((round) => round.roundId).join(" ");
   const transcriptMessages = useMemo(() => {
     const unstored = [pendingMessage, liveMessage].filter((message) => message !== null);
-    return unstored.length ? [...(storedMessages ?? []), ...unstored] : (storedMessages ?? []);
-  }, [storedMessages, pendingMessage, liveMessage]);
-  // Each reply's strip and where the running work began, read once (ADR 0023).
-  // The running turn's Activity from the Conversation's status: its steps show before any reply.
-  const liveActivityId = useLiveTurnActivity(
-    active?.id,
-    museTranscript.threadId,
-    museTranscript.turn.running || museTranscript.turn.awaiting,
-  );
-  const work = useMemo(
-    () => transcriptWork(transcriptMessages, liveActivityId),
-    [transcriptMessages, liveActivityId],
-  );
+    const stored = withRounds(storedMessages ?? [], new Set(roundKey.split(" ")));
+    return unstored.length ? [...stored, ...unstored] : stored;
+  }, [storedMessages, pendingMessage, liveMessage, roundKey]);
+  // Each reply's strip from before Rounds and where the running work began, read once.
+  const work = useMemo(() => transcriptWork(transcriptMessages), [transcriptMessages]);
   const {
     activePendingAttachments,
     activePendingFolders,
@@ -255,7 +253,7 @@ export function ShellPage() {
     turn: museTranscript.turn,
     sending,
     stopping,
-    turnStartedAt: work.runningSince ?? null,
+    turnStartedAt: runningRoundSince(rounds) ?? work.runningSince ?? null,
   });
   const running = workState.running;
   const turnRuns = useTurnRuns(`conversation:${active?.id}`, workState.turnRunning);
@@ -311,12 +309,10 @@ export function ShellPage() {
   const sessionPanel = useSessionPanelOpen(running && _isDesktop);
   const planTurn = useMemo(() => newestTurn(work), [work]);
   // The panel follows the newest reply (never an older one's plan) and reads the same strip (its plan, fold and the latest line of the work).
-  const panelStrip = useMemo(() => {
-    if (!planTurn) return null;
-    const strip = stripOf(planTurn, workState, undefined);
-    // The running turn before a reply: its Helpers come from the feed, lit while anything runs.
-    return planTurn === work.pending ? { ...strip, lit: workState.running } : strip;
-  }, [planTurn, workState, work.pending]);
+  const panelStrip = useMemo(
+    () => (planTurn ? stripOf(planTurn, workState, undefined) : null),
+    [planTurn, workState],
+  );
   const orbHome = orbPlacement({
     startPage: shownStart,
     sidebarVisible: false,

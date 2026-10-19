@@ -9,6 +9,8 @@ export { AnsweredWhileWorking, useAnsweredWhileWorking } from "./AnsweredWhileWo
 export { focusActivity, useActivityFocus } from "./activityFocus";
 export { useConversationFiles } from "./conversationFiles";
 export { PlanSteps } from "./PlanSteps";
+export { RoundStrip } from "./RoundStrip";
+export { runningRoundSince, useRounds, useRoundView, withRounds } from "./rounds";
 export type { StepComment } from "./stepComment";
 export { setStepComment, stepCommentFor, stepCommentNow, useStepComment } from "./stepComment";
 export { noteServerClock, serverNow, workingSince } from "./superchatWork";
@@ -16,7 +18,6 @@ export type { TurnStrip, TurnStrips } from "./turnStrips";
 export { stripOf, useTurnStrips } from "./turnStrips";
 export type { ActivitiesState } from "./useActivities";
 export { LIVE_ACTIVITY_WIRE, useActivities } from "./useActivities";
-export { useLiveTurnActivity } from "./useLiveTurnActivity";
 export { WorkingPill } from "./WorkingPill";
 export { useStripView, WorkLineRow, WorkStrip, WorkStripView } from "./WorkStrip";
 export type { TranscriptWork, TurnWork } from "./workPlan";

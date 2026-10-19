@@ -5,11 +5,9 @@ import type { TranscriptWork, TurnWork } from "../activity";
 // The session panel's readings (ADR 0027): which reply's plan it shows, the files the
 // Conversation made, the kinds of tool its work used, and whether the panel is open.
 
-/** The reply the panel follows: the one the newest messages belong to (the turn running now, even
- * before a reply names it, or the last one), never an older reply's plan. Null when that reply has
- * no strip. */
+/** The reply the panel follows: the one the newest messages belong to, never an older reply's
+ * plan. Null when that reply has no strip (a Round's work is in its own strip). */
 export function newestTurn(work: TranscriptWork): TurnWork | null {
-  if (work.pending) return work.pending;
   for (const turn of work.turns.values()) if (turn.last) return turn;
   return null;
 }

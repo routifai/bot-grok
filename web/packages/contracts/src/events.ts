@@ -201,6 +201,9 @@ export const ThreadMessageSchema = z.object({
   runId: Id.optional(),
   /** A reply only: the Activity of the turn that wrote it (`activities.get`), ADR 0027. */
   activityId: z.string().optional(),
+  /** The person's message that opened a Round (ADR 0029): the Round's id, which is this
+   * message's own (`chats.rounds`). Absent on a message from before Rounds were recorded. */
+  roundId: z.string().optional(),
   createdAt: z.string(),
   /** `chats.transcript` only: `queued` while this message waits behind the running turn. */
   delivered: z.literal("queued").optional(),

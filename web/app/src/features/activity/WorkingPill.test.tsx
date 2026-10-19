@@ -18,13 +18,13 @@ vi.mock("@lingui/react/macro", () => {
   };
 });
 
-import type { ThreadMessage } from "@superchat/contracts";
+import type { RoundSummary, ThreadMessage } from "@superchat/contracts";
 import { helper } from "./activityTestKit";
+import { runningRoundSince } from "./rounds";
 import { noteServerClock, resetServerClock, workingSince } from "./superchatWork";
 import { WorkingPill } from "./WorkingPill";
-import { transcriptWork } from "./workPlan";
 import { deriveWorkState, IDLE_TURN } from "./workState";
-import { composeStrip, deriveWorkStrip, formatClock } from "./workStripState";
+import { formatClock } from "./workStripState";
 
 const mounted: Array<() => void> = [];
 afterEach(() => {
@@ -103,54 +103,39 @@ it("keeps still when motion is reduced", async () => {
   expect(pill(container)?.className).toContain("motion-reduce:animate-none");
 });
 
-it("reads the same time as the running reply's strip, before and after a reload", async () => {
-  const sec = (s: number) => new Date(Date.UTC(2026, 9, 17, 10, 0, s)).toISOString();
-  const msg = (id: string, role: "user" | "bot", createdAt: string): ThreadMessage => ({
-    id,
+it("counts the running Round from its start, on the engine's clock", async () => {
+  const sec = (s: number) => Date.UTC(2026, 9, 17, 10, 0, s);
+  const round = (roundId: string, status: string, startedAt: number): RoundSummary => ({
+    roundId,
+    status,
+    startedAt,
+    live: null,
+    helpers: 0,
+    files: 0,
+    steps: 0,
+  });
+  // Newest first: the running Round, then one that settled before it.
+  const rounds = [round("r2", "running", sec(0)), round("r1", "done", sec(-90))];
+  const ask: ThreadMessage = {
+    id: "r2",
     threadId: "conv",
     seq: 0,
-    role,
-    createdAt,
-    blocks:
-      role === "user"
-        ? [{ kind: "text", text: "Make the deck" }]
-        : [
-            {
-              kind: "reply_card",
-              card: "plan",
-              id: "p",
-              data: { items: [{ text: "Read", status: "doing" }] },
-              fallback: "Read",
-            },
-          ],
-  });
-  const messages = [msg("ask", "user", sec(0)), msg("card", "bot", sec(5))];
+    role: "user",
+    createdAt: new Date(sec(0)).toISOString(),
+    blocks: [{ kind: "text", text: "Make the deck" }],
+  };
   // The client clock runs 9 s ahead of the engine's.
   const skew = 9_000;
   vi.useFakeTimers({ toFake: ["Date"] });
-  const agree = async () => {
-    const work = transcriptWork(messages);
-    const turn = work.turns.get("card");
-    const now = Date.now();
-    const strip = composeStrip(
-      deriveWorkStrip([], [], now),
-      [],
-      { plan: turn?.plan ?? null, live: true, startedAt: turn?.startedAt ?? null, endedAt: null },
-      now,
-    );
-    const { container } = await mount(work.runningSince ?? null);
-    expect(pill(container)?.textContent).toBe(`Working · ${formatClock(strip.clockMs ?? -1)}`);
-    return strip.clockMs;
-  };
-  // Open while the reply is written: the plan card arrives as it is written.
-  vi.setSystemTime(Date.parse(sec(0)) + skew);
-  noteServerClock(messages.slice(0, 1));
-  vi.setSystemTime(Date.parse(sec(5)) + skew);
-  noteServerClock(messages);
-  vi.setSystemTime(Date.parse(sec(30)) + skew);
-  expect(await agree()).toBe(30_000);
-  // Reloaded: nothing learned yet, both count from the same start on the same clock.
-  resetServerClock();
-  noteServerClock(messages);
-  await agree();
+  // Open on the earlier Round; the person's message arrives as it is sent.
+  const earlier = { ...ask, id: "r1", createdAt: new Date(sec(-90)).toISOString() };
+  vi.setSystemTime(sec(-1) + skew);
+  noteServerClock([earlier]);
+  vi.setSystemTime(sec(0) + skew);
+  noteServerClock([earlier, ask]);
+  vi.setSystemTime(sec(30) + skew);
+  const { container } = await mount(runningRoundSince(rounds));
+  expect(pill(container)?.textContent).toBe(`Working · ${formatClock(30_000)}`);
+  // Nothing runs once the Round settled.
+  expect(runningRoundSince([round("r1", "done", sec(-90))])).toBeNull();
 });

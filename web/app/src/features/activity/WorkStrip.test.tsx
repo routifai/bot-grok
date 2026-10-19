@@ -2,7 +2,7 @@
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import type { Activity, ActivityStep, ThreadMessage } from "@superchat/contracts";
+import type { Activity, ActivityStep, RoundView, ThreadMessage } from "@superchat/contracts";
 import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -56,6 +56,7 @@ const rpcMock = vi.hoisted(() => {
   return {
     list: vi.fn(),
     get: vi.fn(),
+    round: vi.fn(),
     pauseHelpers: vi.fn(),
     resumeHelpers: vi.fn(),
     streams,
@@ -87,6 +88,7 @@ vi.mock("../../lib/rpc", () => ({
     artifacts: { list: rpcMock.list },
     activities: { get: rpcMock.get },
     chats: {
+      round: rpcMock.round,
       watchStatus: rpcMock.watchStatus,
       pauseHelpers: rpcMock.pauseHelpers,
       resumeHelpers: rpcMock.resumeHelpers,
@@ -102,6 +104,9 @@ const family = vi.hoisted(() => {
     saved: () => {
       for (const listener of [...listeners]) listener({ type: "artifactsChanged", groupId: "g" });
     },
+    roundUpdated: (roundId: string) => {
+      for (const listener of [...listeners]) listener({ type: "roundUpdated", roundId });
+    },
   };
 });
 vi.mock("../../lib/family-stream", () => ({
@@ -115,6 +120,8 @@ import { AnsweredWhileWorking, useAnsweredWhileWorking } from "./AnsweredWhileWo
 import { settleActivityFocus, useActivityFocus } from "./activityFocus";
 import { activity, helper } from "./activityTestKit";
 import { resetConversationFiles } from "./conversationFiles";
+import { RoundStrip } from "./RoundStrip";
+import { resetRounds } from "./rounds";
 import { setStepComment, stepCommentNow } from "./stepComment";
 import { WorkStrip } from "./WorkStrip";
 import type { PlanStep } from "./workPlan";
@@ -127,6 +134,8 @@ afterEach(() => {
   fake.refresh.mockClear();
   rpcMock.list.mockReset();
   rpcMock.get.mockReset();
+  rpcMock.round.mockReset();
+  resetRounds();
   rpcMock.pauseHelpers.mockReset();
   rpcMock.resumeHelpers.mockReset();
   rpcMock.streams.clear();
@@ -845,52 +854,6 @@ describe("the engine's display (ADR 0027)", () => {
     expect(container.querySelector("[data-testid=work-strip-paused]")).not.toBeNull();
   });
 
-  it("shows a running turn's own steps from its Activity before any reply, and its Helpers", async () => {
-    const turnActivity = activity({
-      id: "turn:conv:r1",
-      chatId: "conv",
-      status: "in_progress",
-      startedAt: ago(20_000),
-      finishedAt: null,
-      steps: [
-        toolStep("web_search", "Searched the web", 1),
-        toolStep("sys_os_read", "Read a file", 2),
-      ],
-    });
-    const { container } = await mount([], [turnActivity], {
-      plan: null,
-      activityId: "turn:conv:r1",
-      live: true,
-      startedAt: Date.now() - 20_000,
-      endedAt: null,
-    });
-    expect(container.querySelector("[data-testid=work-strip]")?.getAttribute("data-state")).toBe(
-      "working",
-    );
-    expect(container.querySelector("[data-testid=work-strip-live-steps]")).not.toBeNull();
-    expect(container.querySelector("[data-testid=work-strip-now]")?.textContent).not.toBe(
-      "Working",
-    );
-    // A Helper the turn started shows as its line, from the feed alone.
-    await act(async () =>
-      fake.set(
-        ready([
-          turnActivity,
-          helper("h-new", {
-            parentChatId: "conv",
-            title: "Build the deck",
-            status: "in_progress",
-            startedAt: ago(5_000),
-            finishedAt: null,
-          }),
-        ]),
-      ),
-    );
-    expect(container.querySelector("[data-testid=work-strip-line]")?.textContent).toContain(
-      "Build the deck",
-    );
-  });
-
   it("draws nothing for a settled reply with no plan, no Helper and no steps", async () => {
     const { container } = await mount([], [], {
       plan: null,
@@ -910,5 +873,127 @@ describe("the engine's display (ADR 0027)", () => {
       endedAt: null,
     });
     expect(container.querySelector("[data-testid=work-strip-pause]")).toBeNull();
+  });
+});
+
+describe("the Round's strip (ADR 0029)", () => {
+  const running = (): RoundView => ({
+    roundId: "r1",
+    status: "running",
+    startedAt: Date.now() - 12_000,
+    settledAt: null,
+    elapsedMs: 12_000,
+    stopLine: null,
+    now: { actor: "assistant", helperId: null, name: "web_search", digest: "query=banks" },
+    trail: [
+      {
+        actor: "helper",
+        helperId: "h1",
+        at: Date.now(),
+        name: "artifact_save",
+        digest: "name=deck",
+        ok: true,
+      },
+    ],
+    helpers: [
+      {
+        id: "h1",
+        title: "Write the deck",
+        folder: "decks/q3",
+        status: "running",
+        startedAt: Date.now() - 10_000,
+        finishedAt: null,
+      },
+    ],
+    files: [{ artifactId: "a1", name: "deck", version: 2, helperId: "h1" }],
+    checklist: [
+      { id: "1", subject: "Outline", activeForm: "Outlining", status: "completed" },
+      { id: "2", subject: "Write slides", activeForm: "Writing slides", status: "in_progress" },
+    ],
+  });
+
+  async function mountRound() {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    fake.set(ready([]));
+    rpcMock.list.mockResolvedValue([]);
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    mounted.push(() => act(() => root.unmount()));
+    await act(async () => root.render(<RoundStrip botId="bot-1" roundId="r1" />));
+    return container;
+  }
+  const q = (container: HTMLElement, id: string) => container.querySelector(`[data-testid=${id}]`);
+
+  it("shows the running Round from its record: the tool now, the clock, each Helper, the checklist and the files", async () => {
+    rpcMock.round.mockResolvedValue(running());
+    const container = await mountRound();
+    expect(rpcMock.round).toHaveBeenCalledWith({ botId: "bot-1", roundId: "r1" });
+    expect(q(container, "round-strip")?.getAttribute("data-state")).toBe("working");
+    expect(q(container, "round-strip-now")?.textContent).toContain("query=banks");
+    expect(q(container, "round-strip-clock")?.textContent).toBe("0:12");
+    // A Helper's row: its title, its own latest tool, its folder.
+    expect(q(container, "round-helper")?.textContent).toContain("Write the deck");
+    expect(q(container, "round-helper")?.textContent).toContain("name=deck");
+    expect(q(container, "round-helper-folder")?.textContent).toBe("decks/q3");
+    // The model's checklist in its words, each item by its own status.
+    const items = [...container.querySelectorAll("[data-testid=round-checklist] li")];
+    expect(items.map((item) => [item.textContent, item.getAttribute("data-status")])).toEqual([
+      ["Outline", "completed"],
+      ["Writing slides", "in_progress"],
+    ]);
+    expect(q(container, "file-thumb")?.textContent).toBe("deck v2");
+    // Never a fraction, never a count of steps as progress.
+    expect(container.querySelector("[role=progressbar]")).toBeNull();
+    expect(container.textContent).not.toMatch(/\d+ of \d+/);
+  });
+
+  it("reads the record again on its updates, one read at a time, then settles to one line that unfolds", async () => {
+    rpcMock.round.mockResolvedValue(running());
+    const container = await mountRound();
+    const settled: RoundView = {
+      ...running(),
+      status: "done",
+      settledAt: Date.now(),
+      elapsedMs: 95_000,
+      now: null,
+      trail: [
+        ...running().trail,
+        {
+          actor: "assistant",
+          helperId: null,
+          at: Date.now(),
+          name: "web_search",
+          digest: "query=fees",
+          ok: false,
+        },
+      ],
+      helpers: running().helpers.map((helper) => ({
+        ...helper,
+        status: "done",
+        finishedAt: Date.now(),
+      })),
+      files: [...running().files, { artifactId: "a2", name: "notes", version: 1, helperId: null }],
+    };
+    rpcMock.round.mockResolvedValue(settled);
+    await act(async () => {
+      family.roundUpdated("r1");
+      family.roundUpdated("r1");
+      family.roundUpdated("r1");
+      family.roundUpdated("other");
+    });
+    // The first read on show, one for the updates, one more queued behind it.
+    expect(rpcMock.round).toHaveBeenCalledTimes(3);
+    const line = q(container, "round-strip-settled");
+    expect(q(container, "round-strip")?.getAttribute("data-state")).toBe("settled");
+    expect(line?.textContent).toContain("2 files");
+    expect(q(container, "round-strip-clock")?.textContent).toBe("1:35");
+    expect(q(container, "round-helper")).toBeNull();
+    expect(q(container, "round-trail")).toBeNull();
+    await act(async () => (line as HTMLButtonElement).click());
+    expect(line?.getAttribute("aria-expanded")).toBe("true");
+    const trail = [...container.querySelectorAll("[data-testid=round-trail] li")];
+    expect(trail.map((step) => step.getAttribute("data-ok"))).toEqual(["true", "false"]);
+    expect(q(container, "round-helper")?.textContent).toContain("Write the deck");
   });
 });
