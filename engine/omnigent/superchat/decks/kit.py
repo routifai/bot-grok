@@ -230,10 +230,13 @@ def check_slides(slides_html: str) -> tuple[list[str], list[str]]:
                 "A <script data-superchat-chart> may only configure its chart: the data goes in "
                 "the script, nothing is fetched or evaluated."
             )
-    if _EXTERNAL_RE.search(slides_html):
+    external = _EXTERNAL_RE.search(slides_html)
+    if external:
+        near = slides_html[external.start() : external.end() + 60].split(">", 1)[0]
         errors.append(
-            "Slides may not load anything from the web (images, fonts, @import): embed it or "
-            "draw it with HTML/CSS/SVG."
+            "Slides may not load anything from the web (images, fonts, @import), as in "
+            f"`{near}`: remove every such reference, drawing it with HTML/CSS/SVG or leaving "
+            "it out."
         )
     ids = _ID_RE.findall(slides_html)
     for dup in sorted({i for i in ids if ids.count(i) > 1}):

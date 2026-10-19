@@ -78,9 +78,15 @@ class DeckNewTool(Tool):
         names = ", ".join(kit.templates())
         return (
             "Create a deck: an HTML `.deck.html` file of 1920x1080 slides, never a PowerPoint "
-            "(that is a separate export, deck_export). Without slides it returns the layouts and "
-            "chart recipes; with the slides (HTML sections) it adds the framework and theme, "
+            "(that is a separate export, deck_export). Two uses. The kit: `path` and `title` "
+            "only writes nothing and returns the layouts, the chart recipes and the theme it "
+            "will use; skip it when your instructions list the layouts and you need no chart. "
+            "The deck: the same call with all the slides adds the framework, theme and fonts, "
             "writes the file and returns the layout problems to fix before artifact_save. "
+            "Slides are refused, nothing written, when anything in them loads from the web (an "
+            "http(s) or // URL in src, href or url(), a web font, @import) or they carry a "
+            "<script> other than a chart's <script data-superchat-chart>: draw a logo or icon "
+            "with HTML, CSS or inline SVG, or leave it out, and use only the theme's fonts. "
             f"Themes (deck_themes says what each is for): {names}."
         )
 
@@ -126,10 +132,12 @@ class DeckNewTool(Tool):
                         "slides": {
                             "type": "string",
                             "description": (
-                                "Omit to get the layout menu. The slides: one "
-                                '<section class="slide ..." data-screen-label="NN Name" '
-                                'data-superchat-id="..."> per slide, using the layouts in the '
-                                'deck rules. The first has class "slide active".'
+                                "Omit only for the kit. Every slide in one string: a "
+                                '<section class="slide <surface> <layout>" '
+                                'data-screen-label="NN Name" data-superchat-id="..."> per '
+                                "slide, using the deck layouts, every text block with its own "
+                                "lower-case-hyphenated data-superchat-id; the first slide has "
+                                'class "slide active". Nothing from the web, no other script.'
                             ),
                         },
                     },

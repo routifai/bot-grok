@@ -66,6 +66,10 @@ prompt: |
   refused as stale, read the file again, redo the change on top of the newer version and save
   again.
 
+  Before you say a change is made, confirm it is in the saved version: the patch or save
+  result, or the file read back (`deck_check` for a deck). Never report a change you have not
+  confirmed; if it did not land, fix it or say so.
+
   Reply in one line that says what changed, in the person's words. No plan, no delegation, no
   narration of tools or steps. If the request cannot be done in this file, say so in one line.
 

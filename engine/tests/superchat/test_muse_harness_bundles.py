@@ -51,7 +51,9 @@ PI_KEYS = ("context_files: false", "system_prompt_mode: replace", "skills: none"
 
 
 def test_prompt_is_identical_and_helpers_have_the_same_files() -> None:
-    assert (CLAUDE / "AGENTS.md").read_text() == (PI / "AGENTS.md").read_text()
+    # The prompts differ only in the harness the Assistant names when asked what it runs on.
+    claude = (CLAUDE / "AGENTS.md").read_text().replace("Claude Agent SDK harness", "HARNESS")
+    assert claude == (PI / "AGENTS.md").read_text().replace("Pi harness", "HARNESS")
     cmp = filecmp.dircmp(CLAUDE / "agents", PI / "agents")
     assert cmp.left_only == cmp.right_only == []
 
