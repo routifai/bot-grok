@@ -25,6 +25,9 @@ hosts:
         anthropic:
           base_url: https://api.anthropic.com
           api_key_ref: env:ANTHROPIC_API_KEY
+          # Model limits pi is told (it otherwise assumes 128k context / 16k output).
+          context_window: 1000000
+          max_output_tokens: 32000
     inference:
       harnesses:
         claude-sdk:

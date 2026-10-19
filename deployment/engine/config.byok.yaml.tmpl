@@ -28,6 +28,10 @@ hosts:
       byok:
         kind: gateway
         connection: model
+        anthropic:
+          # Model limits pi is told (it otherwise assumes 128k context / 16k output).
+          context_window: 1000000
+          max_output_tokens: 32000
       # Operator key for everyone (self-hosting). Unused unless a binding below selects it, and
       # needs ANTHROPIC_API_KEY in runner_env above.
       # operator:

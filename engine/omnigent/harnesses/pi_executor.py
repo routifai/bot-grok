@@ -44,6 +44,7 @@ from typing import Any, NotRequired, Protocol, TypeAlias, TypedDict, cast
 
 from omnigent.context.labels import SUPERSIDE_CHAT_MODE_VALUE
 from omnigent.harnesses import llm_trace, pi_settings
+from omnigent.harnesses.pi_credentials import pi_model_limits
 from omnigent.harnesses.agent_env import clean_agent_env
 from omnigent.harnesses.native_attachments import parse_data_uri
 from omnigent.llms._usage_observer import notify_from_dict as _notify_usage_from_dict
@@ -607,6 +608,10 @@ module.exports = function(pi) {{
       description: tool.description,
       promptSnippet: tool.promptSnippet || tool.description,
       parameters: tool.parameters || {{ type: "object", properties: {{}} }},
+      // Pi runs one message's tool calls in parallel unless a tool in the batch is
+      // sequential. Ours write files and save artifacts (an edit and the save that
+      // reads it can share a batch), so run them in the order the model wrote them.
+      executionMode: "sequential",
       async execute(toolCallId, _params, _signal, _onUpdate, _ctx) {{
         const result = await callTool(tool.name, _params, toolCallId);
         if (CARD_BATCH.delete(toolCallId)) result.terminate = true;
@@ -724,15 +729,11 @@ def _pi_supports_approve(executable: str) -> bool:
     return ver >= (0, 79, 0)
 
 
-# Idle budget for one stdout read during a turn. Expiry alone never ends
-# the turn (a long tool call may stay silent past it); only a real stdout
-# EOF does. Module-level so tests can patch it.
+# Idle budget for one stdout read during a turn. Once pi has answered the
+# prompt, expiry alone never ends the turn (a long tool call may stay silent
+# past it); only ``agent_settled`` or a real stdout EOF does. Module-level so
+# tests can patch it.
 _TURN_STDOUT_IDLE_TIMEOUT_S = 120.0
-
-# Post-error drain budget: after an errored message the only line left to
-# consume is the already-emitted ``agent_end``. Module-level so tests can
-# patch it.
-_TURN_STDOUT_ERROR_DRAIN_TIMEOUT_S = 10.0
 
 # CLI flags whose values are sensitive (e.g. the full system prompt) and must
 # not be written to logs verbatim. The value following these flags is replaced
@@ -783,6 +784,7 @@ def _build_models_json(
     model: str | None = None,
     openai_wire_api: str | None = None,
     trace_session: str | None = None,
+    model_limits: Mapping[str, Mapping[str, int]] | None = None,
 ) -> _PiModelsConfig:
     # Pi's models.json mixes str/int/bool/list/dict across provider configs;
     """Build a Pi ``models.json`` with protocol-specific gateway providers.
@@ -805,6 +807,8 @@ def _build_models_json(
         provider. ``None`` defaults generic providers to Chat Completions.
     :param trace_session: The session whose Claude calls go through the dev-only
         model-call trace (:mod:`omnigent.harnesses.llm_trace`); no-op when tracing is off.
+    :param model_limits: Configured ``context_window`` / ``max_output_tokens``
+        keyed by family (``"claude"`` / ``"openai"``); the catalog fills the rest.
     :returns: Pi ``models.json`` contents.
     """
     h = host.rstrip("/")
@@ -909,13 +913,12 @@ def _build_models_json(
     if model is not None:
         # Explicit selections must launch even when picker compatibility
         # filtering hides the equivalent discovered entry.
-        provider = config["providers"][
-            _pi_provider_for_model(
-                model,
-                generic_openai_wire_api=generic_openai_wire_api,
-                only_family=_only_configured_family(base_urls),
-            )
-        ]
+        provider_id = _pi_provider_for_model(
+            model,
+            generic_openai_wire_api=generic_openai_wire_api,
+            only_family=_only_configured_family(base_urls),
+        )
+        provider = config["providers"][provider_id]
         if not any(entry.get("id") == model for entry in provider["models"]):
             # Declare image input: Pi's transformMessages drops every image
             # block ("model does not support images") unless the model entry
@@ -929,6 +932,21 @@ def _build_models_json(
             entry: _JsonObject = {"id": model, "input": ["text", "image"]}
             if pi_model_is_reasoning(model):
                 entry["reasoning"] = True
+            # Without real limits Pi assumes 128k context / 16k output: it caps
+            # every request at max_tokens 16384 and shrinks it further as the
+            # context nears 128k, cutting off long single-call writes.
+            configured = (model_limits or {}).get(
+                "claude" if provider_id == "databricks-anthropic" else "openai", {}
+            )
+            context_window, max_output_tokens = pi_model_limits(
+                model,
+                configured_context_window=configured.get("context_window"),
+                configured_max_output_tokens=configured.get("max_output_tokens"),
+            )
+            if context_window is not None:
+                entry["contextWindow"] = context_window
+            if max_output_tokens is not None:
+                entry["maxTokens"] = max_output_tokens
             provider["models"] = [*provider["models"], entry]
     return config
 
@@ -1345,7 +1363,7 @@ class _PiSessionState:
     # so an unchanged effort costs no RPC and a changed one is applied live.
     applied_thinking: str | None = None
     _has_sent_prompt: bool = False
-    # True while a turn's agent loop runs (prompt sent, ``agent_end`` not yet read): only
+    # True while a turn's agent loop runs (prompt sent, ``agent_settled`` not yet read): only
     # then is a steer offered to Pi.
     turn_streaming: bool = False
     # Steers Pi has not delivered yet, by RPC command id, in the order they were sent.
@@ -1855,6 +1873,7 @@ class PiExecutor(Executor):
         gateway_host: str | None = None,
         base_url_override: str | None = None,
         base_urls_override: dict[str, str] | None = None,
+        model_limits: dict[str, dict[str, int]] | None = None,
         openai_wire_api: str | None = None,
         gateway_auth_command: str | None = None,
         retry_policy: RetryPolicy | None = None,
@@ -1889,6 +1908,8 @@ class PiExecutor(Executor):
             ``"https://gateway.example.com/anthropic"``.
         :param base_urls_override: Pi gateway URLs keyed by model family,
             e.g. ``{"claude": "...", "openai": "..."}``.
+        :param model_limits: Configured ``context_window`` /
+            ``max_output_tokens`` keyed like *base_urls_override*.
         :param openai_wire_api: Configured generic-provider OpenAI wire,
             ``"responses"`` or ``"chat"``.
         :param gateway_auth_command: Shell command that prints a bearer token,
@@ -1932,6 +1953,7 @@ class PiExecutor(Executor):
         self._gateway_host_override = gateway_host.rstrip("/") if gateway_host else None
         self._base_url_override = base_url_override
         self._base_urls_override = base_urls_override
+        self._model_limits = model_limits
         if openai_wire_api not in (None, RESPONSES_WIRE_API, CHAT_WIRE_API):
             raise ValueError(f"unsupported Pi OpenAI wire API: {openai_wire_api!r}")
         self._openai_wire_api = openai_wire_api
@@ -2061,7 +2083,7 @@ class PiExecutor(Executor):
         Limit: Pi's RPC carries no id on a delivered message (0.87), so correlation is by
         text, first in first out. Two pending steers with the same text are interchangeable
         in what the model reads; only which of their ids is reported first can swap. The
-        ``clear_queue`` settlement at ``agent_end`` relies on the same first-in-first-out
+        ``clear_queue`` settlement at ``agent_settled`` relies on the same first-in-first-out
         order of Pi's steering queue.
         """
         if event.get("type") == "response" and event.get("command") == "steer":
@@ -2083,13 +2105,14 @@ class PiExecutor(Executor):
             return None
         return None
 
-    async def _settle_steers_at_agent_end(
+    async def _settle_steers_at_agent_settled(
         self, session_key: str, state: _PiSessionState, rpc: _PiRpcSession
     ) -> list[SteerOutcome]:
-        """Settle the steers still pending when Pi's agent loop ended.
+        """Settle the steers still pending when Pi settled.
 
-        Pi keeps an undelivered steer queued for its next prompt, while the caller replays
-        its own copy as the next turn, so the queue is cleared here. ``clear_queue`` answers
+        Pi delivers queued steers before it settles, but one sent as it settled stays
+        queued for its next prompt, while the caller replays its own copy as the next turn,
+        so the queue is cleared here. ``clear_queue`` answers
         with the steering texts it removed: the last that many pending steers were never
         delivered (Pi's queue is first in, first out) and are refused; any earlier ones were
         delivered under an expanded text and are taken. Without an answer Pi is dropped, so
@@ -2271,6 +2294,7 @@ class PiExecutor(Executor):
                 self._gateway_token,
                 self._base_urls_override,
                 model=effective_model,
+                model_limits=self._model_limits,
                 openai_wire_api=self._openai_wire_api,
                 trace_session=trace_session,
             )
@@ -2625,11 +2649,12 @@ class PiExecutor(Executor):
             yield ExecutorError(message=f"Failed to send prompt to Pi: {exc}")
             return
         if state is not None:
-            # Pi's agent loop is running: a steer can join it from here to ``agent_end``.
+            # Pi's agent loop is running: a steer can join it from here to ``agent_settled``.
             state.pending_steers.clear()
             state.turn_streaming = True
 
-        # Read events until agent_end.
+        # Read events until agent_settled: ``agent_end`` closes one low-level run, but pi
+        # may still retry a failed call, recover from overflow, or deliver queued steers.
         response_text = ""
         streamed_any = False
         # Content index → (tool call id, name) for the tool calls Pi is streaming.
@@ -2641,22 +2666,25 @@ class PiExecutor(Executor):
         # last. Empty when pi reports no usage — cost tracking is skipped.
         message_usages: list[_PiMessageUsage] = []
         # Error reported by a ``message_end`` (stopReason=error); surfaced at
-        # ``agent_end`` so the terminal event is consumed off the RPC stream.
+        # ``agent_settled`` unless a retry's ``agent_start`` supersedes it.
         pending_error: str | None = None
+        # Assistant messages of the last ``agent_end``: the reply when none streamed.
+        end_messages: list[Any] = []  # type: ignore[explicit-any]
+        # Whether pi has said anything since the prompt: it answers the prompt command (or
+        # starts compacting before it) at once, so a full idle budget of silence means the
+        # prompt was lost and nothing will follow.
+        heard_from_pi = False
         # The newest tool call's failure ("tool: error"), cleared by a later success: a turn
         # that ends on it with no text is reported, never left as silence.
         last_tool_failure: str | None = None
 
         while True:
-            # After an errored message the only thing left to drain is the
-            # already-emitted agent_end, so don't wait the full idle budget.
-            line = await rpc.read_line(
-                timeout=_TURN_STDOUT_IDLE_TIMEOUT_S
-                if pending_error is None
-                else _TURN_STDOUT_ERROR_DRAIN_TIMEOUT_S
-            )
+            line = await rpc.read_line(timeout=_TURN_STDOUT_IDLE_TIMEOUT_S)
             if line is None:
-                if pending_error is None and not rpc.stdout_at_eof():
+                if not heard_from_pi and not rpc.stdout_at_eof():
+                    yield ExecutorError(message="Pi did not answer the prompt command.")
+                    return
+                if not rpc.stdout_at_eof():
                     # Idle timeout, not process death: pi's stdout reader is
                     # still running — e.g. a long tool call silent past the
                     # idle budget. Keep waiting; a dead pi process delivers
@@ -2689,6 +2717,7 @@ class PiExecutor(Executor):
             except json.JSONDecodeError:
                 logger.debug("PiExecutor: non-JSON line: %s", line[:200])
                 continue
+            heard_from_pi = True
 
             raw_event_type = event.get("type")
             event_type: str | None = raw_event_type if isinstance(raw_event_type, str) else None
@@ -2700,7 +2729,7 @@ class PiExecutor(Executor):
                         yield outcome
                     continue
 
-            # Skip the command-ack response.
+            # Command acks: a refused prompt fails the turn at once.
             if event_type == "response":
                 if not event.get("success", True):
                     yield ExecutorError(message=event.get("error", "Pi command failed"))
@@ -2835,17 +2864,24 @@ class PiExecutor(Executor):
                 )
                 continue
 
-            # Agent ended — the turn is complete, unless pi retries the errored
-            # call itself (``willRetry``, pi >= 0.80): its retry streams on as
-            # this same turn, so a transient failure (e.g. "Request timed out.")
-            # is not surfaced while pi still has attempts left.
+            # A new low-level run (a retry of a failed call, or queued work) supersedes
+            # the previous run's error: only the last run's outcome is the turn's.
+            if event_type == "agent_start":
+                pending_error = None
+                continue
+
             if event_type == "agent_end":
-                if event.get("willRetry") is True:
-                    pending_error = None
-                    continue
+                raw_end_messages = event.get("messages", [])
+                end_messages = raw_end_messages if isinstance(raw_end_messages, list) else []
+                continue
+
+            # Pi settled: no retry, recovery or queued work follows, so the turn is complete.
+            if event_type == "agent_settled":
                 if state is not None:
                     state.turn_streaming = False
-                    for outcome in await self._settle_steers_at_agent_end(session_key, state, rpc):
+                    for outcome in await self._settle_steers_at_agent_settled(
+                        session_key, state, rpc
+                    ):
                         yield outcome
                 if pending_error is not None:
                     # Pi reports the provider failure as text only: translate it.
@@ -2854,7 +2890,6 @@ class PiExecutor(Executor):
                         code=classify_provider_failure(message=pending_error),
                     )
                     return
-                end_messages = event.get("messages", [])
                 if not response_text:
                     for m in reversed(end_messages):
                         if m.get("role") == "assistant":
@@ -2875,7 +2910,7 @@ class PiExecutor(Executor):
                 # usage, pull it from the last assistant message in
                 # ``messages`` (only the last — ``messages`` may hold the
                 # whole conversation, so summing it would overcount).
-                if not message_usages and isinstance(end_messages, list):
+                if not message_usages:
                     for m in reversed(end_messages):
                         captured = _extract_pi_turn_usage(m, model)
                         if captured is not None:
@@ -2885,7 +2920,7 @@ class PiExecutor(Executor):
                 _notify_usage_from_dict(model=model, usage=turn_usage)
                 if not response_text and last_tool_failure is not None:
                     # The model stopped on a failed tool without a word: fail the turn
-                    # visibly. Pi is idle again (agent_end was read), so keep its session.
+                    # visibly. Pi is idle again (agent_settled was read), so keep its session.
                     yield ExecutorError(
                         message="The turn ended without a reply after a tool failed: "
                         f"{last_tool_failure}",
@@ -2915,11 +2950,10 @@ class PiExecutor(Executor):
                         yield TurnCancelled()
                         return
                     if stop == "error":
-                        # Pi emits the turn-terminal ``agent_end`` after an
-                        # errored LLM call; returning here would leave it
-                        # queued, so the next turn on this RPC session reads
-                        # the stale event as its own end. Record the error
-                        # and keep draining until ``agent_end``.
+                        # Pi may retry the call, and always emits ``agent_settled``
+                        # after it; returning here would leave those events queued
+                        # for the next turn on this RPC session. Record the error
+                        # and keep draining until ``agent_settled``.
                         pending_error = str(msg.get("errorMessage", stop))
                 continue
 

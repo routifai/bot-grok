@@ -532,6 +532,23 @@ def _apply_provider_to_pi(env: dict[str, str], entry: ProviderEntry) -> None:
     assert auth_source is not None  # base_urls non-empty ⇒ one family resolved
     env[_HARNESS_GATEWAY_FLAG["pi"]] = "true"
     env["HARNESS_PI_GATEWAY_BASE_URLS"] = json.dumps(base_urls, sort_keys=True)
+    # Configured model limits, keyed like the base URLs; pi otherwise assumes 128k / 16k.
+    model_limits: dict[str, dict[str, int]] = {}
+    for family_name, family in ((ANTHROPIC_FAMILY, anthropic), (OPENAI_FAMILY, openai)):
+        if family is None:
+            continue
+        limits = {
+            key: value
+            for key, value in (
+                ("context_window", family.context_window),
+                ("max_output_tokens", family.max_output_tokens),
+            )
+            if value is not None
+        }
+        if limits:
+            model_limits[_PI_FAMILY_KEY[family_name]] = limits
+    if model_limits:
+        env["HARNESS_PI_GATEWAY_MODEL_LIMITS"] = json.dumps(model_limits, sort_keys=True)
     if openai is not None and openai.wire_api is not None:
         env["HARNESS_PI_GATEWAY_OPENAI_WIRE_API"] = openai.wire_api
     env["HARNESS_PI_GATEWAY_HOST"] = _origin_of(next(iter(base_urls.values())))
