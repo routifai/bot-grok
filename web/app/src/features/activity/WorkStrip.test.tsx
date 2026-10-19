@@ -845,6 +845,63 @@ describe("the engine's display (ADR 0027)", () => {
     expect(container.querySelector("[data-testid=work-strip-paused]")).not.toBeNull();
   });
 
+  it("shows a running turn's own steps from its Activity before any reply, and its Helpers", async () => {
+    const turnActivity = activity({
+      id: "turn:conv:r1",
+      chatId: "conv",
+      status: "in_progress",
+      startedAt: ago(20_000),
+      finishedAt: null,
+      steps: [
+        toolStep("web_search", "Searched the web", 1),
+        toolStep("sys_os_read", "Read a file", 2),
+      ],
+    });
+    const { container } = await mount([], [turnActivity], {
+      plan: null,
+      activityId: "turn:conv:r1",
+      live: true,
+      startedAt: Date.now() - 20_000,
+      endedAt: null,
+    });
+    expect(container.querySelector("[data-testid=work-strip]")?.getAttribute("data-state")).toBe(
+      "working",
+    );
+    expect(container.querySelector("[data-testid=work-strip-live-steps]")).not.toBeNull();
+    expect(container.querySelector("[data-testid=work-strip-now]")?.textContent).not.toBe(
+      "Working",
+    );
+    // A Helper the turn started shows as its line, from the feed alone.
+    await act(async () =>
+      fake.set(
+        ready([
+          turnActivity,
+          helper("h-new", {
+            parentChatId: "conv",
+            title: "Build the deck",
+            status: "in_progress",
+            startedAt: ago(5_000),
+            finishedAt: null,
+          }),
+        ]),
+      ),
+    );
+    expect(container.querySelector("[data-testid=work-strip-line]")?.textContent).toContain(
+      "Build the deck",
+    );
+  });
+
+  it("draws nothing for a settled reply with no plan, no Helper and no steps", async () => {
+    const { container } = await mount([], [], {
+      plan: null,
+      activityId: "turn:conv:r9",
+      live: false,
+      startedAt: Date.now() - 5_000,
+      endedAt: Date.now(),
+    });
+    expect(container.querySelector("[data-testid=work-strip]")).toBeNull();
+  });
+
   it("offers no Pause without a running Helper", async () => {
     const { container } = await mount([], [], {
       plan: [engineStep("Build", "doing")],

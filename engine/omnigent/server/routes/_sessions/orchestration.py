@@ -327,6 +327,7 @@ from omnigent.stores.permission_store import PermissionStore
 from omnigent.stores.project_store import ProjectStore
 from omnigent.superchat.approvals.policy import remember_browser_snapshot
 from omnigent.superchat.feature import is_super_chat
+from omnigent.superchat.transcript.blocks import turn_activity_id
 from omnigent.telemetry import emit as _tel_emit
 from omnigent.telemetry.anon import anon_user_id as _tel_anon_user_id
 from omnigent.telemetry.anon import current_anon_user_id as _tel_current_anon
@@ -4983,6 +4984,7 @@ async def _forward_event_to_runner(
     created_by: str | None = None,
     host_store: HostStore | None = None,
     persisted_item: ConversationItem | None = None,
+    app_state: Any = None,
 ) -> _ForwardedItem:
     """
     Persist a user event and forward it to the runner.
@@ -5017,6 +5019,8 @@ async def _forward_event_to_runner(
     :param persisted_item: The user item when the caller already stored it
         (see :func:`_persist_user_event_item`); it is then forwarded without
         a second append.
+    :param app_state: ``request.app.state``, for the owner's Foundation pick a
+        Super Chat with no stored model runs on. ``None``: no pick is resolved.
     :returns: The store-assigned id of the persisted item.
     """
     persisted_item = persisted_item or await _persist_user_event_item(
@@ -5412,6 +5416,12 @@ async def _forward_event_to_runner(
                             extra={"session_id": session_id},
                         )
     # ────────────────────────────────────────────────────────────────
+    if effective_runner_override is None and app_state is not None:
+        # A Super Chat with no pin runs its owner's Foundation pick (ADR 0027), never the
+        # connection's default: the same answer the session read gives as ``effective_model``.
+        from omnigent.server.routes.sandbox_inference import session_model
+
+        effective_runner_override = await session_model(app_state, conv, conversation_store)
     if effective_runner_override is not None:
         runner_body["model_override"] = effective_runner_override
     # Forward the persisted create-time effort on every downward event, like
@@ -5842,6 +5852,7 @@ async def _dispatch_session_event_to_runner_impl(
     created_by: str | None = None,
     host_store: HostStore | None = None,
     persisted_item: ConversationItem | None = None,
+    app_state: Any = None,
 ) -> _SessionEventDispatchResult:
     """
     Persist an item-event AP-side and forward it to the bound runner.
@@ -5887,6 +5898,7 @@ async def _dispatch_session_event_to_runner_impl(
         created_by=created_by,
         host_store=host_store,
         persisted_item=persisted_item,
+        app_state=app_state,
     )
     return _SessionEventDispatchResult(
         item_id=forwarded.item_id, pending_id=None, turn=forwarded.turn
@@ -6266,6 +6278,9 @@ async def _relay_runner_stream_once(
     """
     text_acc: list[str] = []
     current_response_id: str | None = None
+    # Whether this is a Super Chat (read once, at its first turn): its running edges name the
+    # turn's Activity (``activity_id``) so the strip can show steps before the first word.
+    super_chat: bool | None = None
     # Model/agent label from the turn header, stamped on text segments
     # flushed at tool-call boundaries (the boundary event carries no model).
     current_model: str | None = None
@@ -6446,6 +6461,13 @@ async def _relay_runner_stream_once(
                                     else None
                                 ),
                                 failure_origin="relayed_runner_status",
+                                activity_id=(
+                                    turn_activity_id(session_id, current_response_id)
+                                    if super_chat
+                                    and current_response_id is not None
+                                    and status in ("running", "waiting")
+                                    else None
+                                ),
                                 paused=event.get("paused") is True,
                                 blocked_on=(
                                     raw_blocked_on
@@ -6489,6 +6511,18 @@ async def _relay_runner_stream_once(
                         _rid = resp_obj.get("id")
                         if isinstance(_rid, str) and _rid:
                             current_response_id = _rid
+                            if super_chat is None:
+                                _conv = await asyncio.to_thread(
+                                    conversation_store.get_conversation, session_id
+                                )
+                                super_chat = _conv is not None and is_super_chat(_conv.labels)
+                            if super_chat:
+                                _publish_status(
+                                    session_id,
+                                    "running",
+                                    response_id=_rid,
+                                    activity_id=turn_activity_id(session_id, _rid),
+                                )
                         _model = resp_obj.get("model")
                         failure_agent_name = _model if isinstance(_model, str) and _model else None
                         if isinstance(_model, str) and _model:
@@ -7505,6 +7539,7 @@ async def _wake_parent_for_blocked_child(
     *,
     conversation_store: ConversationStore,
     runner_router: RunnerRouter | None,
+    app_state: Any = None,
 ) -> bool:
     """
     Deliver a parent-wake notice when a sub-agent blocks on an approval.
@@ -7527,6 +7562,8 @@ async def _wake_parent_for_blocked_child(
     :param runner_router: Router used to resolve the parent's bound
         runner. ``None`` in in-process setups (the runtime singleton is
         consulted as a fallback).
+    :param app_state: ``app.state``, so a Super Chat parent runs its owner's
+        Foundation pick.
     :returns: ``True`` when the notice was dispatched to the parent's runner;
         ``False`` when delivery could not happen (parent gone, no runner bound,
         or the forward raised a transport error).
@@ -7578,6 +7615,7 @@ async def _wake_parent_for_blocked_child(
             agent_name=None,
             file_store=None,
             artifact_store=None,
+            app_state=app_state,
         )
     except (httpx.HTTPError, OmnigentError):
         _logger.warning(
@@ -7593,6 +7631,7 @@ async def _wake_parent_for_blocked_child(
 def configure_subagent_block_notifier(
     conversation_store: ConversationStore,
     runner_router: RunnerRouter | None,
+    app_state: Any = None,
 ) -> Callable[[], None]:
     """
     Install the parent-wake notifier on the elicitation publish path.
@@ -7611,6 +7650,8 @@ def configure_subagent_block_notifier(
         ``parent_conversation_id`` and to persist the wake message.
     :param runner_router: Router used by the wake to reach the parent's
         bound runner. ``None`` in in-process setups.
+    :param app_state: ``app.state``, so a woken Super Chat runs its owner's
+        Foundation pick.
     :returns: A callable that uninstalls the observer and cancels any
         in-flight wake futures. Call from the lifespan teardown.
     """
@@ -7636,6 +7677,7 @@ def configure_subagent_block_notifier(
             notice,
             conversation_store=conversation_store,
             runner_router=runner_router,
+            app_state=app_state,
         )
 
     notifier = SubagentBlockNotifier(
@@ -8475,6 +8517,7 @@ async def _create_session_from_existing_agent(
                     artifact_store=artifact_store,
                     created_by=_attribution_user(user_id),
                     host_store=getattr(request.app.state, "host_store", None),
+                    app_state=request.app.state,
                 )
                 if pending_background_title is not None:
                     pending_background_title.schedule(expected_seed_title=conv.title)

@@ -12,9 +12,9 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 from omnigent.superchat.context_brief.runtime import (
+    begin_brief,
     forget_brief,
     handle_context_brief,
-    message_prefix,
 )
 from omnigent.superchat.context_brief.tools import CONTEXT_BRIEF_TOOL_NAME
 from omnigent.superchat.feature import Feature, ToolManagerCtx, is_super_chat
@@ -34,7 +34,6 @@ FEATURE = Feature(
     name="context_brief",
     tools=_tools,
     handlers={CONTEXT_BRIEF_TOOL_NAME: handle_context_brief},
-    message_prefix=message_prefix,
-    conversation_only=True,
+    on_accept=begin_brief,
     on_turn_end=forget_brief,
 )

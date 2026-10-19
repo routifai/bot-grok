@@ -30,6 +30,7 @@ from omnigent.superchat.cards.tools import build_clarification
 from omnigent.superchat.feature import HandlerCtx
 from omnigent.superchat.step_limit.policy import REFUSAL as STEP_LIMIT_REFUSAL
 from omnigent.superchat.tasks import runtime
+from omnigent.superchat.tasks import service as service_module
 from omnigent.superchat.tasks.record import (
     MAX_LINES,
     STALE_AFTER,
@@ -518,6 +519,7 @@ def _fresh_runtime(monkeypatch) -> None:
     monkeypatch.setattr(runtime, "_watching", {})
     monkeypatch.setattr(runtime, "_posts", {})
     monkeypatch.setattr(runtime, "_unsent", {})
+    monkeypatch.setattr(runtime, "_loose", {})
     monkeypatch.setattr(runtime, "STALLS", 0)
 
 
@@ -774,6 +776,39 @@ async def test_an_unsent_event_goes_in_the_background_at_the_next_turn_then_is_d
     assert "task event deck_new dropped" in caplog.text and unsent == {}
 
 
+async def test_a_dropped_check_is_sent_again_before_the_turns_end(unsent, caplog) -> None:
+    """A long ``deck_check`` returned on a connection the server had closed: the post is retried
+    at once; still not through, it goes again first at the turn's end, in order."""
+    caplog.set_level("INFO", logger="omnigent.superchat.tasks.runtime")
+    posted: list[dict[str, Any]] = []
+    client, seen = _flaky([httpx.RemoteProtocolError], posted, _wire([_OPEN], at="conv8"))
+    await runtime.message_prefix(client, "conv8", ["go"])
+    runtime.on_result(HandlerCtx("deck_check", client, "conv8"), json.dumps({"problems": []}))
+    await _sent("conv8")
+    assert seen == ["GET", "evidence"] and unsent == {}
+    assert "task event evidence connection dropped (RemoteProtocolError) (try 1)" in caplog.text
+    # dropped twice: kept, said why, and sent before the turn's end
+    client, seen = _flaky([httpx.ReadError] * 2, posted, _wire([_OPEN], at="conv8"))
+    await runtime.message_prefix(client, "conv8", ["go"])
+    runtime.on_result(HandlerCtx("deck_check", client, "conv8"), json.dumps({"problems": []}))
+    await _sent("conv8")
+    assert [e["event"] for e in unsent["conv8"]] == ["evidence"]
+    assert "task event evidence not sent (connection dropped (ReadError))" in caplog.text
+    runtime.turn_ended("conv8")
+    await _sent("conv8")
+    assert seen == ["GET", "evidence", "turn_end"] and unsent == {}
+    # a turn with no task to report still sends what it could not, before it is over
+    timeout, seen = _flaky([httpx.ReadTimeout] * 2, posted, _wire([], at="conv9"))
+    await runtime.message_prefix(timeout, "conv9", ["hi"])
+    runtime.on_result(HandlerCtx("deck_check", timeout, "conv9"), json.dumps({"problems": []}))
+    await _sent("conv9")
+    assert "task event evidence not sent (timed out)" in caplog.text
+    runtime.turn_ended("conv9")
+    await _sent("conv9")
+    assert seen == ["GET", "evidence"] and unsent == {}
+    assert "turn_end of conv9 not sent: no task" in caplog.text
+
+
 async def test_a_slow_server_never_holds_a_read_or_an_event(unsent) -> None:
     async def hang(request: httpx.Request) -> httpx.Response:
         await asyncio.sleep(5)
@@ -864,3 +899,131 @@ def test_a_turns_end_reaches_every_listening_feature(monkeypatch) -> None:
     monkeypatch.setattr(features, "FEATURES", swapped)
     features.notify_turn_end("c1")
     assert ended == ["c1"]
+
+
+# ---------------------------------------------------- the runner and the server together
+
+
+def _engine(env) -> httpx.AsyncClient:
+    """The runner's server client, wired to the real task routes."""
+    client, *_ = env
+    return httpx.AsyncClient(transport=httpx.ASGITransport(app=client.app), base_url="http://srv")
+
+
+def _ran(engine: httpx.AsyncClient, session: str, tool: str, output: dict[str, Any]) -> None:
+    runtime.on_result(HandlerCtx(tool, engine, session), json.dumps(output))
+
+
+_DECISION = "New RBC vs TD deck, different look (deck): look Swiss Grid, 6 slides, checked"
+
+
+async def _helper_built_the_deck(env, engine: httpx.AsyncClient) -> tuple[str, str]:
+    """Steps 1 and 2: the person's pick starts a Helper, which builds, saves and checks the deck
+    and is still running. ``(task id, helper id)``."""
+    _client, service, conversations, chat = env
+    _say(conversations, chat, "Pitch Deck")
+    await runtime.message_prefix(engine, chat, ["Pitch Deck"])
+    _ran(engine, chat, "context_brief", {"brief": "nothing yet"})
+    items = [
+        {"text": "Check what we have", "done_when": "brief"},
+        {"text": "Build the deck", "owner": "helper", "done_when": "helper_done"},
+        {"text": "Check the layout", "owner": "helper", "done_when": "check_ran"},
+    ]
+    plan = {"type": "card", "card": "plan", "id": "p1", "data": {"items": items}}
+    _ran(engine, chat, "render_card", plan)
+    helper = _helper(conversations, chat)
+    title = "New RBC vs TD deck, different look"
+    _ran(engine, chat, "start_helper", {"started": True, "helper_id": helper, "title": title})
+    await _sent(chat)  # the hand-off sentence: the start reached the server, the plan with it
+    runtime.turn_ended(chat)
+    await _sent(chat)
+    (task,) = service.store.list(chat)
+    assert (task.status, task.helper_ids) == ("building", [helper])
+    # the plan waited for the Helper's start: its Helper step is doing, for that Helper
+    steps = task.fields["plan"]["items"]
+    assert [i["evidence"] for i in steps] == ["done", "doing", "todo"]
+    assert steps[1]["helper_id"] == helper
+    deck = {"title": "RBC vs TD", "look": "Swiss Grid", "slides": 6, "file": "rbc.deck.html"}
+    _ran(engine, helper, "deck_new", {"ok": True, "written": True, "deck": deck})
+    saved = {"type": "artifact", "name": "rbc.deck.html", "id": "a1", "group_id": "g1"}
+    _ran(engine, helper, "artifact_save", saved)
+    _ran(engine, helper, "deck_check", {"problems": []})
+    await _sent(helper)
+    return task.id, helper
+
+
+async def test_a_helper_that_finishes_during_the_wake_turn_closes_its_task_at_its_end(
+    env,
+) -> None:
+    """Steps 1-4 as seen live: the Helper's save wakes the Conversation, its prefix reads the
+    task while the Helper runs, the Helper finishes during that turn, the turn ends."""
+    _client, service, conversations, chat = env
+    engine = _engine(env)
+    task_id, helper = await _helper_built_the_deck(env, engine)
+    _say(conversations, chat, "[System: worker/Deck saved a draft]", is_system_notice=True)
+    conversations.set_session_live_status(chat, "running")
+    await runtime.message_prefix(engine, chat, ["[System: worker/Deck saved a draft]"])
+    conversations.set_session_live_status(helper, "idle")
+    runtime.turn_ended(helper)
+    await _sent(helper)
+    assert service.store.get(task_id).status == "building"  # the Conversation's turn runs
+    runtime.turn_ended(chat)
+    await _sent(chat)
+    task = service.store.get(task_id)
+    assert task.status == "done"
+
+    assert task.fields["decision"] == _DECISION
+    assert [i["evidence"] for i in task.fields["plan"]["items"]] == ["done"] * 3
+
+
+async def test_a_helper_that_finished_before_the_wake_read_closes_its_task_at_the_start(
+    env,
+) -> None:
+    _client, service, conversations, chat = env
+    engine = _engine(env)
+    task_id, helper = await _helper_built_the_deck(env, engine)
+    conversations.set_session_live_status(helper, "idle")
+    _say(conversations, chat, "[System: worker/Deck finished]", is_system_notice=True)
+    conversations.set_session_live_status(chat, "running")
+    await runtime.message_prefix(engine, chat, ["[System: worker/Deck finished]"])
+    await _sent(chat)
+    assert service.store.get(task_id).status == "done"
+
+
+async def test_a_helper_that_finishes_while_the_conversation_is_idle_closes_its_task(
+    env, caplog
+) -> None:
+    _client, service, _conversations, _chat = env
+    engine = _engine(env)
+    task_id, helper = await _helper_built_the_deck(env, engine)
+    # the Helper's turn ends before its live status says so; nothing wakes the Conversation
+    with caplog.at_level("INFO", logger="omnigent.superchat.tasks.service"):
+        runtime.turn_ended(helper)
+        await _sent(helper)
+    task = service.store.get(task_id)
+    assert (task.status, task.fields["decision"]) == ("done", _DECISION)
+    assert f"task {task_id} closed: {task.fields['decision']}" in caplog.text
+
+
+async def test_a_helper_that_ends_as_the_conversations_turn_ends_closes_its_task(
+    env, monkeypatch
+) -> None:
+    """The Conversation's turn ended while the Helper still read running, and the Helper's end
+    came while the Conversation still read running: the task is looked at once more."""
+    monkeypatch.setattr(service_module, "IDLE_RECHECK", 0.05)
+    _client, service, conversations, chat = env
+    engine = _engine(env)
+    task_id, helper = await _helper_built_the_deck(env, engine)
+    conversations.set_session_live_status(chat, "running")
+    runtime.turn_ended(helper)
+    await _sent(helper)
+    assert service.store.get(task_id).status == "building"
+    conversations.set_session_live_status(chat, "idle")
+    assert service.view(chat)["settle"] is True  # a read changes nothing, and says so
+    assert service.store.get(task_id).status == "building"
+    for _ in range(100):
+        if service.store.get(task_id).status == "done":
+            break
+        await asyncio.sleep(0.02)
+    task = service.store.get(task_id)
+    assert (task.status, task.fields["decision"]) == ("done", _DECISION)

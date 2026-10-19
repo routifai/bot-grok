@@ -268,7 +268,7 @@ async def test_the_tool_returns_the_brief_started_on_accept(
 ) -> None:
     sources = _Sources()
     monkeypatch.setattr(runtime, "RunnerSources", lambda _client: sources)
-    assert await FEATURE.message_prefix(object(), CHAT, [MESSAGE]) == []  # type: ignore[misc,arg-type]
+    FEATURE.on_accept(object(), CHAT, [MESSAGE])  # type: ignore[misc,arg-type]
     first = await runtime.handle_context_brief(_ctx(), {})
     started = time.monotonic()
     second = await runtime.handle_context_brief(_ctx(), {})
@@ -295,7 +295,8 @@ def test_helpers_and_studios_never_get_the_tool() -> None:
     assert FEATURE.tools(HELPER, None) == []  # type: ignore[arg-type]
     assert FEATURE.tools(STUDIO, None) == []  # type: ignore[arg-type]
     assert FEATURE.tools(None, None) == []  # type: ignore[arg-type]
-    assert FEATURE.conversation_only  # a Helper's or a studio's turn starts no build
+    # Started at accept, never by the prefix: the runner tells only the Conversation itself.
+    assert FEATURE.message_prefix is None and FEATURE.on_accept is not None
 
 
 async def test_a_helper_calling_it_by_name_is_refused() -> None:
@@ -403,8 +404,23 @@ async def test_a_runtime_notice_starts_no_brief(monkeypatch: pytest.MonkeyPatch)
     sources = _Sources()
     monkeypatch.setattr(runtime, "RunnerSources", lambda _client: sources)
     notice = "[System: helper 'deck' finished]"
-    assert await FEATURE.message_prefix(object(), CHAT, [notice]) == []  # type: ignore[misc,arg-type]
+    FEATURE.on_accept(object(), CHAT, [notice])  # type: ignore[misc,arg-type]
     assert CHAT not in runtime._briefs and sources.calls == []
+
+
+async def test_the_tool_waits_for_the_brief_within_its_own_bound(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A brief that never finishes costs the call its bound, then an empty brief."""
+    hung: asyncio.Future[str] = asyncio.get_running_loop().create_future()
+    monkeypatch.setattr(runtime, "start_brief", lambda *_args: hung)
+    monkeypatch.setattr(runtime, "BRIEF_WAIT_SECONDS", 0.05)
+    items = [{"type": "message", "role": "user", "content": MESSAGE}]
+    started = time.monotonic()
+    text = await runtime.handle_context_brief(_ctx(client=_Server(items=items)), {})
+    assert time.monotonic() - started < 1.0
+    assert text == Brief().render()
+    assert not hung.cancelled(), "the build is left running for a later call"
 
 
 async def test_a_late_planner_falls_back_to_code_derived_queries() -> None:

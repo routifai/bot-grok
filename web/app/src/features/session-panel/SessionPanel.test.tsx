@@ -46,7 +46,7 @@ import type { TurnStrip } from "../activity/turnStrips";
 import type { TranscriptWork, TurnWork } from "../activity/workPlan";
 import { SessionPanel } from "./SessionPanel";
 import {
-  newestPlanTurn,
+  newestTurn,
   SESSION_PANEL_KEY,
   usedFamilies,
   useSessionPanelOpen,
@@ -140,19 +140,20 @@ const strip = (over: Partial<TurnStrip["turn"]> = {}): TurnStrip => {
 };
 
 describe("readings", () => {
-  it("shows the newest reply with a plan", () => {
-    const older = turn({ anchorId: "a" });
-    const newer = turn({ anchorId: "b" });
+  it("follows the reply the newest messages belong to, never an older reply's plan", () => {
+    const older = turn({ anchorId: "a", last: false });
+    // The running reply showed no plan (a Helper only): still the one the panel follows.
+    const running = turn({ anchorId: "b", plan: null, last: true });
     const work: TranscriptWork = {
       turns: new Map([
         ["a", older],
-        ["b", newer],
-        ["c", turn({ anchorId: "c", plan: null })],
+        ["b", running],
       ]),
       drawn: new Set(),
     };
-    expect(newestPlanTurn(work)).toBe(newer);
-    expect(newestPlanTurn({ turns: new Map(), drawn: new Set() })).toBeNull();
+    expect(newestTurn(work)).toBe(running);
+    // The newest reply has no strip at all: nothing, not the older plan.
+    expect(newestTurn({ turns: new Map([["a", older]]), drawn: new Set() })).toBeNull();
   });
 
   it("lists the files Superchat made, newest first", () => {
@@ -309,5 +310,42 @@ it("folds the plan as the engine counts it", async () => {
   );
   expect(container.querySelector("[data-testid=work-plan-fold]")?.textContent).toBe(
     "2 earlier steps",
+  );
+});
+
+it("shows the running Helpers' lines when the running reply shows no plan", async () => {
+  rpcMock.list.mockResolvedValue([]);
+  fake.set([
+    helper("h1", {
+      title: "Build the deck",
+      status: "in_progress",
+      startedAt: new Date(Date.now() - 5_000).toISOString(),
+      finishedAt: null,
+      steps: [
+        {
+          itemId: "fc_1",
+          title: "Slide 2 of 4",
+          createdAt: new Date().toISOString(),
+          tool: "report_progress",
+        },
+      ],
+    }),
+  ]);
+  const { container } = await mount(
+    <SessionPanel
+      botId="bot-1"
+      strip={{
+        helpers: [{ helperId: "h1", title: "Build the deck", status: "in_progress" }],
+        lit: true,
+        turn: { plan: null, live: true, startedAt: null, endedAt: null },
+      }}
+      open
+      onClose={() => undefined}
+    />,
+  );
+  const progress = container.querySelector("[data-testid=session-progress]");
+  expect(progress?.querySelector("[data-testid=work-plan-step]")).toBeNull();
+  expect(progress?.querySelector("[data-testid=work-strip-line]")?.textContent).toContain(
+    "Slide 2 of 4",
   );
 });

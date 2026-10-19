@@ -34,6 +34,8 @@ export const ChatStatusSchema = z.object({
   blockedOn: z.string().nullable(),
   /** A Helper held by Pause (ADR 0027), as the engine flags it. */
   paused: z.boolean().optional(),
+  /** While a turn runs: its Activity (`activities.get`), before any reply names it. */
+  activityId: z.string().optional(),
 });
 export type ChatStatus = z.infer<typeof ChatStatusSchema>;
 
@@ -68,7 +70,7 @@ export const chatsContract = {
     reset: oc.input(z.object({ botId: Id })).output(z.object({ ok: z.literal(true) })),
     /** The Muse's live family stream: ids only, refetch what changed. */
     watch: oc.input(z.object({ botId: Id })).output(eventIterator(FamilyEventSchema)),
-    /** One of the Muse's chats' status as it changes (a file's studio chat). */
+    /** The Conversation's or one of the Muse's chats' status as it changes. */
     watchStatus: oc
       .input(z.object({ botId: Id, chatId: Id }))
       .output(eventIterator(ChatStatusSchema)),

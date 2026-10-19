@@ -5,12 +5,14 @@ from a model name in configuration. A person's explicit pick in Settings, Models
 :class:`~omnigent.superchat.models.selection.ModelPreferenceStore`) always wins while the catalog
 serves it; otherwise the automatic choice applies:
 
-* **Foundation** (the Super Chat, judgement) and **Builder** (helpers that write): the catalog's
-  default model, the connection's own. A capability-tier signal replaces this when the catalog
-  carries one.
-* **Light** (titles, summaries, rerank, fetch-and-compare helpers): the cheapest priced model
-  (input price, then output price; the price the connection reports for the model, else the shared
-  model catalog's; ties keep catalog order), else the catalog's default when nothing is priced.
+* **Foundation** (the Super Chat, judgement): the dearest priced model.
+* **Builder** (helpers that write): the middle priced model; Foundation's when fewer than three
+  models are priced.
+* **Light** (titles, summaries, rerank, fetch-and-compare helpers): the cheapest priced model.
+
+Prices order by input price, then output price (the price the connection reports for the model,
+else the shared model catalog's; ties keep catalog order). With nothing priced all three are the
+catalog's default, the connection's own.
 
 A Super Chat helper names ``light``, ``builder`` or ``foundation`` (``fast`` and ``strong`` are
 :data:`ALIASES` for Light and Foundation, for one release). Background work (memory upkeep, the
@@ -86,18 +88,27 @@ def row_price(row: Mapping[str, Any], fallback: Callable[[str], Price | None]) -
     return fallback(row["id"])
 
 
-def cheapest_priced(
+def priced_rows(
     rows: Sequence[Mapping[str, Any]], price: Callable[[str], Price | None] | None = None
-) -> str | None:
-    """The cheapest priced id of a ready catalog's *rows* (input price, then output price, then
-    catalog order), or ``None`` when no row is priced. Blocking."""
+) -> list[str]:
+    """The priced ids of a ready catalog's *rows*, cheapest first (input price, then output
+    price, then catalog order). Blocking."""
     lookup = price or catalog_price
     priced = [
         (cost, index, row["id"])
         for index, row in enumerate(rows)
         if (cost := row_price(row, lookup)) is not None
     ]
-    return min(priced)[2] if priced else None
+    return [model for _, _, model in sorted(priced)]
+
+
+def cheapest_priced(
+    rows: Sequence[Mapping[str, Any]], price: Callable[[str], Price | None] | None = None
+) -> str | None:
+    """The cheapest priced id of a ready catalog's *rows*, or ``None`` when no row is priced.
+    Blocking."""
+    ordered = priced_rows(rows, price)
+    return ordered[0] if ordered else None
 
 
 def automatic_models(
@@ -106,11 +117,15 @@ def automatic_models(
     price: Callable[[str], Price | None] | None = None,
 ) -> dict[str, str | None]:
     """``{category: id}`` when the person picked nothing (see the module docstring). Blocking."""
-    fallback = default if default is not None else (rows[0]["id"] if rows else None)
+    ordered = priced_rows(rows, price)
+    if not ordered:
+        fallback = default if default is not None else (rows[0]["id"] if rows else None)
+        return dict.fromkeys(CATEGORIES, fallback)
+    foundation = ordered[-1]
     return {
-        "foundation": fallback,
-        "builder": fallback,
-        "light": cheapest_priced(rows, price) or fallback,
+        "foundation": foundation,
+        "builder": ordered[(len(ordered) - 1) // 2] if len(ordered) >= 3 else foundation,
+        "light": ordered[0],
     }
 
 

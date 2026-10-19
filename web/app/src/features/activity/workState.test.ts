@@ -23,6 +23,7 @@ it("is idle with nothing running, and counts nothing", () => {
     turnRunning: false,
     since: null,
     cancelled: false,
+    paused: false,
   });
 });
 
@@ -71,5 +72,17 @@ it("stops at once when a Stop landed, though the engine's turn and its Helpers a
     turnRunning: false,
     since: null,
     cancelled: true,
+    paused: false,
   });
+});
+
+it("is paused only while Pause holds every running Helper and the turn itself has ended", () => {
+  const held = { ...helperRunning, paused: true };
+  expect(derive(IDLE_TURN, { activities: [held] })).toMatchObject({ running: true, paused: true });
+  expect(
+    derive(IDLE_TURN, { activities: [held, helper("h2", { ...helperRunning, chatId: "h2" })] })
+      .paused,
+  ).toBe(false);
+  expect(derive(running({ running: true }), { activities: [held] }).paused).toBe(false);
+  expect(derive(IDLE_TURN).paused).toBe(false);
 });

@@ -29,6 +29,7 @@ const state = (over: Partial<WorkState> = {}): WorkState => ({
   turnRunning: false,
   since: null,
   cancelled: false,
+  paused: false,
   ...over,
 });
 const RUNNING = state({ phase: "running", running: true, turnRunning: true, since: 1_000 });

@@ -266,7 +266,7 @@ export const chatsRouter = {
       return { ok: true as const };
     }),
     watchStatus: os.chats.watchStatus.handler(async function* ({ input, signal }) {
-      await requireOwnHelper(input.botId, input.chatId);
+      await requireOwnChat(input.botId, input.chatId);
       try {
         for await (const frame of streamOmnigentSession(
           engineClient(),

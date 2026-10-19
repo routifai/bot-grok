@@ -11,9 +11,9 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-from collections.abc import Mapping, Sequence
+from collections.abc import Awaitable, Mapping, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import httpx
 
@@ -34,6 +34,20 @@ if TYPE_CHECKING:
     from omnigent.superchat.feature import Feature
 
 _logger = logging.getLogger(__name__)
+
+#: Longest a turn's prefix waits on its reads (ADR 0026: the first word under two seconds). A
+#: read still out is left out of this turn; it never holds the model call.
+PREFIX_BUDGET_SECONDS = 0.5
+#: Longest the prefix waits when it carries the person's own material: the text of files the
+#: message attaches (why such a message gets a turn of its own, ``Feature.needs_own_turn``), or
+#: the file a studio works on.
+OWN_MATERIAL_BUDGET_SECONDS = 5.0
+
+#: Feature notes (hand edits written back, "the person moved this chat") read too late for their
+#: turn, by Conversation: delivered with the next turn's, since reading them consumed them.
+_late_feature_blocks: dict[str, asyncio.Task[list[str]]] = {}
+#: The person's timezone as last read, for a turn whose read is late.
+_known_timezone: dict[str, str | None] = {}
 
 #: Sent in place of a block the warm client already holds, see :func:`turn_prefix_blocks`.
 PROFILE_UNCHANGED_LINE = "Standing memory unchanged since the last message."
@@ -111,8 +125,63 @@ async def fetch_memory_profile(
 
 
 async def fetch_local_time_line(server_client: httpx.AsyncClient | None) -> str:
-    """The person's current local date/time line (owner preference zone; UTC when unknown)."""
-    return local_time_block(await fetch_timezone(server_client))
+    """The person's current local date/time line (owner preference zone; UTC when unknown).
+
+    The zone is remembered for a turn whose read is late (:func:`late_local_time_line`).
+    """
+    zone = await fetch_timezone(server_client)
+    _known_timezone["zone"] = zone
+    return local_time_block(zone)
+
+
+def late_local_time_line() -> str:
+    """The local time line in the zone last read (UTC before any read)."""
+    return local_time_block(_known_timezone.get("zone"))
+
+
+async def _within(
+    budget: float, conversation_id: str, parts: Mapping[str, Awaitable[object]]
+) -> dict[str, object]:
+    """The *parts* that finished within *budget* seconds, by name, started together.
+
+    A part still running is left running (its result is not used) and logged by name, so a
+    slow read shows which one it was.
+    """
+    tasks = {name: asyncio.ensure_future(part) for name, part in parts.items()}
+    if not tasks:
+        return {}
+    await asyncio.wait(tasks.values(), timeout=budget)
+    late = [name for name, task in tasks.items() if not task.done()]
+    if late:
+        _logger.info(
+            "prefix for %s left out what was not read within %.1fs: %s",
+            conversation_id,
+            budget,
+            ", ".join(late),
+            extra={"session_id": conversation_id},
+        )
+    done: dict[str, object] = {}
+    for name, task in tasks.items():
+        if task.done() and not task.cancelled() and task.exception() is None:
+            done[name] = task.result()
+    return done
+
+
+def _carried_feature_blocks(conversation_id: str) -> list[str]:
+    """The feature notes an earlier turn read too late, when they have arrived since."""
+    task = _late_feature_blocks.get(conversation_id)
+    if task is None or not task.done():
+        return []
+    del _late_feature_blocks[conversation_id]
+    if task.cancelled() or task.exception() is not None:
+        return []
+    return task.result()
+
+
+def _merge_carried(carried: Sequence[str], fresh: Sequence[str]) -> list[str]:
+    """*fresh* after the *carried* blocks a fresh one does not supersede (same first line)."""
+    heads = {block.split("\n", 1)[0] for block in fresh}
+    return [b for b in carried if b.split("\n", 1)[0] not in heads] + list(fresh)
 
 
 def _safe_projects_block(workspace: Path | None) -> str | None:
@@ -222,18 +291,39 @@ async def turn_prefix_blocks(
     :param studio: The session is a file's studio (ADR 0024): its turn gets the memory profile,
         the file line and this file's write-back notes only (no Projects, no feature notes, no
         Conversation artifact hint).
+
+    The reads share one budget (:data:`PREFIX_BUDGET_SECONDS`, longer for the person's own
+    material): a block not read in time is left out of this turn, and feature notes read late
+    go with the next turn's.
     """
     # Every block is an independent read: fetch them together (ADR 0026: the prefix is paid on
-    # every turn), then assemble them in the documented order.
+    # every turn), within one budget, then assemble them in the documented order. Imported
+    # first so the budget never pays for an import.
+    from omnigent.superchat.features import FEATURES  # noqa: F401
+
+    budget = (
+        OWN_MATERIAL_BUDGET_SECONDS
+        if studio or (message_texts and message_needs_own_turn(message_texts))
+        else PREFIX_BUDGET_SECONDS
+    )
     if studio:
-        message_blocks, profile, studio_blocks = await asyncio.gather(
-            # The studio is not the Conversation: no Conversation-only blocks (tasks).
-            _message_prefix_blocks(server_client, conversation_id, message_texts, helper=True)
-            if message_texts
-            else _no_blocks(),
-            fetch_memory_profile(server_client, conversation_id),
-            studio_turn_blocks(server_client, conversation_id),
+        got = await _within(
+            budget,
+            conversation_id,
+            {
+                # The studio is not the Conversation: no Conversation-only blocks (tasks).
+                "message": _message_prefix_blocks(
+                    server_client, conversation_id, message_texts, helper=True
+                )
+                if message_texts
+                else _no_blocks(),
+                "profile": fetch_memory_profile(server_client, conversation_id),
+                "studio": studio_turn_blocks(server_client, conversation_id),
+            },
         )
+        message_blocks = cast(list[str], got.get("message", []))
+        profile = cast(str | None, got.get("profile"))
+        studio_blocks = cast(list[str], got.get("studio", []))
         blocks = list(message_blocks)
         if profile:
             blocks.append(
@@ -241,15 +331,30 @@ async def turn_prefix_blocks(
             )
         blocks.extend(studio_blocks)
         return blocks
-    message_blocks, profile, projects, feature_blocks, local_time = await asyncio.gather(
-        _message_prefix_blocks(server_client, conversation_id, message_texts, helper)
-        if message_texts
-        else _no_blocks(),
-        fetch_memory_profile(server_client, conversation_id),
-        asyncio.to_thread(_safe_projects_block, workspace),
-        _feature_prefix_blocks(server_client, conversation_id),
-        fetch_local_time_line(server_client),
+    carried = _carried_feature_blocks(conversation_id)
+    features = asyncio.ensure_future(_feature_prefix_blocks(server_client, conversation_id))
+    got = await _within(
+        budget,
+        conversation_id,
+        {
+            "message": _message_prefix_blocks(
+                server_client, conversation_id, message_texts, helper
+            )
+            if message_texts
+            else _no_blocks(),
+            "profile": fetch_memory_profile(server_client, conversation_id),
+            "projects": asyncio.to_thread(_safe_projects_block, workspace),
+            "features": features,
+            "local_time": fetch_local_time_line(server_client),
+        },
     )
+    if not features.done():
+        _late_feature_blocks[conversation_id] = features
+    message_blocks = cast(list[str], got.get("message", []))
+    profile = cast(str | None, got.get("profile"))
+    projects = cast(str | None, got.get("projects"))
+    feature_blocks = _merge_carried(carried, cast(list[str], got.get("features", [])))
+    local_time = cast(str | None, got.get("local_time")) or late_local_time_line()
     blocks = list(message_blocks)
     if profile:
         blocks.append(

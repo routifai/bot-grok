@@ -253,11 +253,11 @@ export const engineModelsRouter = {
     sessionModel: os.engineModels.sessionModel.handler(async () => {
       const { sessionId, harnesses } = await harnessesOf();
       const harness = harnesses[0]?.id ?? "";
-      const [model, catalog] = await Promise.all([
+      const [{ model, effectiveModel }, catalog] = await Promise.all([
         onModels(getOmnigentSessionModel(engineClient(), NO_EMAIL, sessionId)),
         onModels(listOmnigentModels(engineClient(), NO_EMAIL, harness)),
       ]);
-      return { harness, model, catalog: toCatalog(catalog) };
+      return { harness, model, effectiveModel, catalog: toCatalog(catalog) };
     }),
     setSessionModel: os.engineModels.setSessionModel.handler(async ({ input }) => {
       await onModels(

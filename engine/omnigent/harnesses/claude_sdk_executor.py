@@ -891,9 +891,9 @@ class _ClaudeClientState:
     # False for a client launched ahead of the session's first turn (see
     # ``run_turn``'s pre-launch): it holds no history yet, so that turn replays it.
     primed: bool = True
-    # What the client was launched with (:func:`_launch_key`); a pre-launched client
-    # that does not match its first turn is relaunched.
-    launch_key: str | None = None
+    # What the client was launched with (:func:`_launch_key`), by part; a pre-launched
+    # client that does not match its first turn is relaunched.
+    launch_key: dict[str, str] | None = None
 
 
 @dataclass
@@ -914,12 +914,26 @@ class _SteerWindow:
 
 def _launch_key(
     system_prompt: str, tools: list[ToolSpec], effort: object, extra: Mapping[str, object]
-) -> str:
-    """What a Claude CLI launch is fixed to: its prompt, tools, effort and turn mode."""
-    payload = [system_prompt, tools, effort, extra.get("context_mode"), extra.get("max_turns")]
-    return hashlib.sha256(
-        json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
-    ).hexdigest()
+) -> dict[str, str]:
+    """What a Claude CLI launch is fixed to, a hash per part: prompt, tools, effort, mode."""
+    parts: dict[str, object] = {
+        "instructions": system_prompt,
+        "tools": tools,
+        "effort": effort,
+        "mode": [extra.get("context_mode"), extra.get("max_turns")],
+    }
+    return {
+        name: hashlib.sha256(
+            json.dumps(value, sort_keys=True, default=str).encode("utf-8")
+        ).hexdigest()
+        for name, value in parts.items()
+    }
+
+
+#: Why a session's warm Claude CLI went away, by session key, kept across executors in this
+#: harness process (the adapter replaces its executor after a turn that did not end cleanly),
+#: so the launch that follows can say why it was needed.
+_client_drop_reasons: dict[str, str] = {}
 
 
 def _composed_instructions_hash(system_prompt: object) -> str | None:
@@ -1782,10 +1796,16 @@ class ClaudeSDKExecutor(Executor):
         options: SdkOptions,
         model: str | None,
         rebuild_on_instructions_change: bool = False,
-        launch_key: str | None = None,
+        launch_key: dict[str, str] | None = None,
         primed: bool = True,
     ) -> _ClaudeClient:
         state = self._clients.get(session_key)
+        if state is None:
+            reason = _client_drop_reasons.pop(session_key, None) or (
+                "pre-launch" if not primed else "no warm client in this harness process"
+            )
+        else:
+            reason = ""
         if (
             state is not None
             and not getattr(state, "primed", True)
@@ -1793,11 +1813,12 @@ class ClaudeSDKExecutor(Executor):
         ):
             # Launched ahead of this turn with other options (tools, prompt, effort):
             # it has seen no turn yet, so relaunching loses nothing.
-            logger.info(
-                "pre-launched Claude CLI for session %s does not match its first turn; "
-                "relaunching",
-                session_key,
+            differs = sorted(
+                name
+                for name in {**(state.launch_key or {}), **(launch_key or {})}
+                if (state.launch_key or {}).get(name) != (launch_key or {}).get(name)
             )
+            reason = f"the pre-launched CLI differs from the first turn in {', '.join(differs)}"
             await self._close_live_client(session_key)
             state = None
         new_instructions_hash = (
@@ -1815,14 +1836,11 @@ class ClaudeSDKExecutor(Executor):
             # instructions composed after turn 1 (memory, rollover) would
             # otherwise never reach the model. Drop and reconnect so the
             # next turn's options actually apply.
-            logger.info(
-                "superside-chat composed instructions changed for session %s; "
-                "rebuilding the warm Claude SDK client",
-                session_key,
-            )
+            reason = "the composed instructions changed"
             await self._close_live_client(session_key)
             state = None
         if state is None:
+            launch_started = time.monotonic()
             # Tee CLI stderr so the connect timeout error carries the
             # tail; ``_on_stderr`` alone only logs at DEBUG.
             connect_stderr: list[str] = []
@@ -1907,6 +1925,13 @@ class ClaudeSDKExecutor(Executor):
                 launch_key=launch_key,
             )
             self._clients[session_key] = state
+            _client_drop_reasons.pop(session_key, None)
+            logger.info(
+                "Claude CLI launched for session %s in %.2fs: %s",
+                session_key,
+                time.monotonic() - launch_started,
+                reason,
+            )
             return client
 
         if state.model != model:
@@ -1918,10 +1943,12 @@ class ClaudeSDKExecutor(Executor):
         self._crashed_sessions.pop(session_key, None)
         await self._close_live_client(session_key)
 
-    async def _close_live_client(self, session_key: str) -> None:
+    async def _close_live_client(self, session_key: str, reason: str | None = None) -> None:
         state = self._clients.pop(session_key, None)
         if state is None:
             return
+        if reason is not None:
+            _client_drop_reasons[session_key] = reason
         try:
             current_loop = asyncio.get_running_loop()
             current_task = asyncio.current_task()
@@ -1958,6 +1985,8 @@ class ClaudeSDKExecutor(Executor):
 
     def _evict_client_on_cancel(self, session_key: str) -> None:
         state = self._clients.pop(session_key, None)
+        if state is not None:
+            _client_drop_reasons[session_key] = "the previous turn was cancelled"
         if state is None:
             return
         # Close in the background: an await here runs under an in-flight
@@ -1992,6 +2021,7 @@ class ClaudeSDKExecutor(Executor):
         # forces the next turn to rebuild full history (marker included) in a
         # fresh session — the abandoned request is then visible-but-superseded
         # rather than silently continued.
+        _client_drop_reasons[session_key] = "the previous turn was interrupted"
         try:
             await self.close_session(session_key)
             return True
@@ -2045,7 +2075,7 @@ class ClaudeSDKExecutor(Executor):
             window.pending.pop(message_uuid, None)
             logger.warning("Claude SDK steer write failed for session %s: %s", session_key, exc)
             # A broken stdin means the CLI is gone: drop it so the turn's stream ends too.
-            await self._close_live_client(session_key)
+            await self._close_live_client(session_key, "a steer write failed")
             return "refused"
         return "pending"
 
@@ -3471,7 +3501,7 @@ class ClaudeSDKExecutor(Executor):
         except Exception as exc:  # noqa: BLE001 — top-level executor error boundary; records crash and surfaces to caller
             self._pending_framework_context.pop(session_key, None)
             self._crashed_sessions[session_key] = str(exc)
-            await self._close_live_client(session_key)
+            await self._close_live_client(session_key, "the previous turn failed")
             for refused in self._settle_steer_window(session_key, steer_window):
                 yield refused
             stderr_text = "\n".join(stderr_lines) if stderr_lines else "(no stderr captured)"
@@ -3511,7 +3541,9 @@ class ClaudeSDKExecutor(Executor):
                 if closing.pending:
                     # Cut short (cancelled, interrupted, closed) with steers in the CLI's queue:
                     # drop it so a later turn cannot answer them twice.
-                    await self._close_live_client(session_key)
+                    await self._close_live_client(
+                        session_key, "the previous turn ended with a steer unanswered"
+                    )
         # Steers the CLI never answered for (its stream ended early, or the loop stopped on a
         # terminal error): refused, so the caller's copy runs as the next turn.
         for refused in self._settle_steer_window(session_key, steer_window):

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -65,6 +66,11 @@ _CARD_LOOKBACK = 50
 _SAVED = "saved_this_turn"
 #: The last Helper whose finish was read onto the task, so it is read once.
 _SETTLED = "helper_settled"
+#: The Helper whose turn ended well (its own ``turn_end``): finished, even while its live status
+#: still says running.
+_ENDED = "helper_turn_ended"
+#: Seconds a Helper's end waits to look again at a Conversation turn that was still running.
+IDLE_RECHECK = 3.0
 #: The plan the task keeps (ADR 0027), ticked by :func:`~omnigent.superchat.tasks.record.tick`.
 _PLAN = "plan"
 #: Done tasks a read lists (``done``), newest first: what the context brief reads.
@@ -182,7 +188,7 @@ class TaskService:
         item_id, message, by_person = self._latest_message(conversation_id)
         answer = self.store.answer(conversation_id, item_id) if item_id and by_person else None
         tasks = self._active(conversation_id)
-        self._settle_helpers(tasks)
+        settle = bool(self._settle_helpers(tasks))
         comment = next(
             (
                 {"step": c["step"], "text": c["text"]}
@@ -198,6 +204,7 @@ class TaskService:
             "message": message,
             "by_person": by_person and not place.is_helper,
             "answer": answer.to_wire() if answer else None,
+            "settle": settle,
             "comment": comment,
             "tasks": [t.to_wire() for t in tasks if t.status in ACTIVE],
             "done": [t.to_wire() for t in self.recent_done(conversation_id, RECENT_DONE)],
@@ -241,11 +248,9 @@ class TaskService:
         tasks = [
             t for t in self.store.list(conversation_id, active_only=True) if t.updated_at >= cutoff
         ]
-        statuses = self._helper_statuses([h for t in tasks for h in t.helper_ids])
         for task in tasks:
-            task.helper_running = any(
-                statuses.get(h) == STATUS_IN_PROGRESS for h in task.helper_ids
-            )
+            statuses = self._task_helpers(task, task.helper_ids)
+            task.helper_running = STATUS_IN_PROGRESS in statuses.values()
         return tasks
 
     def _helper_statuses(self, helper_ids: list[str]) -> dict[str, str]:
@@ -253,6 +258,14 @@ class TaskService:
             return {}
         found = self.conversations.get_conversations(list(dict.fromkeys(helper_ids)))
         return {helper_id: sub_agent_status(conv) for helper_id, conv in found.items()}
+
+    def _task_helpers(self, task: Task, helper_ids: list[str]) -> dict[str, str]:
+        """The statuses of *helper_ids*, a Helper of *task* whose own turn ended reading done."""
+        statuses = self._helper_statuses(helper_ids)
+        ended = task.fields.get(_ENDED)
+        if statuses.get(ended) == STATUS_IN_PROGRESS:
+            statuses[ended] = STATUS_DONE
+        return statuses
 
     def _settle_helpers(self, tasks: list[Task]) -> list[Task]:
         """In memory: a task whose newest Helper finished since it was last settled is done when
@@ -263,7 +276,7 @@ class TaskService:
             moved = self._settle_plan(task)
             last = task.helper_ids[-1] if task.helper_ids else None
             if last is not None and not task.helper_running and task.fields.get(_SETTLED) != last:
-                finished = self._helper_statuses([last]).get(last)
+                finished = self._task_helpers(task, [last]).get(last)
                 if finished is not None:
                     task.fields[_SETTLED] = last
                     if finished == STATUS_DONE:
@@ -281,6 +294,12 @@ class TaskService:
         task.status = DONE
         task.fields["decision"] = decision_line(task)
         record_decision(self.conversations, task)
+        _logger.info(
+            "task %s closed: %s",
+            task.id,
+            task.fields["decision"],
+            extra={"session_id": task.conversation_id},
+        )
 
     def _settle_plan(self, task: Task) -> bool:
         """Tick the plan items whose Helper finished (``helper_done``); whether any changed."""
@@ -292,7 +311,7 @@ class TaskService:
             for item in plan.get("items", ())
             if item.get("evidence") == "doing" and item.get("helper_id")
         ]
-        statuses = self._helper_statuses(doing)
+        statuses = self._task_helpers(task, doing)
         changed = False
         for helper_id in doing:
             status = statuses.get(helper_id)
@@ -437,8 +456,12 @@ class TaskService:
         place = self.place(session_id)
         if place is None or place.is_helper:
             return []
+        return self._settle(place.conversation.id)
+
+    def _settle(self, conversation_id: str) -> list[Task]:
+        """Save what finished Helpers did to their tasks; the tasks it closed."""
         closed: list[Task] = []
-        for task in self._settle_helpers(self._active(place.conversation.id)):
+        for task in self._settle_helpers(self._active(conversation_id)):
             if task.status == DONE:
                 self._close(task)
                 closed.append(task)
@@ -446,14 +469,24 @@ class TaskService:
         return closed
 
     def turn_ended(self, session_id: str, _event: Mapping[str, Any]) -> list[Task]:
-        """A Conversation turn ended: a task it saved is done, unless a Helper of it still runs;
-        a task it was building and no Helper runs for is open again. Answers with every task it
-        closed (their decision lines are in the working list; the runner journals them)."""
+        """A turn ended. Answers with every task it closed (their decision lines are in the
+        working list; the runner journals them).
+
+        A Conversation's turn settles what finished Helpers did (as ``turn_start``); then a task
+        it saved is done, unless a Helper of it still runs, and a task it was building and no
+        Helper runs for is open again. A Helper's turn is its finish: the newest Helper of a
+        task reads done from now on, and settles the task at once when no Conversation turn
+        runs; one that runs settles it at its own end, and the task is looked at once more
+        after :data:`IDLE_RECHECK` in case that turn had already ended.
+        """
         place = self.place(session_id)
-        if place is None or place.is_helper:
+        if place is None:
             return []
-        closed: list[Task] = []
-        for task in self._active(place.conversation.id):
+        conversation_id = place.conversation.id
+        if place.is_helper:
+            return self._helper_ended(place)
+        closed = self._settle(conversation_id)
+        for task in self._active(conversation_id):
             saved = task.fields.pop(_SAVED, False)
             if task.helper_running:
                 if saved:
@@ -467,6 +500,33 @@ class TaskService:
                 task.status = OPEN
                 self.store.save(task)
         return closed
+
+    def _helper_ended(self, place: Place) -> list[Task]:
+        helper_id = place.helpers[0]
+        task = self._helpers_task(place, self._active(place.conversation.id))
+        if task is None or task.helper_ids[-1] != helper_id:
+            return []
+        task.fields[_ENDED] = helper_id
+        self.store.save(task)
+        conversation_id = place.conversation.id
+        if place.conversation.live_status not in _MID_TURN_LIVE_STATUSES:
+            return self._settle(conversation_id)
+        # The running turn settles it at its end; look once more in case it already ended.
+        again = threading.Timer(IDLE_RECHECK, self._settle_if_idle, (conversation_id,))
+        again.daemon = True
+        again.start()
+        return []
+
+    def _settle_if_idle(self, conversation_id: str) -> None:
+        """Settle finished Helpers when no Conversation turn runs. Never raises."""
+        try:
+            conversation = self.conversations.get_conversation(conversation_id)
+            if conversation is not None and (
+                conversation.live_status not in _MID_TURN_LIVE_STATUSES
+            ):
+                self._settle(conversation_id)
+        except Exception:  # the next turn settles it
+            _logger.warning("tasks of %s not settled", conversation_id, exc_info=True)
 
     def plan_rendered(self, session_id: str, event: Mapping[str, Any]) -> Task | None:
         """A ``plan`` card was shown: the task the turn works on keeps it.

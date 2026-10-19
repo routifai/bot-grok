@@ -1,8 +1,10 @@
 """Runner side of the context brief: started when the message is accepted, read by the tool.
 
-A Conversation turn's ``message_prefix`` starts the build in the background and adds no block;
-the ``context_brief`` call then returns the brief for that message, at once once it is built
-(at most :data:`~.brief.BUDGET_SECONDS` after the message). One brief per session: kept for
+The runner accepting a Conversation message (``Feature.on_accept``) starts the build in the
+background, before the turn's setup and prefix, which never wait on it (ADR 0026); the
+``context_brief`` call then returns the brief for that message, at once once it is built (at
+most :data:`~.brief.BUDGET_SECONDS` after the message, and never more than
+:data:`BRIEF_WAIT_SECONDS` of the call's own time). One brief per session: kept for
 :data:`BRIEF_TTL_SECONDS` or until the turn ends, so a second call in the turn gets the same text.
 """
 
@@ -18,7 +20,7 @@ import httpx
 
 from omnigent.entities.conversation import is_system_notice_text
 from omnigent.superchat._handler_http import error
-from omnigent.superchat.context_brief.brief import Brief
+from omnigent.superchat.context_brief.brief import BUDGET_SECONDS, Brief
 from omnigent.superchat.context_brief.sources import RunnerSources
 from omnigent.superchat.feature import HandlerCtx, is_helper
 
@@ -26,6 +28,8 @@ _logger = logging.getLogger(__name__)
 
 #: How long a session's brief answers the tool after its message arrived.
 BRIEF_TTL_SECONDS = 120.0
+#: Longest the tool call waits for the brief: its build's own budget plus room to render.
+BRIEF_WAIT_SECONDS = BUDGET_SECONDS + 0.5
 _RECENT_ITEMS = 10
 
 
@@ -71,18 +75,17 @@ def _message(texts: Sequence[str]) -> str:
     return "\n".join(t for t in texts if t).strip()
 
 
-async def message_prefix(
+def begin_brief(
     client: httpx.AsyncClient | None, conversation_id: str, texts: Sequence[str]
-) -> list[str]:
-    """Start this message's brief; the brief is a tool result, never a block. A runtime notice
-    (a Helper finished, a timer fired) starts none.
+) -> None:
+    """Start this message's brief as the runner accepts it; the brief is a tool result, never a
+    block. A runtime notice (a Helper finished, a timer fired) starts none.
 
-    Keyed by the message's text: the hook sees the turn's texts, not its item id.
+    Keyed by the message's text: the hook sees the message's texts, not its item id.
     """
     message = _message(texts)
     if client is not None and message and not any(is_system_notice_text(t) for t in texts):
         start_brief(client, conversation_id, message)
-    return []
 
 
 async def _latest_message(client: httpx.AsyncClient, conversation_id: str) -> str:
@@ -114,5 +117,11 @@ async def handle_context_brief(ctx: HandlerCtx, _args: dict[str, object]) -> str
         except (httpx.HTTPError, ValueError, AttributeError):
             message = ""
         task = start_brief(ctx.server_client, ctx.conversation_id, message)
-    # A call cancelled mid-wait leaves the brief building for the next one.
-    return await asyncio.shield(task)
+    # A call cancelled mid-wait, or out of time, leaves the brief building for the next one.
+    try:
+        return await asyncio.wait_for(asyncio.shield(task), BRIEF_WAIT_SECONDS)
+    except TimeoutError:
+        _logger.info(
+            "context brief not ready within %.1fs; an empty one is returned", BRIEF_WAIT_SECONDS
+        )
+        return Brief().render()

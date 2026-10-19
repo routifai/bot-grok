@@ -22,7 +22,13 @@ import {
 } from "../components/ai/orb";
 import { ArtifactPanelProvider, AskPreviewsProvider } from "../components/cards/context";
 import { SuperchatLogo } from "../components/SuperchatLogo";
-import { stripOf, transcriptWork, useWorkState, WorkingPill } from "../features/activity";
+import {
+  stripOf,
+  transcriptWork,
+  useLiveTurnActivity,
+  useWorkState,
+  WorkingPill,
+} from "../features/activity";
 import { ApprovalCards } from "../features/approvals";
 import { appsExtension } from "../features/apps";
 import { ArtifactRegistryProvider } from "../features/artifacts/registry";
@@ -36,7 +42,7 @@ import { liveExtension } from "../features/live";
 import { ConversationModelPicker } from "../features/models";
 import { useChatPlace, WorkInChip } from "../features/projects/WorkIn";
 import {
-  newestPlanTurn,
+  newestTurn,
   SessionPanel,
   SessionPanelToggle,
   useSessionPanelOpen,
@@ -193,7 +199,16 @@ export function ShellPage() {
     return unstored.length ? [...(storedMessages ?? []), ...unstored] : (storedMessages ?? []);
   }, [storedMessages, pendingMessage, liveMessage]);
   // Each reply's strip and where the running work began, read once (ADR 0023).
-  const work = useMemo(() => transcriptWork(transcriptMessages), [transcriptMessages]);
+  // The running turn's Activity from the Conversation's status: its steps show before any reply.
+  const liveActivityId = useLiveTurnActivity(
+    active?.id,
+    museTranscript.threadId,
+    museTranscript.turn.running || museTranscript.turn.awaiting,
+  );
+  const work = useMemo(
+    () => transcriptWork(transcriptMessages, liveActivityId),
+    [transcriptMessages, liveActivityId],
+  );
   const {
     activePendingAttachments,
     activePendingFolders,
@@ -294,12 +309,14 @@ export function ShellPage() {
   // The session panel (ADR 0027) opens beside the transcript when work runs (desktop only; a
   // phone opens it from the header), and stays closed once the viewer closed it.
   const sessionPanel = useSessionPanelOpen(running && _isDesktop);
-  const planTurn = useMemo(() => newestPlanTurn(work), [work]);
-  // The panel reads the same strip as that reply (its plan, fold and the latest line of the work).
-  const panelStrip = useMemo(
-    () => (planTurn ? stripOf(planTurn, workState, undefined) : null),
-    [planTurn, workState],
-  );
+  const planTurn = useMemo(() => newestTurn(work), [work]);
+  // The panel follows the newest reply (never an older one's plan) and reads the same strip (its plan, fold and the latest line of the work).
+  const panelStrip = useMemo(() => {
+    if (!planTurn) return null;
+    const strip = stripOf(planTurn, workState, undefined);
+    // The running turn before a reply: its Helpers come from the feed, lit while anything runs.
+    return planTurn === work.pending ? { ...strip, lit: workState.running } : strip;
+  }, [planTurn, workState, work.pending]);
   const orbHome = orbPlacement({
     startPage: shownStart,
     sidebarVisible: false,

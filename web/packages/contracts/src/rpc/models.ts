@@ -124,11 +124,13 @@ export const engineModelsContract = {
     setHarness: oc.input(z.object({ harness: EngineHarnessIdSchema })).output(ok),
     budget: oc.output(EngineBudgetSchema),
     setBudget: oc.input(EngineBudgetInputSchema).output(EngineBudgetSchema),
-    /** The model this Muse's Conversation runs on, and the catalog to pick from. */
+    /** The model this Muse's Conversation stores (`model`, `null`: none) and the one the engine
+     * runs it on (`effectiveModel`), and the catalog to pick from. */
     sessionModel: oc.input(botId).output(
       z.object({
         harness: z.string(),
         model: z.string().nullable(),
+        effectiveModel: z.string().nullable(),
         catalog: EngineModelCatalogSchema,
       }),
     ),
