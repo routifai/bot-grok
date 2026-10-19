@@ -19,6 +19,7 @@ from omnigent.stores import ConversationStore
 from omnigent.stores.permission_store import PermissionStore
 from omnigent.superchat.rounds.fold import fold, summary
 from omnigent.superchat.rounds.store import SqlAlchemyRoundStore
+from omnigent.superchat.rounds.ux_log import shown
 
 #: Most Rounds one list returns.
 MAX_LIMIT = 50
@@ -64,6 +65,7 @@ def register_round_routes(
             rows = []
             for round_id in store.recent(conversation_id, limit):
                 view = fold(store.events(round_id, conversation_id), round_id)
+                shown("list", conversation_id, round_id, view)
                 rows.append(RoundSummary(round_id=round_id, **summary(view)))
             return rows
 
@@ -82,5 +84,6 @@ def register_round_routes(
         if not events:
             raise OmnigentError("Round not found", code=ErrorCode.NOT_FOUND)
         view = fold(events, round_id)
+        shown("view", conversation_id, round_id, view)
         view.pop("after_settle")
         return RoundView(round_id=round_id, **view)

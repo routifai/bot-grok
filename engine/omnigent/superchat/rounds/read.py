@@ -36,6 +36,7 @@ from omnigent.superchat.family.tree import (
 from omnigent.superchat.rounds.fold import TURN_ENDED, fold, summary
 from omnigent.superchat.rounds.record import round_of
 from omnigent.superchat.rounds.store import RoundEvent, SqlAlchemyRoundStore
+from omnigent.superchat.rounds.ux_log import shown
 from omnigent.superchat.transcript.blocks import file_block, helper_session_ids, project_items
 
 if TYPE_CHECKING:
@@ -91,6 +92,7 @@ class Announcer:
                 events = await asyncio.to_thread(self._store.events, round_id)
                 if events:
                     view = fold(events, round_id)
+                    shown("announcer", conversation_id, round_id, view)
                     signals.notify_round_updated(conversation_id, round_id, summary(view))
                 await asyncio.sleep(self._every)
         except Exception:

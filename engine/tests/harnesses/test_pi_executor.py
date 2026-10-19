@@ -650,12 +650,13 @@ def test_anthropic_only_family_routes_non_claude_model_to_anthropic_surface():
     # that configured surface. Routing by name token instead sent the model
     # to the completions provider against a fabricated /serving-endpoints
     # path that only exists on a Databricks workspace, so the vendor
-    # answered 404 url.not_found.
+    # answered 404 url.not_found. A trace session with tracing off keeps the base URL.
     result = _build_models_json(
         "https://api.moonshot.ai",
         "tok",
         {"claude": "https://api.moonshot.ai/anthropic"},
         model="kimi-k2.7-code",
+        trace_session="sess-1",
     )
     p = result["providers"]
     anthropic_ids = [e.get("id") for e in p["databricks-anthropic"]["models"]]

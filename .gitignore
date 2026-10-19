@@ -41,3 +41,5 @@ playwright-report-www
 engine/scripts/.evals-chat
 # Model-call traces copied out of a host (engine/scripts/llm_trace.py)
 llm-trace/
+# Round views logged by the engine (engine/scripts/ux_log.py)
+ux-log/

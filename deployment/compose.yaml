@@ -84,6 +84,9 @@ services:
       # Dev only, off when empty: a folder INSIDE each host where every model call is traced
       # (engine/scripts/llm_trace.py reads it), e.g. /home/superchat/.omnigent/llm-trace.
       OMNIGENT_LLM_TRACE_DIR: ${OMNIGENT_LLM_TRACE_DIR:-}
+      # Dev only, off when empty: a folder INSIDE the engine where each Round view sent to the web
+      # is logged (engine/scripts/ux_log.py reads it), e.g. /data/ux-log.
+      OMNIGENT_UX_LOG_DIR: ${OMNIGENT_UX_LOG_DIR:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:

@@ -43,6 +43,7 @@ from dataclasses import dataclass, field
 from typing import Any, NotRequired, Protocol, TypeAlias, TypedDict, cast
 
 from omnigent.context.labels import SUPERSIDE_CHAT_MODE_VALUE
+from omnigent.harnesses import llm_trace, pi_settings
 from omnigent.harnesses.agent_env import clean_agent_env
 from omnigent.harnesses.native_attachments import parse_data_uri
 from omnigent.llms._usage_observer import notify_from_dict as _notify_usage_from_dict
@@ -95,6 +96,9 @@ logger = logging.getLogger(__name__)
 # not us, and varies across subcommands (response ack, message_update,
 # tool_execution_start/end, agent_end, message_end, etc.).
 CodexEvent: TypeAlias = dict[str, Any]  # type: ignore[explicit-any]
+
+#: Where Pi's built-in Anthropic provider sends calls (the dev-only trace forwards there).
+_PI_ANTHROPIC_DIRECT_URL = "https://api.anthropic.com"
 
 
 def _fetch_shell_command_token(command: str) -> str | None:
@@ -778,6 +782,7 @@ def _build_models_json(
     base_urls: dict[str, str] | None = None,
     model: str | None = None,
     openai_wire_api: str | None = None,
+    trace_session: str | None = None,
 ) -> _PiModelsConfig:
     # Pi's models.json mixes str/int/bool/list/dict across provider configs;
     """Build a Pi ``models.json`` with protocol-specific gateway providers.
@@ -798,6 +803,8 @@ def _build_models_json(
         registration (Pi picks its default).
     :param openai_wire_api: Configured wire for a generic OpenAI-compatible
         provider. ``None`` defaults generic providers to Chat Completions.
+    :param trace_session: The session whose Claude calls go through the dev-only
+        model-call trace (:mod:`omnigent.harnesses.llm_trace`); no-op when tracing is off.
     :returns: Pi ``models.json`` contents.
     """
     h = host.rstrip("/")
@@ -814,6 +821,8 @@ def _build_models_json(
         codex_gateway_url = openai_base_url
         mlflow_gateway_url = openai_base_url
     claude_base_url = (base_urls or {}).get("claude") or f"{h}/serving-endpoints/anthropic"
+    if trace_session is not None:
+        claude_base_url = llm_trace.base_url_for(trace_session, claude_base_url) or claude_base_url
     _openai_responses_compat: _JsonObject = {
         "supportsDeveloperRole": False,
         "supportsStore": False,
@@ -2227,6 +2236,7 @@ class PiExecutor(Executor):
         tool_server_token: str | None,
         model: str | None,
         disable_auto_compaction: bool = False,
+        trace_session: str | None = None,
     ) -> PiSubprocessConfig:
         """Build env dict, temp dir, and extra CLI args for a Pi subprocess.
 
@@ -2244,6 +2254,8 @@ class PiExecutor(Executor):
             is pinned (Pi picks its own default).
         :param disable_auto_compaction: Merge Pi's ``compaction.enabled=false``
             into the settings overlay (superside-chat only).
+        :param trace_session: The session whose Claude calls the dev-only model-call trace
+            records (``OMNIGENT_LLM_TRACE_DIR``); ignored when tracing is off.
         """
         env = dict(self._env)
         settings_overlay = dict(self._retry_policy.pi.settings())
@@ -2260,6 +2272,7 @@ class PiExecutor(Executor):
                 self._base_urls_override,
                 model=effective_model,
                 openai_wire_api=self._openai_wire_api,
+                trace_session=trace_session,
             )
             models_path = os.path.join(tmp_dir, "models.json")
             with open(models_path, "w") as f:
@@ -2268,12 +2281,22 @@ class PiExecutor(Executor):
             # Gateway mode relocates Pi's agent root — copy the user's global
             # settings (extensions, packages, …) and symlink install trees so
             # ``pi install`` packages still resolve. See #1423.
-            from omnigent.harnesses.pi_settings import prepare_managed_pi_agent_dir
-
-            prepare_managed_pi_agent_dir(
+            pi_settings.prepare_managed_pi_agent_dir(
                 pathlib.Path(tmp_dir),
                 overlay=settings_overlay,
             )
+        elif trace_session is not None and (
+            traced := llm_trace.base_url_for(trace_session, _PI_ANTHROPIC_DIRECT_URL)
+        ):
+            # Dev only: point Pi's built-in Anthropic provider at the trace proxy from a managed
+            # agent dir (Pi takes the base URL only from models.json); keys stay where they were.
+            with open(os.path.join(tmp_dir, "models.json"), "w") as f:
+                json.dump({"providers": {"anthropic": {"baseUrl": traced}}}, f)
+            pi_settings.prepare_managed_pi_agent_dir(pathlib.Path(tmp_dir))
+            global_auth = pi_settings.DEFAULT_PI_AGENT_DIR / "auth.json"
+            if global_auth.exists():
+                os.symlink(global_auth, os.path.join(tmp_dir, "auth.json"))
+            env["PI_CODING_AGENT_DIR"] = tmp_dir
 
         # Pi natively supports retry config via ``.pi/settings.json``
         # (see ``RetryPolicy.pi.settings()`` for schema). On the non-gateway
@@ -2444,6 +2467,7 @@ class PiExecutor(Executor):
             tool_server_token,
             effective_model,
             disable_auto_compaction=disable_auto_compaction,
+            trace_session=session_key,
         )
         env = subprocess_config.env
         tmp_dir = subprocess_config.tmp_dir
@@ -2594,6 +2618,7 @@ class PiExecutor(Executor):
         }
         if images:
             command["images"] = images
+        llm_trace.event(session_key, "prompt", prompt)
         try:
             await rpc.send_command(command)
         except Exception as exc:  # noqa: BLE001 — executor boundary surfaces prompt-send errors as ExecutorError
