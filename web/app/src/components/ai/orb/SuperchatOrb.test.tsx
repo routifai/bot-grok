@@ -68,7 +68,9 @@ it("follows Superchat's live presence unless given its own state", async () => {
 it("rests when no presence is provided", async () => {
   vi.stubGlobal("WebGLRenderingContext", undefined);
   const { host, unmount } = await render(({ SuperchatOrb }) => <SuperchatOrb />);
-  expect(host.querySelector<HTMLElement>("[data-testid=superchat-orb]")?.dataset.orbState).toBe("idle");
+  expect(host.querySelector<HTMLElement>("[data-testid=superchat-orb]")?.dataset.orbState).toBe(
+    "idle",
+  );
   await unmount();
 });
 

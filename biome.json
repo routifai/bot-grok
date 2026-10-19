@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.5.12/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.5.13/schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -19,7 +19,8 @@
       "!engine/tests",
       "!engine/sdks",
       "!engine/openapi.json",
-      "!host/share/deck-export/fixtures"
+      "!host/share/deck-export/fixtures",
+      "!host/share/dashboard/template.html"
     ]
   },
   "formatter": {

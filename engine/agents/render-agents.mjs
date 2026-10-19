@@ -14,7 +14,6 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 /** Where bundles are written; `SUPERCHAT_RENDER_AGENTS_DIR` redirects it (tests render to a temp dir). */
-// biome-ignore lint/suspicious/noUndeclaredEnvVars: a test-only redirect, not a build input
 const AGENTS_DIR = process.env.SUPERCHAT_RENDER_AGENTS_DIR || join(here, "bundles");
 /** One entry per Muse bundle. The engine's `OMNIGENT_SUPERCHAT_DEFAULT_AGENT` (`superchat-claude` |
  * `superchat-pi`) picks which one a new Muse runs on (ADR 0009): this script renders BOTH every run
