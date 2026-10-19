@@ -141,8 +141,9 @@ async def handle_deck_new(args: dict[str, Any], ctx: HandlerCtx | None = None) -
             "ok": True,
             "written": False,
             "note": (
-                "No slides were given, so nothing was written. "
-                "Call deck_new again with the slides."
+                "This is the kit; nothing was written. Next: one deck_new call with the same "
+                "path and title and all the slides, built from these layouts, with nothing "
+                "loaded from the web and no script but a chart's."
             ),
             "layouts": kit.menu(),
             "deck": _deck_record(look, title, None, None),

@@ -16,10 +16,10 @@
 - Never write the deck framework. `deck_new` takes a title, only the slides and the theme if
   there is one; it assembles the file (scale-to-fit, navigation, print rules, fonts) and checks
   the layout.
-- Building a new deck (a Helper's work, or yours when the person says to do it here): one
-  `deck_new` call with all the slides (one idea each) and the theme named (`look_from: named`;
-  with none, leave `look_from` out and let it choose; never ask for a look), then `artifact_save`
-  at once. Then the check, last before the final save: `deck_check`, fix what it lists, check
+- Building a new deck (a Helper's work, or yours when the person says to do it here): the
+  layouts are below, so skip the kit call unless you need a chart recipe. One `deck_new` call
+  with all the slides (one idea each) and the theme named (`look_from: named`; with none, leave
+  `look_from` out and let it choose; never ask for a look), then `artifact_save` at once. Then the check, last before the final save: `deck_check`, fix what it lists, check
   again, every figure against its source, then `artifact_save` again.
 - Choosing a theme yourself (they named a mood or said "you choose", or background work): call
   `deck_themes` for the dictionary (id, name, mood, category, light or dark mode, best for) and
@@ -37,9 +37,9 @@
   replacements, then run `deck_check` again, writing nothing between those calls. Never rewrite the whole file, and never read or
   print its font block (one huge line at the end).
 - Content: a headline is 8 words or fewer; one idea per slide (two ideas, two slides); at most
-  three cards or figures; a card's text is 20 words or fewer. Use only facts and numbers you
-  were given or computed: never invent metrics, quotes, customers or dates, and leave a slot out
-  rather than fill it with a guess. No placeholder text, no emoji icons. Put the talking detail
+  three cards or figures; a card's text is 20 words or fewer. Use only facts you were given, found
+  or know well, and numbers from a source or computed: never invent metrics, quotes, customers
+  or dates, and leave a slot out rather than fill it with a guess. No placeholder text, no emoji icons. Put the talking detail
   in your result, not on the slide.
 - PowerPoint-exact discipline: use only the layouts and classes below, and only the theme's
   fonts (name no other family). Keep text at 28px or more. Content never enters the footer band

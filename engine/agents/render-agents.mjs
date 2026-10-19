@@ -83,10 +83,6 @@ function main() {
     /^<!--[\s\S]*?-->\n/,
     "",
   );
-  const agentsMd = render(agentsTemplate, {
-    FILESYSTEM: filesystem,
-    DECKS: decks,
-  });
 
   for (const bundle of MUSE_BUNDLES) {
     const outDir = join(AGENTS_DIR, bundle.name);
@@ -101,7 +97,14 @@ function main() {
         SKILLS_FILTER: bundle.skillsFilter,
       }),
     );
-    writeFileSync(join(outDir, "AGENTS.md"), agentsMd);
+    writeFileSync(
+      join(outDir, "AGENTS.md"),
+      render(agentsTemplate, {
+        FILESYSTEM: filesystem,
+        DECKS: decks,
+        HARNESS_NAME: bundle.harnessName,
+      }),
+    );
     console.log(`wrote ${outDir}/config.yaml and AGENTS.md`);
 
     for (const type of SUB_AGENT_TYPES) {
