@@ -4,7 +4,8 @@ A cold start replays the record as text, and a summarizer reads it as a transcri
 know what the assistant did (which file it wrote, which helper it started, what came back) without
 the bytes. :func:`tool_digest_line` renders a ``function_call`` and its ``function_call_output`` as
 one line: the tool name, the argument that names what it acted on, and the result clipped to
-:data:`RESULT_LIMIT` characters. Images and binary payloads are dropped.
+:data:`RESULT_LIMIT` characters. A structured result stays readable as compact JSON; images and
+binary payloads are dropped.
 
 The line is tool output, not the person's words. It always opens with :data:`FRAMING`, collapses to
 one line (so a result cannot forge a ``user:`` line) and never spans a second line.
@@ -46,6 +47,16 @@ _TARGET_KEYS = (
     "text",
 )
 _TEXT_BLOCK_TYPES = frozenset({"text", "input_text", "output_text"})
+_BLOCK_TYPES = _TEXT_BLOCK_TYPES | {
+    "image",
+    "input_image",
+    "image_url",
+    "file",
+    "input_file",
+    "audio",
+    "resource",
+    "resource_link",
+}
 _DATA_URI = re.compile(r"data:[\w.+-]+/[\w.+-]+;base64,[A-Za-z0-9+/=_-]*")
 _LONG_BASE64 = re.compile(r"[A-Za-z0-9+/]{200,}={0,2}")
 _SPACES = re.compile(r"\s+")
@@ -101,19 +112,31 @@ def _binary_run(match: re.Match[str]) -> str:
     return "[binary omitted]" if mixed and any(c.isdigit() for c in run) else run
 
 
+def _is_blocks(output: Any) -> bool:
+    """Whether *output* is content blocks (text, images, files) rather than a structured result."""
+    blocks = output if isinstance(output, list) else [output]
+    return bool(blocks) and all(
+        isinstance(block, dict) and block.get("type") in _BLOCK_TYPES for block in blocks
+    )
+
+
 def _result_text(output: Any) -> str:
-    """The readable text of a tool result: text blocks kept, images and binary payloads dropped."""
+    """The readable text of a tool result, images and binary payloads dropped.
+
+    Content blocks give their text; any other dict or list (a structured result such as
+    ``{"helper_id": …, "status": "started"}``) is kept as compact JSON.
+    """
     if isinstance(output, str) and output[:1] in ("[", "{"):
         with contextlib.suppress(ValueError):
             output = json.loads(output)
-    if isinstance(output, dict):
-        output = [output]
-    if isinstance(output, list):
+    if _is_blocks(output):
         output = "\n".join(
             str(block.get("text", ""))
-            for block in output
-            if isinstance(block, dict) and block.get("type") in _TEXT_BLOCK_TYPES
+            for block in (output if isinstance(output, list) else [output])
+            if block.get("type") in _TEXT_BLOCK_TYPES
         )
+    elif isinstance(output, (dict, list)):
+        output = json.dumps(output, ensure_ascii=False, default=str)
     text = "" if output is None else str(output)
     text = _DATA_URI.sub("[image omitted]", text)
     return _one_line(_LONG_BASE64.sub(_binary_run, text))
