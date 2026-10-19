@@ -2,7 +2,9 @@
 
 Three INFO lines per Conversation turn, all counted from the moment the engine
 accepted the person's message that started it: the first visible event (a word,
-or a tool call such as a plan or card starting), the first word, and a turn that
+a tool call such as a plan or card starting, or the model starting to think: the
+Working line is up from the turn's start, and a thinking block is the first sign the
+model itself is on it), the first word, and a turn that
 ended without a word. The events route stamps the acceptance in memory
 (:func:`mark_accepted`, sub-second); without a stamp (another replica accepted
 it, or the engine restarted) the clock falls back to the message's whole-second
@@ -46,9 +48,14 @@ def mark_accepted(session_id: str) -> None:
 
 
 def _is_visible(event: dict[str, Any]) -> bool:
-    """A frame the person sees: a text delta or a tool call (plans and cards are tool calls)."""
+    """A frame the person sees: a text delta, a tool call (plans and cards are tool calls),
+    or a thinking block opening (both harnesses think before most answers)."""
     evt_type = event.get("type")
-    if evt_type in ("response.output_text.delta", "response.function_call_output.delta"):
+    if evt_type in (
+        "response.output_text.delta",
+        "response.function_call_output.delta",
+        "response.reasoning.started",
+    ):
         return True
     if not isinstance(evt_type, str) or not evt_type.startswith("response.output_item."):
         return False
