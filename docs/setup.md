@@ -156,6 +156,31 @@ docker rm -f $(docker ps -aq --filter label=omnigent.host)
 docker volume ls -q --filter name=superchat-home- | xargs docker volume rm
 ```
 
+## A second stack
+
+A second stack runs beside the first from another checkout, for example to try a branch whose
+database schema the first stack's data does not have. From that checkout's root, with its own
+`.env` (copy the first one's; `setup.sh` is not needed):
+
+```sh
+export COMPOSE_PROJECT_NAME=superchat-train IMAGE_TAG=train
+export SUPERCHAT_ENGINE_PORT=8013 SUPERCHAT_WEB_PORT=5174
+deployment/build.sh
+docker compose --env-file .env -f deployment/compose.yaml up -d --wait --wait-timeout 300
+deployment/stop.sh
+```
+
+Run every command in a shell with those four values exported: they override `.env`, and
+`stop.sh` and `reset.sh` read them too. If `.env` sets `ENGINE_PUBLIC_URL`, export it as well with
+the new engine port, or the new hosts dial the first engine. Open http://127.0.0.1:5174.
+
+Isolated: the Postgres and artifact volumes and the network (Compose names them after the
+project), the ports, the images (`superchat/engine:train`, `superchat/host:train`), and the hosts,
+named `superchat-train-host-<key>` with homes on `superchat-train-home-<key>` (the engine reads the
+prefix from `OMNIGENT_HOST_NAME_PREFIX`, which Compose sets to the project name). Shared: the
+Docker daemon and its build cache, and whatever model keys the copied `.env` holds. The
+`label=omnigent.host` filter under [Reset](#reset) matches both stacks' hosts.
+
 ## Secrets
 
 Never commit `.env` or paste its values anywhere. Use an independent value for each key.

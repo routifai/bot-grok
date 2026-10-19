@@ -70,6 +70,8 @@ services:
       OMNIGENT_HOST_MEMORY: ${HOST_MEMORY:-2g}
       OMNIGENT_HOST_CPUS: ${HOST_CPUS:-2}
       OMNIGENT_HOST_PIDS_LIMIT: ${HOST_PIDS_LIMIT:-2048}
+      # Hosts are named <project>-host-<key>, so a second project never takes this one's hosts.
+      OMNIGENT_HOST_NAME_PREFIX: ${COMPOSE_PROJECT_NAME:-superchat}
       # The harness a new conversation runs on; each person can switch in Settings > Models.
       OMNIGENT_SUPERCHAT_DEFAULT_AGENT: ${SUPERCHAT_DEFAULT_AGENT:-superchat-claude}
       # Model access: a key, or both LiteLLM values to route every model call through a proxy.

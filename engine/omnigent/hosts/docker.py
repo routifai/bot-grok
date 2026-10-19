@@ -67,6 +67,11 @@ CPUS_ENV_VAR: str = "OMNIGENT_HOST_CPUS"
 PIDS_LIMIT_ENV_VAR: str = "OMNIGENT_HOST_PIDS_LIMIT"
 """Process limit. Defaults to ``2048``."""
 
+NAME_PREFIX_ENV_VAR: str = "OMNIGENT_HOST_NAME_PREFIX"
+"""Prefix of each host's container and home volume names, so two engines on one Docker daemon
+never share a host. Defaults to ``superchat``, giving ``superchat-host-<key>`` and
+``superchat-home-<key>``."""
+
 LABEL_HOST_KEY: str = "omnigent.host.key"
 """Session label naming the host to run in (shared by every session with the same key)."""
 
@@ -82,6 +87,7 @@ DEFAULT_TENANT: str = "default"
 
 _DEFAULT_IMAGE: str = "superchat/host:local"
 _DEFAULT_SOCKET: str = "/var/run/docker.sock"
+_DEFAULT_NAME_PREFIX: str = "superchat"
 
 #: The host image's user and home; the home volume is mounted there.
 _HOST_USER: str = "1000:1000"
@@ -141,14 +147,14 @@ def _safe_name(key: str) -> str:
     return safe
 
 
-def container_name(key: str) -> str:
+def container_name(key: str, prefix: str = _DEFAULT_NAME_PREFIX) -> str:
     """Name of the host container for *key*."""
-    return f"superchat-host-{_safe_name(key)}"
+    return f"{prefix}-host-{_safe_name(key)}"
 
 
-def home_volume_name(key: str) -> str:
+def home_volume_name(key: str, prefix: str = _DEFAULT_NAME_PREFIX) -> str:
     """Name of the Docker volume holding the host's home for *key*."""
-    return f"superchat-home-{_safe_name(key)}"
+    return f"{prefix}-home-{_safe_name(key)}"
 
 
 def _nano_cpus(value: str) -> int:
@@ -211,6 +217,7 @@ class DockerHostLauncher(ExecModelHostLauncher):
         self._memory = os.environ.get(MEMORY_ENV_VAR) or "2g"
         self._cpus = os.environ.get(CPUS_ENV_VAR) or "2"
         self._pids_limit = int(os.environ.get(PIDS_LIMIT_ENV_VAR) or "2048")
+        self._name_prefix = os.environ.get(NAME_PREFIX_ENV_VAR) or _DEFAULT_NAME_PREFIX
         self._injected_client = client
         # Set by prepare_for_launch; only provision() relies on it (every other method
         # re-derives identity from the sandbox id it is handed).
@@ -309,7 +316,7 @@ class DockerHostLauncher(ExecModelHostLauncher):
                 "Mounts": [
                     {
                         "Type": "volume",
-                        "Source": home_volume_name(key),
+                        "Source": home_volume_name(key, self._name_prefix),
                         "Target": _HOST_HOME,
                     }
                 ],
@@ -328,7 +335,7 @@ class DockerHostLauncher(ExecModelHostLauncher):
 
     def _ensure_container_id(self, key: str, tenant: str) -> str:
         """Return the id of *key*'s running host, creating or recreating it as needed."""
-        name = container_name(key)
+        name = container_name(key, self._name_prefix)
         image_id = self._image_id()
         response = self._docker("GET", f"/containers/{name}/json")
         if response.status_code == 200:
