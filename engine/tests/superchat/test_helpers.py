@@ -118,7 +118,8 @@ def test_bundle_surfaces() -> None:
     assert "start_helper" in muse
     assert "message_helper" in muse
     assert "sys_session_send" not in muse
-    assert "sys_session_get_info" in muse
+    # A Helper's result arrives as a message: no inbox or session polling (ADR 0029).
+    assert not {"sys_read_inbox", "sys_session_list", "sys_session_get_info"} & set(muse)
     assert "start_helper" in worker
     assert "sys_session_send" not in worker
     assert "start_helper" not in sub
