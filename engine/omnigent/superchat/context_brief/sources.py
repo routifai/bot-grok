@@ -1,9 +1,8 @@
 """Where the runner's context brief reads: the engine over HTTP, the host's index in process.
 
 Artifacts come from ``GET /v1/artifacts`` (the owner's, newest version each); the Rounds still
-working from ``GET /v1/sessions/{id}/tasks`` (its ``rounds``); the plan from the
-shared per-message plan (one planner call per message, none with recall off); earlier work and
-files from ``recall_search`` over the host's index.
+working from ``GET /v1/sessions/{id}/tasks`` (its ``rounds``); the queries from the message in code
+(none with recall off); earlier work and files from ``recall_search`` over the host's index.
 """
 
 from __future__ import annotations
@@ -48,16 +47,11 @@ class RunnerSources:
         return await turn_plan(self._client, session_id, message)
 
     async def recall(self, session_id: str, plan: TurnPlan) -> list[Any]:
-        if not plan.plan.need or not plan.plan.queries:
+        if not plan.queries:
             return []
         # The current epoch is in context, so it is left out.
         anchor = plan.checkpoint.get("last_item_id") if plan.checkpoint else None
-        hits = await search(
-            plan.plan.queries,
-            {session_id: anchor or ""},
-            since=plan.plan.since,
-            until=plan.plan.until,
-        )
+        hits = await search(plan.queries, {session_id: anchor or ""})
         if not hits or (_field(hits[0], "score") or 0) < SCORE_FLOOR:
             return []
         return hits[: MAX_EARLIER + MAX_SOURCES]

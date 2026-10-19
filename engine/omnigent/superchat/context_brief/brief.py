@@ -1,10 +1,10 @@
 """The context brief (ADR 0027): what already exists on the subject of the person's message.
 
-Built by code plus one Light planner call (none with recall off), within
+Built by code when the ``context_brief`` tool is called, with no model call, within
 :data:`BUDGET_SECONDS`. Five parts, each optional: what we made before (artifact groups whose
 name or title shares the message's subject words), the Conversation's Rounds still working (the
 Round record: the ask and the Helpers still running), earlier work
-(the recall pull with the planner's sub-queries, dated one-line pointers), sources in the
+(the recall pull with queries written from the message, dated one-line pointers), sources in the
 person's files, and standing preferences (the working list's ``p-`` lines on the subject; the
 memory profile is already in the prefix).
 A part that fails or misses the budget is left out. The brief renders as plain lines under four
@@ -201,11 +201,11 @@ class BriefSources(Protocol):
         ...
 
     def plan(self, session_id: str, message: str) -> Awaitable[TurnPlan]:
-        """The planner's sub-queries and the checkpoint (one plan per message)."""
+        """The recall queries for the message and the checkpoint."""
         ...
 
     def recall(self, session_id: str, plan: TurnPlan) -> Awaitable[list[Any]]:
-        """The recall pull for the plan's sub-queries, best first."""
+        """The recall pull for the plan's queries, best first."""
         ...
 
     def files(self, query: str) -> Awaitable[list[dict[str, Any]]]:

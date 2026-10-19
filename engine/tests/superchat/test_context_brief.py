@@ -1,4 +1,4 @@
-"""The context brief (ADR 0027): parts, caps, the fence, the tool's cache, the shared plan."""
+"""The context brief (ADR 0027): parts, caps, the fence, built when the tool is called."""
 
 from __future__ import annotations
 
@@ -31,13 +31,10 @@ from omnigent.superchat.context_brief.tools import CONTEXT_BRIEF_TOOL_NAME
 from omnigent.superchat.feature import HandlerCtx
 from omnigent.superchat.knowledge import recall
 from omnigent.superchat.recall_hint import hint as hint_mod
-from omnigent.superchat.recall_hint.hint import TurnPlan, turn_plan
-from omnigent.superchat.recall_hint.planner import Plan, Query, derive_queries
+from omnigent.superchat.recall_hint.hint import TurnPlan, derive_queries
 from tests.superchat.test_recall_hint import (
     ANCHOR,
     CHAT,
-    _Chat,
-    _plan,
     _Resp,
     _Search,
     _Server,
@@ -112,8 +109,7 @@ class _Sources:
         return await self._read("rounds", self.round_rows)
 
     async def plan(self, session_id: str, message: str) -> TurnPlan:
-        plan = Plan(need=True, queries=(Query("q3 revenue"),))
-        return await self._read("plan", TurnPlan(plan, {"summary": SUMMARY}))
+        return await self._read("plan", TurnPlan(("q3 revenue",), {"summary": SUMMARY}))
 
     async def recall(self, session_id: str, plan: TurnPlan) -> list[Any]:
         hits = [
@@ -139,12 +135,10 @@ def _file_hit() -> Any:
 
 @pytest.fixture(autouse=True)
 def _fresh() -> Iterator[None]:
-    """Each test is a new turn: no brief or plan kept from the one before."""
+    """Each test is a new turn: no brief kept from the one before."""
     runtime._briefs.clear()
-    hint_mod._turn_plans.clear()
     yield
     runtime._briefs.clear()
-    hint_mod._turn_plans.clear()
 
 
 # ── composition ──────────────────────────────────────────────────────────────────────────────
@@ -261,30 +255,32 @@ def _ctx(labels: dict[str, str] = CONVERSATION, client: Any = object()) -> Handl
     )
 
 
-async def test_the_tool_returns_the_brief_started_on_accept(
+async def test_the_tool_builds_the_brief_when_called_and_keeps_it_for_the_turn(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     sources = _Sources()
     monkeypatch.setattr(runtime, "RunnerSources", lambda _client: sources)
-    FEATURE.on_accept(object(), CHAT, [MESSAGE])  # type: ignore[misc,arg-type]
-    first = await runtime.handle_context_brief(_ctx(), {})
-    started = time.monotonic()
-    second = await runtime.handle_context_brief(_ctx(), {})
-    assert time.monotonic() - started < 0.05
-    assert first == second and first.startswith(HEADER)
-    assert sources.calls.count("artifacts") == 1  # built once, at accept
+    server = _Server(items=[{"type": "message", "role": "user", "content": MESSAGE}])
+    assert CHAT not in runtime._briefs  # nothing builds before the call
+    first = await runtime.handle_context_brief(_ctx(client=server), {})
+    second = await runtime.handle_context_brief(_ctx(client=server), {})
+    assert first == second and "Q3 revenue review" in first
+    assert runtime._briefs[CHAT].message == MESSAGE
+    assert sources.calls.count("artifacts") == 1  # built once, on the first call
     FEATURE.on_turn_end(CHAT)  # type: ignore[misc]
     assert CHAT not in runtime._briefs
 
 
-async def test_with_no_brief_started_the_call_builds_one_for_the_latest_message(
+async def test_a_runtime_notice_is_not_the_message_the_brief_is_for(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     sources = _Sources()
     monkeypatch.setattr(runtime, "RunnerSources", lambda _client: sources)
-    items = [{"type": "message", "role": "user", "content": MESSAGE}]
-    text = await runtime.handle_context_brief(_ctx(client=_Server(items=items)), {})
-    assert "Q3 revenue review" in text
+    items = [  # newest first
+        {"type": "message", "role": "user", "content": "[System: helper 'deck' finished]"},
+        {"type": "message", "role": "user", "content": MESSAGE},
+    ]
+    await runtime.handle_context_brief(_ctx(client=_Server(items=items)), {})
     assert runtime._briefs[CHAT].message == MESSAGE
 
 
@@ -293,8 +289,9 @@ def test_helpers_and_studios_never_get_the_tool() -> None:
     assert FEATURE.tools(HELPER, None) == []  # type: ignore[arg-type]
     assert FEATURE.tools(STUDIO, None) == []  # type: ignore[arg-type]
     assert FEATURE.tools(None, None) == []  # type: ignore[arg-type]
-    # Started at accept, never by the prefix: the runner tells only the Conversation itself.
-    assert FEATURE.message_prefix is None and FEATURE.on_accept is not None
+    # Pulled: no block in the prefix and no build when a message arrives.
+    assert FEATURE.message_prefix is None and FEATURE.turn_prefix is None
+    assert not hasattr(FEATURE, "on_accept")
 
 
 async def test_a_helper_calling_it_by_name_is_refused() -> None:
@@ -302,7 +299,7 @@ async def test_a_helper_calling_it_by_name_is_refused() -> None:
     assert CHAT not in runtime._briefs
 
 
-# ── the plan, shared with the hint ───────────────────────────────────────────────────────────
+# ── the runner's reads ─────────────────────────────────────────────────────────────────
 
 
 class _Engine(_Server):
@@ -367,25 +364,21 @@ async def test_runner_sources_read_the_views_working_rounds() -> None:
 
 
 async def test_the_runner_brief_end_to_end(index: _Search) -> None:
-    chat = _Chat(_plan("q3 revenue"))
     engine = _Engine()
-    await turn_plan(engine, CHAT, MESSAGE, chat=chat)  # type: ignore[arg-type]
     text = (await Brief.build(CHAT, MESSAGE, RunnerSources(engine))).render()  # type: ignore[arg-type]
-    assert len(chat.calls) == 1  # the brief reused the message's plan
     assert '"Q3 revenue" · deck v2' in text
     assert '- working · asked "Q3 revenue review" · helper "Deck"' in text
     assert "- file · f_board.pdf · 4 pages · f_board" in text
     assert "· conversation ·" in text
     pull = [c for c in index.calls if "conversation" in c["sources"]]
     assert pull and pull[0]["exclude_chat_after"] == {CHAT: ANCHOR}  # the current epoch is out
+    titles = ["Spring launch budget: confirm the venue line"]
+    assert pull[0]["queries"] == list(derive_queries(MESSAGE, titles))  # written in code
 
 
-async def test_with_recall_off_no_planner_and_no_recall_pull(index: _Search) -> None:
-    chat = _Chat(_plan("q3 revenue"))
+async def test_with_recall_off_no_recall_pull(index: _Search) -> None:
     engine = _Engine(on=False)
-    await turn_plan(engine, CHAT, MESSAGE, chat=chat)  # type: ignore[arg-type]
     text = (await Brief.build(CHAT, MESSAGE, RunnerSources(engine))).render()  # type: ignore[arg-type]
-    assert chat.calls == []
     assert all(c["sources"] == {"files"} for c in index.calls)  # files only, no recall pull
     assert '"Q3 revenue" · deck v2' in text and "- working · " in text and "- file · " in text
     assert "· conversation ·" not in text
@@ -393,25 +386,17 @@ async def test_with_recall_off_no_planner_and_no_recall_pull(index: _Search) -> 
 
 async def test_below_the_score_floor_there_is_no_earlier_work(index: _Search) -> None:
     index.hits = [_turn(1, score=hint_mod.SCORE_FLOOR - 0.01)]
-    plan = TurnPlan(Plan(need=True, queries=(Query("venue"),)), None)
+    plan = TurnPlan(("venue",), None)
     assert await RunnerSources(_Engine()).recall(CHAT, plan) == []  # type: ignore[arg-type]
     index.hits = [_turn(1, score=hint_mod.SCORE_FLOOR)]
     assert len(await RunnerSources(_Engine()).recall(CHAT, plan)) == 1  # type: ignore[arg-type]
     assert index.calls[-1]["exclude_chat_after"] == {CHAT: ""}  # no checkpoint: the whole chat
 
 
-async def test_a_runtime_notice_starts_no_brief(monkeypatch: pytest.MonkeyPatch) -> None:
-    sources = _Sources()
-    monkeypatch.setattr(runtime, "RunnerSources", lambda _client: sources)
-    notice = "[System: helper 'deck' finished]"
-    FEATURE.on_accept(object(), CHAT, [notice])  # type: ignore[misc,arg-type]
-    assert CHAT not in runtime._briefs and sources.calls == []
-
-
 async def test_the_tool_waits_for_the_brief_within_its_own_bound(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A brief that never finishes costs the call its bound, then an empty brief."""
+    """A build over its budget costs the call its bound, then an empty brief."""
     hung: asyncio.Future[str] = asyncio.get_running_loop().create_future()
     monkeypatch.setattr(runtime, "start_brief", lambda *_args: hung)
     monkeypatch.setattr(runtime, "BRIEF_WAIT_SECONDS", 0.05)
@@ -421,12 +406,3 @@ async def test_the_tool_waits_for_the_brief_within_its_own_bound(
     assert time.monotonic() - started < 1.0
     assert text == Brief().render()
     assert not hung.cancelled(), "the build is left running for a later call"
-
-
-async def test_a_late_planner_falls_back_to_code_derived_queries() -> None:
-    message = "What did Dana say about launch-budget.xlsx?"
-    started = time.monotonic()
-    shared = await turn_plan(_Server(), CHAT, message, chat=_Chat(_plan("x"), delay=5.0))  # type: ignore[arg-type]
-    assert time.monotonic() - started < 1.0
-    titles = ["Spring launch budget: confirm the venue line"]
-    assert shared.plan.queries == derive_queries(message, None, titles)
