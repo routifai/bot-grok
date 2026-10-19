@@ -112,6 +112,8 @@ class HandlerCtx:
     :param conversation_id: The calling session.
     :param labels: The calling session's labels, when the dispatcher has them.
     :param sub_agents: The runner's sub-agent launcher (``None`` outside a runner).
+    :param turn_said: Whether the running turn has streamed any text before this call
+        (``None`` when the call did not come from a turn's stream, e.g. an engine relay).
     """
 
     tool_name: str
@@ -119,6 +121,7 @@ class HandlerCtx:
     conversation_id: str | None
     labels: Mapping[str, str] | None = None
     sub_agents: SubAgentHost | None = None
+    turn_said: bool | None = None
 
 
 @dataclass(frozen=True)

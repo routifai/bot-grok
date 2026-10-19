@@ -73,7 +73,7 @@ def _kind_hints() -> str:
 
 # Kinds that are the answer itself. ``progress`` is a living card the Assistant re-renders (same
 # ``id``) while it works, so it never ends the reply; ``ask`` waits on the person's pick.
-_TERMINAL_CARDS = frozenset({"sources", "compare", "ask", "person", "file", "quote"})
+TERMINAL_CARDS = frozenset({"sources", "compare", "ask", "person", "file", "quote"})
 
 
 def _arr(items: dict[str, Any], *, min_items: int = 1, max_items: int = 50) -> dict[str, Any]:
@@ -187,7 +187,7 @@ def card_catalog() -> list[dict[str, Any]]:
         true for answer cards and false for living cards (progress) updated in place.
     """
     return [
-        {"kind": kind, "ends_reply": kind in _TERMINAL_CARDS, "data_schema": schema}
+        {"kind": kind, "ends_reply": kind in TERMINAL_CARDS, "data_schema": schema}
         for kind, schema in CARD_DATA_SCHEMAS.items()
     ]
 
@@ -223,7 +223,7 @@ def _build_card(args: dict[str, Any], schemas: dict[str, dict[str, Any]]) -> dic
     out["fallback"] = fallback.strip()
     # The model reacts to a tool result; without this it adds a line repeating the card.
     # Progress cards are updated in place mid-work, so they must not stop the turn.
-    if card in _TERMINAL_CARDS:
+    if card in TERMINAL_CARDS:
         out["note"] = (
             "Shown to the person. Add no more text; only `suggest_follow_ups` may still follow, "
             "then end your turn."

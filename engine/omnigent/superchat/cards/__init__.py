@@ -12,6 +12,7 @@ from omnigent.superchat.cards.handlers import (
     handle_card_tool,
     handle_clarification_tool,
     handle_follow_ups_tool,
+    turn_ended,
 )
 from omnigent.superchat.cards.tools import (
     CARD_TOOL_NAME,
@@ -56,5 +57,6 @@ FEATURE = Feature(
         CLARIFICATION_TOOL_NAME: handle_clarification_tool,
         FOLLOW_UPS_TOOL_NAME: handle_follow_ups_tool,
     },
+    on_turn_end=turn_ended,
     install=_install,
 )

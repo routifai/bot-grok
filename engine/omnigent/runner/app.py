@@ -8106,6 +8106,9 @@ def create_runner_app(
                                                         labels=await _tool_labels_for_session(
                                                             conv_id
                                                         ),
+                                                        turn_said=any(
+                                                            t.strip() for t in _text_acc
+                                                        ),
                                                     ),
                                                 )
                                             )

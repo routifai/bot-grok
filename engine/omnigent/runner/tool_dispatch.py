@@ -6559,6 +6559,7 @@ async def execute_tool(
     effective_harness: str | None = None,
     labels: Mapping[str, str] | None = None,
     relay: bool = False,
+    turn_said: bool | None = None,
 ) -> str:
     """
     Execute a tool and return the output string.
@@ -6591,6 +6592,8 @@ async def execute_tool(
         ``session_history`` for a rollover session).
     :param relay: The call came through ``/mcp/execute`` with the engine's relay mark; it lets a
         feature's relay-only ops past the granted-surface check (a model's call never sets it).
+    :param turn_said: Whether the calling turn streamed text before this call (``None`` when
+        unknown); handed to a feature handler as :attr:`HandlerCtx.turn_said`.
     :returns: Tool output string.
     """
     if not arguments.strip():
@@ -6789,6 +6792,7 @@ async def execute_tool(
                     session_inbox=session_inbox,
                     labels=labels,
                 ),
+                turn_said=turn_said,
             )
             output = await FEATURE_HANDLERS[tool_name](feature_ctx, args)
             notify_result(feature_ctx, output)
@@ -6918,6 +6922,7 @@ async def dispatch_tool_locally(
     filesystem_registry: FilesystemRegistry | None = None,
     effective_harness: str | None = None,
     labels: Mapping[str, str] | None = None,
+    turn_said: bool | None = None,
 ) -> str:
     """Execute a tool once and POST its result to the harness.
 
@@ -6941,6 +6946,8 @@ async def dispatch_tool_locally(
         observe tool-launched terminals.
     :param effective_harness: Harness the session actually runs, forwarded to
         ``execute_tool`` for the granted-surface check.
+    :param turn_said: Whether the turn streamed text before this call, forwarded to
+        ``execute_tool``.
     :returns: The tool output string.
     """
     if not conversation_id:
@@ -6969,6 +6976,7 @@ async def dispatch_tool_locally(
         publish_event=publish_event,
         effective_harness=effective_harness,
         labels=labels,
+        turn_said=turn_said,
     )
 
     # A file-mutating tool just ran — nudge the web to refetch the
