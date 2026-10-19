@@ -96,6 +96,8 @@ class ExecutorConfig:
         ``None`` when no model has been pinned by the agent spec — each
         executor picks its own default in that case.
     :param temperature: Sampling temperature forwarded to the LLM.
+    :param session_titles: ``True`` lets the harness make its own session-naming model call.
+        Off by default: the engine names Conversations itself.
     :param max_tokens: Upper bound on generated tokens for a single
         model response.
     :param extra: Arbitrary executor-specific kwargs merged into the
@@ -104,6 +106,7 @@ class ExecutorConfig:
 
     model: str | None = None
     temperature: float = 0.0
+    session_titles: bool = False
     max_tokens: int = 100000
     extra: ExecutorExtra = field(default_factory=dict)
 
