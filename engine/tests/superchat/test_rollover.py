@@ -1,5 +1,5 @@
-"""Unit tests for ``omnigent.superchat.rollover``: trigger logic (threshold,
-idle-refresh), the compaction-item build+post, and single-flight.
+"""Unit tests for ``omnigent.superchat.rollover``: the idle-refresh setting, the
+compaction-item build+post (the fold of the turns before the kept tail), and single-flight.
 
 No DB, no server, no live calls — tiny in-memory fakes stand in for the
 server client and the LLM summarizer.
@@ -21,12 +21,13 @@ from omnigent.superchat.rollover import (
     exceeds_hard_context_limit,
     resolve_idle_refresh_seconds,
     roll_over_session,
-    should_roll_over_for_idle,
-    should_roll_over_for_threshold,
 )
 
 _SUPERSIDE = {"omnigent.context.mode": "superside-chat"}
 _ROLLOVER_MODE = {"omnigent.context.mode": "rollover"}
+# A tail budget of 1 token keeps just the newest turn, so earlier turns are folded.
+_FOLD = {**_SUPERSIDE, "omnigent.context.rollover_keep_tokens": "1"}
+_REPLY = "- [t-a · 2026-10-12] Alpha\n<journal>\n2026-10-12 · hi\n</journal>"
 
 
 @pytest.fixture(autouse=True)
@@ -52,57 +53,6 @@ def test_idle_refresh_seconds_ignores_invalid(monkeypatch: pytest.MonkeyPatch) -
     assert resolve_idle_refresh_seconds() == DEFAULT_IDLE_REFRESH_SECONDS
     monkeypatch.setenv(OMNIGENT_ROLLOVER_IDLE_REFRESH_SECONDS_ENV, "-1")
     assert resolve_idle_refresh_seconds() == DEFAULT_IDLE_REFRESH_SECONDS
-
-
-# ── should_roll_over_for_threshold ────────────────────────────────────────
-
-
-def test_threshold_trigger_fires_over_threshold() -> None:
-    assert should_roll_over_for_threshold(_SUPERSIDE, context_tokens=200_000) is True
-
-
-def test_threshold_trigger_does_not_fire_under_threshold() -> None:
-    assert should_roll_over_for_threshold(_SUPERSIDE, context_tokens=1_000) is False
-
-
-def test_threshold_trigger_ignores_non_superside_chat() -> None:
-    assert should_roll_over_for_threshold(_ROLLOVER_MODE, context_tokens=10_000_000) is False
-    assert should_roll_over_for_threshold({}, context_tokens=10_000_000) is False
-    assert should_roll_over_for_threshold(None, context_tokens=10_000_000) is False
-
-
-def test_threshold_trigger_ignores_unknown_context_tokens() -> None:
-    assert should_roll_over_for_threshold(_SUPERSIDE, context_tokens=None) is False
-
-
-def test_threshold_trigger_honors_model_window() -> None:
-    # 60% of a 10k window floors at MIN_ROLLOVER_THRESHOLD_TOKENS (100k) per
-    # resolve_rollover_threshold, so use an explicit override label instead.
-    labels = {**_SUPERSIDE, "omnigent.context.rollover_at_tokens": "150000"}
-    assert should_roll_over_for_threshold(labels, context_tokens=140_000) is False
-    assert should_roll_over_for_threshold(labels, context_tokens=150_000) is True
-
-
-# ── should_roll_over_for_idle ──────────────────────────────────────────────
-
-
-def test_idle_trigger_fires_past_the_period(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv(OMNIGENT_ROLLOVER_IDLE_REFRESH_SECONDS_ENV, "100")
-    assert should_roll_over_for_idle(_SUPERSIDE, idle_seconds=101) is True
-
-
-def test_idle_trigger_does_not_fire_within_the_period(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv(OMNIGENT_ROLLOVER_IDLE_REFRESH_SECONDS_ENV, "100")
-    assert should_roll_over_for_idle(_SUPERSIDE, idle_seconds=99) is False
-
-
-def test_idle_trigger_ignores_non_superside_chat() -> None:
-    assert should_roll_over_for_idle(_ROLLOVER_MODE, idle_seconds=10**9) is False
-    assert should_roll_over_for_idle({}, idle_seconds=10**9) is False
-
-
-def test_idle_trigger_ignores_unknown_idle_seconds() -> None:
-    assert should_roll_over_for_idle(_SUPERSIDE, idle_seconds=None) is False
 
 
 # ── roll_over_session: fakes ──────────────────────────────────────────────
@@ -196,6 +146,15 @@ def _msg(item_id: str, role: str, text: str) -> dict[str, Any]:
     }
 
 
+def _two_turns() -> list[dict[str, Any]]:
+    return [
+        _msg("u0", "user", "hi"),
+        _msg("a0", "assistant", "hello"),
+        _msg("u1", "user", "and then"),
+        _msg("a1", "assistant", "sure"),
+    ]
+
+
 def _compaction_item(item_id: str, *, summary: str, last_item_id: str) -> dict[str, Any]:
     return {
         "id": item_id,
@@ -215,7 +174,7 @@ def _compaction_item(item_id: str, *, summary: str, last_item_id: str) -> dict[s
 
 @pytest.mark.asyncio
 async def test_roll_over_session_builds_and_posts_compaction_item() -> None:
-    items = [_msg("u1", "user", "hi"), _msg("a1", "assistant", "hello")]
+    items = _two_turns()
     client = _FakeServerClient(items=items)
     rolled_over = []
 
@@ -224,10 +183,10 @@ async def test_roll_over_session_builds_and_posts_compaction_item() -> None:
 
     ok = await roll_over_session(
         "conv_1",
-        labels=_SUPERSIDE,
+        labels=_FOLD,
         model="gpt-4o",
         server_client=client,  # type: ignore[arg-type]
-        llm_client=_ReturnsTextClient("SUMMARY"),
+        llm_client=_ReturnsTextClient(_REPLY),
         on_rolled_over=on_rolled_over,
     )
 
@@ -236,8 +195,8 @@ async def test_roll_over_session_builds_and_posts_compaction_item() -> None:
     posted = client.posted[0]
     assert posted["type"] == "compaction"
     assert posted["data"]["type"] == "compaction"
-    assert "SUMMARY" in posted["data"]["summary"]
-    assert posted["data"]["last_item_id"] == "a1"
+    assert "Alpha" in posted["data"]["summary"]
+    assert posted["data"]["last_item_id"] == "a0"  # only the turn before the kept tail
     # No prior compaction item exists: the single-flight guard still names
     # that expectation explicitly (``None``), not by omitting the field.
     assert posted["data"]["expected_previous_compaction_id"] is None
@@ -249,15 +208,15 @@ async def test_roll_over_session_builds_and_posts_compaction_item() -> None:
 async def test_roll_over_session_header_names_the_cause(cause: str | None) -> None:
     from omnigent.context.rollover import checkpoint_header
 
-    client = _FakeServerClient(items=[_msg("u1", "user", "hi"), _msg("a1", "assistant", "hello")])
+    client = _FakeServerClient(items=_two_turns())
     extra: dict[str, Any] = {} if cause is None else {"cause": cause}
 
     ok = await roll_over_session(
         "conv_1",
-        labels=_SUPERSIDE,
+        labels=_FOLD,
         model="gpt-4o",
         server_client=client,  # type: ignore[arg-type]
-        llm_client=_ReturnsTextClient("SUMMARY"),
+        llm_client=_ReturnsTextClient(_REPLY),
         **extra,
     )
 
@@ -268,33 +227,32 @@ async def test_roll_over_session_header_names_the_cause(cause: str | None) -> No
 
 @pytest.mark.asyncio
 async def test_roll_over_session_resumes_from_previous_compaction() -> None:
-    """Items at/before the latest compaction item are excluded from the new build."""
+    """Items at/before the latest compaction item are excluded from the new fold."""
     items = [
         _msg("u1", "user", "earlier, already compacted"),
         _compaction_item("c1", summary="OLD SUMMARY", last_item_id="u1"),
         _msg("u2", "user", "new question"),
         _msg("a2", "assistant", "new answer"),
+        _msg("u3", "user", "newest question"),
+        _msg("a3", "assistant", "newest answer"),
     ]
     client = _FakeServerClient(items=items)
 
     ok = await roll_over_session(
         "conv_1",
-        labels=_SUPERSIDE,
+        labels=_FOLD,
         model="gpt-4o",
         server_client=client,  # type: ignore[arg-type]
-        llm_client=_ReturnsTextClient("NEW SUMMARY"),
+        llm_client=_ReturnsTextClient(_REPLY),
     )
 
     assert ok is True
     posted_data = client.posted[0]["data"]
+    # Anchored on the last folded item: the newest turn stays after it.
     assert posted_data["last_item_id"] == "a2"
     # Named the checkpoint it actually summarized from, for the server's
     # single-flight guard.
     assert posted_data["expected_previous_compaction_id"] == "c1"
-    # Only the post-checkpoint turn is replayed in the kept tail.
-    ids = [m.get("id") for m in posted_data["compacted_messages"] if m.get("id")]
-    assert "u1" not in ids
-    assert "u2" in ids and "a2" in ids
 
 
 @pytest.mark.asyncio
@@ -307,10 +265,10 @@ async def test_roll_over_session_noop_when_nothing_since_last_compaction() -> No
 
     ok = await roll_over_session(
         "conv_1",
-        labels=_SUPERSIDE,
+        labels=_FOLD,
         model="gpt-4o",
         server_client=client,  # type: ignore[arg-type]
-        llm_client=_ReturnsTextClient("SUMMARY"),
+        llm_client=_ReturnsTextClient(_REPLY),
     )
 
     assert ok is False
@@ -324,7 +282,7 @@ async def test_roll_over_session_post_failure_is_non_fatal_and_skips_callback(
     """A non-2xx POST never calls back: the new compaction item was NOT
     durably persisted, so the warm client must not be dropped on top of it
     (that would cold-start the next turn with no rollover item to read)."""
-    items = [_msg("u1", "user", "hi"), _msg("a1", "assistant", "hello")]
+    items = _two_turns()
     client = _FakeServerClient(items=items, post_status=500)
     rolled_over = []
 
@@ -334,10 +292,10 @@ async def test_roll_over_session_post_failure_is_non_fatal_and_skips_callback(
     with caplog.at_level("WARNING"):
         ok = await roll_over_session(
             "conv_1",
-            labels=_SUPERSIDE,
+            labels=_FOLD,
             model="gpt-4o",
             server_client=client,  # type: ignore[arg-type]
-            llm_client=_ReturnsTextClient("SUMMARY"),
+            llm_client=_ReturnsTextClient(_REPLY),
             on_rolled_over=on_rolled_over,
         )
 
@@ -350,7 +308,7 @@ async def test_roll_over_session_post_failure_is_non_fatal_and_skips_callback(
 async def test_roll_over_session_conflict_is_a_quiet_lost_race() -> None:
     """A 409 means another process already rolled this session over — not
     a failure: no warning, just ``False`` and no callback."""
-    items = [_msg("u1", "user", "hi"), _msg("a1", "assistant", "hello")]
+    items = _two_turns()
     client = _FakeServerClient(items=items, post_status=409)
     rolled_over = []
 
@@ -359,10 +317,10 @@ async def test_roll_over_session_conflict_is_a_quiet_lost_race() -> None:
 
     ok = await roll_over_session(
         "conv_1",
-        labels=_SUPERSIDE,
+        labels=_FOLD,
         model="gpt-4o",
         server_client=client,  # type: ignore[arg-type]
-        llm_client=_ReturnsTextClient("SUMMARY"),
+        llm_client=_ReturnsTextClient(_REPLY),
         on_rolled_over=on_rolled_over,
     )
 
@@ -375,15 +333,15 @@ async def test_roll_over_session_get_items_failure_is_non_fatal() -> None:
     """A non-200 page while scanning for the rollover must raise (caught and
     logged by the caller), not silently stop with a partial item range that
     would summarize over a hole in the history."""
-    items = [_msg("u1", "user", "hi"), _msg("a1", "assistant", "hello")]
+    items = _two_turns()
     client = _FakeServerClient(items=items, get_status=503)
 
     ok = await roll_over_session(
         "conv_1",
-        labels=_SUPERSIDE,
+        labels=_FOLD,
         model="gpt-4o",
         server_client=client,  # type: ignore[arg-type]
-        llm_client=_ReturnsTextClient("SUMMARY"),
+        llm_client=_ReturnsTextClient(_REPLY),
     )
 
     assert ok is False
@@ -392,16 +350,16 @@ async def test_roll_over_session_get_items_failure_is_non_fatal() -> None:
 
 @pytest.mark.asyncio
 async def test_roll_over_session_single_flight() -> None:
-    items = [_msg("u1", "user", "hi"), _msg("a1", "assistant", "hello")]
+    items = _two_turns()
     client = _FakeServerClient(items=items)
     rollover_mod._in_flight.add("conv_1")
 
     ok = await roll_over_session(
         "conv_1",
-        labels=_SUPERSIDE,
+        labels=_FOLD,
         model="gpt-4o",
         server_client=client,  # type: ignore[arg-type]
-        llm_client=_ReturnsTextClient("SUMMARY"),
+        llm_client=_ReturnsTextClient(_REPLY),
     )
 
     assert ok is False
@@ -411,15 +369,15 @@ async def test_roll_over_session_single_flight() -> None:
 
 @pytest.mark.asyncio
 async def test_roll_over_session_clears_in_flight_after_completion() -> None:
-    items = [_msg("u1", "user", "hi"), _msg("a1", "assistant", "hello")]
+    items = _two_turns()
     client = _FakeServerClient(items=items)
 
     await roll_over_session(
         "conv_1",
-        labels=_SUPERSIDE,
+        labels=_FOLD,
         model="gpt-4o",
         server_client=client,  # type: ignore[arg-type]
-        llm_client=_ReturnsTextClient("SUMMARY"),
+        llm_client=_ReturnsTextClient(_REPLY),
     )
 
     assert "conv_1" not in rollover_mod._in_flight
@@ -457,25 +415,24 @@ async def test_turn_during_rollover_is_not_covered_by_the_checkpoint() -> None:
         _msg("a1", "assistant", "first answer"),
         _msg("u2", "user", "asked during the rollover"),
         _msg("a2", "assistant", "answered during the rollover"),
+        _msg("u3", "user", "the newest turn"),
+        _msg("a3", "assistant", "its answer"),
         _compaction_item("c1", summary="OLD SUMMARY", last_item_id="a1"),
     ]
     client = _FakeServerClient(items=items)
 
     ok = await roll_over_session(
         "conv_1",
-        labels=_SUPERSIDE,
+        labels=_FOLD,
         model="gpt-4o",
         server_client=client,  # type: ignore[arg-type]
-        llm_client=_ReturnsTextClient("NEXT SUMMARY"),
+        llm_client=_ReturnsTextClient(_REPLY),
     )
 
     assert ok is True
     posted_data = client.posted[0]["data"]
     assert posted_data["last_item_id"] == "a2"
     assert posted_data["expected_previous_compaction_id"] == "c1"
-    ids = [m.get("id") for m in posted_data["compacted_messages"] if m.get("id")]
-    assert "u2" in ids and "a2" in ids
-    assert "u1" not in ids
 
 
 def test_summarizer_model_routes_a_bare_claude_model_to_anthropic() -> None:
@@ -534,11 +491,11 @@ async def test_a_non_claude_model_on_an_anthropic_wire_connection_is_summarized_
     """``team-model`` on a session whose connection speaks Anthropic Messages (a LiteLLM proxy
     through the engine's model proxy) is summarized as an Anthropic call on that connection."""
     proxy = {"base_url": "https://engine.example/v1/model/litellm/v1", "api_key": "host-a:tok"}
-    client = _FakeServerClient(items=[_msg("u1", "user", "hi"), _msg("a1", "assistant", "yo")])
-    llm = _RecordingClient("SUMMARY")
+    client = _FakeServerClient(items=_two_turns())
+    llm = _RecordingClient(_REPLY)
     ok = await roll_over_session(
         "conv_wire",
-        labels=_SUPERSIDE,
+        labels=_FOLD,
         model="team-model",
         server_client=client,  # type: ignore[arg-type]
         llm_client=llm,
@@ -695,7 +652,7 @@ _TAGGED = (
 
 def _closes(**reasons: str) -> dict[str, str]:
     return {
-        **_SUPERSIDE,
+        **_FOLD,
         **{f"omnigent.state_close.{tag.replace('_', '-')}": why for tag, why in reasons.items()},
     }
 
@@ -709,6 +666,8 @@ async def test_two_pending_closes_both_apply_are_journaled_and_cleared() -> None
         _compaction_item("c1", summary=f"{checkpoint_header()}\n\n{_TAGGED}", last_item_id="u1"),
         _msg("u2", "user", "forget the venue and the vendor"),
         _msg("a2", "assistant", "done"),
+        _msg("u3", "user", "thanks"),
+        _msg("a3", "assistant", "welcome"),
     ]
     client = _FakeServerClient(items=items)
     # The summarizer drops the venue and keeps the rest: the close must not be undone by repair.
@@ -743,28 +702,26 @@ async def test_two_pending_closes_both_apply_are_journaled_and_cleared() -> None
 
 @pytest.mark.asyncio
 async def test_a_failed_post_leaves_the_closes_pending() -> None:
-    client = _FakeServerClient(
-        items=[_msg("u1", "user", "hi"), _msg("a1", "assistant", "hello")], post_status=500
-    )
+    client = _FakeServerClient(items=_two_turns(), post_status=500)
     await roll_over_session(
         "conv_1",
         labels=_closes(o_venue="wrong"),
         model="gpt-4o",
         server_client=client,  # type: ignore[arg-type]
-        llm_client=_ReturnsTextClient("- [o-venue] Venue"),
+        llm_client=_ReturnsTextClient(_REPLY),
     )
     assert client.patched == []
 
 
 @pytest.mark.asyncio
 async def test_the_posted_body_carries_the_new_payload_fields() -> None:
-    client = _FakeServerClient(items=[_msg("u1", "user", "hi"), _msg("a1", "assistant", "hello")])
+    client = _FakeServerClient(items=_two_turns())
     await roll_over_session(
         "conv_1",
-        labels=_SUPERSIDE,
+        labels=_FOLD,
         model="gpt-4o",
         server_client=client,  # type: ignore[arg-type]
-        llm_client=_ReturnsTextClient("- [t-a] A\n<journal>\n2026-10-12 · hi\n</journal>"),
+        llm_client=_ReturnsTextClient(_REPLY),
     )
     data = client.posted[0]["data"]
     assert data["journal_lines"] == ["2026-10-12 · hi"]
@@ -787,9 +744,9 @@ class _LabelsServerClient(_FakeServerClient):
 @pytest.mark.asyncio
 async def test_a_decision_is_written_and_cleared_unless_a_newer_one_came_meanwhile() -> None:
     key_a, key_b = "omnigent.state_add.d-q3-deck", "omnigent.state_add.d-budget"
-    labels = {**_SUPERSIDE, key_a: "Q3 deck (deck): 8 slides, checked", key_b: "Budget: checked"}
+    labels = {**_FOLD, key_a: "Q3 deck (deck): 8 slides, checked", key_b: "Budget: checked"}
     client = _LabelsServerClient(
-        items=[_msg("u1", "user", "hi"), _msg("a1", "assistant", "hello")],
+        items=_two_turns(),
         # The Q3 deck was decided again while the summary was being written.
         labels={key_a: "Q3 deck (deck): 9 slides, checked", key_b: "Budget: checked"},
     )
@@ -799,7 +756,7 @@ async def test_a_decision_is_written_and_cleared_unless_a_newer_one_came_meanwhi
         labels=labels,
         model="gpt-4o",
         server_client=client,  # type: ignore[arg-type]
-        llm_client=_ReturnsTextClient("- [t-a] A"),
+        llm_client=_ReturnsTextClient("- [t-a] A\n<journal>\n2026-10-12 · hi\n</journal>"),
     )
 
     assert ok is True

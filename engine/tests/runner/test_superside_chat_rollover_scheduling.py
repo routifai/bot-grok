@@ -1,16 +1,14 @@
-"""Tests for the runner-side superside-chat rollover scheduling fixes:
+"""Tests for the runner-side superside-chat session handling around the fold (ADR 0031):
 
-1. The threshold rollover (``_schedule_superside_chat_threshold_rollover``)
-   runs as a background task, so a turn's completion never waits on the
-   summarizer LLM call.
-2. A warm-client drop that would land while a DIFFERENT turn is active
+1. A warm-client drop that would land while a DIFFERENT turn is active
    (``_drop_superside_chat_warm_client``) is deferred (recorded in
    ``_superside_chat_pending_refresh``) rather than releasing the harness
    subprocess out from under that turn, and is applied at the start of the
    session's next turn (``_consume_superside_chat_pending_refresh``).
-3. The next turn dispatches without waiting for an in-flight rollover; only
-   at the hard context limit does it wait (bounded).
-4. At most one rollover task per session at a time.
+2. The next turn never waits for a summary; at the hard context limit it drops the warm
+   client and starts from the newest whole turns that fit.
+3. A return after the idle period drops the warm client (``_superside_chat_handoff``), driven
+   by the runner's clock of the last model request, and names the gap.
 
 No DB, no server, no live LLM calls — the harness, the Omnigent server
 client, and the summarizer LLM client are all tiny in-memory fakes.
@@ -72,31 +70,6 @@ def _history_items() -> list[dict[str, Any]]:
             "status": "completed",
             "response_id": "r1",
             "created_at": now,
-            "role": "assistant",
-            "content": [{"type": "output_text", "text": "answer"}],
-        },
-    ]
-
-
-def _idle_history_items(idle_seconds: int) -> list[dict[str, Any]]:
-    """One user/assistant turn, timestamped *idle_seconds* in the past."""
-    stale = int(time.time()) - idle_seconds
-    return [
-        {
-            "id": "u1",
-            "type": "message",
-            "status": "completed",
-            "response_id": "r1",
-            "created_at": stale,
-            "role": "user",
-            "content": [{"type": "input_text", "text": "question"}],
-        },
-        {
-            "id": "a1",
-            "type": "message",
-            "status": "completed",
-            "response_id": "r1",
-            "created_at": stale,
             "role": "assistant",
             "content": [{"type": "output_text", "text": "answer"}],
         },
@@ -245,49 +218,10 @@ async def _post_turn(client: Any, conv_id: str, text: str) -> Any:
 
 
 @pytest.mark.asyncio
-async def test_threshold_rollover_does_not_block_the_turn(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A turn whose usage crosses the threshold finishes without waiting on the summarizer."""
-    gate = asyncio.Event()
-    llm_client = _GatedLLMClient(gate)
-    monkeypatch.setattr("omnigent.runner.app._get_runner_llm_client", lambda: llm_client)
-
+async def test_release_deferred_while_turn_active_applied_at_next_turn_start() -> None:
+    """A drop deferred by a live turn (a finished /compact) is applied at the next turn's start."""
     server_client = _ThresholdServerClient(labels=_SUPERSIDE_LABELS, items=_history_items())
-    harness_client = _SequencedHarnessClient([_triggering_frames(500_000)])
-    app, pm = _build_app(harness_client, server_client)
-    conv_id = "conv_block"
-
-    async with _runner_client(app) as client:
-        resp = await asyncio.wait_for(_post_turn(client, conv_id, "hello"), timeout=5.0)
-        assert resp.status_code == 202
-
-        # The turn itself finishes promptly — its own slot clears — even
-        # though the rollover's summarizer call is gated and never released
-        # here. If the rollover were awaited inline, this would time out.
-        await _wait_until(lambda: conv_id not in app.state.active_turns, timeout=2.0)
-
-        rollover_task = app.state.superside_chat_rollover_tasks.get(conv_id)
-        assert rollover_task is not None
-        assert not rollover_task.done()
-
-        # Clean up: release the gate and let the background rollover finish.
-        gate.set()
-        await asyncio.wait_for(rollover_task, timeout=5.0)
-
-    assert len(server_client.posted_compactions) == 1
-    assert pm.released == [conv_id]
-
-
-@pytest.mark.asyncio
-async def test_release_deferred_while_turn_active_applied_at_next_turn_start(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """on_rolled_over defers its release if a turn is active; the next turn applies it."""
-    gate = asyncio.Event()
-    llm_client = _GatedLLMClient(gate)
-    monkeypatch.setattr("omnigent.runner.app._get_runner_llm_client", lambda: llm_client)
-
-    server_client = _ThresholdServerClient(labels=_SUPERSIDE_LABELS, items=_history_items())
-    harness_client = _SequencedHarnessClient([_triggering_frames(500_000), _plain_frames()])
+    harness_client = _SequencedHarnessClient([_plain_frames()])
     app, pm = _build_app(harness_client, server_client)
     conv_id = "conv_defer"
 
@@ -296,25 +230,9 @@ async def test_release_deferred_while_turn_active_applied_at_next_turn_start(
         assert resp.status_code == 202
         await _wait_until(lambda: conv_id not in app.state.active_turns, timeout=2.0)
 
-        rollover_task = app.state.superside_chat_rollover_tasks[conv_id]
-        assert not rollover_task.done()
-
-        # Simulate another turn becoming active for this session right as
-        # the rollover is about to finish.
-        app.state.active_turns[conv_id] = None
-
-        gate.set()
-        await asyncio.wait_for(rollover_task, timeout=5.0)
-
-        # The compaction item was built and posted, but the warm-client drop
-        # must NOT have released the subprocess out from under the "active"
-        # turn — it's deferred instead.
-        assert len(server_client.posted_compactions) == 1
+        # What the drop records when it lands while a turn is live.
+        app.state.superside_chat_pending_refresh.add(conv_id)
         assert pm.released == []
-        assert conv_id in app.state.superside_chat_pending_refresh
-
-        # The simulated turn finishes.
-        app.state.active_turns.pop(conv_id, None)
 
         # The next turn applies the deferred drop at its start, before
         # dispatching to the harness.
@@ -324,44 +242,6 @@ async def test_release_deferred_while_turn_active_applied_at_next_turn_start(
 
     assert pm.released == [conv_id]
     assert conv_id not in app.state.superside_chat_pending_refresh
-
-
-@pytest.mark.asyncio
-async def test_next_turn_does_not_wait_below_the_hard_limit(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Below the hard limit the next turn dispatches while the rollover is still gated."""
-    gate = asyncio.Event()
-    llm_client = _GatedLLMClient(gate)
-    monkeypatch.setattr("omnigent.runner.app._get_runner_llm_client", lambda: llm_client)
-
-    # 500k fill of a 1M window: over the rollover threshold, under the 95% hard limit.
-    labels = {**_SUPERSIDE_LABELS, "omnigent.last_context_window": "1000000"}
-    server_client = _ThresholdServerClient(labels=labels, items=_history_items())
-    harness_client = _SequencedHarnessClient([_triggering_frames(500_000), _plain_frames()])
-    app, pm = _build_app(harness_client, server_client)
-    conv_id = "conv_nowait"
-
-    async with _runner_client(app) as client:
-        resp = await asyncio.wait_for(_post_turn(client, conv_id, "hello"), timeout=5.0)
-        assert resp.status_code == 202
-        await _wait_until(lambda: conv_id not in app.state.active_turns, timeout=2.0)
-
-        rollover_task = app.state.superside_chat_rollover_tasks[conv_id]
-        assert not rollover_task.done()
-
-        resp2 = await asyncio.wait_for(_post_turn(client, conv_id, "second"), timeout=5.0)
-        assert resp2.status_code == 202
-        await _wait_until(lambda: len(harness_client.posted_bodies) == 2, timeout=2.0)
-        await _wait_until(lambda: conv_id not in app.state.active_turns, timeout=2.0)
-        assert not rollover_task.done(), "the turn must not have waited for the summarizer"
-
-        gate.set()
-        await asyncio.wait_for(rollover_task, timeout=5.0)
-
-    assert len(server_client.posted_compactions) == 1
-    # No turn active when the rollover landed: the warm client drops at once.
-    assert pm.released == [conv_id]
 
 
 class _HardLimitServerClient(_ThresholdServerClient):
@@ -411,25 +291,6 @@ def _hard_limit_labels(**extra: str) -> dict[str, str]:
     }
 
 
-class _FailingLLMClient:
-    """Summarizer stub whose call always raises, so a rollover fails."""
-
-    def __init__(self) -> None:
-        self.call_count = 0
-
-    class _Responses:
-        def __init__(self, outer: _FailingLLMClient) -> None:
-            self._outer = outer
-
-        async def create(self, **_kwargs: Any) -> Response:
-            self._outer.call_count += 1
-            raise RuntimeError("summarizer down")
-
-    @property
-    def responses(self) -> _FailingLLMClient._Responses:
-        return self._Responses(self)
-
-
 def _assert_trimmed_to_the_budget(harness_client: _ScriptedHarnessClient, text: str) -> None:
     """The last harness input is a few whole recent turns ending with *text*."""
     from omnigent.runtime.compaction import count_tokens
@@ -444,12 +305,12 @@ def _assert_trimmed_to_the_budget(harness_client: _ScriptedHarnessClient, text: 
 
 
 @pytest.mark.asyncio
-async def test_hard_limit_with_a_rollover_in_flight_trims_and_does_not_wait(
+async def test_hard_limit_trims_and_drops_the_warm_client_without_waiting(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """At/over the hard fraction of the window the next turn neither waits for the
-    summarizer nor overflows: it cold-starts on the newest whole turns."""
-    gate = asyncio.Event()  # never set until cleanup
+    """At/over the hard fraction of the window the next turn neither waits for a summary nor
+    overflows: it cold-starts on the newest whole turns."""
+    gate = asyncio.Event()  # never set: nothing may wait on the summarizer
     llm_client = _GatedLLMClient(gate)
     monkeypatch.setattr("omnigent.runner.app._get_runner_llm_client", lambda: llm_client)
 
@@ -464,62 +325,22 @@ async def test_hard_limit_with_a_rollover_in_flight_trims_and_does_not_wait(
     async with _runner_client(app) as client:
         await asyncio.wait_for(_post_turn(client, conv_id, "hello"), timeout=5.0)
         await _wait_until(lambda: conv_id not in app.state.active_turns, timeout=2.0)
-        rollover_task = app.state.superside_chat_rollover_tasks[conv_id]
-        assert not rollover_task.done()
 
         await asyncio.wait_for(_post_turn(client, conv_id, "second question"), timeout=5.0)
         await _wait_until(lambda: len(harness_client.posted_bodies) == 2, timeout=2.0)
         await _wait_until(lambda: conv_id not in app.state.active_turns, timeout=2.0)
 
-        assert not rollover_task.done(), "the turn must not have waited for the summarizer"
-        assert app.state.superside_chat_rollover_tasks[conv_id] is rollover_task
-        assert llm_client.call_count == 1
-        _assert_trimmed_to_the_budget(harness_client, "second question")
-        assert pm.released == [conv_id]
-
-        gate.set()
-        await asyncio.wait_for(rollover_task, timeout=5.0)
-
-
-@pytest.mark.asyncio
-async def test_hard_limit_after_a_failed_rollover_trims_and_reschedules(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A rollover that already failed leaves no task: the turn still does not overflow,
-    and the compaction is scheduled again."""
-    llm_client = _FailingLLMClient()
-    monkeypatch.setattr("omnigent.runner.app._get_runner_llm_client", lambda: llm_client)
-
-    server_client = _HardLimitServerClient(
-        labels=_hard_limit_labels(), items=_long_history_items()
-    )
-    harness_client = _SequencedHarnessClient([_triggering_frames(500_000), _plain_frames()])
-    app, pm = _build_app(harness_client, server_client)
-    conv_id = "conv_failed"
-
-    async with _runner_client(app) as client:
-        await asyncio.wait_for(_post_turn(client, conv_id, "hello"), timeout=5.0)
-        await _wait_until(lambda: conv_id not in app.state.active_turns, timeout=2.0)
-        await _wait_until(
-            lambda: conv_id not in app.state.superside_chat_rollover_tasks, timeout=2.0
-        )
-        assert llm_client.call_count == 1
+        assert llm_client.call_count == 0
         assert server_client.posted_compactions == []
-
-        await asyncio.wait_for(_post_turn(client, conv_id, "second question"), timeout=5.0)
-        await _wait_until(lambda: len(harness_client.posted_bodies) == 2, timeout=2.0)
-        await _wait_until(lambda: conv_id not in app.state.active_turns, timeout=2.0)
-        await _wait_until(lambda: llm_client.call_count == 2, timeout=2.0)
-
         _assert_trimmed_to_the_budget(harness_client, "second question")
         assert pm.released == [conv_id]
 
 
 @pytest.mark.asyncio
-async def test_hard_limit_with_no_rollover_ever_started_trims_and_schedules(
+async def test_hard_limit_known_only_from_the_labels_trims(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The fill is known only from the session's labels and nothing was ever scheduled."""
+    """The fill is known only from the session's labels, as on a first turn after a restart."""
     gate = asyncio.Event()
     llm_client = _GatedLLMClient(gate)
     monkeypatch.setattr("omnigent.runner.app._get_runner_llm_client", lambda: llm_client)
@@ -533,15 +354,11 @@ async def test_hard_limit_with_no_rollover_ever_started_trims_and_schedules(
     conv_id = "conv_never_started"
 
     async with _runner_client(app) as client:
-        assert conv_id not in app.state.superside_chat_rollover_tasks
         await asyncio.wait_for(_post_turn(client, conv_id, "first question"), timeout=5.0)
         await _wait_until(lambda: len(harness_client.posted_bodies) == 1, timeout=2.0)
-        await _wait_until(lambda: llm_client.call_count == 1, timeout=2.0)
         _assert_trimmed_to_the_budget(harness_client, "first question")
         assert pm.released == [conv_id]
-
-        gate.set()
-        await asyncio.wait_for(app.state.superside_chat_rollover_tasks[conv_id], timeout=5.0)
+        assert llm_client.call_count == 0
 
 
 @pytest.mark.asyncio
@@ -575,40 +392,6 @@ async def test_a_cold_start_below_the_hard_limit_replays_only_the_newest_turns(
     assert llm_client.call_count == 0
 
 
-@pytest.mark.asyncio
-async def test_second_rollover_is_not_scheduled_while_one_is_in_flight(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Two consecutive over-threshold turns share one rollover task."""
-    gate = asyncio.Event()
-    llm_client = _GatedLLMClient(gate)
-    monkeypatch.setattr("omnigent.runner.app._get_runner_llm_client", lambda: llm_client)
-
-    labels = {**_SUPERSIDE_LABELS, "omnigent.last_context_window": "1000000"}
-    server_client = _ThresholdServerClient(labels=labels, items=_history_items())
-    harness_client = _SequencedHarnessClient(
-        [_triggering_frames(500_000), _triggering_frames(520_000)]
-    )
-    app, _pm = _build_app(harness_client, server_client)
-    conv_id = "conv_two"
-
-    async with _runner_client(app) as client:
-        await asyncio.wait_for(_post_turn(client, conv_id, "one"), timeout=5.0)
-        await _wait_until(lambda: conv_id not in app.state.active_turns, timeout=2.0)
-        first = app.state.superside_chat_rollover_tasks[conv_id]
-
-        await asyncio.wait_for(_post_turn(client, conv_id, "two"), timeout=5.0)
-        await _wait_until(lambda: len(harness_client.posted_bodies) == 2, timeout=2.0)
-        await _wait_until(lambda: conv_id not in app.state.active_turns, timeout=2.0)
-        assert app.state.superside_chat_rollover_tasks[conv_id] is first
-
-        gate.set()
-        await asyncio.wait_for(first, timeout=5.0)
-
-    assert llm_client.call_count == 1
-    assert len(server_client.posted_compactions) == 1
-
-
 class _FlakyThenSuccessLabelsServerClient(_ThresholdServerClient):
     """Every ``/labels`` lookup fails (502) while ``self.failing`` is set;
     all succeed once a test clears it.
@@ -640,60 +423,38 @@ class _FlakyThenSuccessLabelsServerClient(_ThresholdServerClient):
 
 
 @pytest.mark.asyncio
-async def test_transient_labels_failure_does_not_poison_the_rollover_cache(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_transient_labels_failure_does_not_poison_the_rollover_cache() -> None:
     """A session that looked up as "unknown" on one turn must be re-checked
     (not permanently treated as non-superside-chat) on the next."""
-    # Left unset: turn 1's rollover check exits early (failed label lookup)
-    # without ever reaching the gated summarizer call, so it never blocks on
-    # this; turn 2's real rollover call does, and is released explicitly
-    # below once it's confirmed in flight — same pattern as the other tests
-    # in this file.
-    gate = asyncio.Event()
-    llm_client = _GatedLLMClient(gate)
-    monkeypatch.setattr("omnigent.runner.app._get_runner_llm_client", lambda: llm_client)
-
     server_client = _FlakyThenSuccessLabelsServerClient(
-        labels=_SUPERSIDE_LABELS, items=_history_items()
+        labels=_hard_limit_labels(**{"omnigent.last_context_tokens": "390000"}),
+        items=_long_history_items(),
     )
-    harness_client = _SequencedHarnessClient(
-        [_triggering_frames(500_000), _triggering_frames(500_000)]
-    )
+    harness_client = _SequencedHarnessClient([_triggering_frames(500_000), _plain_frames()])
     app, pm = _build_app(harness_client, server_client)
     conv_id = "conv_flaky_labels"
 
     async with _runner_client(app) as client:
         # First turn: every /labels lookup for this session fails, so the
-        # turn must proceed as a non-superside-chat turn — no rollover.
+        # turn must proceed as a non-superside-chat turn — no hard-limit drop.
         resp1 = await asyncio.wait_for(_post_turn(client, conv_id, "hello"), timeout=5.0)
         assert resp1.status_code == 202
         await _wait_until(lambda: conv_id not in app.state.active_turns, timeout=2.0)
-        await _wait_until(
-            lambda: conv_id not in app.state.superside_chat_rollover_tasks, timeout=2.0
-        )
-        assert server_client.posted_compactions == []
-        assert llm_client.call_count == 0
+        assert pm.released == []
 
         # The outage recovers before the next turn.
         server_client.failing = False
 
         # Second turn: the lookup now succeeds. If the first turn's failures
-        # had been cached as "confirmed non-superside-chat", this would also
-        # skip the rollover — it must not.
+        # had been cached as "confirmed non-superside-chat", the hard limit
+        # would be skipped — it must not be.
         resp2 = await asyncio.wait_for(_post_turn(client, conv_id, "again"), timeout=5.0)
         assert resp2.status_code == 202
+        await _wait_until(lambda: len(harness_client.posted_bodies) == 2, timeout=2.0)
         await _wait_until(lambda: conv_id not in app.state.active_turns, timeout=2.0)
 
-        rollover_task_2 = app.state.superside_chat_rollover_tasks.get(conv_id)
-        assert rollover_task_2 is not None
-        assert not rollover_task_2.done()
-
-        gate.set()
-        await asyncio.wait_for(rollover_task_2, timeout=5.0)
-
-    assert len(server_client.posted_compactions) == 1
-    assert pm.released == [conv_id]
+        _assert_trimmed_to_the_budget(harness_client, "again")
+        assert pm.released == [conv_id]
 
 
 # ── ?stream=true is refused for superside-chat sessions ──────────────────
@@ -750,49 +511,6 @@ async def test_stream_true_is_allowed_for_a_plain_session() -> None:
         )
 
     assert resp.status_code == 200, resp.text
-
-
-# ── summarizer model fallback: never the tokenizer-only stand-in ─────────
-
-
-@pytest.mark.asyncio
-async def test_threshold_rollover_skips_when_turn_reports_no_model(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A turn whose ``response.completed`` carries no ``usage.model`` must
-    skip the rollover, not fall back to ROLLOVER_TOKEN_COUNT_MODEL (gpt-4o,
-    a tokenizer stand-in never meant for a real summarizer call)."""
-    llm_client = _GatedLLMClient(asyncio.Event())
-    monkeypatch.setattr("omnigent.runner.app._get_runner_llm_client", lambda: llm_client)
-
-    server_client = _ThresholdServerClient(labels=_SUPERSIDE_LABELS, items=_history_items())
-    frames = [
-        _sse({"type": "response.created", "response": {"id": "resp_no_model"}}),
-        _sse(
-            {
-                "type": "response.completed",
-                "response": {
-                    "id": "resp_no_model",
-                    # No "model" key at all — the harness didn't report one.
-                    "usage": {"context_tokens": 500_000},
-                },
-            }
-        ),
-    ]
-    harness_client = _SequencedHarnessClient([frames])
-    app, _pm = _build_app(harness_client, server_client)
-    conv_id = "conv_no_model"
-
-    async with _runner_client(app) as client:
-        resp = await asyncio.wait_for(_post_turn(client, conv_id, "hello"), timeout=5.0)
-        assert resp.status_code == 202
-        await _wait_until(lambda: conv_id not in app.state.active_turns, timeout=2.0)
-        await _wait_until(
-            lambda: conv_id not in app.state.superside_chat_rollover_tasks, timeout=2.0
-        )
-
-    assert server_client.posted_compactions == []
-    assert llm_client.call_count == 0
 
 
 # ── cold start reads the record from the checkpoint's anchor ─────────────
@@ -1122,8 +840,10 @@ async def test_a_turn_in_a_host_with_no_memory_folder_rebuilds_it(
 
 # ── return after idle: a cold start, not a rewrite ───────────────────────
 
-_THREE_DAYS = 3 * 86_400
-_GAP_LINE = "It has been 3 days since the last message."
+_GAP_LINE = "It has been less than an hour since the last message."
+# The idle period the tests set, and a pause just past it.
+_IDLE_SECONDS = "1"
+_PAST_IDLE = 1.2
 
 
 def _last_user_text(body: dict[str, Any]) -> str:
@@ -1135,25 +855,23 @@ def _last_user_text(body: dict[str, Any]) -> str:
 async def test_return_after_idle_makes_no_summarizer_call_and_names_the_gap(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("OMNIGENT_ROLLOVER_IDLE_REFRESH_SECONDS", "10")
+    monkeypatch.setenv("OMNIGENT_ROLLOVER_IDLE_REFRESH_SECONDS", _IDLE_SECONDS)
     llm_client = _GatedLLMClient(asyncio.Event())
     monkeypatch.setattr("omnigent.runner.app._get_runner_llm_client", lambda: llm_client)
-    server_client = _HardLimitServerClient(
-        labels=_SUPERSIDE_LABELS, items=_idle_history_items(_THREE_DAYS)
-    )
+    server_client = _HardLimitServerClient(labels=_SUPERSIDE_LABELS, items=_history_items())
     harness_client = _SequencedHarnessClient([_plain_frames()])
     app, pm = _build_app(harness_client, server_client)
     conv_id = "conv_return_small"
 
     async with _runner_client(app) as client:
-        await asyncio.wait_for(_post_turn(client, conv_id, "hello"), timeout=5.0)
-        await _wait_until(lambda: len(harness_client.posted_bodies) == 1, timeout=2.0)
-        await _wait_until(lambda: conv_id not in app.state.active_turns, timeout=2.0)
+        await _turn(app, client, harness_client, conv_id)
+        assert pm.released == []
+        await asyncio.sleep(_PAST_IDLE)
+        text = await _turn(app, client, harness_client, conv_id)
 
     assert llm_client.call_count == 0
     assert server_client.posted_compactions == []
     assert pm.released == [conv_id]  # the warm client was dropped: a cold start
-    text = _last_user_text(harness_client.posted_bodies[0])
     assert _GAP_LINE in text
     # The line is not persisted: it rides this turn's message only.
     assert _GAP_LINE not in str(server_client._items)
@@ -1177,25 +895,25 @@ async def test_return_after_idle_with_more_than_the_tail_budget_never_summarizes
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A return bridges (ADR 0031): the turn assembles, no summary is written or waited on."""
-    monkeypatch.setenv("OMNIGENT_ROLLOVER_IDLE_REFRESH_SECONDS", "10")
+    monkeypatch.setenv("OMNIGENT_ROLLOVER_IDLE_REFRESH_SECONDS", _IDLE_SECONDS)
     llm_client = _GatedLLMClient(asyncio.Event(), text="STATE")
     llm_client._gate.set()
     monkeypatch.setattr("omnigent.runner.app._get_runner_llm_client", lambda: llm_client)
-    stale = int(time.time()) - _THREE_DAYS
-    items = [{**it, "created_at": stale} for it in _long_history_items()]
-    server_client = _HardLimitServerClient(labels=_hard_limit_labels(), items=items)
+    server_client = _HardLimitServerClient(
+        labels=_hard_limit_labels(), items=_long_history_items()
+    )
     harness_client = _SequencedHarnessClient([_plain_frames()])
     app, _pm = _build_app(harness_client, server_client)
     conv_id = "conv_return_large"
 
     async with _runner_client(app) as client:
-        await asyncio.wait_for(_post_turn(client, conv_id, "hello"), timeout=5.0)
-        await _wait_until(lambda: len(harness_client.posted_bodies) == 1, timeout=2.0)
-        await _wait_until(lambda: conv_id not in app.state.active_turns, timeout=2.0)
+        await _turn(app, client, harness_client, conv_id)
+        await asyncio.sleep(_PAST_IDLE)
+        text = await _turn(app, client, harness_client, conv_id)
 
     assert llm_client.call_count == 0
     assert server_client.posted_compactions == []
-    assert _GAP_LINE in _last_user_text(harness_client.posted_bodies[0])
+    assert _GAP_LINE in text
 
 
 # ── prefix delta: the profile and Projects go in full only when needed ───
@@ -1353,7 +1071,7 @@ def _failed_frames() -> list[str]:
 async def test_a_return_from_idle_and_the_hard_limit_drop_the_remembered_profile(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("OMNIGENT_ROLLOVER_IDLE_REFRESH_SECONDS", "10")
+    monkeypatch.setenv("OMNIGENT_ROLLOVER_IDLE_REFRESH_SECONDS", _IDLE_SECONDS)
     llm_client = _GatedLLMClient(asyncio.Event(), text="STATE")
     llm_client._gate.set()
     monkeypatch.setattr("omnigent.runner.app._get_runner_llm_client", lambda: llm_client)
@@ -1364,10 +1082,9 @@ async def test_a_return_from_idle_and_the_hard_limit_drop_the_remembered_profile
         await _turn(app, client, harness_client, conv_id)
         assert _PROFILE_LINE in await _turn(app, client, harness_client, conv_id)
 
-        server_client._items[:] = _idle_history_items(_THREE_DAYS)
+        await asyncio.sleep(_PAST_IDLE)
         back = await _turn(app, client, harness_client, conv_id)
         assert _PROFILE in back and _GAP_LINE in back
-        server_client._items[:] = _history_items()
         assert _PROFILE_LINE in await _turn(app, client, harness_client, conv_id)
 
         # Past the hard limit the turn cold-starts from the record.

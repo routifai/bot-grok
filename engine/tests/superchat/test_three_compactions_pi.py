@@ -80,7 +80,8 @@ class _FakeServer:
         self.items: list[dict[str, Any]] = []
         self.labels: dict[str, str] = {
             "omnigent.context.mode": "superside-chat",
-            "omnigent.context.rollover_keep_tokens": "1500",
+            # A small tail budget: the newest turn or two stay after each anchor, the rest is folded.
+            "omnigent.context.rollover_keep_tokens": "200",
         }
         self.reads: list[tuple[dict[str, str], list[str]]] = []
         self._next = 1
@@ -526,10 +527,11 @@ async def test_three_compactions_reach_pi_on_cold_starts(
     assert first_id in {i for p, ids in reads if p.get("order") == "asc" for i in ids}
     assert c1["repairs"] == 0 and c1["evicted_entries"] == []
     assert EUR_LINE in c1["summary"]
-    kept_1 = json.dumps(c1["compacted_messages"])
-    assert CSV_MARKER not in kept_1, "the pasted CSV must not survive in the kept tail"
+    # The checkpoint holds only the summary pair; the newest turns stay after its anchor.
+    assert [m["role"] for m in c1["compacted_messages"]] == ["user", "assistant"]
+    assert CSV_MARKER not in json.dumps(c1["compacted_messages"])
 
-    # Cold start 1: checkpoint + kept turns + the new message, read from the anchor.
+    # Cold start 1: checkpoint + the turns after its anchor + the new message.
     _user(server, "Morning. Anything I should know before the finance sync?")
     history, view = await _cold_start_input(server)
     assert all(p.get("after") == c1["last_item_id"] for p, _ in _asc_reads(view))

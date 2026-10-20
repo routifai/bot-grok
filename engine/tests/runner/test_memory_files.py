@@ -860,7 +860,11 @@ async def test_a_turn_in_the_current_epoch_is_indexed_by_the_compaction_that_ret
 
     async def compact() -> None:
         assert await rollover.roll_over_session(
-            "conv_main", labels={}, model="m", server_client=record, on_stored=on_stored
+            "conv_main",
+            labels={"omnigent.context.rollover_keep_tokens": "1"},  # only the newest turn is kept
+            model="m",
+            server_client=record,
+            on_stored=on_stored,
         )
 
     await sync.backfill_turns(record, "conv_main", {}, runtime=service)  # a new Conversation
@@ -868,13 +872,13 @@ async def test_a_turn_in_the_current_epoch_is_indexed_by_the_compaction_that_ret
     await sync.backfill_turns(record, "conv_main", {}, runtime=service)
     assert _passages(service) == {}  # still in the window: not a passage yet
 
-    await compact()
-    assert sorted(_passages(service)) == ["mu0", "mu1"]
+    await compact()  # the newest turn stays after the anchor
+    assert sorted(_passages(service)) == ["mu0"]
 
     record.items["conv_main"] += _turns("n", 1)
-    assert sorted(_passages(service)) == ["mu0", "mu1"]
+    assert sorted(_passages(service)) == ["mu0"]
     await compact()  # the next window only: the turns before its anchor are not read again
-    assert sorted(_passages(service)) == ["mu0", "mu1", "nu0"]
+    assert sorted(_passages(service)) == ["mu0", "mu1"]
 
 
 @pytest.mark.asyncio
@@ -942,10 +946,11 @@ async def test_backfill_is_bounded_resumes_and_never_duplicates(
     assert sorted(found) == sorted(f"mu{n}" for n in range(11))
     db = restarted.indexer.db
     assert sum(len(db.chunks_for(r.file_id)) for r in db.files(turns=True)) == 11
-    assert db.meta("turns_backfilled.v3:conv_main") == "done"
     record.reads.clear()
     await sync.backfill_turns(record, "conv_main", {}, runtime=restarted)
-    assert record.reads == []  # done: nothing is read again
+    # At the anchor: only the checkpoint is read, and nothing is written twice.
+    assert {params.get("type") for _chat, params in record.reads} == {"compaction"}
+    assert sum(len(db.chunks_for(r.file_id)) for r in db.files(turns=True)) == 11
 
 
 @pytest.mark.asyncio
@@ -975,7 +980,7 @@ async def test_backfill_indexes_every_retired_turn_and_none_of_the_current_epoch
     await sync.backfill_turns(record, "conv_main", {}, runtime=service)
 
     assert sorted(_passages(service)) == ["mu0", "mu1"]
-    assert service.indexer.db.meta("turns_backfilled.v3:conv_main") == "done"
+    assert service.indexer.db.meta("turns_cursor.v3:conv_main") == "ma1"  # read up to the anchor
 
 
 @pytest.mark.asyncio

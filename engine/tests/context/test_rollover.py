@@ -10,10 +10,9 @@ import pytest
 from omnigent.context.rollover import (
     CHECKPOINT_HEADER,
     DEFAULT_ROLLOVER_THRESHOLD_TOKENS,
-    MAX_DEFAULT_ROLLOVER_THRESHOLD_TOKENS,
-    MIN_ROLLOVER_THRESHOLD_TOKENS,
-    SUMMARIZER_DATE_PLACEHOLDER,
+    HANDOFF_THRESHOLD_TOKENS,
     build_rollover_item,
+    fold_input,
     is_checkpoint_text,
     person_facing_summary,
     resolve_keep_tokens,
@@ -31,6 +30,10 @@ from omnigent.server.routes._sessions.common import (
 # Generous enough that no test below hits it unless it's specifically
 # exercising the token budget.
 _HUGE_TOKENS = 1_000_000
+
+# A reply the fold accepts: tagged entries plus a journal.
+_STATE = "- [t-a · 2026-10-12] Alpha"
+_REPLY = f"{_STATE}\n<journal>\n2026-10-12 · did it\n</journal>"
 
 
 def _msg(item_id: str, role: str, text: str, response_id: str | None = None) -> dict[str, Any]:
@@ -162,14 +165,14 @@ def test_threshold_default_when_no_label_or_window() -> None:
 
 
 def test_threshold_falls_back_to_60pct_of_context_window() -> None:
-    labels = {_LAST_CONTEXT_WINDOW_LABEL_KEY: "300000"}
-    assert resolve_rollover_threshold(labels) == 180_000
+    labels = {_LAST_CONTEXT_WINDOW_LABEL_KEY: "190000"}
+    assert resolve_rollover_threshold(labels) == 114_000
 
 
-def test_threshold_default_caps_at_max_for_a_huge_window() -> None:
-    # 60% of 1M would be 600,000; the default is capped at 200,000.
+def test_threshold_default_caps_at_the_handoff_for_a_huge_window() -> None:
+    # 60% of 1M would be 600,000; the default is capped at the 120,000 handoff.
     labels = {_LAST_CONTEXT_WINDOW_LABEL_KEY: "1000000"}
-    assert resolve_rollover_threshold(labels) == MAX_DEFAULT_ROLLOVER_THRESHOLD_TOKENS
+    assert resolve_rollover_threshold(labels) == HANDOFF_THRESHOLD_TOKENS
 
 
 def test_threshold_explicit_label_is_not_capped() -> None:
@@ -182,7 +185,7 @@ def test_threshold_explicit_label_is_not_capped() -> None:
 
 
 def test_threshold_uses_model_window_when_no_window_label() -> None:
-    assert resolve_rollover_threshold(None, model_window=300_000) == 180_000
+    assert resolve_rollover_threshold(None, model_window=190_000) == 114_000
 
 
 def test_threshold_window_label_wins_over_model_window() -> None:
@@ -204,17 +207,15 @@ def test_threshold_explicit_label_wins_over_window() -> None:
     assert resolve_rollover_threshold(labels) == 150_000
 
 
-def test_threshold_never_drops_below_the_floor() -> None:
-    assert (
-        resolve_rollover_threshold({"omnigent.context.rollover_at_tokens": "12345"})
-        == MIN_ROLLOVER_THRESHOLD_TOKENS
-    )
-    # A small window caps the floor so the CLI still compacts before its limit.
+def test_threshold_default_has_a_floor_but_an_explicit_label_does_not() -> None:
+    assert resolve_rollover_threshold({"omnigent.context.rollover_at_tokens": "12345"}) == 12_345
+    # A small window caps the derived default's floor at 80% of the window.
+    assert resolve_rollover_threshold({_LAST_CONTEXT_WINDOW_LABEL_KEY: "100000"}) == 80_000
     labels = {
         "omnigent.context.rollover_at_tokens": "5000",
         _LAST_CONTEXT_WINDOW_LABEL_KEY: "100000",
     }
-    assert resolve_rollover_threshold(labels) == 80_000
+    assert resolve_rollover_threshold(labels) == 5_000
 
 
 def test_threshold_ignores_invalid_label() -> None:
@@ -234,60 +235,32 @@ def test_resolve_keep_tokens_default_and_override() -> None:
 @pytest.mark.asyncio
 async def test_build_rollover_item_shape() -> None:
     items = _turn(1) + _turn(2) + _turn(3)
-    client = _ReturnsTextClient("ROLLING SUMMARY")
+    client = _ReturnsTextClient(_REPLY)
 
     data = await build_rollover_item(
         items,
         previous_summary=None,
-        keep_tokens=1,
         model="gpt-4o",
         llm_client=client,
     )
 
-    assert data.summary == f"{CHECKPOINT_HEADER}\n\nROLLING SUMMARY"
-    assert data.last_item_id == "a3"
-    # token_count is the summary + kept tail estimate, not just the summary.
+    assert data.summary == f"{CHECKPOINT_HEADER}\n\n{_STATE}"
+    assert data.last_item_id == "a3"  # the window's last item
     assert data.token_count == count_tokens(data.compacted_messages, "gpt-4o")
+    # Only the summary pair: no kept tail.
     assert data.compacted_messages is not None
-    assert [m.get("type") for m in data.compacted_messages] == [
-        "message",
-        "message",
-        "message",
-        "message",
-    ]
-    assert data.compacted_messages[-2]["id"] == "u3"
-    assert data.compacted_messages[-1]["id"] == "a3"
-
-
-@pytest.mark.asyncio
-async def test_build_rollover_item_keeps_the_last_turn_even_over_budget() -> None:
-    items = _turn(1) + _turn(2)
-    client = _ReturnsTextClient("ROLLING SUMMARY")
-
-    data = await build_rollover_item(
-        items,
-        previous_summary=None,
-        keep_tokens=1,
-        model="gpt-4o",
-        llm_client=client,
-    )
-
-    # Only the summary pair — no room for even the latest turn.
-    assert len(data.compacted_messages) == 4
-    assert [m.get("id") for m in data.compacted_messages[2:]] == ["u2", "a2"]
-    assert data.compacted_messages[0]["role"] == "user"
-    assert data.compacted_messages[1]["role"] == "assistant"
+    assert [m.get("role") for m in data.compacted_messages] == ["user", "assistant"]
+    assert data.compacted_messages[1]["content"][0]["text"] == _STATE
 
 
 @pytest.mark.asyncio
 async def test_build_rollover_item_passes_state_file_instruction() -> None:
     items = _turn(1)
-    client = _ReturnsTextClient("SUMMARY")
+    client = _ReturnsTextClient(_REPLY)
 
     await build_rollover_item(
         items,
         previous_summary=None,
-        keep_tokens=_HUGE_TOKENS,
         model="gpt-4o",
         llm_client=client,
     )
@@ -300,12 +273,11 @@ async def test_build_rollover_item_passes_state_file_instruction() -> None:
 @pytest.mark.asyncio
 async def test_build_rollover_item_feeds_previous_summary_for_progressive_summarization() -> None:
     items = _turn(1)
-    client = _ReturnsTextClient("NEW SUMMARY")
+    client = _ReturnsTextClient(_REPLY)
 
     await build_rollover_item(
         items,
         previous_summary=f"{CHECKPOINT_HEADER}\n\nOLD SUMMARY of earlier turns",
-        keep_tokens=_HUGE_TOKENS,
         model="gpt-4o",
         llm_client=client,
     )
@@ -324,13 +296,13 @@ async def test_rollover_marks_stale_open_entries_where_the_model_and_state_md_re
     client = _ReturnsTextClient(
         f"- [o-dana · {old} · stale?] waiting on Dana's reply\n"
         f"- [o-quotes · {recent}] three quotes requested\n"
-        f"- [t-venue · {old}] closed: the venue is booked"
+        f"- [t-venue · {old}] closed: the venue is booked\n"
+        "<journal>\n2026-10-12 · checked\n</journal>"
     )
 
     data = await build_rollover_item(
         _turn(1),
         previous_summary=previous,
-        keep_tokens=_HUGE_TOKENS,
         model="gpt-4o",
         llm_client=client,
     )
@@ -353,40 +325,19 @@ async def test_build_rollover_item_requires_nonempty_items() -> None:
         await build_rollover_item(
             [],
             previous_summary=None,
-            keep_tokens=_HUGE_TOKENS,
             model="gpt-4o",
-            llm_client=_ReturnsTextClient("x"),
+            llm_client=_ReturnsTextClient(_REPLY),
         )
 
 
-def test_state_file_summarizer_instruction_defaults_to_utc_today() -> None:
+def test_state_file_summarizer_instruction_is_fixed_text_without_a_date() -> None:
+    import re
+
     instruction = state_file_summarizer_instruction()
     assert "## Context checkpoint —" in instruction
-    assert SUMMARIZER_DATE_PLACEHOLDER not in instruction
-
-
-def test_items_for_summarizer_keeps_only_provider_schema_fields() -> None:
-    from omnigent.context.rollover import _items_for_summarizer
-
-    items = [
-        {
-            "id": "m1",
-            "type": "message",
-            "role": "user",
-            "status": "completed",
-            "stream_message_id": "s1",
-            "content": [{"type": "input_text", "text": "hi", "extra": 1}],
-        },
-        {"id": "r1", "type": "reasoning", "summary": []},
-        {"id": "e1", "type": "native_tool", "name": "shell"},
-        {"id": "f1", "type": "function_call", "call_id": "c1", "name": "t", "arguments": "{}"},
-        {"id": "o1", "type": "function_call_output", "call_id": "c1", "output": "ok", "x": 2},
-    ]
-    assert _items_for_summarizer(items) == [
-        {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "hi"}]},
-        {"type": "function_call", "call_id": "c1", "name": "t", "arguments": "{}"},
-        {"type": "function_call_output", "call_id": "c1", "output": "ok"},
-    ]
+    assert "'Now:' line" in instruction
+    assert not re.search(r"\d{4}-\d{2}-\d{2}", instruction)
+    assert instruction == state_file_summarizer_instruction()
 
 
 @pytest.mark.asyncio
@@ -395,11 +346,10 @@ async def test_checkpoint_marker_differs_from_the_summarizer_request() -> None:
     summarizer keeps the request wording it expects for a previous summary."""
     from omnigent.context.rollover import _SUMMARY_REQUEST_TEXT
 
-    client = _ReturnsTextClient("ROLLING SUMMARY")
+    client = _ReturnsTextClient(_REPLY)
     data = await build_rollover_item(
         _turn(1) + _turn(2),
         previous_summary="OLD SUMMARY",
-        keep_tokens=_HUGE_TOKENS,
         model="gpt-4o",
         llm_client=client,
     )
@@ -413,11 +363,10 @@ async def test_checkpoint_marker_differs_from_the_summarizer_request() -> None:
 async def test_summarizer_gets_one_transcript_message_not_live_turns() -> None:
     """Live chat turns let a weak summarizer continue the chat; a single quoted
     transcript (with the previous summary on top) can only be summarized."""
-    client = _ReturnsTextClient("ROLLING SUMMARY")
+    client = _ReturnsTextClient(_REPLY)
     await build_rollover_item(
         _turn(1) + _turn(2),
         previous_summary="OLD SUMMARY",
-        keep_tokens=_HUGE_TOKENS,
         model="gpt-4o",
         llm_client=client,
     )
@@ -431,40 +380,17 @@ async def test_summarizer_gets_one_transcript_message_not_live_turns() -> None:
     ]
     transcript = user_texts[0]
     assert "OLD SUMMARY" in transcript
-    assert "<conversation>" in transcript
+    assert "<turns>" in transcript
     assert not any(m.get("role") == "assistant" for m in client.seen_messages)
     assert "automatically generated summary" in client.seen_instructions + transcript
 
 
 @pytest.mark.asyncio
-async def test_kept_tool_output_is_capped_so_one_turn_cannot_loop_rollovers() -> None:
-    """A huge tool result in the always-kept last turn is cut, so the relaunched
-    context can drop under the threshold instead of rolling over every turn."""
-    from omnigent.context.rollover import _KEPT_OUTPUT_MAX_CHARS
-
-    items = _turn(1) + _turn(2, with_tool=True)
-    output_item = next(i for i in items if i["type"] == "function_call_output")
-    output_item["output"] = "x" * (_KEPT_OUTPUT_MAX_CHARS * 5)
-    data = await build_rollover_item(
-        items,
-        previous_summary=None,
-        keep_tokens=1,
-        model="gpt-4o",
-        llm_client=_ReturnsTextClient("S"),
-    )
-    kept = next(m for m in data.compacted_messages if m.get("type") == "function_call_output")
-    assert len(kept["output"]) < _KEPT_OUTPUT_MAX_CHARS + 200
-    assert "session_history" in kept["output"]
-    assert len(output_item["output"]) == _KEPT_OUTPUT_MAX_CHARS * 5  # record untouched
-
-
-@pytest.mark.asyncio
 async def test_previous_header_is_not_fed_back_so_it_never_nests() -> None:
-    client = _ReturnsTextClient("NEW SUMMARY")
+    client = _ReturnsTextClient(_REPLY)
     data = await build_rollover_item(
         _turn(1),
         previous_summary=f"{CHECKPOINT_HEADER}\n\nOLD SUMMARY",
-        keep_tokens=1,
         model="gpt-4o",
         llm_client=client,
     )
@@ -778,30 +704,27 @@ def test_summarizer_instruction_forbids_listing_tool_names() -> None:
     assert "Never list tool names" in state_file_summarizer_instruction()
 
 
-def test_state_file_instruction_stamps_time_and_zone_by_default() -> None:
-    """A bare date is ambiguous across time zones; the default carries time and UTC."""
-    import re
+def test_fold_input_stamps_time_and_zone_on_the_now_line() -> None:
+    """A bare date is ambiguous across time zones; the input carries time and UTC."""
+    text = fold_input(_turn(1), None, now="2026-10-12 10:00 UTC")["content"][0]["text"]
 
-    instruction = state_file_summarizer_instruction()
-
-    assert re.search(r"## Context checkpoint — \d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC", instruction)
+    assert "Now: 2026-10-12 10:00 UTC" in text
 
 
 @pytest.mark.asyncio
 async def test_build_rollover_item_rejects_an_empty_summary() -> None:
     """An empty/blank summarizer reply must raise so the caller keeps the previous checkpoint."""
-    with pytest.raises(ValueError, match="no summary text"):
+    with pytest.raises(ValueError, match="no tagged entries or no journal"):
         await build_rollover_item(
             _turn(1) + _turn(2),
             previous_summary=None,
-            keep_tokens=1,
             model="gpt-4o",
             llm_client=_ReturnsTextClient("   "),
         )
 
 
 def test_summarizer_instruction_forbids_recording_tool_errors_as_facts() -> None:
-    text = state_file_summarizer_instruction(today="2026-01-01")
+    text = state_file_summarizer_instruction()
     assert "Tool errors" in text
     assert "never claim earlier messages are inaccessible" in text
 
@@ -856,13 +779,12 @@ async def test_build_rollover_item_header_names_the_cause(cause: Any) -> None:
     data = await build_rollover_item(
         _turn(1) + _turn(2),
         previous_summary=None,
-        keep_tokens=1,
         model="gpt-4o",
-        llm_client=_ReturnsTextClient("STATE"),
+        llm_client=_ReturnsTextClient(_REPLY),
         cause=cause,
     )
 
-    assert data.summary == f"{checkpoint_header(cause)}\n\nSTATE"
+    assert data.summary == f"{checkpoint_header(cause)}\n\n{_STATE}"
     assert data.compacted_messages is not None
     assert data.compacted_messages[0]["content"][0]["text"] == checkpoint_header(cause)
 
@@ -873,7 +795,7 @@ async def test_build_rollover_item_defaults_to_the_size_header() -> None:
         _turn(1),
         previous_summary=None,
         model="gpt-4o",
-        llm_client=_ReturnsTextClient("STATE"),
+        llm_client=_ReturnsTextClient(_REPLY),
     )
     assert data.summary.startswith(CHECKPOINT_HEADER)
 
@@ -883,7 +805,7 @@ async def test_build_rollover_item_defaults_to_the_size_header() -> None:
 async def test_a_later_rollover_strips_whatever_header_the_previous_one_had(cause: Any) -> None:
     from omnigent.context.rollover import checkpoint_header
 
-    client = _ReturnsTextClient("NEXT")
+    client = _ReturnsTextClient(_REPLY)
     await build_rollover_item(
         _turn(2),
         previous_summary=f"{checkpoint_header(cause)}\n\nOLD STATE",
@@ -955,10 +877,8 @@ def test_split_with_unknown_anchor_falls_back_to_after_the_checkpoint() -> None:
 
 
 @pytest.mark.asyncio
-async def test_summarizer_transcript_uses_the_shared_tool_digest() -> None:
-    """Tool items reach the summarizer as the framed one-line digest, not raw lines."""
-    from omnigent.context.tool_digest import RESULT_LIMIT, tool_digest_line
-
+async def test_summarizer_input_names_a_failed_call_and_leaves_out_tool_results() -> None:
+    """A failed call reaches the summarizer as a ``Failed:`` line; results never do."""
     items = [
         *_turn(1),
         {
@@ -969,35 +889,38 @@ async def test_summarizer_transcript_uses_the_shared_tool_digest() -> None:
             "arguments": '{"path": "projects/x/brief.md"}',
         },
         {"id": "i-out", "type": "function_call_output", "call_id": "c1", "output": "y" * 5_000},
+        {
+            "id": "i-call2",
+            "type": "function_call",
+            "call_id": "c2",
+            "name": "web_fetch",
+            "arguments": "{}",
+        },
+        {
+            "id": "i-out2",
+            "type": "function_call_output",
+            "call_id": "c2",
+            "output": '{"error": "404 not found\\nsecond line"}',
+        },
     ]
-    client = _ReturnsTextClient("ROLLING SUMMARY")
-    await build_rollover_item(
-        items, previous_summary=None, keep_tokens=_HUGE_TOKENS, model="gpt-4o", llm_client=client
-    )
+    client = _ReturnsTextClient(_REPLY)
+    await build_rollover_item(items, previous_summary=None, model="gpt-4o", llm_client=client)
     assert client.seen_messages is not None
-    transcript = next(
-        block["text"]
-        for message in client.seen_messages
-        if message.get("role") == "user"
-        for block in message["content"]
-        if isinstance(block, dict) and "text" in block
-    )
-    digest = tool_digest_line("files_write", '{"path": "projects/x/brief.md"}', "y" * 5_000)
-    assert f"TOOL: {digest}" in transcript
-    assert "path=projects/x/brief.md" in digest
-    assert "y" * (RESULT_LIMIT + 1) not in transcript
-    assert "TOOL RESULT:" not in transcript
+    transcript = client.seen_messages[0]["content"][0]["text"]
+    assert "Failed: web_fetch: 404 not found" in transcript
+    assert "second line" not in transcript
+    assert "y" * 50 not in transcript
+    assert "TOOL" not in transcript
 
 
 @pytest.mark.asyncio
 async def test_placeholder_previous_summary_is_not_fed_back_as_state() -> None:
     """A harness's one-line compaction stand-in holds no state; it is not the previous summary."""
     placeholder = "[Claude Code compaction — context was automatically compacted]"
-    client = _ReturnsTextClient("ROLLING SUMMARY")
+    client = _ReturnsTextClient(_REPLY)
     await build_rollover_item(
         _turn(1),
         previous_summary=placeholder,
-        keep_tokens=_HUGE_TOKENS,
         model="gpt-4o",
         llm_client=client,
     )
@@ -1030,13 +953,13 @@ _TAGGED_PREVIOUS = (
 )
 
 
-def test_summarizer_instruction_carries_the_tag_and_digest_rules() -> None:
-    text = state_file_summarizer_instruction(today="2026-01-01")
+def test_summarizer_instruction_carries_the_tag_and_failure_rules() -> None:
+    text = state_file_summarizer_instruction()
     assert "Keep every existing tag exactly" in text
     assert "closed:" in text and "merged into" in text
     assert "no tags, give tags" in text
-    assert "A tool digest says what was done" in text
-    assert "never what the page, file or result said" in text
+    assert "tried and failed:" in text
+    assert "anchored merge" in text
     assert "<journal>" in text
     assert "<journal>" not in state_file_summarizer_instruction(journal=False)
 
@@ -1050,7 +973,6 @@ async def test_the_journal_section_is_split_off_and_stored_on_the_item() -> None
     data = await build_rollover_item(
         _turn(1) + _turn(2),
         previous_summary=None,
-        keep_tokens=1,
         model="gpt-4o",
         llm_client=_ReturnsTextClient(reply),
     )
@@ -1082,7 +1004,7 @@ async def test_the_window_refs_come_from_code_and_each_turn_shows_its_own() -> N
         "## Context checkpoint\n- [t-a] Alpha\n\n<journal>\n- 2026-10-12 · did it\n</journal>"
     )
     data = await build_rollover_item(
-        items, previous_summary=None, keep_tokens=1, model="gpt-4o", llm_client=client
+        items, previous_summary=None, model="gpt-4o", llm_client=client
     )
 
     assert data.journal_refs == {
@@ -1091,7 +1013,7 @@ async def test_the_window_refs_come_from_code_and_each_turn_shows_its_own() -> N
     }
     assert client.seen_messages is not None
     transcript = client.seen_messages[0]["content"][0]["text"]
-    turns = transcript.split("USER: ")[1:]
+    turns = transcript.split("They said: ")[1:]
     assert "REFS: files:projects/q3/budget.xlsx project:q3" in turns[0]
     assert "REFS: files:memo.md\n" in turns[1]
     assert "REFS:" not in turns[2]
@@ -1102,32 +1024,32 @@ async def test_a_window_without_tool_calls_has_no_refs() -> None:
     data = await build_rollover_item(
         _turn(1),
         previous_summary=None,
-        keep_tokens=1,
         model="gpt-4o",
-        llm_client=_ReturnsTextClient("## Context checkpoint\n- [t-a] Alpha"),
+        llm_client=_ReturnsTextClient(_REPLY),
     )
     assert data.journal_refs is None
 
 
 @pytest.mark.asyncio
-async def test_a_reply_without_a_journal_has_zero_lines() -> None:
-    data = await build_rollover_item(
-        _turn(1),
-        previous_summary=None,
-        keep_tokens=1,
-        model="gpt-4o",
-        llm_client=_ReturnsTextClient("## State\n- [t-a] Alpha"),
-    )
-    assert data.journal_lines == []
+async def test_a_reply_without_a_journal_is_refused() -> None:
+    with pytest.raises(ValueError, match="no tagged entries or no journal"):
+        await build_rollover_item(
+            _turn(1),
+            previous_summary=None,
+            model="gpt-4o",
+            llm_client=_ReturnsTextClient("## State\n- [t-a] Alpha"),
+        )
 
 
 @pytest.mark.asyncio
 async def test_a_rewrite_that_loses_a_tag_is_repaired_and_counted() -> None:
-    reply = "## Topics\n- [t-launch-budget · 2026-10-12] Budget moved on\nCurrent position: x"
+    reply = (
+        "## Topics\n- [t-launch-budget · 2026-10-12] Budget moved on\nCurrent position: x\n"
+        "<journal>\n2026-10-12 · moved\n</journal>"
+    )
     data = await build_rollover_item(
         _turn(1),
         previous_summary=_TAGGED_PREVIOUS,
-        keep_tokens=1,
         model="gpt-4o",
         llm_client=_ReturnsTextClient(reply),
     )
@@ -1146,9 +1068,10 @@ async def test_an_untagged_previous_checkpoint_is_carried_over_without_repairs()
     data = await build_rollover_item(
         _turn(1),
         previous_summary=previous,
-        keep_tokens=1,
         model="gpt-4o",
-        llm_client=_ReturnsTextClient("- [t-launch] Spring launch budget: venue line"),
+        llm_client=_ReturnsTextClient(
+            "- [t-launch] Spring launch budget: venue line\n<journal>\n2026-10-12 · x\n</journal>"
+        ),
     )
     assert data.repairs == 0
 
@@ -1158,7 +1081,6 @@ async def test_pending_closes_close_the_entry_and_reach_the_journal_lines() -> N
     data = await build_rollover_item(
         _turn(1),
         previous_summary=_TAGGED_PREVIOUS,
-        keep_tokens=1,
         model="gpt-4o",
         llm_client=_ReturnsTextClient(
             "- [t-launch-budget · 2026-10-09] Spring launch budget\n"
@@ -1177,10 +1099,10 @@ async def test_pending_closes_close_the_entry_and_reach_the_journal_lines() -> N
 async def test_the_previous_state_fed_back_has_no_journal_and_no_header() -> None:
     client = _ReturnsTextClient("- [t-a] A\n<journal>\n2026-10-12 · x\n</journal>")
     first = await build_rollover_item(
-        _turn(1), previous_summary=None, keep_tokens=1, model="gpt-4o", llm_client=client
+        _turn(1), previous_summary=None, model="gpt-4o", llm_client=client
     )
     await build_rollover_item(
-        _turn(2), previous_summary=first.summary, keep_tokens=1, model="gpt-4o", llm_client=client
+        _turn(2), previous_summary=first.summary, model="gpt-4o", llm_client=client
     )
     fed = client.seen_messages[0]["content"][0]["text"]
     assert "- [t-a · " in fed
@@ -1208,13 +1130,11 @@ def test_old_compaction_items_load_and_render() -> None:
 
 
 def test_likely_duplicate_entries_are_pointed_out_to_the_summarizer() -> None:
-    from omnigent.context.rollover import _transcript_message
-
     previous = (
         "## Context checkpoint\n"
         "- [t-venue · 2026-10-01] Venue for the spring launch: choosing between two halls\n"
         "- [t-hall · 2026-10-05] Spring launch venue: choosing between two halls downtown\n"
     )
-    text = str(_transcript_message([_msg("m1", "user", "hello")], previous))
+    text = str(fold_input([_msg("m1", "user", "hello")], previous, now="2026-10-12 10:00 UTC"))
     assert "[t-venue] and [t-hall] may be the same thing" in text
-    assert text.index("may be the same thing") < text.index("<conversation>")
+    assert text.index("may be the same thing") < text.index("<turns>")
