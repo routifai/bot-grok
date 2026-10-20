@@ -959,7 +959,9 @@ def ttls(req: dict) -> list[str]:
 
 
 def prefix_hash(req: dict) -> str:
+    # Claude Code's billing header changes per CLI session and does not affect the cache.
     blob = json.dumps([req.get("tools"), req.get("system")], sort_keys=True)
+    blob = re.sub(r"x-anthropic-billing-header:[^\"]*", "", blob)
     return hashlib.sha256(blob.encode()).hexdigest()[:10]
 
 
