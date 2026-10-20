@@ -62,6 +62,9 @@ host.
 | `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY` | blank | operator model keys (default config template) |
 | `SUPERCHAT_DEFAULT_AGENT` | `superchat-claude` | the harness a new conversation runs on: `superchat-claude` or `superchat-pi`; each person can switch in **Settings > Models** |
 | `PROMPT_CACHE_1H` | `1` | becomes `OMNIGENT_PROMPT_CACHE_1H`: both harnesses keep the prompt cache 1 hour instead of 5 minutes; `0` turns it off ([context.md](context.md#prompt-cache)) |
+| `FOLD_TURN_LINES_TOKENS` | blank (2000) | becomes `OMNIGENT_FOLD_TURN_LINES_TOKENS` (engine): settled-turn lines, in tokens, past which the engine folds the past into the checkpoint; lower it to see a fold on a short chat ([context.md](context.md#rollover)) |
+| `EXPIRY_HANDOFF` | blank (off) | becomes `OMNIGENT_EXPIRY_HANDOFF` (each host's runner): `1` drops a warm client whose prompt cache expired when its context is over twice a new session's ([context.md](context.md#rollover)) |
+| `PROMPT_CACHE_LIFETIME_SECONDS` | blank (3600, or 300 with `PROMPT_CACHE_1H=0`) | becomes `OMNIGENT_PROMPT_CACHE_LIFETIME_SECONDS` (each host's runner): the cache lifetime that rule uses; lower it (e.g. `60`) to check it live |
 | `LITELLM_BASE_URL`, `LITELLM_API_KEY` | blank | set both to route every model call through a LiteLLM proxy; root URL without `/v1`, reachable from the engine container (`host.docker.internal` for a proxy on your machine) |
 | `SUPERCHAT_WEB_PORT`, `SUPERCHAT_ENGINE_PORT` | `5173`, `8012` | host ports |
 | `ENGINE_PUBLIC_URL` | `http://host.docker.internal:<engine port>` | where each host reaches the engine |

@@ -291,7 +291,14 @@ class Engine:
             raise SystemExit(f"built-in agents missing: {missing}")
         return {h: by_name[b] for h, b in BUNDLE.items()}
 
-    def create(self, title: str, agent_id: str, labels: dict[str, str], host_owner: str) -> str:
+    def create(
+        self,
+        title: str,
+        agent_id: str,
+        labels: dict[str, str],
+        host_owner: str,
+        extra: dict[str, str] | None = None,
+    ) -> str:
         """A new top-level Super Chat session on its own throwaway host, without Muse labels.
 
         Mirrors ``/v1/me/muse``'s create body minus ``omnigent.superchat.muse*``, so it never
@@ -303,6 +310,8 @@ class Engine:
             k: v for k, v in labels.items() if k in ("omnigent.context.mode", "omnigent.tenant")
         }
         keep["omnigent.host.owner"] = host_owner
+        # --label: e.g. a lower kept tail or handoff threshold for a live check.
+        keep.update(extra or {})
         provider = labels.get("omnigent.sandbox.provider")
         body = {
             "agent_id": agent_id,
@@ -516,6 +525,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     run_id = datetime.datetime.now(datetime.UTC).strftime("%Y%m%d-%H%M%S")
     out = Path(args.out) / run_id
     engine = Engine(args.engine, args.dry_run)
+    extra_labels = dict(item.split("=", 1) for item in args.label)
     say(f"handoff probe {run_id}: harness={args.harness} arms={arms} repeats={args.repeats} "
         f"probes={kinds} handoff={'command' if args.handoff_cmd else 'switch-agent there and back'}")
     for case in cases:
@@ -546,7 +556,9 @@ def cmd_run(args: argparse.Namespace) -> int:
                 full = not args.dry_run or arm == arms[0]
                 title = f"{PROBE_PREFIX}{run_id}:{case['id'][:8]}:{arm}:r{rep}"
                 host_owner = f"{PROBE_HOST_PREFIX}{run_id}-{len(state['sessions']) + 1}"
-                sid = engine.create(title, agents[args.harness], case["labels"] or {}, host_owner)
+                sid = engine.create(
+                    title, agents[args.harness], case["labels"] or {}, host_owner, extra_labels
+                )
                 state["sessions"].append(sid)
                 state["hosts"].append(host_owner)
                 if not args.dry_run:
@@ -1161,6 +1173,13 @@ def main(argv: list[str]) -> int:
     run.add_argument("--cases", type=int, default=1, help="source Conversations")
     run.add_argument("--source", help="one source session id instead of the largest")
     run.add_argument("--max-turns", type=int, help="replay at most this many person turns")
+    run.add_argument(
+        "--label",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="a session label set on each probe session at create (repeatable)",
+    )
     run.add_argument("--arms", default=",".join(
         [f"warm@{c}" for c in CUTS] + [f"single@{c}" for c in CUTS] + ["chain"]))
     run.add_argument("--repeats", type=int, default=3)

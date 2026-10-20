@@ -83,6 +83,13 @@ services:
       OMNIGENT_ARTIFACT_URI: ${OMNIGENT_ARTIFACT_URI:-}
       # Harness prompt cache kept 1 hour instead of 5 minutes (pi and Claude Code); 0 turns it off.
       OMNIGENT_PROMPT_CACHE_1H: ${PROMPT_CACHE_1H:-1}
+      # Context fold and handoffs (docs/context.md, "Rollover"); empty keeps the code defaults.
+      # Settled-turn lines (tokens) past which the engine folds; default 2000.
+      OMNIGENT_FOLD_TURN_LINES_TOKENS: ${FOLD_TURN_LINES_TOKENS:-}
+      # 1 drops a warm client whose prompt cache expired (read by each host's runner); default off.
+      OMNIGENT_EXPIRY_HANDOFF: ${EXPIRY_HANDOFF:-}
+      # Prompt cache lifetime in seconds for that rule; default 3600 (300 with PROMPT_CACHE_1H=0).
+      OMNIGENT_PROMPT_CACHE_LIFETIME_SECONDS: ${PROMPT_CACHE_LIFETIME_SECONDS:-}
       # Dev only, off when empty: a folder INSIDE each host where every model call is traced
       # (engine/scripts/llm_trace.py reads it), e.g. /home/superchat/.omnigent/llm-trace.
       OMNIGENT_LLM_TRACE_DIR: ${OMNIGENT_LLM_TRACE_DIR:-}
