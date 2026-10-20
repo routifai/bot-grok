@@ -21,27 +21,33 @@ from omnigent.superchat.tasks.runtime import current_round
 SAY_FIRST = {
     "error": "say_first",
     "message": (
-        "Before showing this, write one or two plain sentences saying what it is and anything "
-        "still open; then call the tool again with the same arguments."
+        "Not shown: this turn has no words for the person yet. This is the hand-back, the one "
+        "place where you write between tool calls: reply now with one or two plain sentences "
+        "saying what was made and anything still open, then call the tool again with the same "
+        "arguments."
     ),
 }
-#: Conversations whose running turn already had its one ``say_first``; cleared at turn end.
-_told: set[str] = set()
+#: How many wordless cards or chips a turn has sent back; past :data:`_MAX_SAY_FIRST` the next
+#: is taken as it is, so it never loops. Cleared at turn end.
+_told: dict[str, int] = {}
+_MAX_SAY_FIRST = 2
 
 
 def _say_first(ctx: HandlerCtx) -> str | None:
-    """``SAY_FIRST`` for a turn's first wordless reply card or chips, else ``None``."""
+    """``SAY_FIRST`` while the turn has written no words (at most :data:`_MAX_SAY_FIRST` times),
+    else ``None``. A model that batches the card and the chips gets both sent back."""
     if ctx.turn_said is not False or ctx.conversation_id is None:
         return None
-    if ctx.conversation_id in _told:
-        return None  # the second call is taken as it is: never a loop
-    _told.add(ctx.conversation_id)
+    told = _told.get(ctx.conversation_id, 0)
+    if told >= _MAX_SAY_FIRST:
+        return None
+    _told[ctx.conversation_id] = told + 1
     return json.dumps(SAY_FIRST)
 
 
 def turn_ended(conversation_id: str) -> None:
-    """Forget the turn's ``say_first`` (``Feature.on_turn_end``)."""
-    _told.discard(conversation_id)
+    """Forget the turn's ``say_first`` count (``Feature.on_turn_end``)."""
+    _told.pop(conversation_id, None)
 
 
 async def handle_card_tool(ctx: HandlerCtx, args: dict[str, Any]) -> str:
