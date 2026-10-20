@@ -91,6 +91,9 @@ OTHER = {"pi": "claude-sdk", "claude-sdk": "pi"}
 CUTS = (25, 50, 75)
 CHAIN_HANDOFFS = 5
 PROBE_PREFIX = "probe:"
+#: Host owner key of each probe session's own host (container and home volume).
+PROBE_HOST_PREFIX = "probe-"
+TRACE_DIR_IN_HOST = "/home/superchat/.omnigent/llm-trace"
 #: Source person messages that are dev pings, not work.
 SKIP_DEFAULT = r"^(Reply with one word|Quick check after a restart|say hi$|hi$)"
 #: Tools that read the past back.
@@ -254,7 +257,8 @@ class Engine:
         req.add_header("Content-Type", "application/json")
         for attempt in range(2):
             try:
-                with urllib.request.urlopen(req, timeout=60) as resp:
+                # A first message waits for its new host to launch (a cold container).
+                with urllib.request.urlopen(req, timeout=60 if method == "GET" else 300) as resp:
                     raw = resp.read()
                 return json.loads(raw) if raw else {}
             except urllib.error.HTTPError:
@@ -276,16 +280,18 @@ class Engine:
             raise SystemExit(f"built-in agents missing: {missing}")
         return {h: by_name[b] for h, b in BUNDLE.items()}
 
-    def create(self, title: str, agent_id: str, labels: dict[str, str]) -> str:
-        """A new top-level Super Chat session on the person's own host, without Muse labels.
+    def create(self, title: str, agent_id: str, labels: dict[str, str], host_owner: str) -> str:
+        """A new top-level Super Chat session on its own throwaway host, without Muse labels.
 
         Mirrors ``/v1/me/muse``'s create body minus ``omnigent.superchat.muse*``, so it never
-        becomes the person's Super Chat.
+        becomes the person's Super Chat. *host_owner* keys a fresh host container and home
+        volume: a second managed session on the person's host would start a second host daemon
+        there, which the first one refuses, and replays would write into the person's files.
         """
         keep = {
-            k: v for k, v in labels.items()
-            if k in ("omnigent.context.mode", "omnigent.host.owner", "omnigent.tenant")
+            k: v for k, v in labels.items() if k in ("omnigent.context.mode", "omnigent.tenant")
         }
+        keep["omnigent.host.owner"] = host_owner
         provider = labels.get("omnigent.sandbox.provider")
         body = {
             "agent_id": agent_id,
@@ -516,7 +522,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     else:
         out.mkdir(parents=True, exist_ok=True)
     agents = engine.agent_ids()
-    state: dict[str, Any] = {"run": run_id, "harness": args.harness, "sessions": []}
+    state: dict[str, Any] = {"run": run_id, "harness": args.harness, "sessions": [], "hosts": []}
     rows: list[dict] = []
     for case in cases:
         for arm in arms:
@@ -524,8 +530,10 @@ def cmd_run(args: argparse.Namespace) -> int:
             for rep in range(1, (1 if args.dry_run else args.repeats) + 1):
                 full = not args.dry_run or arm == arms[0]
                 title = f"{PROBE_PREFIX}{run_id}:{case['id'][:8]}:{arm}:r{rep}"
-                sid = engine.create(title, agents[args.harness], case["labels"] or {})
+                host_owner = f"{PROBE_HOST_PREFIX}{run_id}-{len(state['sessions']) + 1}"
+                sid = engine.create(title, agents[args.harness], case["labels"] or {}, host_owner)
                 state["sessions"].append(sid)
+                state["hosts"].append(host_owner)
                 if not args.dry_run:
                     (out / "state.json").write_text(json.dumps(state, indent=1))
                 say(f"  [{title}] session {sid}")
@@ -773,6 +781,22 @@ def cmd_cleanup(args: argparse.Namespace) -> int:
             continue
         engine.delete(sid)
         say(f"  {sid}: deleted")
+    # Each session ran on its own host: keep its model-call traces, then drop container and home.
+    for owner in state.get("hosts") or []:
+        if not owner.startswith(PROBE_HOST_PREFIX):
+            continue
+        container = f"{args.host_prefix}-host-{owner}"
+        volume = f"{args.host_prefix}-home-{owner}"
+        if args.dry_run:
+            say(f"  would copy traces from {container}, then remove it and {volume}")
+            continue
+        dest = Path(args.out_dir) / "llm-trace" / owner
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run(["docker", "cp", "-q", f"{container}:{TRACE_DIR_IN_HOST}", str(dest)],
+                       check=False, capture_output=True)
+        subprocess.run(["docker", "rm", "-f", container], check=False, capture_output=True)
+        subprocess.run(["docker", "volume", "rm", volume], check=False, capture_output=True)
+        say(f"  {container}: traces kept in {dest}, container and home removed")
     return 0
 
 
@@ -1019,6 +1043,8 @@ def main(argv: list[str]) -> int:
     cln = sub.add_parser("cleanup", help="delete the sessions this probe created")
     cln.add_argument("out_dir")
     cln.add_argument("--dry-run", action="store_true")
+    cln.add_argument("--host-prefix", default=os.environ.get("OMNIGENT_HOST_NAME_PREFIX", "superchat-train"),
+                     help="the engine's host container/volume name prefix (train: superchat-train)")
     cln.set_defaults(fn=cmd_cleanup)
 
     num = sub.add_parser("numbers", help="today's baseline from model-call traces")
