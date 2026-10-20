@@ -20,7 +20,11 @@ import httpx
 
 from omnigent.memory.service import PROFILE_BLOCK_FOOTER, PROFILE_BLOCK_HEADER
 from omnigent.superchat.artifacts.hint import HEADER as ARTIFACT_HINT_HEADER
-from omnigent.superchat.artifacts.studio_turn import FILE_LINE_OPEN, studio_turn_blocks
+from omnigent.superchat.artifacts.studio_turn import (
+    BRIEF_OPEN,
+    FILE_LINE_OPEN,
+    studio_turn_blocks,
+)
 from omnigent.superchat.artifacts.writeback import NOTE_LINE as EDIT_NOTE_LINE
 from omnigent.superchat.decks.outline import HEADER as OUTLINE_HEADER
 from omnigent.superchat.knowledge.attachment_context import OPEN as ATTACHMENT_OPEN
@@ -438,6 +442,7 @@ def _injected_line(line: str) -> bool:
         or (line.startswith(SETUP_CHANGED_OPEN) and line.endswith(SETUP_CHANGED_CLOSE))
         or (line.startswith(_MOVED_OPEN) and line.endswith(_MOVED_CLOSE))
         or line.startswith(FILE_LINE_OPEN)
+        or line.startswith(BRIEF_OPEN)
         or EDIT_NOTE_LINE.fullmatch(line) is not None
     )
 

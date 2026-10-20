@@ -154,6 +154,9 @@ class Artifact:
     :param group_id: The deliverable's stable id (its first version's id), the same on every
         version.
     :param round_id: The Round of the chat that saved it, if it was saved in one.
+    :param changed_ids: The element ids the save's patches touched (``artifact_patch``, a hand
+        edit); set on the version :meth:`SqlAlchemyArtifactStore.create` returns, for the save
+        hooks only, and never stored (empty on every read).
     """
 
     id: str
@@ -179,6 +182,7 @@ class Artifact:
     item_id: str | None = None
     group_id: str | None = None
     round_id: str | None = None
+    changed_ids: tuple[str, ...] = ()
 
 
 #: How a message came to be linked to an artifact (docs/conversation.md "Contract").
@@ -296,6 +300,7 @@ class SqlAlchemyArtifactStore:
         chat_id: str | None = None,
         item_id: str | None = None,
         round_id: str | None = None,
+        changed_ids: tuple[str, ...] = (),
     ) -> Artifact:
         """Store ``data`` as the next version of ``name`` in the session.
 
@@ -308,6 +313,7 @@ class SqlAlchemyArtifactStore:
         :param chat_id: The chat that saved it.
         :param item_id: The person's message in the Conversation that led to it.
         :param round_id: The Round of the chat that saved it.
+        :param changed_ids: The element ids its patches touched, for the save hooks.
         """
         blobs = self._blob_store()
         artifact_id = uuid.uuid4().hex
@@ -380,6 +386,7 @@ class SqlAlchemyArtifactStore:
         except Exception:
             blobs.delete(key)
             raise
+        saved.changed_ids = tuple(changed_ids)
         for hook_name, hook in list(ON_VERSION_SAVED.items()):
             try:
                 hook(saved)

@@ -721,6 +721,17 @@ _APPLY = {
 }
 
 
+def changed_ids(patches: list[Patch]) -> tuple[str, ...]:
+    """The element ids *patches* change, in order, once each: a removed element is gone and a
+    theme or a whole-source edit names none."""
+    ids: list[str] = []
+    for patch in patches:
+        if isinstance(patch, (SetText, SetStyle, SetAttributes, DuplicateElement)):
+            if patch.id not in ids:
+                ids.append(patch.id)
+    return tuple(ids)
+
+
 def apply_patches(
     source: bytes,
     patches: list[
