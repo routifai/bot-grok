@@ -280,7 +280,7 @@ def attach_round_files(
             )
             if block:
                 cards[f["artifact_id"]] = block
-        ids = {key: f["artifact_id"] for f in view["files"] for key in (f["artifact_id"], f["name"])}
+        ids = {k: f["artifact_id"] for f in view["files"] for k in (f["artifact_id"], f["name"])}
         # Where the Round last showed each file: (message, block index).
         last: dict[str, tuple[int, int]] = {}
         for at, message in enumerate(mine):
