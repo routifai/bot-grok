@@ -6766,6 +6766,8 @@ def create_runner_app(
     def _start_superside_chat_catch_up(conv_id: str) -> None:
         """Write a Super Chat's cold checkpoint at its first init on this runner, before any turn.
 
+        Only for a Conversation in use: not archived, and active within the idle-return window.
+
         The same rule and rollover as a turn's cold start
         (``_maybe_superside_chat_cold_rollover``), run ahead so the first message after a restart
         finds the checkpoint written. Once per session per runner start, and only before any turn
@@ -6788,9 +6790,22 @@ def create_runner_app(
 
     async def _superside_chat_catch_up(conv_id: str) -> None:
         from omnigent.context.labels import is_superside_chat
+        from omnigent.superchat.rollover import should_roll_over_for_idle
 
         try:
-            if not is_superside_chat(await _rollover_labels_for_session(conv_id)):
+            rollover_labels = await _rollover_labels_for_session(conv_id)
+            if not is_superside_chat(rollover_labels):
+                return
+            # Only a Conversation in use: a reconnect re-inits archived and old ones too, and they
+            # keep the turn-time cold start. One idle past the return window gets the return's
+            # own check when the person comes back.
+            resp = await server_client.get(f"/v1/sessions/{conv_id}", timeout=10.0)
+            if resp.status_code != 200 or resp.json().get("archived"):
+                return
+            idle_seconds = await _superside_chat_idle_seconds(conv_id)
+            if idle_seconds is None or should_roll_over_for_idle(
+                rollover_labels, idle_seconds=idle_seconds
+            ):
                 return
             # Marks the session when the kept tail had to leave whole turns out (the same load a
             # turn's cold start makes); the history itself is the turn's to load.
