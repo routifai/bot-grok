@@ -636,9 +636,11 @@ def load_script(path: str) -> dict[str, Any]:
 
     ``{"id", "title", "turns": [text], "chain": [turn numbers], "probes": [{"id", "question",
     "task" (or null), "truth", "must": [regex], "must_not": [check], "task_must": [regex],
-    "task_must_not": [check]}]}``. A check is ``{"re": regex, "unless_before": regex}``: a match
-    counts only when *unless_before* is not found in the 40 characters before it (so "was
-    CAD 18,500" or "moved from March 9" is no stale value). Regexes are case-insensitive and may
+    "task_must_not": [check]}], "pause_before_probes_s": seconds}``. A turn is a string or
+    ``{"text", "pause_after_s"}`` (a sleep once it settles, e.g. past the cache lifetime). A
+    check is ``{"re": regex, "unless": regex}``: a match counts only when *unless* is not found
+    in the rest of its sentence, before or after it (so "was CAD 18,500" or "because the week of
+    March 9 clashes" is no stale value). Regexes are case-insensitive and may
     name ``{file}`` (the newest file's id prefix or name), ``{version}`` (its version) and
     ``{option2}`` (the second option named in turn 3's reply), filled in at probe time.
     """
@@ -649,8 +651,16 @@ def load_script(path: str) -> dict[str, Any]:
     return script
 
 
-#: How long a stretch before a match is read for the exemption.
+#: How far before a match its quoted context reaches in the results.
 _UNLESS_WINDOW = 40
+_SENTENCE_END = re.compile(r"[.!?\n]")
+
+
+def _sentence_around(text: str, start: int, end: int) -> str:
+    """The sentence a match sits in, without the match: what its exemption reads."""
+    head = max((m.end() for m in _SENTENCE_END.finditer(text, 0, start)), default=0)
+    tail = _SENTENCE_END.search(text, end)
+    return text[head:start] + " " + text[end : tail.start() if tail else len(text)]
 
 
 def _option2(reply: str) -> str | None:
@@ -689,11 +699,10 @@ def check_text(
         if pattern is None:
             hits.append({"re": check["re"], "hit": None, "at": None})
             continue
-        unless = check.get("unless_before")
+        unless = check.get("unless")
         found = None
         for m in re.finditer(pattern, text, re.I):
-            before = text[max(0, m.start() - _UNLESS_WINDOW) : m.start()]
-            if unless and re.search(unless, before, re.I):
+            if unless and re.search(unless, _sentence_around(text, m.start(), m.end()), re.I):
                 continue
             found = text[max(0, m.start() - _UNLESS_WINDOW) : m.end() + 20]
             break
@@ -747,21 +756,35 @@ def cmd_run_script(args: argparse.Namespace) -> int:
             say(f"  [{title}] session {sid}")
             ref = hashlib.sha256(title.encode()).hexdigest()[:8]
             said: list[str] = []
-            for i, text in enumerate(turns, start=1):
+            for i, entry in enumerate(turns, start=1):
+                text = entry["text"] if isinstance(entry, dict) else entry
                 sent = f"{text} (ref {ref})" if i == 1 else text
                 say(f"    turn {i}/{len(turns)}: {text[:70]!r}")
                 said.append(turn(engine, sid, sent, args.turn_timeout, args.quiet)["reply"])
+                pause = entry.get("pause_after_s") if isinstance(entry, dict) else None
+                if pause:
+                    say(f"    pause {pause}s")
+                    if not args.dry_run:
+                        time.sleep(float(pause))
                 if i in points:
                     say(f"    handoff after turn {i}")
                     handoff(engine, sid, args.harness, agents, args.handoff_cmd,
                             args.handoff_settle)
+            if script.get("pause_before_probes_s"):
+                say(f"    pause {script['pause_before_probes_s']}s before the probes")
+                if not args.dry_run:
+                    time.sleep(float(script["pause_before_probes_s"]))
+            # Any file the session saved: its id prefix, name, name without extension or title.
             files = [] if engine.dry else engine.artifacts(sid)
-            newest = files[0] if files else {}
-            file_id = str(newest.get("artifact_id") or newest.get("id") or "")
-            name = os.path.basename(str(newest.get("name") or ""))
+            handles: list[str] = []
+            for f in files:
+                file_id = str(f.get("artifact_id") or f.get("id") or "")
+                name = os.path.basename(str(f.get("name") or ""))
+                handles += [file_id[:8], name, name.split(".")[0], str(f.get("title") or "")]
+            versions = sorted({str(f["version"]) for f in files if f.get("version") is not None})
             slots = {
-                "file": "|".join(re.escape(x) for x in (file_id[:8], name) if x) or None,
-                "version": str(newest["version"]) if newest.get("version") is not None else None,
+                "file": "|".join(sorted({re.escape(h) for h in handles if len(h) >= 3})) or None,
+                "version": "|".join(versions) or None,
                 "option2": re.escape(o) if (o := _option2(said[2] if len(said) > 2 else ""))
                 else None,
             }
@@ -795,7 +818,8 @@ def cmd_run_script(args: argparse.Namespace) -> int:
                         "You grade whether an assistant remembers a conversation. Score its "
                         "answer 0-5 (5 = fully right and specific, 0 = wrong or invented). "
                         "Reply with JSON only: {\"score\": <0-5>, \"why\": \"<one line>\"}.\n\n"
-                        "The person's turns:\n" + "\n".join(f"- {t}" for t in turns)
+                        "The person's turns:\n"
+                        + "\n".join(f"- {t['text'] if isinstance(t, dict) else t}" for t in turns)
                         + f"\n\nThe right answer: {probe.get('truth', '')}\n\nQuestion: "
                         f"{probe['question']}\n\nAnswer to grade:\n{asked['reply'][:3000]}\n"
                     ),
