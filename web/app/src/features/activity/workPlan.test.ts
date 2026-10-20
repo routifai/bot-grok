@@ -143,7 +143,7 @@ it("takes the reply's Activity and the files its turn saved", () => {
     kind: "reply_card",
     card: "file",
     id: "artifact:a1",
-    data: { name: "rbc.deck.html", artifactId: "a1" },
+    data: { name: "acme.deck.html", artifactId: "a1" },
     fallback: "Saved",
   };
   const work = transcriptWork([

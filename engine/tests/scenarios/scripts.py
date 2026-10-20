@@ -55,8 +55,8 @@ SCENARIOS: tuple[Scenario, ...] = (
         "deck-no-look",
         (
             (
-                ("request", "Create some presentation about RBC vs TD"),
-                ("reply", "Building the RBC vs TD comparison deck now."),
+                ("request", "Create some presentation about Acme vs Globex"),
+                ("reply", "Building the Acme vs Globex comparison deck now."),
                 ("tool_call", "context_brief"),
                 ("helper_started", ""),
             ),

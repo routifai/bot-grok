@@ -214,7 +214,7 @@ describe("the panel", () => {
   it("shows the outputs (the running Round's, else the Conversation's) and the tools used", async () => {
     rpcMock.list.mockResolvedValue([
       file("a", "notes.md", "ai", "2026-10-01T00:00:00Z"),
-      file("b", "rbc.deck.html", "ai", "2026-10-02T00:00:00Z"),
+      file("b", "acme.deck.html", "ai", "2026-10-02T00:00:00Z"),
     ]);
     fake.set([activity({ families: ["web", "files"] })]);
     const { container, render } = await mount(
@@ -224,7 +224,7 @@ describe("the panel", () => {
     expect(container.querySelector("[data-testid=session-progress]")).toBeNull();
     expect(
       [...container.querySelectorAll("[data-testid=session-output]")].map((row) => row.textContent),
-    ).toEqual(["rbc.deck.htmlrbc.deck.html", "notes.mdnotes.md"]);
+    ).toEqual(["acme.deck.htmlacme.deck.html", "notes.mdnotes.md"]);
     expect(
       [...container.querySelectorAll("[data-testid=session-used-family]")].map(
         (chip) => chip.textContent,
@@ -235,7 +235,7 @@ describe("the panel", () => {
       roundId: "m1",
       status: "running",
       files: [
-        { artifactId: "b", name: "rbc.deck.html", version: 1, helperId: null },
+        { artifactId: "b", name: "acme.deck.html", version: 1, helperId: null },
         { artifactId: "unlisted", name: "draft.md", version: 1, helperId: null },
       ],
     });
@@ -244,7 +244,7 @@ describe("the panel", () => {
     expect(rpcMock.round).toHaveBeenCalledWith({ botId: "bot-1", roundId: "m1" });
     expect(
       [...container.querySelectorAll("[data-testid=session-output]")].map((row) => row.textContent),
-    ).toEqual(["rbc.deck.htmlrbc.deck.html"]);
+    ).toEqual(["acme.deck.htmlacme.deck.html"]);
   });
 
   it("draws nothing while closed, and closes from its button", async () => {

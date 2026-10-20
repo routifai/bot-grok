@@ -111,13 +111,13 @@ async def test_an_explicit_template_needs_no_server_read() -> None:
 
 
 async def test_no_template_is_chosen_and_says_why() -> None:
-    call = ctx(view("Create some presentation about RBC vs TD bank results"))
+    call = ctx(view("Create some presentation about Acme vs Globex bank results"))
     for look_from in (None, "named", "ask"):
-        look = await settle_look(call, look_from, None, "RBC vs TD")
+        look = await settle_look(call, look_from, None, "Acme vs Globex")
         assert look.chosen and look.theme in ("corporate-clean", "blue-professional")
         assert look.why == "no template was given"
     # a template the model names is built, whatever the message or look_from says
-    look = await settle_look(call, "ask", "bauhaus", "RBC vs TD")
+    look = await settle_look(call, "ask", "bauhaus", "Acme vs Globex")
     assert (look.theme, look.look_from, look.chosen) == ("bauhaus", MODEL, False)
 
 
@@ -126,16 +126,16 @@ async def test_no_template_builds_the_theme_picked_on_the_rounds_card(workspace:
     its label. It is the answer the Round's message carried, so a later turn of the Round, or a
     Helper it started, reads it too."""
     picked = ctx(view("Nord", answer="Nord, the cool one", option_id="nord"))
-    out = await _new(None, None, picked, title="RBC vs TD")
+    out = await _new(None, None, picked, title="Acme vs Globex")
     assert out["template"] == "nord" and out["deck"]["look_from"] == PICKED
     assert "look_note" not in out
     (workspace / "d.deck.html").unlink()
     # the Round's pick holds while the newest message is another (a Helper's brief, a notice)
     later = ctx(view("[System: worker/Deck saved a draft]", answer="Bauhaus", option_id="bauhaus"))
-    look = await settle_look(later, None, None, "RBC vs TD")
+    look = await settle_look(later, None, None, "Acme vs Globex")
     assert (look.theme, look.look_from) == ("bauhaus", PICKED)
     # a label naming a theme is not a pick
-    look = await settle_look(ctx(view("Nord", answer="Nord")), None, None, "RBC vs TD")
+    look = await settle_look(ctx(view("Nord", answer="Nord")), None, None, "Acme vs Globex")
     assert look.chosen
 
 
@@ -155,9 +155,9 @@ async def test_background_with_no_topic_and_no_template_is_the_one_refusal_left(
 
 
 async def test_no_template_builds_in_a_chosen_look(workspace: Path) -> None:
-    """The ADR 0025 failure: "Create some presentation about RBC vs TD" got a card and nothing."""
-    call = ctx(view("Create some presentation about RBC vs TD bank results"))
-    theme = _chosen(await _new(None, None, call, title="RBC vs TD"), workspace)
+    """The ADR 0025 failure: "Create some presentation about Acme vs Globex" got a card and nothing."""
+    call = ctx(view("Create some presentation about Acme vs Globex bank results"))
+    theme = _chosen(await _new(None, None, call, title="Acme vs Globex"), workspace)
     assert theme in ("corporate-clean", "blue-professional")
     # the menu call (no slides) names the look to use and writes nothing
     menu = json.loads(
@@ -173,9 +173,9 @@ async def test_no_template_builds_in_a_chosen_look(workspace: Path) -> None:
 
 
 async def test_the_result_carries_what_the_task_records(workspace: Path) -> None:
-    out = await _new(None, None, ctx(view("a deck about RBC vs TD")), title="RBC vs TD")
+    out = await _new(None, None, ctx(view("a deck about Acme vs Globex")), title="Acme vs Globex")
     deck = out["deck"]
-    assert deck["title"] == "RBC vs TD" and deck["file"] == "d.deck.html"
+    assert deck["title"] == "Acme vs Globex" and deck["file"] == "d.deck.html"
     assert (
         deck["look_id"] == out["template"]
         and deck["look"] == kit.templates()[deck["look_id"]].name

@@ -214,12 +214,12 @@ describe("TOOL_PRESENTATION", () => {
     const entry = TOOL_PRESENTATION.artifact_outline as ToolPresentation;
     expect(entry.title({ artifact_id: "a1" })).toBe("");
     expect(
-      presentStep({ tool: "artifact_outline", title: "Reviewed “rbc.deck.html”", detail: null })
+      presentStep({ tool: "artifact_outline", title: "Reviewed “acme.deck.html”", detail: null })
         .title,
-    ).toBe("Reviewed “rbc.deck.html”");
+    ).toBe("Reviewed “acme.deck.html”");
     const output = JSON.stringify({
       artifact_id: "a1",
-      name: "rbc.deck.html",
+      name: "acme.deck.html",
       version: 3,
       outline: "\n4 slides: Cover, At a glance, Segments, Q3\n1. Cover",
     });

@@ -627,7 +627,7 @@ describe("the engine's display (ADR 0027)", () => {
 
   it("shows the files the reply's own turn saved", async () => {
     rpcMock.list.mockResolvedValue([
-      fileRow("a1", "rbc.deck.html", "conv", "ai"),
+      fileRow("a1", "acme.deck.html", "conv", "ai"),
       fileRow("a2", "older.md", "conv", "ai"),
     ]);
     const started = Date.now() - 60_000;
@@ -642,7 +642,7 @@ describe("the engine's display (ADR 0027)", () => {
     await act(async () => undefined);
     expect(
       [...container.querySelectorAll("[data-testid=file-thumb]")].map((thumb) => thumb.textContent),
-    ).toEqual(["rbc.deck.html v1"]);
+    ).toEqual(["acme.deck.html v1"]);
   });
 
   const running = (paused?: boolean) =>

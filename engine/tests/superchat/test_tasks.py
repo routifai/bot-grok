@@ -466,13 +466,13 @@ async def test_the_runner_reads_a_working_round_until_its_helper_ends(env: _Env)
     engine = httpx.AsyncClient(
         transport=httpx.ASGITransport(app=env.client.app), base_url="http://srv"
     )
-    rid = _open_round(env, "a new RBC vs TD deck")
-    helper = _start_helper(env, rid, "RBC vs TD deck")
+    rid = _open_round(env, "a new Acme vs Globex deck")
+    helper = _start_helper(env, rid, "Acme vs Globex deck")
     _turn_ended(env, rid)
     later = _open_round(env, "what about the colours?")
     blocks = await runtime.message_prefix(engine, env.chat, ["what about the colours?"])
     assert blocks == [
-        'Open task: "a new RBC vs TD deck" · helper "RBC vs TD deck" · next: wait for the helper'
+        'Open task: "a new Acme vs Globex deck" · helper "Acme vs Globex deck" · next: wait for the helper'
     ]
     assert runtime.current_round(env.chat) == later
     runtime.turn_ended(env.chat)
@@ -481,6 +481,6 @@ async def test_the_runner_reads_a_working_round_until_its_helper_ends(env: _Env)
     )
     env.rounds.append([RoundEvent(rid, env.chat, "turn.started", "assistant", 5, {})])
     _turn_ended(env, rid)
-    notice = "[System: worker/RBC vs TD deck finished]"
+    notice = "[System: worker/Acme vs Globex deck finished]"
     _say(env.conversations, env.chat, notice, is_system_notice=True)
     assert await runtime.message_prefix(engine, env.chat, [notice]) == []

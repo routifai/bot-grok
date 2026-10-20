@@ -42,7 +42,7 @@ In the order the model reads it:
      [artifacts.md](artifacts.md#write-back));
    - the Rounds still working, one line each, read from the Round record: a Round counts while
      a Helper it started still runs, so a finished or failed one never lingers (`Open task: "a
-     deck on RBC vs TD" · helper "RBC vs TD deck" · next: wait for the helper`). The Round the
+     deck on Acme vs Globex" · helper "Acme vs Globex deck" · next: wait for the helper`). The Round the
      message itself joined (a status question asked while its job runs) is listed too while its
      Helper runs, with what the work is doing now and its finished steps (`· now: slides.html ·
      steps done: 4`, `tasks/service.py`);

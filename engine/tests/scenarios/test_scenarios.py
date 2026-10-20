@@ -118,8 +118,8 @@ def test_checked(span: list[Event], ok: bool) -> None:
 
 
 # The conversation in ADR 0025's opening: four turns, nothing built.
-_RBC_VS_TD: list[list[Event]] = [
-    [("request", "Create some presentation about RBC vs TD"), ("card", "look")],
+_ACME_VS_GLOBEX: list[list[Event]] = [
+    [("request", "Create some presentation about Acme vs Globex"), ("card", "look")],
     [
         ("answer", "Pitch Deck"),
         ("reply", "I haven't built it yet, so I'll stop here for now."),
@@ -138,10 +138,10 @@ _RBC_VS_TD: list[list[Event]] = [
 
 def test_the_adr_transcript_stalls_gives_up_and_asks_again() -> None:
     # the last answer ends with no file, card or Helper: the engine logs a stall
-    assert [ends_well(turn) for turn in _RBC_VS_TD] == [True, True, True, False]
-    replies = [[text for kind, text in turn if kind == "reply"] for turn in _RBC_VS_TD]
+    assert [ends_well(turn) for turn in _ACME_VS_GLOBEX] == [True, True, True, False]
+    replies = [[text for kind, text in turn if kind == "reply"] for turn in _ACME_VS_GLOBEX]
     assert [any(gives_up(text) for text in turn) for turn in replies] == [False, True, False, True]
-    assert asks(_RBC_VS_TD) == ["look", "data", "look"]
+    assert asks(_ACME_VS_GLOBEX) == ["look", "data", "look"]
 
 
 def test_the_scenarios_judge_a_turn_with_the_engines_rule() -> None:
@@ -150,24 +150,24 @@ def test_the_scenarios_judge_a_turn_with_the_engines_rule() -> None:
 
 
 # The turn in ADR 0026's opening: the first output was the deck_new call, no word for 182 s.
-_RBC_VS_TD_SILENT: list[Event] = [
-    ("request", "create some presentation about rbc vs td"),
+_ACME_VS_GLOBEX_SILENT: list[Event] = [
+    ("request", "create some presentation about acme vs globex"),
     ("tool_call", "deck_new"),
     ("tool_call", "deck_check"),
     ("save", ""),
-    ("reply", "Here is the RBC vs TD comparison."),
+    ("reply", "Here is the Acme vs Globex comparison."),
 ]
 
 
 def test_the_adr_0026_transcript_does_not_speak_first() -> None:
-    assert ends_well(_RBC_VS_TD_SILENT)
-    assert not speaks_first(_RBC_VS_TD_SILENT)
+    assert ends_well(_ACME_VS_GLOBEX_SILENT)
+    assert not speaks_first(_ACME_VS_GLOBEX_SILENT)
 
 
 @pytest.mark.parametrize(
     ("text", "said"),
     [
-        ("Here is the RBC vs TD comparison.", []),
+        ("Here is the Acme vs Globex comparison.", []),
         ("I started a Helper to build the deck.", ["helper"]),
         ("Two sub-agents and a worker are on it.", ["sub-agents", "worker"]),
         ("The harness stopped context_brief.", ["harness", "context_brief"]),

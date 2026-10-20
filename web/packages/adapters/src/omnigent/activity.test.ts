@@ -68,7 +68,7 @@ describe("mapActivity", () => {
       kind: "turn",
       source: "turn",
       chat_id: "conv_abc",
-      title: "Build the RBC deck",
+      title: "Build the Acme deck",
       outcome: null,
       summary: null,
       status: "done",

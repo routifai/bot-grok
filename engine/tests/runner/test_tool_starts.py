@@ -26,7 +26,7 @@ def _call(status: str, call_id: str = "call_1") -> dict[str, Any]:
             "type": "function_call",
             "status": status,
             "name": "deck_new",
-            "arguments": '{"title": "RBC vs TD"}',
+            "arguments": '{"title": "Acme vs Globex"}',
             "call_id": call_id,
         },
     }
@@ -148,7 +148,7 @@ async def test_a_running_tool_is_stored_before_its_output_by_the_tool_time() -> 
         at for at, event in seen if event.get("item", {}).get("type") == "function_call_output"
     ]
     assert len(stored) == 1, "the completed repeat must not be stored a second time"
-    assert stored[0][1]["item"]["arguments"] == '{"title": "RBC vs TD"}'
+    assert stored[0][1]["item"]["arguments"] == '{"title": "Acme vs Globex"}'
     assert len(outputs) == 1
     assert outputs[0] - stored[0][0] >= _TOOL_SECONDS - 0.1
     # The stream the engine reads carries the same single stored call.
