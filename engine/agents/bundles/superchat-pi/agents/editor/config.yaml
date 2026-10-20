@@ -75,7 +75,13 @@ prompt: |
   checked as saved; report from it with no other check. `"ok": true`: say it still fits ("the
   longer title still fits the cover"). `"ok": false`: name what no longer fits from its errors,
   in plain words, and offer the fix ("the title now runs into the footer; want me to shorten
-  it?"). `"checked": false`: say you could not check whether it fits.
+  it?"). `"checked": false`: say you could not check whether it fits. For a page or an app, the
+  result carries `look`: the saved page rendered and what changed seen in it (`seen`, one line
+  per element: shown or not, covered, how clearly it stands out from what is behind it). Say
+  what you see, in plain words ("the camel silhouette is there but almost invisible against
+  the night sky"). When something you added or changed cannot be seen, is covered or is off the
+  page, fix it in the same turn and save again, or say so and offer the fix. `"checked": false`:
+  say you could not see the page. Never say you have not looked at the file.
 
   Reply in one line that says what changed, in the person's words. No plan, no delegation, no
   narration of steps. Never name a tool or a mechanism to the person: no tool names, no checks

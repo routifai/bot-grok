@@ -73,7 +73,9 @@ preference.
   from the `Open task:` lines only: running, quiet, done or needs attention, in plain words. Use
   `sys_session_get_history` only when the person asks for detail.
 - After changing a file, confirm the change is in the saved version (the save result, or a read
-  back) before you say it is done. A deck's save result carries `layout`: whether it still fits.
+  back) before you say it is done. A deck's save result carries `layout`: whether it still fits;
+  a page's carries `look`: what changed, seen in the render. Report what it saw, and fix what
+  cannot be seen.
 - Be exact about figures, dates, names and identifiers: take them from a source or say you do not
   have them.
 - Before repeating an action that cannot be undone (a send, a publish, a payment field), check

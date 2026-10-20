@@ -20,6 +20,7 @@ from omnigent.superchat.artifact_kinds import (
     is_deck_name,
     kind_for_name,
 )
+from omnigent.superchat.artifacts.look import is_page, saved_look
 from omnigent.superchat.decks.outline import deck_outline
 from omnigent.superchat.feature import HandlerCtx
 from omnigent.superchat.sheets.table import TABLE_KINDS, read_table
@@ -153,14 +154,31 @@ async def _stale(client: Any, chat_id: str, file: Path, resp: Any) -> str:
     )
 
 
-async def _layout(name: str, data: bytes, ctx: HandlerCtx) -> dict[str, Any]:
-    """A saved deck's ``layout`` (the ``deck_check`` render of the saved bytes); ``{}`` for any
-    other file. A save always says whether the deck still fits, so no separate check is needed."""
-    if not is_deck_name(name):
-        return {}
-    from omnigent.superchat.decks.authoring import saved_layout
+async def _checked(
+    client: Any, saved: dict[str, Any], data: bytes, ctx: HandlerCtx, source: Path | None
+) -> dict[str, Any]:
+    """What a save says about how the file renders: a deck's ``layout`` (the ``deck_check``
+    render of the saved bytes), a page's ``look`` (what changed since the version before, seen
+    in the render), ``{}`` for any other file. No separate check is needed after a save."""
+    name = str(saved.get("name") or "")
+    if is_deck_name(name):
+        from omnigent.superchat.decks.authoring import saved_layout
 
-    return {"layout": await saved_layout(data, ctx)}
+        return {"layout": await saved_layout(data, ctx)}
+    if not is_page(name):
+        return {}
+    before: bytes | None = None
+    version = saved.get("version")
+    if isinstance(version, int) and version > 1:
+        try:
+            resp = await client.get(
+                f"/v1/artifacts/{saved['id']}/content?version={version - 1}", timeout=60.0
+            )
+            resp.raise_for_status()
+            before = resp.content
+        except Exception:  # noqa: BLE001 - without it the whole page is looked at
+            before = None
+    return {"look": await saved_look(data, before, ctx, source)}
 
 
 async def _save(
@@ -212,16 +230,16 @@ async def _save(
             }
         )
     # source_path lets the file search follow a saved file (knowledge's on_result listener).
-    layout = await _layout(file.name, data, ctx)
-    return json.dumps({"type": "artifact", **saved, "source_path": str(file), **layout})
+    checked = await _checked(client, saved, data, ctx, file)
+    return json.dumps({"type": "artifact", **saved, "source_path": str(file), **checked})
 
 
 async def _patch(client: Any, studio_id: str, args: dict[str, Any], ctx: HandlerCtx) -> str:
     """``artifact_patch`` from a file's studio: patch the newest version, mirror it on disk.
 
     The saved bytes are written to the file's workspace path, so a later read or
-    ``artifact_save`` of the file starts from them, and a deck's are checked (``layout``). A
-    stale base says which version is newest.
+    ``artifact_save`` of the file starts from them, and a deck's or a page's are checked
+    (``layout``, ``look``). A stale base says which version is newest.
     """
     from omnigent.superchat.artifacts.writeback import write_bytes_idempotent
 
@@ -281,22 +299,26 @@ async def _patch(client: Any, studio_id: str, args: dict[str, Any], ctx: Handler
         else None
     )
     data: bytes | None = None
-    if isinstance(file, Path) or is_deck_name(name):
+    in_place: Path | None = None  # the workspace file, once it holds the saved bytes
+    if isinstance(file, Path) or is_deck_name(name) or is_page(name):
         try:
             content = await client.get(f"/v1/artifacts/{saved['id']}/content", timeout=60.0)
             content.raise_for_status()
             data = content.content
             if isinstance(file, Path):
                 await asyncio.to_thread(write_bytes_idempotent, file, data)
+                in_place = file
         except Exception:  # noqa: BLE001 - the version is saved; the next read refreshes
             pass
     if data is not None:
-        layout = await _layout(name, data, ctx)
+        checked = await _checked(client, saved, data, ctx, in_place)
     elif is_deck_name(name):
-        layout = {"layout": {"checked": False, "why": "The saved deck could not be read back"}}
+        checked = {"layout": {"checked": False, "why": "The saved deck could not be read back"}}
+    elif is_page(name):
+        checked = {"look": {"checked": False, "why": "The saved page could not be read back"}}
     else:
-        layout = {}
-    return json.dumps({"type": "artifact", **saved, **layout})
+        checked = {}
+    return json.dumps({"type": "artifact", **saved, **checked})
 
 
 #: Lines of a text file the outline shows, and the characters they may take.

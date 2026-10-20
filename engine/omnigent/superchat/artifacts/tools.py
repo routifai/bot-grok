@@ -70,7 +70,9 @@ class ArtifactSaveTool(ArtifactTool):
         "each section and each element the person may want to change by hand (headings, "
         "buttons, labels, key text) a unique data-superchat-id (lower-case words joined by "
         'hyphens, e.g. data-superchat-id="add-button") so they can edit it in place. A '
-        "deck's result carries layout: the saved deck checked as deck_check would."
+        "deck's result carries layout: the saved deck checked as deck_check would. A page's "
+        "carries look: the saved page rendered, and what changed since the last version "
+        "seen in it (shown, covered, how clearly it stands out from its background)."
     )
     _PROPERTIES = {
         "path": {
@@ -147,7 +149,8 @@ class ArtifactPatchTool(ArtifactTool):
         "{id}; duplicate-element {id}; set-theme {theme} (a deck only); set-full-source "
         "{source, summary} (a whole Markdown or text document). Refused as stale when "
         "base_version is no longer the newest: read the file again and redo the change. A "
-        "deck's result carries layout: the saved deck checked as deck_check would."
+        "deck's result carries layout: the saved deck checked as deck_check would; a page's "
+        "carries look: what changed, seen in the rendered page."
     )
     _PROPERTIES = {
         "artifact_id": {
