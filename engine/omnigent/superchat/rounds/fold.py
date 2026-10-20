@@ -351,13 +351,17 @@ def fold(events: Sequence[Mapping[str, Any]], round_id: str | None = None) -> di
 def summary(view: Mapping[str, Any]) -> dict[str, Any]:
     """The few fields of a Round *view* a list row or a live signal carries.
 
-    :returns: ``status``, ``started_at``, ``live`` (the live tool's digest, else its name, else
-        ``None``), and how many ``helpers``, ``files`` and finished ``steps`` it has.
+    :returns: ``status``, ``started_at``, ``settled_at``, ``delivered_at``, ``live`` (the live
+        tool's digest, else its name, else ``None``), and how many ``helpers``, ``files`` and
+        finished ``steps`` it has. The times say on their own whether the Round's strip is live,
+        so a client can settle it from the signal before it reads the view again.
     """
     now = view.get("now")
     return {
         "status": view["status"],
         "started_at": view["started_at"],
+        "settled_at": view["settled_at"],
+        "delivered_at": view["delivered_at"],
         "live": (now.get("digest") or now.get("name")) if now else None,
         "helpers": len(view["helpers"]),
         "files": len(view["files"]),

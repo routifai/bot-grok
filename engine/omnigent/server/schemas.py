@@ -5072,6 +5072,8 @@ class RoundSummary(BaseModel):
     :param round_id: The Round.
     :param status: ``idle``, ``running``, ``done``, ``failed`` or ``stopped``.
     :param started_at: Epoch seconds, or ``None``.
+    :param settled_at: Epoch seconds it settled, or ``None`` while it runs.
+    :param delivered_at: Epoch seconds it delivered its answer, or ``None``.
     :param live: The running tool's digest, else its name, else ``None``.
     :param helpers: How many Helpers it started.
     :param files: How many files it saved.
@@ -5081,6 +5083,8 @@ class RoundSummary(BaseModel):
     round_id: str
     status: str
     started_at: float | None = None
+    settled_at: float | None = None
+    delivered_at: float | None = None
     live: str | None = None
     helpers: int
     files: int
