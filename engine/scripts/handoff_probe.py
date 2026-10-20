@@ -513,11 +513,14 @@ def run_judge(cmd: str, prompt: str) -> int | None:
 
 
 def cmd_run(args: argparse.Namespace) -> int:
+    if args.script:
+        return cmd_run_script(args)
     skip = re.compile(args.skip, re.I)
     cases = source_cases(args.db_container, args.cases, args.source, skip)
     if not cases:
         raise SystemExit("no source Conversation with 4+ person messages")
-    arms = args.arms.split(",")
+    arms = (args.arms or ",".join(
+        [f"warm@{c}" for c in CUTS] + [f"single@{c}" for c in CUTS] + ["chain"])).split(",")
     for arm in arms:
         if arm != "chain" and not re.fullmatch(r"(warm|single)@\d{1,2}", arm):
             raise SystemExit(f"bad arm {arm!r}: warm@C, single@C or chain")
@@ -623,6 +626,214 @@ def cmd_run(args: argparse.Namespace) -> int:
     mark_spot_checks(out)
     say(f"\nresults: {out}/results.jsonl")
     return report(out, args.trace_dir, args.engine_log)
+
+
+# ── scripted cases (``run --script``) ─────────────────────────────────────────
+
+
+def load_script(path: str) -> dict[str, Any]:
+    """A scripted case: the person turns, the chain's handoff points and the probes.
+
+    ``{"id", "title", "turns": [text], "chain": [turn numbers], "probes": [{"id", "question",
+    "task" (or null), "truth", "must": [regex], "must_not": [check], "task_must": [regex],
+    "task_must_not": [check]}]}``. A check is ``{"re": regex, "unless_before": regex}``: a match
+    counts only when *unless_before* is not found in the 40 characters before it (so "was
+    CAD 18,500" or "moved from March 9" is no stale value). Regexes are case-insensitive and may
+    name ``{file}`` (the newest file's id prefix or name), ``{version}`` (its version) and
+    ``{option2}`` (the second option named in turn 3's reply), filled in at probe time.
+    """
+    script = json.loads(Path(path).read_text(encoding="utf-8"))
+    for key in ("id", "turns", "probes"):
+        if key not in script:
+            raise SystemExit(f"script {path}: missing {key!r}")
+    return script
+
+
+#: How long a stretch before a match is read for the exemption.
+_UNLESS_WINDOW = 40
+
+
+def _option2(reply: str) -> str | None:
+    """The second option a list reply names: ``2. **Name**``, ``Option 2: Name``, ``### 2 Name``."""
+    hit = re.search(
+        r"^\s*(?:#+\s*)?(?:[-*]\s*)?(?:\*\*)?(?:option\s*)?2(?:\*\*)?[.):]?\s*(?:[—–:-]\s*)?"
+        r"(?:\*\*)?([A-Z][^\n*—–:(|]{2,60}?)\s*(?:\*\*|[—–:(|]|\s-\s|$)",
+        reply,
+        re.I | re.M,
+    )
+    return hit.group(1).strip() if hit else None
+
+
+def _fill(pattern: str, slots: dict[str, str | None]) -> str | None:
+    """*pattern* with its slots filled, or ``None`` when a slot it names is unknown."""
+    for name, value in slots.items():
+        if "{" + name + "}" in pattern:
+            if not value:
+                return None
+            pattern = pattern.replace("{" + name + "}", value)
+    return pattern
+
+
+def check_text(
+    text: str, must: list[str], must_not: list[dict], slots: dict[str, str | None]
+) -> dict[str, Any]:
+    """Each ``must`` regex (all must match) and ``must_not`` check (any match fails)."""
+    musts = []
+    for raw in must:
+        pattern = _fill(raw, slots)
+        musts.append({"re": raw, "ok": None if pattern is None
+                      else bool(re.search(pattern, text, re.I))})
+    hits = []
+    for check in must_not:
+        pattern = _fill(check["re"], slots)
+        if pattern is None:
+            hits.append({"re": check["re"], "hit": None, "at": None})
+            continue
+        unless = check.get("unless_before")
+        found = None
+        for m in re.finditer(pattern, text, re.I):
+            before = text[max(0, m.start() - _UNLESS_WINDOW) : m.start()]
+            if unless and re.search(unless, before, re.I):
+                continue
+            found = text[max(0, m.start() - _UNLESS_WINDOW) : m.end() + 20]
+            break
+        hits.append({"re": check["re"], "hit": found is not None, "at": found})
+    ok = all(m["ok"] is not False for m in musts) and not any(h["hit"] for h in hits)
+    return {"pass": ok, "must": musts, "must_not": hits}
+
+
+def script_arm_plan(arm: str, script: dict) -> list[int]:
+    """Handoff points for a scripted arm: ``warm`` none, ``single@N`` after turn N, ``chain``
+    the script's ``chain`` list. The probes always follow the last turn."""
+    if arm in ("warm", "warm@100"):
+        return []
+    if arm == "chain":
+        return list(script.get("chain") or [])
+    hit = re.fullmatch(r"single@(\d+)", arm)
+    if hit and 1 <= int(hit.group(1)) <= len(script["turns"]):
+        return [int(hit.group(1))]
+    raise SystemExit(f"bad scripted arm {arm!r}: warm, single@<turn> or chain")
+
+
+def cmd_run_script(args: argparse.Namespace) -> int:
+    script = load_script(args.script)
+    arms = args.arms.split(",") if args.arms else ["warm", "chain"]
+    plans = {arm: script_arm_plan(arm, script) for arm in arms}
+    run_id = datetime.datetime.now(datetime.UTC).strftime("%Y%m%d-%H%M%S")
+    out = Path(args.out) / run_id
+    engine = Engine(args.engine, args.dry_run)
+    extra_labels = dict(item.split("=", 1) for item in args.label)
+    turns = script["turns"]
+    say(f"handoff probe {run_id}: script {script['id']} ({len(turns)} turns, "
+        f"{len(script['probes'])} probes), harness={args.harness} arms={plans} "
+        f"repeats={args.repeats} labels={extra_labels or '-'}")
+    if not args.dry_run:
+        out.mkdir(parents=True, exist_ok=True)
+    agents = engine.agent_ids()
+    state: dict[str, Any] = {"run": run_id, "harness": args.harness, "sessions": [], "hosts": []}
+    for arm, points in plans.items():
+        for rep_n in range(1, (1 if args.dry_run else args.repeats) + 1):
+            title = f"{PROBE_PREFIX}{run_id}:{script['id']}:{arm}:r{rep_n}"
+            host_owner = f"{PROBE_HOST_PREFIX}{run_id}-{len(state['sessions']) + 1}"
+            sid = engine.create(title, agents[args.harness], {}, host_owner, extra_labels)
+            state["sessions"].append(sid)
+            state["hosts"].append(host_owner)
+            if not args.dry_run:
+                (out / "state.json").write_text(json.dumps(state, indent=1))
+            say(f"  [{title}] session {sid}")
+            ref = hashlib.sha256(title.encode()).hexdigest()[:8]
+            said: list[str] = []
+            for i, text in enumerate(turns, start=1):
+                sent = f"{text} (ref {ref})" if i == 1 else text
+                say(f"    turn {i}/{len(turns)}: {text[:70]!r}")
+                said.append(turn(engine, sid, sent, args.turn_timeout, args.quiet)["reply"])
+                if i in points:
+                    say(f"    handoff after turn {i}")
+                    handoff(engine, sid, args.harness, agents, args.handoff_cmd,
+                            args.handoff_settle)
+            files = [] if engine.dry else engine.artifacts(sid)
+            newest = files[0] if files else {}
+            file_id = str(newest.get("artifact_id") or newest.get("id") or "")
+            name = os.path.basename(str(newest.get("name") or ""))
+            slots = {
+                "file": "|".join(re.escape(x) for x in (file_id[:8], name) if x) or None,
+                "version": str(newest["version"]) if newest.get("version") is not None else None,
+                "option2": re.escape(o) if (o := _option2(said[2] if len(said) > 2 else ""))
+                else None,
+            }
+            rows = []
+            for probe in script["probes"]:
+                asked = turn(engine, sid, probe["question"], args.turn_timeout, args.quiet)
+                done = (turn(engine, sid, probe["task"], args.turn_timeout, args.quiet)
+                        if probe.get("task") else {"reply": "", "args": [], "tools": []})
+                # A task may write its answer into a file: its tool arguments count as its text.
+                task_text = done["reply"] + "\n" + "\n".join(done.get("args") or [])
+                checks = check_text(asked["reply"], probe.get("must", []),
+                                    probe.get("must_not", []), slots)
+                task_checks = (check_text(task_text, probe.get("task_must", []),
+                                          probe.get("task_must_not", []), slots)
+                               if probe.get("task") else None)
+                passed = checks["pass"] and (task_checks is None or task_checks["pass"])
+                replies = asked["reply"] + "\n" + done["reply"]
+                row = {
+                    "run": run_id, "case": script["id"], "arm": arm, "repeat": rep_n,
+                    "cut": 100, "harness": args.harness, "session": sid, "ref": ref,
+                    "kind": probe["id"], "question": probe["question"],
+                    "task": probe.get("task"), "reply": asked["reply"],
+                    "task_reply": done["reply"], "truth": probe.get("truth", ""),
+                    "slots": slots, "checks": checks, "task_checks": task_checks,
+                    "exact": int(passed),
+                    "task_score": score_task(probe["id"], done, {}, 0, 0),
+                    "hard_fail": bool(HARD_FAIL.search(replies)), "leak": [],
+                    "first_word_s": asked["first_word_s"], "item_tools": asked["tools"],
+                    "expected": {}, "judge": None,
+                    "judge_prompt": (
+                        "You grade whether an assistant remembers a conversation. Score its "
+                        "answer 0-5 (5 = fully right and specific, 0 = wrong or invented). "
+                        "Reply with JSON only: {\"score\": <0-5>, \"why\": \"<one line>\"}.\n\n"
+                        "The person's turns:\n" + "\n".join(f"- {t}" for t in turns)
+                        + f"\n\nThe right answer: {probe.get('truth', '')}\n\nQuestion: "
+                        f"{probe['question']}\n\nAnswer to grade:\n{asked['reply'][:3000]}\n"
+                    ),
+                }
+                if args.judge_cmd and not args.dry_run:
+                    row["judge"] = run_judge(args.judge_cmd, row["judge_prompt"])
+                say(f"    {probe['id']}: {'PASS' if passed else 'FAIL'}")
+                rows.append(row)
+            if args.dry_run:
+                continue
+            stored = stored_boilerplate(engine, sid)
+            with (out / "results.jsonl").open("a", encoding="utf-8") as fh:
+                for row in rows:
+                    fh.write(json.dumps({**row, "stored": stored}) + "\n")
+    if args.dry_run:
+        say("\ndry run: nothing was sent")
+        return 0
+    say(f"\nresults: {out}/results.jsonl")
+    script_report(out)
+    return report(out, args.trace_dir, args.engine_log)
+
+
+def script_report(out: Path) -> None:
+    """Per scripted probe and arm: pass or fail, and which regex decided it."""
+    rows = [json.loads(ln) for ln in (out / "results.jsonl").read_text().splitlines()
+            if ln.strip()]
+    rows = [r for r in rows if r.get("checks")]
+    if not rows:
+        return
+    say("\nscripted probes (must: all match; must_not: any match fails):")
+    for row in rows:
+        why = []
+        for label, checks in (("reply", row["checks"]), ("task", row.get("task_checks"))):
+            if not checks:
+                continue
+            why += [f"{label} missing /{m['re']}/" for m in checks["must"] if m["ok"] is False]
+            why += [f"{label} unchecked /{m['re']}/" for m in checks["must"] if m["ok"] is None]
+            why += [f"{label} stale /{h['re']}/ at {h['at']!r}" for h in checks["must_not"]
+                    if h["hit"]]
+        verdict = "PASS" if row["exact"] else "FAIL"
+        say(f"  {row['arm']} r{row['repeat']} {row['kind']}: {verdict}"
+            + (f"  ({'; '.join(why)})" if why else ""))
 
 
 def mark_spot_checks(out: Path) -> None:
@@ -907,6 +1118,7 @@ def report(out: Path, trace_dir: str | None, engine_log: str | None) -> int:
 
 
 def cmd_report(args: argparse.Namespace) -> int:
+    script_report(Path(args.out_dir))
     return report(Path(args.out_dir), args.trace_dir, args.engine_log)
 
 
@@ -1172,6 +1384,11 @@ def main(argv: list[str]) -> int:
     run.add_argument("--harness", choices=list(BUNDLE), required=True)
     run.add_argument("--cases", type=int, default=1, help="source Conversations")
     run.add_argument("--source", help="one source session id instead of the largest")
+    run.add_argument(
+        "--script",
+        help="a scripted case (JSON, e.g. engine/scripts/probe_cases/offsite.json) instead of "
+        "replaying a stored Conversation; arms: warm, single@<turn>, chain (default warm,chain)",
+    )
     run.add_argument("--max-turns", type=int, help="replay at most this many person turns")
     run.add_argument(
         "--label",
@@ -1180,8 +1397,8 @@ def main(argv: list[str]) -> int:
         metavar="KEY=VALUE",
         help="a session label set on each probe session at create (repeatable)",
     )
-    run.add_argument("--arms", default=",".join(
-        [f"warm@{c}" for c in CUTS] + [f"single@{c}" for c in CUTS] + ["chain"]))
+    run.add_argument("--arms", help="default: warm@C and single@C for each cut, and chain "
+                     "(with --script: warm,chain)")
     run.add_argument("--repeats", type=int, default=3)
     run.add_argument("--probes", default=",".join(PROBES))
     run.add_argument("--skip", default=SKIP_DEFAULT, help="regex of source messages to skip")
