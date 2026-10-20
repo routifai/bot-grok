@@ -5242,6 +5242,15 @@ def create_runner_app(
             and part.get("text") == "/compact"
         )
 
+    async def _memory_labels(conv_id: str, labels: Mapping[str, str] | None) -> dict[str, str]:
+        """*labels* with the sub-agent mark :func:`_tool_labels_for_session` derives from the
+        parent. A session that cannot be read is marked too: memory is written only for a
+        session known to be the Conversation (the next checkpoint heals a skipped copy)."""
+        lineage = {**dict(labels or {}), **await _tool_labels_for_session(conv_id)}
+        if not (await _session_snapshot(conv_id)).ok:
+            lineage[SUBAGENT_LABEL_KEY] = "1"
+        return lineage
+
     def _journal_checkpoint(
         conv_id: str, labels: Mapping[str, str] | None
     ) -> Callable[[CompactionData, list[dict[str, Any]]], Awaitable[None]]:
@@ -5253,7 +5262,7 @@ def create_runner_app(
         async def _record(item: CompactionData, window: list[dict[str, Any]]) -> None:
             # Stored labels never mark a Helper or a studio: the parent does (one rule for tools
             # and memory), so neither writes the Conversation's STATE.md, journal or turns.
-            lineage = {**dict(labels or {}), **await _tool_labels_for_session(conv_id)}
+            lineage = await _memory_labels(conv_id, labels)
             await record_checkpoint(conv_id, lineage, item)
             workspace = await _session_workspace_value(conv_id)
             await index_retired_turns(
@@ -5283,7 +5292,7 @@ def create_runner_app(
         async def _run() -> None:
             try:
                 # The parent marks a Helper or a studio (see ``_journal_checkpoint``).
-                lineage = {**dict(labels or {}), **await _tool_labels_for_session(conv_id)}
+                lineage = await _memory_labels(conv_id, labels)
                 await reconcile(server_client, conv_id, lineage)
                 await backfill_turns(server_client, conv_id, lineage)
             finally:
@@ -7505,7 +7514,12 @@ def create_runner_app(
             harness_body["context_mode"] = _turn_context_mode
         # A background job's single turn is bounded in context (the Conversation and a file's
         # studio keep the between-turn rollover only); the executor adapter enforces it.
-        if is_helper(_turn_labels) and not is_artifact_chat(_turn_labels):
+        # The parent marks a Helper (stored labels never do); a studio keeps its rollover.
+        if (
+            _superside
+            and is_helper({**(_turn_labels or {}), **await _tool_labels_for_session(conv)})
+            and not is_artifact_chat(_turn_labels)
+        ):
             from omnigent.superchat.rollover import resolve_helper_turn_context_ceiling
 
             harness_body["turn_context_ceiling"] = resolve_helper_turn_context_ceiling()
