@@ -75,6 +75,9 @@ def _kind_hints() -> str:
 # ``id``) while it works, so it never ends the reply; ``ask`` waits on the person's pick.
 TERMINAL_CARDS = frozenset({"sources", "compare", "ask", "person", "file", "quote"})
 
+#: The longest ``message`` an answer card takes: one or two sentences, never the card's content.
+MESSAGE_MAX_CHARS = 400
+
 
 def _arr(items: dict[str, Any], *, min_items: int = 1, max_items: int = 50) -> dict[str, Any]:
     return {"type": "array", "items": items, "minItems": min_items, "maxItems": max_items}
@@ -197,8 +200,9 @@ def build_card(args: dict[str, Any]) -> dict[str, Any]:
     Validate ``render_card`` arguments and build the typed result payload.
 
     :param args: Parsed tool arguments.
-    :returns: ``{"type": "card", "card", "id"?, "title"?, "data", "fallback"}``, or
-        ``{"error": "..."}`` describing the first problem so the model can retry.
+    :returns: ``{"type": "card", "card", "id"?, "title"?, "message"?, "data", "fallback"}``, or
+        ``{"error": "..."}`` describing the first problem so the model can retry. ``message`` (the
+        words shown above an answer card) is kept for terminal cards only.
     """
     return _build_card(args, CARD_DATA_SCHEMAS)
 
@@ -211,14 +215,19 @@ def _build_card(args: dict[str, Any], schemas: dict[str, dict[str, Any]]) -> dic
     fallback = args.get("fallback")
     if not isinstance(fallback, str) or not fallback.strip():
         return {"error": "fallback must be a non-empty markdown string"}
-    for key in ("id", "title"):
+    for key in ("id", "title", "message"):
         if key in args and not isinstance(args[key], str):
             return {"error": f"{key} must be a string"}
+    message = " ".join(str(args.get("message") or "").split())
+    if len(message) > MESSAGE_MAX_CHARS:
+        return {"error": f"message is over {MESSAGE_MAX_CHARS} characters; one or two sentences"}
     err = _check(args.get("data"), schemas[card], "data")
     if err is not None:
         return {"error": err}
     out: dict[str, Any] = {"type": "card", "card": card}
     out.update({key: args[key] for key in ("id", "title") if args.get(key)})
+    if message and card in TERMINAL_CARDS:
+        out["message"] = message
     out["data"] = args["data"]
     out["fallback"] = fallback.strip()
     # The model reacts to a tool result; without this it adds a line repeating the card.
@@ -254,8 +263,9 @@ class RenderCardTool(Tool):
             "Otherwise write normally. `data` is an object whose shape depends on `card` "
             f"(`?` = optional): {_kind_hints()}. "
             "`fallback` is a complete markdown summary of the card, used where it cannot be "
-            "drawn and kept in your history; never repeat the card's content in your reply, "
-            "add one line of context at most, before the card; after it add no more text "
+            "drawn and kept in your history. Every card but progress needs `message`: one or two "
+            "plain sentences for the person (what was made, anything still open), shown above "
+            "the card; write no other text around it and never repeat the card's content "
             "(only `suggest_follow_ups` may follow)."
         )
 
@@ -275,6 +285,14 @@ class RenderCardTool(Tool):
                             "description": "Stable id; reuse it to update the card in place.",
                         },
                         "title": {"type": "string", "description": "Optional short heading."},
+                        "message": {
+                            "type": "string",
+                            "maxLength": MESSAGE_MAX_CHARS,
+                            "description": (
+                                "Required except for progress: one or two plain sentences for "
+                                "the person, shown above the card."
+                            ),
+                        },
                         "data": {
                             "type": "object",
                             "description": "Card payload; shapes are in the tool description.",

@@ -55,7 +55,7 @@ from omnigent.entities.session_project import project_slug_from_workspace
 from omnigent.harnesses.executor import CHECKLIST_TOOL
 from omnigent.runner.tool_starts import STOPPED_OUTPUT
 from omnigent.superchat.artifact_kinds import is_deck_name
-from omnigent.superchat.cards.tools import CARD_TOOL_NAME
+from omnigent.superchat.cards.tools import CARD_TOOL_NAME, TERMINAL_CARDS
 from omnigent.superchat.projects.card import workspace_root
 from omnigent.superchat.rounds.checklist import STATUSES
 from omnigent.superchat.rounds.fold import (
@@ -776,6 +776,10 @@ class _Turn:
     actor: str
     helper_id: str | None
     text: list[str] = field(default_factory=list)
+    #: The turn streamed words of its own.
+    said: bool = False
+    #: The ``message`` of the answer card the turn showed: its words when it wrote none.
+    card_words: str = ""
     started_ms: int = field(default_factory=_now_ms)
     #: Ended from the store (:func:`close_lost_turns`): the relay records no more of it.
     closed: bool = False
@@ -1102,6 +1106,7 @@ class RelayRound:
                 return
             if kind == "response.output_text.delta" and isinstance(event.get("delta"), str):
                 turn.text.append(event["delta"])
+                turn.said = True
                 RECORDER.words(
                     turn.round_id, turn.conversation_id, turn.actor, event["delta"], turn.helper_id
                 )
@@ -1238,8 +1243,12 @@ class RelayRound:
                 self._effect(turn, name, args, output)
 
     def _effect(self, turn: _Turn, name: str, args: Mapping[str, Any], output: Any) -> None:
-        """The chips and checklist a tool call that worked made."""
-        if name == _CHIPS_TOOL and turn.actor == ASSISTANT:
+        """The chips, checklist and card words a tool call that worked made."""
+        if name == CARD_TOOL_NAME and turn.actor == ASSISTANT:
+            message = _args(output).get("message")
+            if _args(output).get("card") in TERMINAL_CARDS and isinstance(message, str):
+                turn.card_words = message
+        elif name == _CHIPS_TOOL and turn.actor == ASSISTANT:
             items = args.get("items")
             if isinstance(items, list):
                 self._emit(turn, CHIPS, items=[str(i) for i in items])
@@ -1275,6 +1284,11 @@ class RelayRound:
     def _end(self, turn: _Turn, status: str, reason: str | None = None) -> None:
         if _LIVE.get(self._session_id) is turn:
             del _LIVE[self._session_id]
+        if turn.card_words and not turn.said and RECORDER is not None:
+            # A turn that answered with a card and its `message` said those words.
+            RECORDER.words(
+                turn.round_id, turn.conversation_id, turn.actor, turn.card_words, turn.helper_id
+            )
         self._emit(turn, TURN_ENDED, status=status, reason=reason if status == "failed" else None)
         if turn.actor == HELPER:
             result = clip("".join(turn.text).strip(), RESULT_LIMIT)
