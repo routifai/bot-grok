@@ -89,8 +89,8 @@ export type RegisterPublishSave = (save: () => Promise<void>) => () => void;
 
 /**
  * One kind of file in the artifact editor (`editor/ArtifactEditor`). The shell owns the frame —
- * header (title, "<Kind> · version N" menu, Edit toggle, actions, `⋯`, close), the edit toolbar
- * (undo, redo, ask, done), the ask box and the responsive layout — and the kind fills the slots.
+ * header (title, "<Kind> · version N" menu, actions, `⋯`, close), the canvas tools (select,
+ * undo, redo), the ask box and the responsive layout — and the kind fills the slots.
  * `useEditor` is called as a hook for as long as the file is open (the shell remounts it when the
  * kind changes), so it can keep the file's edit history across edit mode on and off.
  */
@@ -122,7 +122,7 @@ export interface ArtifactEditorParts {
   navigator?: ReactNode;
   /** The right column, shown in edit mode. */
   inspector?: ReactNode;
-  /** Header buttons after Edit (a deck: Theme, Present, Download; a page: Run). */
+  /** Header buttons (a deck: Theme, Present, Download; a page: Run). */
   actions?: ReactNode;
   /** `DropdownMenuItem`s for the header's `⋯` menu. */
   overflow?: ReactNode;
@@ -132,7 +132,7 @@ export interface ArtifactEditorParts {
   footer?: ReactNode;
   /** Over the ask box (a save that failed). */
   notice?: ReactNode;
-  /** The file can be edited: the shell shows Edit, the edit toolbar and the inspector. */
+  /** The file can be edited: the shell shows the canvas tools and the inspector. */
   editable: boolean;
   /** The file's one undo: the toolbar, ⌘Z and the ask box's "Updated · Undo" all use it. */
   history?: ArtifactEditorHistory;
@@ -140,6 +140,10 @@ export interface ArtifactEditorParts {
     /** The selection, as chips in the ask box. */
     chips: readonly AskChip[];
     onRemoveChip?: (id: string) => void;
+    /** Ends the whole selection at once (Escape in the studio). */
+    clear?: () => void;
+    /** What a request is about with nothing selected ("Slide 2"): a quiet chip in its place. */
+    scope?: string;
     placeholder: string;
     /** The request block for what is selected (or on screen) right now; a kind may read it from
      * the engine (a sheet's range excerpt). */

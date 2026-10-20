@@ -1,7 +1,4 @@
-import { cn } from "@superchat/ui-web";
 import { useEffect, useState } from "react";
-import { artifactPanelWidth } from "../../features/artifacts/ArtifactPanel";
-import { artifactKey, useArtifactEditing } from "../../features/artifacts/editor/editor-state";
 import sample from "../../features/artifacts/editor/html/sample-deck.txt?raw";
 import { DeckViewer } from "../../features/decks/DeckViewer";
 import { setDeckThemeSources } from "../../lib/deck-themes";
@@ -24,13 +21,12 @@ type DevWindow = Window & {
 
 /**
  * Dev-only route (`/dev/deck`, gated by `import.meta.env.DEV` in App.tsx): the deck in the
- * artifact editor shell at the panel's width, the engine replaced by a recorder
+ * artifact editor shell, selectable, the engine replaced by a recorder
  * (`window.__deckEdits`), so selecting, editing and switching themes can be driven in a real
  * browser without a session or engine. A test may hand it a kit-built deck, the theme dictionary
  * and a restyle function (`window.__deckSetHtml`, `__deckThemes`, `__deckRestyle`).
  */
 export function DeckPreviewPage() {
-  const editing = useArtifactEditing(artifactKey({ botId: null, name: NAME }));
   const [version, setVersion] = useState(1);
   const [html, setHtml] = useState(sample);
   // Read at call time: a run exposes the function after the page has loaded.
@@ -57,10 +53,7 @@ export function DeckPreviewPage() {
     <div className="flex h-dvh justify-center bg-background p-2">
       <section
         data-testid="dev-panel"
-        className={cn(
-          "flex min-h-0 flex-col overflow-hidden rounded-[18px] border border-border bg-card motion-safe:transition-[width] motion-safe:duration-300 motion-safe:ease-out",
-          artifactPanelWidth({ wide: true, expanded: editing }),
-        )}
+        className="flex min-h-0 w-[min(84vw,1600px)] flex-col overflow-hidden rounded-[18px] border border-border bg-card"
       >
         <span data-testid="dev-version" className="sr-only">
           v{version}

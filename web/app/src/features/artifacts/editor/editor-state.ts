@@ -2,9 +2,9 @@ import type { Artifact } from "@superchat/contracts";
 import { useSyncExternalStore } from "react";
 
 // Editor state shared between the parts of one open artifact that do not sit in one React tree
-// branch: the shell's Edit toggle, the panel that widens while editing, and a kind's own controls
-// (a deck's Theme gallery) that save versions the editor's history should own. Keyed by
-// `artifactKey`, so a new version of the same file keeps its mode.
+// branch: a kind's own controls (a deck's Theme gallery) that save versions the editor's history
+// should own, and the parts a capability wants marked. Keyed by `artifactKey`, so a new version
+// of the same file keeps it.
 
 /** Where one file's editor state lives: its name under its Muse. A version has its own id and the
  * web has no family id, so the name is what every version shares. */
@@ -15,7 +15,6 @@ export const artifactKey = (artifact: Pick<Artifact, "botId" | "name">): string 
 export const isHandOrigin = (origin: string | undefined): boolean =>
   origin === "manual" || origin === "restore";
 
-const editing = new Map<string, boolean>();
 const listeners = new Set<() => void>();
 const notify = () => {
   for (const listener of listeners) listener();
@@ -24,15 +23,6 @@ const subscribe = (listener: () => void) => {
   listeners.add(listener);
   return () => void listeners.delete(listener);
 };
-
-/** Whether the file is in edit mode (select, type, style) rather than viewing / running. */
-export const useArtifactEditing = (key: string): boolean =>
-  useSyncExternalStore(subscribe, () => editing.get(key) ?? false);
-export function setArtifactEditing(key: string, on: boolean): void {
-  if ((editing.get(key) ?? false) === on) return;
-  editing.set(key, on);
-  notify();
-}
 
 // Versions saved outside the editor (a deck's Theme switch) that its undo history should own, and
 // the editor's way to save what it still has staged before such a change is made.
@@ -65,7 +55,6 @@ export const flushEditorEdits = async (key: string): Promise<Head | null> =>
 
 /** Test helper. */
 export function resetEditorState(): void {
-  editing.clear();
   ownVersions.clear();
   flushers.clear();
   notify();

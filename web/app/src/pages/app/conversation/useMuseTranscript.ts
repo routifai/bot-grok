@@ -1,4 +1,4 @@
-import type { MessageArtifact, ReplyEvent, ThreadMessage } from "@superchat/contracts";
+import type { ReplyEvent, ThreadMessage } from "@superchat/contracts";
 import type { RefObject } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TurnStatus } from "../../../features/activity";
@@ -11,7 +11,7 @@ import {
 import { rpc } from "../../../lib/rpc";
 
 /** What the person just sent, until the transcript has it (`base`: their message count then). */
-type Pending = { text: string; base: number; artifact?: MessageArtifact };
+type Pending = { text: string; base: number };
 
 /** Events arrive in bursts (a reply, a Helper starting): read the page once per burst. */
 const REFRESH_THROTTLE_MS = 150;
@@ -308,14 +308,10 @@ export function useMuseTranscript(
     return () => window.clearTimeout(timer);
   }, [waiting]);
 
-  /** The person's message is on its way: show it at once (with the chip of the artifact open
-   * beside the chat, if any) and hold the Conversation as running. */
-  const beginSend = useCallback((text: string, artifact?: MessageArtifact) => {
-    const next: Pending = {
-      text,
-      base: userCount(loadedRef.current?.messages ?? null),
-      ...(artifact ? { artifact } : {}),
-    };
+  /** The person's message is on its way: show it at once and hold the Conversation as
+   * running. */
+  const beginSend = useCallback((text: string) => {
+    const next: Pending = { text, base: userCount(loadedRef.current?.messages ?? null) };
     pendingRef.current = next;
     setPending(next);
     setWaiting(true);
@@ -427,7 +423,7 @@ export function useMuseTranscript(
   const forBot = loaded?.botId === botId ? loaded : null;
   const threadId = forBot?.threadId || null;
   const pendingMessage = useMemo(
-    () => (pending ? optimisticMessage(threadId ?? "", pending.text, pending.artifact) : null),
+    () => (pending ? optimisticMessage(threadId ?? "", pending.text) : null),
     [pending, threadId],
   );
   const liveText = joinText(live.settled, live.text);

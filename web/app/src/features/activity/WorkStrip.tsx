@@ -6,7 +6,7 @@ import { ChevronDown, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { SuperchatOrb } from "../../components/ai/orb";
 import { Shimmer } from "../../components/ai/primitives";
-import { useArtifactPanel } from "../../components/cards/context";
+import { useFileStudio } from "../../components/cards/context";
 import { useNow } from "../../components/chrome/useNow";
 import { rpc } from "../../lib/rpc";
 import { ArtifactPreviewThumbnail } from "../artifacts";
@@ -111,7 +111,7 @@ export function DraftThumbs({
   drafts: readonly DraftFile[];
   updating: boolean;
 }) {
-  const panel = useArtifactPanel();
+  const studio = useFileStudio();
   return (
     <div data-testid="work-strip-drafts" className="grid grid-cols-6 gap-1.5 pt-0.5">
       {drafts.map((draft) => (
@@ -122,7 +122,7 @@ export function DraftThumbs({
           data-updating={updating || undefined}
           title={draft.name}
           aria-label={draft.name}
-          onClick={() => panel?.open(draft.artifactId, draft.name)}
+          onClick={() => studio?.open(draft.artifactId, draft.name)}
           className="sc-work-thumb relative aspect-video overflow-hidden rounded-[4px] border border-separator bg-bubble focus-visible:outline-2 focus-visible:outline-ring"
         >
           <ArtifactPreviewThumbnail

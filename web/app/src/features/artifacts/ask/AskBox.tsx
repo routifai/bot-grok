@@ -7,9 +7,6 @@ import type { AskStatus } from "./useArtifactAsk";
 /** One selected part of the artifact, shown as a chip inside the box. */
 export type AskChip = { id: string; label: string; detail?: string };
 
-/** Words typed in one ask box, handed to another (the panel's box to the file's studio). */
-export type AskDraft = { text: string; caret: number };
-
 /**
  * The message box for asking superchat to change the artifact that is open: the selection as
  * chips, the person's words, send (or stop while superchat works), and one quiet status line
@@ -17,6 +14,7 @@ export type AskDraft = { text: string; caret: number };
  */
 export function AskBox({
   chips,
+  scope,
   onRemoveChip,
   placeholder,
   focusRequest,
@@ -26,13 +24,11 @@ export function AskBox({
   onUndo,
   canUndo,
   className,
-  onHandOff,
-  initialDraft,
-  sendInitialDraft,
-  onDraftChange,
   note,
 }: {
   chips: readonly AskChip[];
+  /** With no chip, what the request is about ("Slide 2"): a quiet chip that cannot be removed. */
+  scope?: string;
   onRemoveChip?: (id: string) => void;
   placeholder: string;
   /** Bumped to focus the box (the toolbar's Ask, the selection chip's Ask). */
@@ -43,23 +39,12 @@ export function AskBox({
   onUndo?: () => void;
   canUndo?: boolean;
   className?: string;
-  /** Sending hands the words to another box instead (the file's studio opens and sends them).
-   * Typing stays here, so nothing typed is lost while the other box opens. */
-  onHandOff?: (draft: AskDraft) => void;
-  /** Words typed before this box opened: kept, focused, with the caret where it was. */
-  initialDraft?: AskDraft;
-  /** The words handed over were already sent by the person: send them as soon as this opens. */
-  sendInitialDraft?: boolean;
-  /** Every change to the words, so a box that closes can hand them to the next one. */
-  onDraftChange?: (draft: AskDraft) => void;
   /** Why the request waits ("Finishing another file first"): the status line while it does. */
   note?: string | null;
 }) {
   const { t } = useLingui();
-  const [draft, setDraft] = useState(initialDraft?.text ?? "");
+  const [draft, setDraft] = useState("");
   const textarea = useRef<HTMLTextAreaElement>(null);
-  const handedOver = useRef(initialDraft);
-  const sendOnOpen = useRef(sendInitialDraft);
   const handled = useRef(focusRequest);
   useEffect(() => {
     if (focusRequest === handled.current) return;
@@ -71,29 +56,9 @@ export function AskBox({
   const send = async () => {
     const text = draft.trim();
     if (!text || working) return;
-    if (onHandOff) {
-      onHandOff({ text: draft, caret: draft.length });
-      setDraft("");
-      return;
-    }
     setDraft("");
-    onDraftChange?.({ text: "", caret: 0 });
-    if (!(await onSend(text))) {
-      setDraft(text);
-      onDraftChange?.({ text, caret: text.length });
-    }
+    if (!(await onSend(text))) setDraft(text);
   };
-  // Words handed over: focused with the caret where it was, and sent when the person sent them.
-  useEffect(() => {
-    const given = handedOver.current;
-    const box = textarea.current;
-    if (!given || !box) return;
-    box.focus();
-    box.setSelectionRange(given.caret, given.caret);
-    if (!sendOnOpen.current) return;
-    sendOnOpen.current = false;
-    void send();
-  }, []);
 
   return (
     <div className={cn("flex w-full flex-col gap-2", className)} data-testid="ask-box">
@@ -128,16 +93,21 @@ export function AskBox({
                 </span>
               ))}
             </div>
+          ) : scope ? (
+            <div className="flex">
+              <span
+                data-testid="ask-scope"
+                className="inline-flex h-6 max-w-full items-center rounded-[7px] bg-selection-strong px-2 text-[12px] text-tint-ink opacity-70"
+              >
+                <span className="truncate">{scope}</span>
+              </span>
+            </div>
           ) : null}
           <div className="flex items-end gap-3">
             <textarea
               ref={textarea}
               value={draft}
-              onChange={(event) => {
-                const { value, selectionStart } = event.target;
-                setDraft(value);
-                onDraftChange?.({ text: value, caret: selectionStart ?? value.length });
-              }}
+              onChange={(event) => setDraft(event.target.value)}
               onKeyDown={(event) => {
                 const composing = event.nativeEvent.isComposing || event.keyCode === 229;
                 if (event.key === "Enter" && !event.shiftKey && !composing) {

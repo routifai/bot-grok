@@ -12,7 +12,7 @@ vi.mock("../../lib/artifact-open", () => ({
   decodeArtifactBase64: (base64: string) => Uint8Array.from(atob(base64), (c) => c.charCodeAt(0)),
 }));
 
-import { ArtifactPanelProvider } from "../../components/cards/context";
+import { FileStudioProvider } from "../../components/cards/context";
 import { chartsExtension } from "./extension";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -38,14 +38,14 @@ it("shows a dashboard page live at full width, as tall as the page says, with Op
   api.getById.mockResolvedValue({ contentBase64: btoa(page) });
   const open = vi.fn();
   render(
-    <ArtifactPanelProvider value={{ open } as never}>
+    <FileStudioProvider value={{ open } as never}>
       {chartsExtension.result?.({
         artifactId: "d1",
         name: "sales.dashboard.html",
         version: 7,
         data: {},
       })}
-    </ArtifactPanelProvider>,
+    </FileStudioProvider>,
   );
   await act(async () => {});
   const card = host.querySelector("[data-dashboard-page]") as HTMLElement;

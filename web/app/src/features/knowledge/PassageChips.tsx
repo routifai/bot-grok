@@ -2,7 +2,7 @@ import { useLingui } from "@lingui/react/macro";
 import type { ReplyCardDataOf } from "@superchat/contracts";
 import { FileText } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useArtifactPanel, useReplyCardBotId } from "../../components/cards/context";
+import { useFileStudio, useReplyCardBotId } from "../../components/cards/context";
 import { rpc } from "../../lib/rpc";
 import { FilePreviewDialog } from "../files";
 
@@ -56,11 +56,11 @@ function Thumbnail({ fileId, page }: { fileId: string; page: number }) {
 }
 
 /** The pages a search found, as small page-thumbnail chips under the answer. A chip opens the
- * file at that page: in the side panel for a Library artifact, in the host's file preview for
+ * file at that page: in the File Studio for a Library artifact, in the host's file preview for
  * any other workspace file. */
 export function PassageChips({ data }: { data: ReplyCardDataOf<"passages"> }) {
   const { t } = useLingui();
-  const panel = useArtifactPanel();
+  const studio = useFileStudio();
   const botId = useReplyCardBotId();
   // A file that is not a Library artifact opens in the host's workspace preview.
   const [preview, setPreview] = useState<{ path: string; page: number } | null>(null);
@@ -95,8 +95,8 @@ export function PassageChips({ data }: { data: ReplyCardDataOf<"passages"> }) {
               {artifactId ? (
                 <button
                   type="button"
-                  disabled={!panel}
-                  onClick={() => panel?.open(artifactId, item.name, item.page)}
+                  disabled={!studio}
+                  onClick={() => studio?.open(artifactId, item.name, item.page)}
                   aria-label={t`Open ${item.name}, page ${item.page}`}
                   className={`${chip} outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none`}
                 >

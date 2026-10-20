@@ -111,7 +111,18 @@ export const artifactsRouter = {
         NO_EMAIL,
         input.artifactId,
       ).catch(notFound);
-      return { sessionId: opened.session_id, created: opened.created };
+      return {
+        sessionId: opened.session_id,
+        created: opened.created,
+        prelude: (opened.prelude ?? []).map((row) => ({
+          version: row.version,
+          roundId: row.round_id ?? null,
+          ask: row.ask ?? "",
+          handback: row.handback ?? "",
+          itemId: row.item_id ?? null,
+          at: typeof row.at === "number" ? new Date(row.at * 1000).toISOString() : row.at,
+        })),
+      };
     }),
     chatOpen: os.artifacts.chatOpen.handler(async ({ input }) => {
       const opened = await signalOmnigentArtifactChatOpen(

@@ -20,7 +20,7 @@ import {
   SuperchatPresenceProvider,
   useIsDesktop,
 } from "../components/ai/orb";
-import { ArtifactPanelProvider, AskPreviewsProvider } from "../components/cards/context";
+import { AskPreviewsProvider, FileStudioProvider } from "../components/cards/context";
 import { SuperchatLogo } from "../components/SuperchatLogo";
 import {
   transcriptWork,
@@ -32,7 +32,7 @@ import {
 import { ApprovalCards } from "../features/approvals";
 import { appsExtension } from "../features/apps";
 import { ArtifactRegistryProvider } from "../features/artifacts/registry";
-import { useChatArtifacts } from "../features/artifacts/useChatArtifacts";
+import { useFileStudioRoute } from "../features/artifacts/studio/useFileStudioRoute";
 import { chartsExtension } from "../features/charts";
 import { DeckThemeChoice, decksExtension } from "../features/decks";
 import { documentsExtension } from "../features/documents";
@@ -122,7 +122,6 @@ export function ShellPage() {
   // The dock place open as a sheet, if any.
   const [dockSheet, setDockSheet] = useState<DockKey | null>(null);
   const [folderPickerOpen, setFolderPickerOpen] = useState(false);
-  const chatArtifacts = useChatArtifacts(active?.id ?? "");
   /** Below `md` the Muse sidebar is an off-canvas drawer opened from the main header. */
   const [_navOpen, _setNavOpen] = useState(false);
   const activeBotId = useRef<string | undefined>(active?.id);
@@ -163,6 +162,8 @@ export function ShellPage() {
       ),
     [setSearchParams],
   );
+  // The File Studio (ADR 0030): a route state over the app; closing it comes back here.
+  const fileStudio = useFileStudioRoute(showMessage);
   // Bumps each time a turn finishes, so the Files view follows the Muse's work.
   const [filesRefreshKey, setFilesRefreshKey] = useState(0);
   // The folder to show in the Files tab, set by the "Working in" chip.
@@ -241,7 +242,6 @@ export function ShellPage() {
     userId,
     messages: transcriptMessages,
     transcript: museTranscript,
-    openArtifact: chatArtifacts.shown,
     botsRef,
     flushPendingBrowserNotifications,
   });
@@ -426,131 +426,134 @@ export function ShellPage() {
       data-ready={shellReady}
       className="superchat-window relative flex h-full min-w-0 flex-1 overflow-hidden text-foreground"
     >
-      {showHome && active ? (
-        <Home
-          personName={bootstrapMe?.name ?? ""}
-          dock={<ConnectedDock botId={active.id} active={dockSheet} onSelect={setDockSheet} />}
-          composer={composerEl}
-          onOpenSettings={() => openSettings("general")}
-          recent={<HomeActivity botId={active.id} hideWhenEmpty />}
-        />
-      ) : null}
-      {active && !showHome ? <ContourGround /> : null}
-      {active && !showHome ? (
-        <SuperchatLogo className="absolute start-8 top-7 z-20 hidden md:inline-flex" />
-      ) : null}
-      {active && !showHome ? (
-        <div className="relative z-10 hidden w-[96px] shrink-0 flex-col items-center justify-between pt-24 pb-6 md:flex">
-          <span />
-          <ConnectedDock botId={active.id} active={dockSheet} onSelect={setDockSheet} />
-          <SettingsButton onClick={() => openSettings("general")} />
-        </div>
-      ) : null}
-
-      <main className="relative z-10 flex min-w-0 flex-1 flex-col">
-        <div className={active ? "flex min-h-0 flex-1" : "contents"}>
-          <div className={active ? MUSE_CONTENT_PANE : "contents"}>
-            {superchatTopBar}
-            {shownStart ? (
-              <EmptyConversationLead personName={bootstrapMe?.name ?? ""} />
-            ) : active ? (
-              <Transcript
-                key={museTranscript.threadId ?? active.id}
-                botDisplayName={active.name}
-                followSignal={followSignal}
-                museFace={{ color: active.color, identity: active.id }}
-                museRuns={turnRuns}
-                scrollRef={messageScroll}
-                scrollRequest={scrollRequest}
-                onScrollRequestHandled={clearScrollRequest}
-                artifactTarget={transcriptArtifactTarget}
-                messages={transcriptMessages}
-                loading={museTranscript.messages === null}
-                olderCursor={museTranscript.olderCursor}
-                loadingOlder={museTranscript.loadingOlder}
-                work={work}
-                workState={workState}
-                onLoadOlder={museTranscript.loadOlder}
-                onShowEarlier={
-                  museTranscript.canShowEarlier ? museTranscript.showEarlier : undefined
-                }
-                onAnswer={answerMessage}
-                onSendCard={sendCardReply}
-                onReply={(message) => {
-                  setReplyTarget(message);
-                  setReplyQuote(null);
-                }}
-                onQuote={(message, quote) => {
-                  setReplyTarget(message);
-                  setReplyQuote(quote);
-                }}
-                trailing={<ApprovalCards botId={active.id} />}
-              />
-            ) : null}
-            {active ? (
-              <div ref={composerDock} style={{ viewTransitionName: "superchat-composer" }}>
-                {showHome ? null : composerEl}
-              </div>
-            ) : null}
-            {shownStart ? (
-              <EmptyConversationSuggestions onSend={(text) => void sendMessage(text)} />
-            ) : null}
-          </div>
-          {active && !chatArtifacts.isOpen ? (
-            <SessionPanel
-              botId={active.id}
-              roundId={rounds[0]?.status === "running" ? rounds[0].roundId : undefined}
-              open={sessionPanel.open}
-              onClose={sessionPanel.close}
-            />
-          ) : null}
-          {active ? chatArtifacts.panel : null}
-          {active && !chatArtifacts.isOpen && !sessionPanel.open ? (
-            <div className="pointer-events-none absolute end-5 bottom-24 z-20 hidden md:block xl:bottom-6 [&>*]:pointer-events-auto">
-              <ConversationActivity botId={active.id} />
-            </div>
-          ) : null}
-        </div>
-      </main>
-
-      {active ? (
-        <FolderPicker
-          botId={active.id}
-          open={folderPickerOpen}
-          onClose={() => setFolderPickerOpen(false)}
-          onPick={attachFolder}
-        />
-      ) : null}
-      {active ? (
-        <DockSheets
-          botId={active.id}
-          sheet={dockSheet}
-          onClose={() => setDockSheet(null)}
-          filesRefreshKey={filesRefreshKey}
-          filesReveal={filesReveal}
-          onStartChat={startChat}
-        />
-      ) : null}
-
-      <aside
-        data-testid="side-panel"
-        data-panel={panel ?? "closed"}
-        className={`superchat-glass absolute inset-y-0 end-0 z-20 flex min-h-0 shrink-0 flex-col overflow-hidden transition-[width] duration-150 ease-out md:relative ${
-          panel && active
-            ? // An inset panel like <main>.
-              "w-full max-w-[400px] md:m-2 md:w-[400px] md:max-w-none"
-            : "pointer-events-none w-0"
-        }`}
-      >
-        {panel && active ? (
-          <div className="sc-scroll h-full w-full overflow-y-auto px-5 py-[17px] md:w-[400px]">
-            <SidePanelHeader panel={panel} setPanel={setPanel} active={active} />
-            {panel === "settings" && active ? (
-              <BotSettingsPanel onClear={() => setClearTarget(active)} />
-            ) : null}
+      {/* Super Chat stays where it was under an open file, out of reach of the keyboard. */}
+      <div className="contents" inert={fileStudio.open || undefined}>
+        {showHome && active ? (
+          <Home
+            personName={bootstrapMe?.name ?? ""}
+            dock={<ConnectedDock botId={active.id} active={dockSheet} onSelect={setDockSheet} />}
+            composer={composerEl}
+            onOpenSettings={() => openSettings("general")}
+            recent={<HomeActivity botId={active.id} hideWhenEmpty />}
+          />
+        ) : null}
+        {active && !showHome ? <ContourGround /> : null}
+        {active && !showHome ? (
+          <SuperchatLogo className="absolute start-8 top-7 z-20 hidden md:inline-flex" />
+        ) : null}
+        {active && !showHome ? (
+          <div className="relative z-10 hidden w-[96px] shrink-0 flex-col items-center justify-between pt-24 pb-6 md:flex">
+            <span />
+            <ConnectedDock botId={active.id} active={dockSheet} onSelect={setDockSheet} />
+            <SettingsButton onClick={() => openSettings("general")} />
           </div>
         ) : null}
-      </aside>
+
+        <main className="relative z-10 flex min-w-0 flex-1 flex-col">
+          <div className={active ? "flex min-h-0 flex-1" : "contents"}>
+            <div className={active ? MUSE_CONTENT_PANE : "contents"}>
+              {superchatTopBar}
+              {shownStart ? (
+                <EmptyConversationLead personName={bootstrapMe?.name ?? ""} />
+              ) : active ? (
+                <Transcript
+                  key={museTranscript.threadId ?? active.id}
+                  botDisplayName={active.name}
+                  followSignal={followSignal}
+                  museFace={{ color: active.color, identity: active.id }}
+                  museRuns={turnRuns}
+                  scrollRef={messageScroll}
+                  scrollRequest={scrollRequest}
+                  onScrollRequestHandled={clearScrollRequest}
+                  artifactTarget={transcriptArtifactTarget}
+                  messages={transcriptMessages}
+                  loading={museTranscript.messages === null}
+                  olderCursor={museTranscript.olderCursor}
+                  loadingOlder={museTranscript.loadingOlder}
+                  work={work}
+                  workState={workState}
+                  onLoadOlder={museTranscript.loadOlder}
+                  onShowEarlier={
+                    museTranscript.canShowEarlier ? museTranscript.showEarlier : undefined
+                  }
+                  onAnswer={answerMessage}
+                  onSendCard={sendCardReply}
+                  onReply={(message) => {
+                    setReplyTarget(message);
+                    setReplyQuote(null);
+                  }}
+                  onQuote={(message, quote) => {
+                    setReplyTarget(message);
+                    setReplyQuote(quote);
+                  }}
+                  trailing={<ApprovalCards botId={active.id} />}
+                />
+              ) : null}
+              {active ? (
+                <div ref={composerDock} style={{ viewTransitionName: "superchat-composer" }}>
+                  {showHome ? null : composerEl}
+                </div>
+              ) : null}
+              {shownStart ? (
+                <EmptyConversationSuggestions onSend={(text) => void sendMessage(text)} />
+              ) : null}
+            </div>
+            {active ? (
+              <SessionPanel
+                botId={active.id}
+                roundId={rounds[0]?.status === "running" ? rounds[0].roundId : undefined}
+                open={sessionPanel.open}
+                onClose={sessionPanel.close}
+              />
+            ) : null}
+            {active && !sessionPanel.open ? (
+              <div className="pointer-events-none absolute end-5 bottom-24 z-20 hidden md:block xl:bottom-6 [&>*]:pointer-events-auto">
+                <ConversationActivity botId={active.id} />
+              </div>
+            ) : null}
+          </div>
+        </main>
+
+        {active ? (
+          <FolderPicker
+            botId={active.id}
+            open={folderPickerOpen}
+            onClose={() => setFolderPickerOpen(false)}
+            onPick={attachFolder}
+          />
+        ) : null}
+        {active ? (
+          <DockSheets
+            botId={active.id}
+            sheet={dockSheet}
+            onClose={() => setDockSheet(null)}
+            filesRefreshKey={filesRefreshKey}
+            filesReveal={filesReveal}
+            onStartChat={startChat}
+          />
+        ) : null}
+
+        <aside
+          data-testid="side-panel"
+          data-panel={panel ?? "closed"}
+          className={`superchat-glass absolute inset-y-0 end-0 z-20 flex min-h-0 shrink-0 flex-col overflow-hidden transition-[width] duration-150 ease-out md:relative ${
+            panel && active
+              ? // An inset panel like <main>.
+                "w-full max-w-[400px] md:m-2 md:w-[400px] md:max-w-none"
+              : "pointer-events-none w-0"
+          }`}
+        >
+          {panel && active ? (
+            <div className="sc-scroll h-full w-full overflow-y-auto px-5 py-[17px] md:w-[400px]">
+              <SidePanelHeader panel={panel} setPanel={setPanel} active={active} />
+              {panel === "settings" && active ? (
+                <BotSettingsPanel onClear={() => setClearTarget(active)} />
+              ) : null}
+            </div>
+          ) : null}
+        </aside>
+      </div>
+      {active ? fileStudio.studio : null}
 
       <Suspense fallback={null}>
         {clearTarget ? (
@@ -575,7 +578,7 @@ export function ShellPage() {
 
   return (
     <AvatarStyleProvider value={bootstrapMe?.avatarStyle ?? "robot"}>
-      <ArtifactPanelProvider value={chatArtifacts.api}>
+      <FileStudioProvider value={fileStudio.api}>
         <ShowMessageProvider value={showMessage}>
           <ArtifactRegistryProvider value={ARTIFACT_EXTENSIONS}>
             <AskPreviewsProvider value={ASK_PREVIEWS}>
@@ -595,7 +598,7 @@ export function ShellPage() {
             </AskPreviewsProvider>
           </ArtifactRegistryProvider>
         </ShowMessageProvider>
-      </ArtifactPanelProvider>
+      </FileStudioProvider>
     </AvatarStyleProvider>
   );
 }

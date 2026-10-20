@@ -11,25 +11,22 @@ import {
   SheetTitle,
 } from "@superchat/ui-web";
 import {
-  Check,
   Download,
   ExternalLink,
   Maximize2,
   Minimize2,
-  Pencil,
+  MousePointer2,
   Redo2,
   Undo2,
   X,
 } from "lucide-react";
-import { type ReactNode, useCallback, useEffect, useState } from "react";
-import { SuperchatOrb } from "../../../components/ai/orb";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { artifactKind, kindLabel } from "../../../lib/artifact-kind";
 import { downloadArtifactBytes, opensInNewTab } from "../../../lib/artifact-open";
 import { rpc } from "../../../lib/rpc";
 import { useObjectUrl } from "../../../lib/use-object-url";
 import { readableFileName } from "../ArtifactFileCard";
 import { ArtifactPreview } from "../ArtifactPreview";
-import type { AskDraft } from "../ask/AskBox";
 import { AskBox } from "../ask/AskBox";
 import type { AskTurn } from "../ask/useArtifactAsk";
 import { useArtifactAsk } from "../ask/useArtifactAsk";
@@ -42,7 +39,7 @@ import {
   useArtifactEditorKind,
   type useArtifactPanelParts,
 } from "../registry";
-import { artifactKey, isHandOrigin, setArtifactEditing, useArtifactEditing } from "./editor-state";
+import { isHandOrigin } from "./editor-state";
 import { buildFileAsk } from "./html-ask";
 import { NavigatorOrientationProvider } from "./NavigatorFrame";
 import { VersionMenu } from "./VersionMenu";
@@ -50,7 +47,7 @@ import { VersionMenu } from "./VersionMenu";
 export type ArtifactContent = ReturnType<typeof useArtifactContent>;
 type PanelParts = ReturnType<typeof useArtifactPanelParts>;
 
-/** What the frame around the editor (the side panel, a dialog, the Library sheet) hands it. */
+/** What the frame around the editor (the File Studio, a dialog, the Library sheet) hands it. */
 export type ArtifactEditorProps = {
   content: ArtifactContent;
   /** The registry's panel parts for this file (badges, Publish, bars, dialogs). */
@@ -64,36 +61,30 @@ export type ArtifactEditorProps = {
   onClose: () => void;
   /** The frame can go full screen (a "Full screen" item in `⋯`). */
   fullScreen?: { on: boolean; toggle: () => void };
-  /** Edit opens the file's studio instead of editing here (the side panel, ADR 0024). */
-  onEdit?: () => void;
-  /** Sending from the ask box opens the file's studio, which sends what was typed there. */
-  onAskSend?: (draft: AskDraft) => void;
-  /** The editor inside the file's studio (ADR 0024). */
+  /** The canvas opens selectable (hand editing) rather than viewing / running: the File Studio,
+   * and the dev pages that drive a kind. Hand editing is entered by selecting; there is no
+   * Edit or Done (ADR 0030). */
+  startEditing?: boolean;
+  /** The editor inside the File Studio (ADR 0030). */
   studio?: StudioSlot;
 };
 
-/** What the file's studio hands the editor it hosts. */
+/** What the File Studio hands the editor it hosts. */
 export type StudioSlot = {
-  /** The studio chat session: the ask box sends there, not to the Conversation. */
-  chatId: string;
-  /** The column beside the editor, given the editor's ask box to place in it. */
+  /** The studio chat session: the ask box sends there, never to the Conversation; null until
+   * it is found or made (nothing can be sent meanwhile). */
+  chatId: string | null;
+  /** The file's conversation column, before the file, given the editor's ask box (null while
+   * the file loads) to place at its bottom. */
   aside: (askBox: ReactNode) => ReactNode;
-  /** The studio's turn, from its chat: while it runs the canvas is inert and saves nothing. */
+  /** The studio's turn, from its chat: while it runs no hand edit is saved. */
   turn: AskTurn;
-  /** The slide the running turn is changing, when its request named one. */
-  slide?: number | null;
   /** On a phone the editor stacks: the stage, the navigator as a strip, the inspector a sheet. */
   layout: "phone" | "wide";
-  /** Whether something on the canvas is selected (the ask box's chips). */
-  onSelectedChange?: (selected: boolean) => void;
+  /** The canvas selection came or went: how to clear it while there is one, else null. */
+  onSelection?: (clear: (() => void) | null) => void;
   /** Words a version's origin in the version menu. */
   versionOrigin?: (version: ArtifactVersion) => string;
-  /** Typed in the panel before the studio opened, or in the chat sheet before it closed. */
-  draft?: AskDraft;
-  /** The draft was sent from the panel: the studio's ask box sends it on opening. */
-  sendDraft?: boolean;
-  /** The ask box's words as they change (a phone's chat sheet keeps them across closing). */
-  onDraftChange?: (draft: AskDraft) => void;
   /** Why the studio's request waits (a runtime note): the ask box's status line meanwhile. */
   waiting?: string | null;
 };
@@ -111,10 +102,11 @@ export function artifactTitle(artifact: Pick<Artifact, "name" | "description">):
 
 /**
  * The one editor for every artifact kind. The shell owns the header (title, "<Kind> · version N"
- * menu, Edit, the kind's actions, `⋯`, one close), the edit toolbar (undo, redo, ask, done), the
- * ask box and the layout: navigator | stage (+ ask box) | inspector. A kind with an editor
+ * menu, the kind's actions, `⋯`, one close), the floating edit tools (undo, redo), the ask box
+ * and the layout: navigator | stage (+ ask box) | inspector. A kind with an editor
  * (`ArtifactExtension.editor`: a deck, a page) fills the slots; every other file opens read-only
- * in the same shell, its preview on the stage and the ask box about the whole file.
+ * in the same shell, its preview on the stage and the ask box about the whole file. In the File
+ * Studio the ask box goes to the conversation column (`studio.aside`), left of the file.
  */
 export function ArtifactEditor(props: ArtifactEditorProps) {
   const { t } = useLingui();
@@ -122,7 +114,7 @@ export function ArtifactEditor(props: ArtifactEditorProps) {
   const ready = content.status === "ready" ? content : null;
   const kind = useArtifactEditorKind(ready?.artifact);
   if (!ready) {
-    return (
+    const frame = (
       <EditorFrame
         {...props}
         heading={props.title || t`Loading…`}
@@ -138,6 +130,14 @@ export function ArtifactEditor(props: ArtifactEditorProps) {
           )
         }
       />
+    );
+    return props.studio ? (
+      <>
+        {props.studio.aside(null)}
+        {frame}
+      </>
+    ) : (
+      frame
     );
   }
   // Keyed by kind and file, not version: a new version keeps the mode, the selection and the
@@ -200,6 +200,7 @@ export function ArtifactEditorView({
       content={content}
       panel={NO_PANEL_PARTS}
       onClose={onClose}
+      startEditing
       artifact={artifact}
       bytes={bytes}
       kind={kind}
@@ -209,11 +210,11 @@ export function ArtifactEditorView({
 
 function KindEditor({ kind, ...props }: LoadedProps & { kind: ArtifactEditorKind }) {
   const { artifact } = props;
-  const fileKey = artifactKey(artifact);
-  const editing = useArtifactEditing(fileKey);
+  // The file's own mode, kept across its versions (the editor is keyed by file, not version): a
+  // kind leaves it to run (an app's Run) and comes back to it by selecting.
+  const [editing, setEditing] = useState(() => !!props.studio || !!props.startEditing);
   const [askClicks, setAskClicks] = useState(0);
   const focusAsk = useCallback(() => setAskClicks((n) => n + 1), []);
-  const setEditing = useCallback((on: boolean) => setArtifactEditing(fileKey, on), [fileKey]);
   const useEditor = kind.useEditor;
   const parts = useEditor({
     artifact,
@@ -265,6 +266,7 @@ function FileEditor(props: LoadedProps) {
     ),
     ask: {
       chips: [],
+      scope: whole,
       placeholder: t`Ask superchat to change this file…`,
       contextBlock,
     },
@@ -301,29 +303,25 @@ function LoadedEditor({
   const { t } = useLingui();
   const url = useObjectUrl(bytes, artifact.mimeType);
   const { history } = parts;
-  // Leaving edit mode first saves a text edit still in progress; a failed save stays in edit mode
-  // with its notice.
-  const leaveEditing = () =>
-    void (history?.finish?.() ?? Promise.resolve()).then(
-      () => setEditing(false),
-      () => {},
-    );
   const botId = artifact.botId;
   const studio = props.studio;
   const ask = useArtifactAsk({
-    artifact: botId
-      ? {
-          id: artifact.id,
-          name: artifact.name,
-          version: artifact.version,
-          botId,
-          chatId: studio?.chatId,
-        }
-      : null,
+    // In the studio nothing is sent until its session is known: never to the Conversation.
+    artifact:
+      botId && (!studio || studio.chatId)
+        ? {
+            id: artifact.id,
+            name: artifact.name,
+            version: artifact.version,
+            botId,
+            chatId: studio?.chatId ?? undefined,
+          }
+        : null,
     contextBlock: parts.ask.contextBlock,
     turn: studio?.turn,
   });
-  // While a studio turn runs the canvas is inert: no inspector, and the kind saves nothing.
+  // While a studio turn runs the canvas stays readable, navigable and selectable (the next
+  // request can be scoped); only hand edits wait: no inspector, and the kind saves nothing.
   const locked = !!studio?.turn.running;
   const phone = studio?.layout === "phone";
   const sendAsk = useCallback(
@@ -372,20 +370,6 @@ function LoadedEditor({
 
   const actions = (
     <>
-      {parts.editable ? (
-        <Button
-          variant={editing ? "default" : "secondary"}
-          size="sm"
-          aria-pressed={editing}
-          data-testid="editor-edit"
-          onClick={() =>
-            props.onEdit ? props.onEdit() : editing ? leaveEditing() : setEditing(true)
-          }
-        >
-          <Pencil size={13} />
-          {t`Edit`}
-        </Button>
-      ) : null}
       {parts.actions}
       {panel.actions}
       {parts.ownsDownload ? null : (
@@ -465,51 +449,84 @@ function LoadedEditor({
   );
 
   const selected = parts.ask.chips.length > 0;
-  const onSelectedChange = studio?.onSelectedChange;
-  useEffect(() => onSelectedChange?.(selected), [onSelectedChange, selected]);
-  const toolbar =
-    editing && history ? (
-      <div className="flex shrink-0 justify-center px-3 pt-2.5 pb-1">
-        <div
-          role="toolbar"
-          aria-label={t`Editing`}
-          data-testid="editor-toolbar"
-          className="superchat-glass-pill flex items-center gap-0.5 rounded-full p-1"
+  const clearSelection = () => {
+    if (parts.ask.clear) parts.ask.clear();
+    else for (const chip of parts.ask.chips) parts.ask.onRemoveChip?.(chip.id);
+  };
+  const clearRef = useRef(clearSelection);
+  clearRef.current = clearSelection;
+  const onSelection = studio?.onSelection;
+  useEffect(
+    () => onSelection?.(selected ? () => clearRef.current() : null),
+    [onSelection, selected],
+  );
+  // The canvas tools, a pill above it: Select (the canvas is selectable, hand editing is entered by
+  // selecting; off, the file runs or plays), then undo and redo. There is no Edit and no Done.
+  // Turning Select off first saves a text edit still in progress; a failed save stays selectable
+  // with its notice.
+  const toggleSelect = () =>
+    editing
+      ? void (history?.finish?.() ?? Promise.resolve()).then(
+          () => setEditing(false),
+          () => {},
+        )
+      : setEditing(true);
+  const toolbar = parts.editable ? (
+    <div className="flex shrink-0 justify-center px-3 pt-2.5 pb-1">
+      <div
+        role="toolbar"
+        aria-label={t`Canvas tools`}
+        data-testid="editor-toolbar"
+        className="superchat-glass-pill flex items-center gap-0.5 rounded-full p-1"
+      >
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-pressed={editing}
+          aria-label={t`Select`}
+          title={t`Select`}
+          data-testid="editor-select"
+          className="rounded-full aria-pressed:bg-selection-strong aria-pressed:text-tint-ink"
+          onClick={toggleSelect}
         >
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="rounded-full"
-            aria-label={t`Undo`}
-            title={t`Undo (⌘Z)`}
-            disabled={!history.canUndo || history.saving}
-            onClick={() => void history.undo()}
-          >
-            <Undo2 />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="rounded-full"
-            aria-label={t`Redo`}
-            title={t`Redo (⇧⌘Z)`}
-            disabled={!history.canRedo || history.saving}
-            onClick={() => void history.redo()}
-          >
-            <Redo2 />
-          </Button>
-          <Button size="sm" className="ms-1 rounded-full" onClick={leaveEditing}>
-            <Check />
-            {t`Done`}
-          </Button>
-        </div>
+          <MousePointer2 />
+        </Button>
+        {editing && history ? (
+          <>
+            <span aria-hidden="true" className="mx-0.5 h-4 w-px bg-separator" />
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="rounded-full"
+              aria-label={t`Undo`}
+              title={t`Undo (⌘Z)`}
+              disabled={!history.canUndo || history.saving}
+              onClick={() => void history.undo()}
+            >
+              <Undo2 />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="rounded-full"
+              aria-label={t`Redo`}
+              title={t`Redo (⇧⌘Z)`}
+              disabled={!history.canRedo || history.saving}
+              onClick={() => void history.redo()}
+            >
+              <Redo2 />
+            </Button>
+          </>
+        ) : null}
       </div>
-    ) : null;
+    </div>
+  ) : null;
 
   const askBox = ask.available ? (
     <AskBox
       className={studio ? undefined : "mx-auto max-w-[760px]"}
       chips={parts.ask.chips}
+      scope={parts.ask.scope}
       onRemoveChip={parts.ask.onRemoveChip}
       placeholder={parts.ask.placeholder}
       focusRequest={askClicks + (parts.ask.focusRequest ?? 0)}
@@ -525,17 +542,9 @@ function LoadedEditor({
           : undefined
       }
       canUndo={history?.canUndo}
-      onHandOff={props.onAskSend}
-      initialDraft={studio?.draft}
-      sendInitialDraft={studio?.sendDraft}
-      onDraftChange={studio?.onDraftChange}
       note={studio?.waiting}
     />
   ) : null;
-
-  const clearSelection = () => {
-    for (const chip of parts.ask.chips) parts.ask.onRemoveChip?.(chip.id);
-  };
   const showInspector = editing && !!parts.inspector && !locked;
   const inspector = !showInspector ? null : phone ? (
     // A phone's inspector is a sheet over the bottom of the canvas while something is selected;
@@ -588,10 +597,10 @@ function LoadedEditor({
         <div data-slot="editor-stage" className="relative flex min-h-0 min-w-0 flex-1 flex-col">
           {toolbar}
           <div className="relative min-h-0 flex-1">
-            <div data-slot="editor-canvas" inert={locked} className="contents">
+            <div data-slot="editor-canvas" className="contents">
               {parts.stage}
             </div>
-            {locked ? <WorkingCanvas slide={studio?.slide ?? null} /> : null}
+            {locked ? <WorkingCanvas /> : null}
           </div>
           {parts.footer}
           <div className="relative">
@@ -605,12 +614,11 @@ function LoadedEditor({
         </div>
         {phone ? parts.navigator : null}
         {inspector}
-        {studio ? studio.aside(askBox) : null}
       </div>
     </NavigatorOrientationProvider>
   );
 
-  return (
+  const frame = (
     <EditorFrame
       {...props}
       content={content}
@@ -622,28 +630,22 @@ function LoadedEditor({
       body={body}
     />
   );
+  return studio ? (
+    <>
+      {studio.aside(askBox)}
+      {frame}
+    </>
+  ) : (
+    frame
+  );
 }
 
-/** ADR 0023's working state over the canvas while a studio turn changes the file: the slide the
- * request named, else the whole file. */
-function WorkingCanvas({ slide }: { slide: number | null }) {
-  const { t } = useLingui();
+/** The canvas while a studio turn changes the file: the work strip's lit edge (ADR 0023) over
+ * it, nothing in the way; the turn's words are in the conversation's live strip. */
+function WorkingCanvas() {
   return (
-    <div data-testid="studio-working" className="absolute inset-2 z-10">
-      <div className="absolute inset-0 rounded-[14px] bg-content/65 backdrop-blur-[2px]" />
-      {/* The work strip's lit edge (ADR 0023), turning while the turn runs. */}
+    <div data-testid="studio-working" className="pointer-events-none absolute inset-2 z-10">
       <span aria-hidden="true" className="sc-live-ring" data-shape="canvas" />
-      <div className="relative flex h-full items-center justify-center">
-        <div
-          role="status"
-          className="flex items-center gap-2 rounded-full bg-content px-3 py-1.5 text-[13px] text-foreground shadow-float"
-        >
-          <SuperchatOrb size={16} state="working" flies={false} />
-          {slide === null
-            ? t`superchat is updating this file…`
-            : t`superchat is updating slide ${slide}…`}
-        </div>
-      </div>
     </div>
   );
 }
@@ -695,17 +697,16 @@ function EditorFrame({
           {meta}
         </div>
         {actions}
-        {studio ? null : (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={t`Close`}
-            className="text-muted-foreground"
-            onClick={onClose}
-          >
-            <X />
-          </Button>
-        )}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={studio ? t`Close and go back to Super Chat` : t`Close`}
+          data-testid="editor-close"
+          className="text-muted-foreground"
+          onClick={onClose}
+        >
+          <X />
+        </Button>
       </header>
       {panel.below}
       {panel.overlay}

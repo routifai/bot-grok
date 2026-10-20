@@ -2,8 +2,8 @@
 
 import type { ArtifactVersion, MessageBlock, ThreadMessage } from "@superchat/contracts";
 import { describe, expect, it } from "vitest";
-import { buildElementAsk, buildSlideAsk } from "../editor/html-ask";
-import { requestSlide, studioThread, threadSummary, versionOrigin } from "./thread";
+import { buildElementAsk } from "../editor/html-ask";
+import { studioThread, versionOrigin } from "./thread";
 
 const STUDIO = "studio-1";
 const CONVERSATION = "conv-1";
@@ -100,11 +100,6 @@ describe("studioThread", () => {
     ]);
     // Never the CSS of the edit, which only the version's summary carries.
     expect(JSON.stringify(hands)).not.toContain("#c33");
-    expect(threadSummary(studioThread(messages, versions, STUDIO))).toEqual({
-      edits: 4,
-      first: 1,
-      last: 6,
-    });
   });
 
   it("does not fold edits to different elements, or a hand edit with no element", () => {
@@ -151,13 +146,6 @@ describe("studioThread", () => {
       text: "Show the share next to each bar.",
       slide: 3,
     });
-    expect(requestSlide(rows)).toBe(3);
-    const slide = buildSlideAsk({ artifactId: "v2", name: "d.deck.html", version: 2, slide: 5 });
-    const whole = message("m3", "user", "Make it shorter", 70);
-    expect(requestSlide(studioThread([message("m4", "user", slide.block, 65)], [], STUDIO))).toBe(
-      5,
-    );
-    expect(requestSlide(studioThread([asked, whole], [], STUDIO))).toBeNull();
   });
 });
 

@@ -5,7 +5,7 @@ import { PanelRight, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useMemo } from "react";
 import { useIsDesktop } from "../../components/ai/orb";
-import { useArtifactPanel } from "../../components/cards/context";
+import { useFileStudio } from "../../components/cards/context";
 import { useActivities, useConversationFiles, useRoundView } from "../activity";
 import { ArtifactPreviewThumbnail } from "../artifacts";
 import { roundOutputs, usedFamilies } from "./sessionPanelState";
@@ -33,13 +33,13 @@ function Section({
 }
 
 function OutputRow({ artifact }: { artifact: Artifact }) {
-  const panel = useArtifactPanel();
+  const studio = useFileStudio();
   return (
     <li>
       <button
         type="button"
         data-testid="session-output"
-        onClick={() => panel?.open(artifact.id, artifact.name)}
+        onClick={() => studio?.open(artifact.id, artifact.name)}
         className="flex w-full min-w-0 items-center gap-2.5 rounded-lg p-1 text-start text-[13px] text-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
       >
         <span className="relative aspect-video w-16 shrink-0 overflow-hidden rounded-[4px] border border-border bg-muted">

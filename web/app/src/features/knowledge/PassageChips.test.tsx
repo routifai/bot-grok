@@ -24,7 +24,7 @@ vi.mock("../files", () => ({
   ),
 }));
 
-import { ArtifactPanelProvider, ReplyCardBotProvider } from "../../components/cards/context";
+import { FileStudioProvider, ReplyCardBotProvider } from "../../components/cards/context";
 import { PassageChips, resetThumbnailCache } from "./PassageChips";
 
 const A = "a".repeat(32);
@@ -76,9 +76,9 @@ it("draws a thumbnail chip per page, fetching each thumbnail once", async () => 
 it("clicking a chip opens the file at that page in the panel", async () => {
   const open = vi.fn();
   const host = await mount(
-    <ArtifactPanelProvider value={{ openId: null, open, close: vi.fn() }}>
+    <FileStudioProvider value={{ open }}>
       <PassageChips data={data} />
-    </ArtifactPanelProvider>,
+    </FileStudioProvider>,
   );
   await act(async () => host.querySelectorAll("button")[0]?.click());
   expect(open).toHaveBeenCalledWith(A, "finance.pdf", 2);
@@ -114,7 +114,7 @@ it("a path-only chip opens the host file preview at that page", async () => {
   const open = vi.fn();
   const host = await mount(
     <ReplyCardBotProvider botId="bot-1">
-      <ArtifactPanelProvider value={{ openId: null, open, close: vi.fn() }}>
+      <FileStudioProvider value={{ open }}>
         <PassageChips
           data={{
             items: [
@@ -128,7 +128,7 @@ it("a path-only chip opens the host file preview at that page", async () => {
             ],
           }}
         />
-      </ArtifactPanelProvider>
+      </FileStudioProvider>
     </ReplyCardBotProvider>,
   );
   expect(pageThumbnail).toHaveBeenCalledWith({ fileId: "f9", page: 4 });

@@ -1,4 +1,10 @@
-import type { Artifact, ArtifactVersion, MessageBlock, ThreadMessage } from "@superchat/contracts";
+import type {
+  Artifact,
+  ArtifactVersion,
+  MessageBlock,
+  StudioPrelude,
+  ThreadMessage,
+} from "@superchat/contracts";
 import { useEffect, useMemo, useState } from "react";
 import type { ArtifactContent } from "../../features/artifacts/editor/ArtifactEditor";
 import sample from "../../features/artifacts/editor/html/sample-deck.txt?raw";
@@ -109,6 +115,27 @@ const MESSAGES: ThreadMessage[] = [
   noticed("n1", 41, { notice: "stale", version: 6, origin: "superchat" }),
 ];
 
+/** What made v1 and v6 in Super Chat: the ask and the hand-back of the Rounds that saved them. */
+const PRELUDE: StudioPrelude[] = [
+  {
+    version: 1,
+    roundId: "r1",
+    ask: "Make a 3-slide deck reviewing Q3 for the platform team.",
+    handback:
+      "I made your 3-slide Q3 review: a cover, the numbers (deploys up 38%, incidents down a fifth, p95 latency flat) and what is next for Q4.\n\nThe incident figure comes from the on-call log only, so treat it as approximate.",
+    itemId: "c1",
+    at: at(-1),
+  },
+  {
+    version: 6,
+    roundId: "r2",
+    ask: "Add the Q4 hiring plan to the last slide.",
+    handback: "Added the Q4 hiring plan to slide 3.",
+    itemId: "c2",
+    at: at(39),
+  },
+];
+
 type Scenario = "history" | "running" | "queued" | "old";
 
 /**
@@ -167,19 +194,23 @@ export function StudioPreviewPage() {
         )}
       </div>
       {open ? (
-        <StudioView
-          content={content}
-          chat={{
-            sessionId: STUDIO,
-            messages: MESSAGES,
-            running: scenario === "running" || scenario === "queued",
-            sent: () => {},
-            failed: false,
-            blockedOn: scenario === "queued" ? "Finishing another file first" : null,
-          }}
-          title="Q3 review"
-          onClose={() => setOpen(false)}
-        />
+        <div className="fixed inset-0 flex">
+          <StudioView
+            content={content}
+            chat={{
+              sessionId: STUDIO,
+              messages: MESSAGES,
+              prelude: PRELUDE,
+              loaded: true,
+              running: scenario === "running" || scenario === "queued",
+              sent: () => {},
+              failed: false,
+              blockedOn: scenario === "queued" ? "Finishing another file first" : null,
+            }}
+            title="Q3 review"
+            onClose={() => setOpen(false)}
+          />
+        </div>
       ) : null}
     </ArtifactRegistryProvider>
   );

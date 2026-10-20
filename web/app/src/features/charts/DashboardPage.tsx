@@ -2,7 +2,7 @@ import { useLingui } from "@lingui/react/macro";
 import { Button, cn, Dialog, DialogContent, DialogTitle } from "@superchat/ui-web";
 import { BarChart3, Maximize2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useArtifactPanel } from "../../components/cards/context";
+import { useFileStudio } from "../../components/cards/context";
 import { SandboxedHtmlViewer } from "../../components/SandboxedHtmlViewer";
 import { decodeArtifactBase64 } from "../../lib/artifact-open";
 import { rpc } from "../../lib/rpc";
@@ -84,7 +84,7 @@ function useAppTheme(): "light" | "dark" {
   return theme;
 }
 
-/** A page that did not load: its name, then Retry when the request failed, or Open (the panel's
+/** A page that did not load: its name, then Retry when the request failed, or Open (the studio's
  * own view of the file) when the file is not readable as a page. */
 function LoadProblem({
   artifactId,
@@ -96,7 +96,7 @@ function LoadProblem({
   onRetry?: () => void;
 }) {
   const { t } = useLingui();
-  const panel = useArtifactPanel();
+  const studio = useFileStudio();
   return (
     <div
       data-chart-state={onRetry ? "error" : "failed"}
@@ -118,8 +118,8 @@ function LoadProblem({
         <Button variant="outline" size="sm" onClick={onRetry}>
           {t`Retry`}
         </Button>
-      ) : panel ? (
-        <Button variant="outline" size="sm" onClick={() => panel.open(artifactId)}>
+      ) : studio ? (
+        <Button variant="outline" size="sm" onClick={() => studio.open(artifactId)}>
           {t`Open`}
         </Button>
       ) : null}
@@ -141,7 +141,7 @@ export function DashboardPageResult({
   version?: number;
 }) {
   const { t } = useLingui();
-  const panel = useArtifactPanel();
+  const studio = useFileStudio();
   const [state, retry] = useDashboardHtml(artifactId, version);
   const frame = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(INITIAL_HEIGHT);
@@ -199,7 +199,7 @@ export function DashboardPageResult({
         <Button
           variant="outline"
           size="sm"
-          onClick={() => (panel ? panel.open(artifactId) : setDialog(true))}
+          onClick={() => (studio ? studio.open(artifactId) : setDialog(true))}
           aria-label={t`Open ${title}`}
           className="gap-1.5 rounded-lg bg-card/90 backdrop-blur"
         >
@@ -207,7 +207,7 @@ export function DashboardPageResult({
           {t`Open`}
         </Button>
       </div>
-      {panel ? null : (
+      {studio ? null : (
         <Dialog open={dialog} onOpenChange={setDialog}>
           <DialogContent className="h-[90vh] w-[min(1280px,96vw)] overflow-hidden rounded-2xl p-0 sm:max-w-none">
             <DialogTitle className="sr-only">{title}</DialogTitle>
