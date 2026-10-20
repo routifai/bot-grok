@@ -1001,15 +1001,27 @@ def _ensure_sdk() -> ModuleType:
         ) from exc
 
 
+_OMNIGENT_MCP_PREFIX = "mcp__omnigent__"
+
+
+def _args_key(args: object) -> str:
+    """Tool arguments as one comparable string (the hook and the handler see equal dicts)."""
+    return json.dumps(args, sort_keys=True, default=str)
+
+
 def _build_mcp_tools(
     tool_schemas: list[ToolSpec],
     tool_executor: ToolExecutor | None,
+    claim_call_id: Callable[[str, ToolArgs], str | None] | None = None,
 ) -> list[SdkMcpTool]:
     """Build SdkMcpTool objects from Omnigent tool schemas.
 
     Each tool is backed by a handler that calls the Omnigent tool_executor
     callback, which routes through the Session's tool registry (and thus
-    respects policies, history recording, etc.).
+    respects policies, history recording, etc.). The SDK hands a handler only
+    the arguments, so *claim_call_id* supplies the model's ``tool_use_id``:
+    the dispatch then records the call under the same id the stream
+    observation carries, whichever of the two reaches the adapter first.
     """
     sdk = cast(_ClaudeSDK, _ensure_sdk())
 
@@ -1043,7 +1055,12 @@ def _build_mcp_tools(
                     # so we always await. The isinstance guard below preserves
                     # the pre-refactor safety net for unexpected non-dict
                     # runtime returns without confusing the type checker.
-                    raw = await tool_executor(tool_name, args)
+                    call_id = claim_call_id(tool_name, args) if claim_call_id else None
+                    raw = await (
+                        tool_executor(tool_name, args, call_id=call_id)  # type: ignore[call-arg]
+                        if call_id
+                        else tool_executor(tool_name, args)
+                    )
                     result: ToolResult = raw if isinstance(raw, dict) else {"result": raw}
                     image_result = decode_mcp_image_result(result)
                     if image_result is not None:
@@ -1727,6 +1744,9 @@ class ClaudeSDKExecutor(Executor):
         # Per live turn: the window in which a mid-turn message may be pushed.
         self._steer_windows: dict[str, _SteerWindow] = {}
         self._pending_framework_context: dict[str, str] = {}
+        # ``tool_use_id`` of each Omnigent MCP call the CLI is about to run, from the
+        # PreToolUse hook, until its handler claims it: tool_use_id -> (name, args json).
+        self._unclaimed_tool_use_ids: dict[str, tuple[str, str]] = {}
         # Session keys whose Claude harness process crashed and must not be reused.
         self._crashed_sessions: dict[str, str] = {}
         # Session keys interrupted during their current turn: the turn ends as cancelled.
@@ -2369,6 +2389,44 @@ class ClaudeSDKExecutor(Executor):
         hooks.setdefault("PostToolBatch", []).append(hook_matcher(hooks=[stop_after_card]))
         options.hooks = hooks
 
+    def _install_tool_use_id_hook(self, sdk: _ClaudeSDK, options: SdkOptions) -> None:
+        """Note the ``tool_use_id`` of each Omnigent MCP call before the CLI runs it.
+
+        The CLI asks this hook before it sends the MCP call, so the id is always here when
+        the handler runs, even while the stream that announces the call is still queued
+        behind long streamed arguments. Without it the dispatch minted its own id and the
+        call was stored twice, once under each id.
+        """
+        hook_matcher = getattr(sdk, "HookMatcher", None)
+        if hook_matcher is None:
+            return
+
+        async def note_tool_use_id(
+            payload: object, tool_use_id: str | None, _context: object
+        ) -> _JsonObject:
+            if isinstance(payload, dict):
+                name = str(payload.get("tool_name") or "")
+                tool_use_id = tool_use_id or payload.get("tool_use_id")
+                if name.startswith(_OMNIGENT_MCP_PREFIX) and isinstance(tool_use_id, str):
+                    self._unclaimed_tool_use_ids[tool_use_id] = (
+                        name.removeprefix(_OMNIGENT_MCP_PREFIX),
+                        _args_key(payload.get("tool_input")),
+                    )
+            return {}
+
+        hooks = dict(getattr(options, "hooks", None) or {})
+        hooks.setdefault("PreToolUse", []).append(hook_matcher(hooks=[note_tool_use_id]))
+        options.hooks = hooks
+
+    def _claim_tool_use_id(self, tool_name: str, args: ToolArgs) -> str | None:
+        """The oldest unclaimed ``tool_use_id`` noted for this exact call, if any."""
+        key = (tool_name, _args_key(args))
+        for tool_use_id, noted in self._unclaimed_tool_use_ids.items():
+            if noted == key:
+                del self._unclaimed_tool_use_ids[tool_use_id]
+                return tool_use_id
+        return None
+
     def _install_subagent_router_hook(
         self,
         sdk: _ClaudeSDK,
@@ -2668,7 +2726,9 @@ class ClaudeSDKExecutor(Executor):
             return
 
         # Build MCP tools from Omnigent tool schemas
-        mcp_tools = _build_mcp_tools(tools, self._tool_executor) if tools else []
+        mcp_tools = (
+            _build_mcp_tools(tools, self._tool_executor, self._claim_tool_use_id) if tools else []
+        )
 
         # Create MCP server config for Omnigent tools. The SDK's
         # ``McpServerConfig`` union is opaque to us — we pass through
@@ -2904,6 +2964,7 @@ class ClaudeSDKExecutor(Executor):
         self._install_subagent_router_hook(sdk, options, model)
         self._install_framework_context_hook(sdk, options, session_key)
         self._install_ends_turn_hook(sdk, options)
+        self._install_tool_use_id_hook(sdk, options)
 
         # Log the full configuration for debugging
         logger.info(
@@ -3387,6 +3448,11 @@ class ClaudeSDKExecutor(Executor):
                             for block in content:
                                 if isinstance(block, sdk.ToolResultBlock):
                                     result_block = cast(_ToolResultBlockObj, block)
+                                    # A call that never reached its handler (denied,
+                                    # unknown) leaves no id behind for a later lookalike.
+                                    self._unclaimed_tool_use_ids.pop(
+                                        result_block.tool_use_id, None
+                                    )
                                     tool_name, start = pending_tools.pop(
                                         result_block.tool_use_id,
                                         ("unknown", time.monotonic()),
