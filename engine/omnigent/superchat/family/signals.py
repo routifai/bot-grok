@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from omnigent.stores.conversation_store import ConversationStore
@@ -81,15 +81,37 @@ def notify_item_updated(chat_id: str, item_id: str) -> None:
     _notify(f"msg:{chat_id}", {"type": "message.delivery", "chat_id": chat_id, "item_id": item_id})
 
 
-def notify_artifacts_changed(root_id: str, group_id: str) -> None:
-    """A version of the file *group_id* was saved in the Conversation *root_id*.
+def notify_artifacts_changed(
+    root_id: str,
+    group_id: str,
+    *,
+    version_id: str,
+    version: int,
+    origin: str,
+    from_studio: bool,
+    changed_ids: Sequence[str] = (),
+) -> None:
+    """The version *version_id* (number *version*) of the file *group_id* was saved in the
+    Conversation *root_id*.
 
     Sent as ``artifacts.changed`` on the family stream (through the stream's chats listener), so
-    an open view of the file (its studio) refreshes at once instead of at its next poll.
+    an open view of the file (its studio) adopts it at once instead of at its next poll (ADR
+    0030): *origin* is the version's (``ai``, ``manual``, ``restore``, ``update``),
+    *from_studio* whether the file's own studio saved it, *changed_ids* the element ids its
+    patches touched (empty for a whole save).
     """
     _notify(
         f"chats:{root_id}",
-        {"type": "artifacts.changed", "root_id": root_id, "group_id": group_id},
+        {
+            "type": "artifacts.changed",
+            "root_id": root_id,
+            "group_id": group_id,
+            "version_id": version_id,
+            "version": version,
+            "origin": origin,
+            "from_studio": from_studio,
+            "changed_ids": list(changed_ids),
+        },
     )
 
 

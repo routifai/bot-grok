@@ -36,6 +36,7 @@ from omnigent.superchat.artifacts.patches import (
     Patch,
     SetFullSource,
     apply_patches,
+    changed_ids,
     edit_note,
 )
 from omnigent.superchat.artifacts.routes import (
@@ -157,6 +158,7 @@ def create_html_edit_router(
                 source_path=item.source_path,
                 edit_summary=summary or "edited by hand",
                 base_version=body.base_version,
+                changed_ids=changed_ids(body.patches),
             )
         except VersionConflictError as exc:
             raise OmnigentError(STALE_MESSAGE, code=ErrorCode.ARTIFACT_STALE) from exc
@@ -238,6 +240,7 @@ def create_html_edit_router(
                 chat_id=body.chat_id,
                 # The studio turn's own message, as for a studio's artifact_save.
                 item_id=turn_item_id,
+                changed_ids=changed_ids(body.patches),
             )
         except VersionConflictError as exc:
             raise OmnigentError(

@@ -84,7 +84,7 @@ def _install(app: FastAPI, deps: InstallDeps) -> None:
     from omnigent.superchat.artifacts.links import record_open_artifact
     from omnigent.superchat.artifacts.routes import create_artifacts_router, steer_session
     from omnigent.superchat.artifacts.store import SqlAlchemyArtifactStore
-    from omnigent.superchat.artifacts.studio import StudioNotices, studio_model
+    from omnigent.superchat.artifacts.studio import StudioNotices, studio_model, studio_of
     from omnigent.superchat.family.signals import notify_artifacts_changed
 
     if deps.scheduled_task_store is None:
@@ -99,9 +99,15 @@ def _install(app: FastAPI, deps: InstallDeps) -> None:
     _STUDIO_NOTICES[:] = [notices]
     store_module.ON_VERSION_SAVED["studio"] = notices.on_saved
     store_module.ON_GROUP_DELETED["studio"] = notices.on_deleted
-    # Every open view of a file (the card, the panel, its studio) refreshes on this.
+    # Every open view of a file (the card, its studio) adopts the new version on this (ADR 0030).
     store_module.ON_VERSION_SAVED["family"] = lambda saved: notify_artifacts_changed(
-        saved.parent_session_id, saved.group_id or saved.id
+        saved.parent_session_id,
+        saved.group_id or saved.id,
+        version_id=saved.id,
+        version=saved.version,
+        origin=saved.origin,
+        from_studio=saved.chat_id is not None and saved.chat_id == studio_of(saved),
+        changed_ids=saved.changed_ids,
     )
 
     async def _studio_model(request: Any, owner: str | None, parent: Any) -> str | None:

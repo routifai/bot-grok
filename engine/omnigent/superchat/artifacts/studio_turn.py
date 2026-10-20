@@ -1,7 +1,8 @@
 """What a file's studio turn starts with (ADR 0024), read on the runner.
 
-The engine names the file (``GET /v1/artifacts/studio-turn``): its line, a deck's slide outline
-(``decks/outline.py``), and the Conversation and group the write-back is scoped to. The
+The engine names the file (``GET /v1/artifacts/studio-turn``): its line, the brief Super Chat
+made it from (ADR 0030, ``artifacts/prelude.py``), a deck's slide outline (``decks/outline.py``),
+and the Conversation and group the write-back is scoped to. The
 write-back then brings this file's hand edits into the workspace and words each once for this
 studio. No Projects list, no recall hint and no
 Conversation artifact hint: the studio is about one file.
@@ -19,6 +20,8 @@ _logger = logging.getLogger(__name__)
 
 #: How the file line opens (readers cut it from a stored message by it).
 FILE_LINE_OPEN = "The file of this chat: "
+#: How the brief line opens: the newest ask Super Chat made the file from (ADR 0030).
+BRIEF_OPEN = "Made in Super Chat from: "
 
 #: Per studio session, the hand-edited versions its turns were already told about. A runner
 #: restart forgets it, so a note may repeat once; the edit is never lost.
@@ -28,7 +31,8 @@ _NOTED: dict[str, set[str]] = {}
 async def studio_turn_blocks(
     server_client: httpx.AsyncClient | None, session_id: str
 ) -> list[str]:
-    """The file line, a deck's outline, then this file's write-back notes; ``[]`` when unknown."""
+    """The file line, its brief, a deck's outline, then this file's write-back notes; ``[]`` when
+    unknown."""
     if server_client is None or not session_id:
         return []
     try:
@@ -48,8 +52,10 @@ async def studio_turn_blocks(
         noted=_NOTED.setdefault(session_id, set()),
     )
     outline = studio.get("outline")
+    brief = studio.get("brief")
     return [
         studio["file_line"],
+        *([brief] if isinstance(brief, str) and brief else []),
         *([outline] if isinstance(outline, str) and outline else []),
         *notes,
     ]

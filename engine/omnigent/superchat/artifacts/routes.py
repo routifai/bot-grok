@@ -44,6 +44,7 @@ from omnigent.superchat.artifacts.links import (
     steer_text,
 )
 from omnigent.superchat.artifacts.patches import name_elements
+from omnigent.superchat.artifacts.prelude import brief_line, prelude
 from omnigent.superchat.artifacts.store import (
     LINK_CHOSEN,
     WRITEBACK_ORIGINS,
@@ -657,22 +658,30 @@ def create_artifacts_router(
                 outline = await asyncio.to_thread(lambda: deck_outline(store.read(newest)))
             except Exception:
                 _logger.warning("artifacts: no outline for %s", newest.id, exc_info=True)
+        rows = await asyncio.to_thread(_prelude, newest, session_id)
         return {
             "studio": {
                 "conversation_id": newest.parent_session_id,
                 "group_id": group,
                 "file_line": file_line(newest, session_id),
+                "brief": brief_line(rows),
                 "outline": outline,
             }
         }
 
+    def _prelude(item: Artifact, studio_id: str) -> list[dict[str, Any]]:
+        """The file's prelude (ADR 0030)."""
+        return prelude(conversation_store, store.versions(item), studio_id)
+
     @router.post("/artifacts/{artifact_id}/chat")
     async def artifact_chat(request: Request, artifact_id: str) -> dict[str, Any]:
-        """The file's studio session, made on first open (ADR 0024): ``{session_id, created}``.
+        """The file's studio session, made on first open (ADR 0024), with its prelude (ADR 0030):
+        ``{session_id, created, prelude: [{version, round_id, ask, handback, item_id, at}]}``.
 
         Any version id of the file; the caller must own its Conversation (another owner's file
         is a 404, and so is a deleted one). Never wakes the host: the session is only written
-        to the store; its first message brings the runner up like any other.
+        to the store; its first message brings the runner up like any other. The prelude is
+        read from the Conversation each time (``artifacts/prelude.py``), never stored.
         """
         item = await _load(request, artifact_id)
         caller = _caller(request)
@@ -699,7 +708,8 @@ def create_artifacts_router(
             if owner == RESERVED_USER_LOCAL:
                 await asyncio.to_thread(permission_store.ensure_user, RESERVED_USER_LOCAL)
             await asyncio.to_thread(permission_store.grant, owner, session_id, LEVEL_OWNER)
-        return {"session_id": session_id, "created": created}
+        rows = await asyncio.to_thread(_prelude, item, session_id)
+        return {"session_id": session_id, "created": created, "prelude": rows}
 
     @router.post("/artifacts/{artifact_id}/chat/open")
     async def artifact_chat_open(request: Request, artifact_id: str) -> dict[str, Any]:

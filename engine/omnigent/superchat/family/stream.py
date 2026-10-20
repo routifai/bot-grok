@@ -13,7 +13,9 @@ Events carry ids only; the client refetches what changed:
   now starts after ``item_id``;
 * ``chats.changed {root_id}``: the Conversation was renamed or archived, or a Helper started;
 * ``activities.changed {root_id}``: the Activity Feed may have changed;
-* ``artifacts.changed {root_id, group_id}``: a version of a file was saved;
+* ``artifacts.changed {root_id, group_id, version_id, version, origin, from_studio,
+  changed_ids}``: a version of a file was saved (``changed_ids``: the element ids its patches
+  touched, empty for a whole save);
 * ``round.updated {root_id, round_id, status, started_at, live, helpers, files, steps}``: a
   Round's record grew (at most four a second per Round); its view is ``GET .../rounds/{id}``;
 * ``session.heartbeat``: sent after ~15s of quiet.
