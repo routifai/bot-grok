@@ -187,6 +187,13 @@ async def handle_deck_check(args: dict[str, Any], ctx: HandlerCtx | None = None)
     if isinstance(target, str):
         return error(target)
     document = await asyncio.to_thread(target.read_text, "utf-8")
+    report = await _check_document(document, ctx)
+    report["path"] = str(target)
+    return json.dumps(_verdict(report))
+
+
+async def _check_document(document: str, ctx: HandlerCtx | None) -> dict[str, Any]:
+    """Structure, ids and layout of a deck's text: :func:`_layout_report` plus the slide rules."""
     start = document.find(kit.SLOTS_OPEN)
     end = document.find(kit.SLOTS_CLOSE)
     region = document[start + len(kit.SLOTS_OPEN) : end] if 0 <= start < end else document
@@ -194,12 +201,33 @@ async def handle_deck_check(args: dict[str, Any], ctx: HandlerCtx | None = None)
     # A scratch copy keeps the check independent of how the file is served.
     with tempfile.TemporaryDirectory(prefix="superchat-deck-check-") as tmp:
         copy = Path(tmp) / "deck.html"
-        copy.write_text(document, "utf-8")
+        await asyncio.to_thread(copy.write_text, document, "utf-8")
         report = await _layout_report(copy, ctx)
     report["errors"] = errors + report.get("errors", [])
     report["warnings"] = warnings + report.get("warnings", [])
-    report["path"] = str(target)
-    return json.dumps(_verdict(report))
+    return report
+
+
+async def saved_layout(data: bytes, ctx: HandlerCtx | None = None) -> dict[str, Any]:
+    """The ``layout`` a deck save reports: the same check as ``deck_check`` on the saved bytes.
+
+    :returns: ``{"ok": true}`` or ``{"ok": false, "errors": [...]}`` (with ``warnings`` when
+        there are any), or ``{"checked": false, "why": ...}`` (with any slide-rule ``errors``)
+        when the render could not run.
+    """
+    try:
+        report = await _check_document(data.decode("utf-8", "replace"), ctx)
+    except Exception as exc:  # noqa: BLE001 - the save stands; say the check did not run
+        return {"checked": False, "why": f"The layout check failed: {exc}"[:300]}
+    layout: dict[str, Any] = {"ok": not report["errors"]}
+    if report.get("layout_checked") is False:
+        # Only the slide rules ran: no render, so nothing is said about fit.
+        layout = {"checked": False, "why": report.get("layout_note")}
+    if report["errors"]:
+        layout["errors"] = report["errors"]
+    if report["warnings"]:
+        layout["warnings"] = report["warnings"]
+    return layout
 
 
 async def handle_deck_themes(_args: dict[str, Any]) -> str:
@@ -257,4 +285,5 @@ __all__ = [
     "handle_deck_new",
     "handle_deck_theme_set",
     "handle_deck_themes",
+    "saved_layout",
 ]

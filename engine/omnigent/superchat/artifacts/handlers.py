@@ -94,12 +94,12 @@ async def handle_artifact_tool(ctx: HandlerCtx, args: dict[str, Any]) -> str:
                 return error("artifact_delete requires a valid artifact_id")
             resp = await caller.client.delete(f"/v1/artifacts/{artifact_id}", timeout=30.0)
         elif tool_name == "artifact_patch":
-            return await _patch(caller.client, caller.conversation_id, args)
+            return await _patch(caller.client, caller.conversation_id, args, ctx)
         elif tool_name == "artifact_outline":
             return await _outline(caller.client, args)
         else:
             saver = caller.conversation_id if caller.is_helper else None
-            return await _save(caller.client, chat_id, args, saver)
+            return await _save(caller.client, chat_id, args, saver, ctx)
     except Exception as exc:  # noqa: BLE001
         return error(f"{tool_name} failed: {exc}")
     return finish(resp)
@@ -153,7 +153,19 @@ async def _stale(client: Any, chat_id: str, file: Path, resp: Any) -> str:
     )
 
 
-async def _save(client: Any, chat_id: str, args: dict[str, Any], saver: str | None) -> str:
+async def _layout(name: str, data: bytes, ctx: HandlerCtx) -> dict[str, Any]:
+    """A saved deck's ``layout`` (the ``deck_check`` render of the saved bytes); ``{}`` for any
+    other file. A save always says whether the deck still fits, so no separate check is needed."""
+    if not is_deck_name(name):
+        return {}
+    from omnigent.superchat.decks.authoring import saved_layout
+
+    return {"layout": await saved_layout(data, ctx)}
+
+
+async def _save(
+    client: Any, chat_id: str, args: dict[str, Any], saver: str | None, ctx: HandlerCtx
+) -> str:
     raw = args.get("path")
     if not isinstance(raw, str) or not raw.strip():
         return error("artifact_save requires a path")
@@ -200,14 +212,16 @@ async def _save(client: Any, chat_id: str, args: dict[str, Any], saver: str | No
             }
         )
     # source_path lets the file search follow a saved file (knowledge's on_result listener).
-    return json.dumps({"type": "artifact", **saved, "source_path": str(file)})
+    layout = await _layout(file.name, data, ctx)
+    return json.dumps({"type": "artifact", **saved, "source_path": str(file), **layout})
 
 
-async def _patch(client: Any, studio_id: str, args: dict[str, Any]) -> str:
+async def _patch(client: Any, studio_id: str, args: dict[str, Any], ctx: HandlerCtx) -> str:
     """``artifact_patch`` from a file's studio: patch the newest version, mirror it on disk.
 
     The saved bytes are written to the file's workspace path, so a later read or
-    ``artifact_save`` of the file starts from them. A stale base says which version is newest.
+    ``artifact_save`` of the file starts from them, and a deck's are checked (``layout``). A
+    stale base says which version is newest.
     """
     from omnigent.superchat.artifacts.writeback import write_bytes_idempotent
 
@@ -259,17 +273,30 @@ async def _patch(client: Any, studio_id: str, args: dict[str, Any]) -> str:
                 ),
             }
         )
+    name = str(saved.get("name") or "")
     source = saved.get("source_path")
-    if isinstance(source, str) and source and saved.get("summary"):
-        file = resolve_workspace_file(source, workspace_roots())
-        if isinstance(file, Path):
-            try:
-                content = await client.get(f"/v1/artifacts/{saved['id']}/content", timeout=60.0)
-                content.raise_for_status()
-                await asyncio.to_thread(write_bytes_idempotent, file, content.content)
-            except Exception:  # noqa: BLE001 - the version is saved; the next read refreshes
-                pass
-    return json.dumps({"type": "artifact", **saved})
+    file = (
+        resolve_workspace_file(source, workspace_roots())
+        if isinstance(source, str) and source and saved.get("summary")
+        else None
+    )
+    data: bytes | None = None
+    if isinstance(file, Path) or is_deck_name(name):
+        try:
+            content = await client.get(f"/v1/artifacts/{saved['id']}/content", timeout=60.0)
+            content.raise_for_status()
+            data = content.content
+            if isinstance(file, Path):
+                await asyncio.to_thread(write_bytes_idempotent, file, data)
+        except Exception:  # noqa: BLE001 - the version is saved; the next read refreshes
+            pass
+    if data is not None:
+        layout = await _layout(name, data, ctx)
+    elif is_deck_name(name):
+        layout = {"layout": {"checked": False, "why": "The saved deck could not be read back"}}
+    else:
+        layout = {}
+    return json.dumps({"type": "artifact", **saved, **layout})
 
 
 #: Lines of a text file the outline shows, and the characters they may take.
