@@ -697,7 +697,10 @@ def _add_claude_sdk_skills_env(
     env["HARNESS_CLAUDE_SDK_SKILLS_FILTER"] = json.dumps(spec.skills_filter)
     if spec.name:
         env["HARNESS_CLAUDE_SDK_AGENT_NAME"] = spec.name
-    if workdir is not None:
+    if spec.executor.config.get("native_skills") is False:
+        # Omnigent owns this agent's skills (``load_skill``): no plugin, no Skill tool.
+        env["HARNESS_CLAUDE_SDK_NATIVE_SKILLS"] = "0"
+    elif workdir is not None:
         env["HARNESS_CLAUDE_SDK_BUNDLE_DIR"] = str(workdir)
 
 

@@ -1644,6 +1644,7 @@ class ClaudeSDKExecutor(Executor):
         agent_name: str | None = None,
         skills_filter: str | list[str] = "all",
         api_key_helper: str | None = None,
+        native_skills: bool = True,
     ) -> None:
         """Create a ClaudeSDKExecutor.
 
@@ -1721,6 +1722,9 @@ class ClaudeSDKExecutor(Executor):
         self._bundle_dir = bundle_dir
         self._agent_name = agent_name
         self._skills_filter = skills_filter
+        # ``False`` (a spec's ``executor.config.native_skills: false``, every Super Chat bundle):
+        # no Claude Code ``Skill`` tool, skill listing or bundle plugin; skills are Omnigent's.
+        self._native_skills = native_skills
         # Write the bundle's plugin manifest now (idempotent) so that
         # ``--plugin-dir <bundle>`` produces clean
         # ``<agent-name>:<skill-name>`` labels in Claude's skill
@@ -2859,7 +2863,7 @@ class ClaudeSDKExecutor(Executor):
         # MCP tools (declared via ``os_env`` in the spec), not the
         # SDK's native Bash/Read/Edit/Write. Keep Skill and ToolSearch in
         # the base set so MCP definitions can be discovered on demand.
-        base_tools: list[str] = ["Skill", "ToolSearch"]
+        base_tools: list[str] = ["Skill", "ToolSearch"] if self._native_skills else ["ToolSearch"]
         # Translate the spec's host-skill filter into the SDK
         # options. Falls back to ``"all"`` semantics when the
         # field is malformed (the parser already validates, so
@@ -2874,10 +2878,8 @@ class ClaudeSDKExecutor(Executor):
         # tests/harnesses/test_claude_sdk_executor.py). The plugin's
         # ``name`` (and thus the skill-listing prefix) comes from
         # the manifest written at construction time.
-        # A superside-chat session reads its bundle skills through Omnigent's ``load_skill``,
-        # as on pi (ADR 0006): no second, native copy of them through a plugin.
         bundle_plugins: list[Any] = []  # type: ignore[explicit-any]  # SdkPluginConfig is a TypedDict — typed Any here to keep the import lazy
-        if self._bundle_dir is not None and not is_superside_chat:
+        if self._bundle_dir is not None and self._native_skills:
             bundle_plugins.append({"type": "local", "path": str(self._bundle_dir)})
         options_kwargs: dict[str, Any] = {  # type: ignore[explicit-any]  # ClaudeAgentOptions accepts mixed-typed kwargs (str / list / dict / callable / etc.)
             "tools": base_tools,
@@ -2920,6 +2922,10 @@ class ClaudeSDKExecutor(Executor):
         # branch).
         if resolved.setting_sources is not None:
             options_kwargs["setting_sources"] = resolved.setting_sources
+        if not self._native_skills:
+            # Omnigent owns this bundle's skills (``load_skill``, ADR 0006): no native listing.
+            options_kwargs["skills"] = []
+            options_kwargs["setting_sources"] = []
         if is_superside_chat:
             # No CLAUDE.md / filesystem settings: Omnigent owns every
             # instruction this session gets (system prompt + framework

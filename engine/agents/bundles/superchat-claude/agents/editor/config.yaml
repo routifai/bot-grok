@@ -17,6 +17,7 @@ executor:
   type: omnigent
   config:
     harness: claude-sdk
+    native_skills: false
 
 # Shell and file tools (sys_os_*) run in the host's workspace, as a worker's do.
 os_env:

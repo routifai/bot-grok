@@ -16,6 +16,7 @@ executor:
   type: omnigent
   config:
     harness: claude-sdk
+    native_skills: false
 
 # Concurrent `notes` Helpers on top of the default cap across all Types
 # (OMNIGENT_SUBAGENT_MAX_CONCURRENT).

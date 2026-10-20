@@ -69,6 +69,10 @@ Env vars read at startup:
   surface as agent-bundled skills (regardless of
   ``skills_filter``). Unset for agents without a bundled-skills
   directory.
+- ``HARNESS_CLAUDE_SDK_NATIVE_SKILLS``: ``0`` when the spec says
+  ``executor.config.native_skills: false`` (every Super Chat bundle): no
+  ``Skill`` tool, no native skill listing and no bundle plugin; the bundle's
+  skills reach the model through Omnigent's ``load_skill`` only (ADR 0006).
 - ``HARNESS_CLAUDE_SDK_AGENT_NAME``: Agent display name. Used
   when ``HARNESS_CLAUDE_SDK_BUNDLE_DIR`` is set to write the
   bundle's ``.claude-plugin/plugin.json`` manifest with a
@@ -108,6 +112,7 @@ _ENV_RETRY_POLICY = "HARNESS_CLAUDE_SDK_RETRY_POLICY"
 _ENV_SKILLS_FILTER = "HARNESS_CLAUDE_SDK_SKILLS_FILTER"
 _ENV_BUNDLE_DIR = "HARNESS_CLAUDE_SDK_BUNDLE_DIR"
 _ENV_AGENT_NAME = "HARNESS_CLAUDE_SDK_AGENT_NAME"
+_ENV_NATIVE_SKILLS = "HARNESS_CLAUDE_SDK_NATIVE_SKILLS"
 _ENV_GATEWAY_BASE_URL = "HARNESS_CLAUDE_SDK_GATEWAY_BASE_URL"
 _ENV_GATEWAY_AUTH_COMMAND = "HARNESS_CLAUDE_SDK_GATEWAY_AUTH_COMMAND"
 _ENV_GATEWAY_AUTH_REFRESH_INTERVAL_MS = "HARNESS_CLAUDE_SDK_GATEWAY_AUTH_REFRESH_INTERVAL_MS"
@@ -289,6 +294,7 @@ def _build_claude_sdk_executor() -> Executor:
         agent_name=agent_name,
         skills_filter=_resolve_skills_filter(),
         api_key_helper=os.environ.get(_ENV_API_KEY_HELPER) or None,
+        native_skills=os.environ.get(_ENV_NATIVE_SKILLS, "1").strip() != "0",
     )
 
 

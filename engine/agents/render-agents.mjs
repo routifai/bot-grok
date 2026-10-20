@@ -28,7 +28,8 @@ const MUSE_BUNDLES = [
     name: "superchat-claude",
     harness: "claude-sdk",
     harnessName: "Claude Agent SDK",
-    executorExtra: "",
+    // Omnigent owns skills (load_skill, ADR 0006): no native Claude Code Skill tool or plugin.
+    executorExtra: "    native_skills: false",
     skillsFilter: "",
   },
   {

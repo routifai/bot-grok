@@ -18,6 +18,7 @@ executor:
   type: omnigent
   config:
     harness: claude-sdk
+    native_skills: false
 
 os_env:
   type: caller_process
