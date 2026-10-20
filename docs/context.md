@@ -76,6 +76,20 @@ because a harness's system prompt is frozen per warm session, and changing it wo
 start and break prompt caching. Any other failure building a block drops that block; no block can
 fail a turn. Helpers carry the same `superside-chat` label and get the same prefix.
 
+## Prompt cache
+
+Both harnesses ask for a 1-hour prompt cache instead of the default 5 minutes
+(`OMNIGENT_PROMPT_CACHE_1H`, on unless `0`; `PROMPT_CACHE_1H` in the deployment `.env`). The runner
+sets `PI_CACHE_RETENTION=long` for pi (a `ttl: "1h"` on all its cache breakpoints) and
+`ENABLE_PROMPT_CACHING_1H=1` for Claude Code (`harnesses/agent_env.py`, `prompt_cache_1h`). A
+1-hour write costs 2x an input token instead of 1.25x, but only on new tokens; a read stays 0.1x.
+The lifetime runs from the start of the last request that read the cache, and every read
+refreshes it, so a person who comes back within the hour keeps the warm context instead of a
+rewrite of the whole thing (ADR 0031, step 0b). Check it in a model-call trace: the request's
+`cache_control` carries `"ttl": "1h"`, the usage splits writes into `ephemeral_1h_input_tokens`,
+and the first call after a 10-minute gap reads the cache (`engine/scripts/handoff_probe.py
+numbers` prints the TTLs asked and hits by gap).
+
 ## Rollover
 
 When the conversation grows, the engine replaces older turns with a **checkpoint** and keeps recent

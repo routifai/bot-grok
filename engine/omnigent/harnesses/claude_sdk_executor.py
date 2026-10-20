@@ -42,6 +42,7 @@ from urllib.parse import urlparse
 from omnigent._platform import resolve_cli_binary, stable_user_id
 from omnigent.context.labels import SUPERSIDE_CHAT_MODE_VALUE
 from omnigent.harnesses import _proc
+from omnigent.harnesses.agent_env import prompt_cache_1h
 from omnigent.harnesses.bundle_skills import ensure_bundle_plugin_manifest
 from omnigent.harnesses.hook_scripts import subagent_router
 from omnigent.llms._usage_observer import notify_from_dict as _notify_usage_from_dict
@@ -2792,6 +2793,9 @@ class ClaudeSDKExecutor(Executor):
         # ``_get_or_create_client`` via ``_unset_env_var`` — setting it to
         # ``""`` here would still leave an empty key in the child env.
         env = dict(self._extra_env)
+        if prompt_cache_1h():
+            # A 1-hour prompt-cache TTL instead of 5 minutes (ADR 0031 step 0b).
+            env["ENABLE_PROMPT_CACHING_1H"] = "1"
         if is_superside_chat:
             env[_CLAUDE_CODE_DISABLE_AUTO_COMPACT_ENV] = "1"
             env[_CLAUDE_CODE_DISABLE_AUTO_MEMORY_ENV] = "1"

@@ -45,7 +45,7 @@ from typing import Any, NotRequired, Protocol, TypeAlias, TypedDict, cast
 from omnigent.context.labels import SUPERSIDE_CHAT_MODE_VALUE
 from omnigent.harnesses import llm_trace, pi_settings
 from omnigent.harnesses.pi_credentials import pi_model_limits
-from omnigent.harnesses.agent_env import clean_agent_env
+from omnigent.harnesses.agent_env import clean_agent_env, prompt_cache_1h
 from omnigent.harnesses.native_attachments import parse_data_uri
 from omnigent.llms._usage_observer import notify_from_dict as _notify_usage_from_dict
 from omnigent.models.model_metadata import ModelWireAPI
@@ -2282,6 +2282,9 @@ class PiExecutor(Executor):
             records (``OMNIGENT_LLM_TRACE_DIR``); ignored when tracing is off.
         """
         env = dict(self._env)
+        if prompt_cache_1h():
+            # A 1-hour TTL on all of pi's cache breakpoints (ADR 0031 step 0b).
+            env["PI_CACHE_RETENTION"] = "long"
         settings_overlay = dict(self._retry_policy.pi.settings())
         if disable_auto_compaction:
             settings_overlay.update(_pi_owned_context_settings())

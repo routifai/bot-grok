@@ -150,3 +150,18 @@ def declared_passthrough(os_env: object | None) -> tuple[str, ...]:
     if getattr(sandbox, "type", None) == "none":
         return tuple(names)
     return tuple(name for name in names if name not in DESKTOP_SESSION_ENV_VARS)
+
+
+#: One switch for both harnesses' 1-hour prompt cache (ADR 0031 step 0b). On unless set to
+#: ``0``/``false``/``off``; the operator sets it on the engine, which hands it to each runner.
+PROMPT_CACHE_1H_ENV = "OMNIGENT_PROMPT_CACHE_1H"
+
+
+def prompt_cache_1h() -> bool:
+    """Whether a harness CLI asks for a 1-hour prompt-cache TTL instead of 5 minutes.
+
+    A 1-hour write costs 2x instead of 1.25x on new tokens only, and keeps an idle return warm
+    (docs/context.md, "Prompt cache"). pi reads ``PI_CACHE_RETENTION=long``; Claude Code reads
+    ``ENABLE_PROMPT_CACHING_1H=1``.
+    """
+    return os.environ.get(PROMPT_CACHE_1H_ENV, "1").strip().lower() not in {"0", "false", "off"}

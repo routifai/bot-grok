@@ -81,6 +81,8 @@ services:
       LITELLM_API_KEY: ${LITELLM_API_KEY:-}
       # Optional: artifacts in S3/R2 instead of the /data volume.
       OMNIGENT_ARTIFACT_URI: ${OMNIGENT_ARTIFACT_URI:-}
+      # Harness prompt cache kept 1 hour instead of 5 minutes (pi and Claude Code); 0 turns it off.
+      OMNIGENT_PROMPT_CACHE_1H: ${PROMPT_CACHE_1H:-1}
       # Dev only, off when empty: a folder INSIDE each host where every model call is traced
       # (engine/scripts/llm_trace.py reads it), e.g. /home/superchat/.omnigent/llm-trace.
       OMNIGENT_LLM_TRACE_DIR: ${OMNIGENT_LLM_TRACE_DIR:-}
