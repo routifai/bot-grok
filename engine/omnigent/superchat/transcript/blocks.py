@@ -52,6 +52,7 @@ from omnigent.superchat.cards.tools import (
     CARD_TOOL_NAME,
     FOLLOW_UP_MAX_CHARS,
     FOLLOW_UPS_TOOL_NAME,
+    TERMINAL_CARDS,
     build_follow_ups,
 )
 from omnigent.superchat.helpers.tools import START_HELPER_TOOL_NAME
@@ -143,6 +144,9 @@ def _card_payload(payload: Mapping[str, Any]) -> dict[str, Any] | None:
             out[key] = payload[key]
     out["data"] = data
     out["fallback"] = fallback.strip()
+    message = payload.get("message")
+    if out["card"] in TERMINAL_CARDS and isinstance(message, str) and message.strip():
+        out["message"] = message.strip()
     return out
 
 
@@ -363,11 +367,12 @@ def _message(item: Item, role: str, blocks: list[dict[str, Any]]) -> dict[str, A
 _INSTANT_CARD_TOOLS = (*sorted(ENDS_TURN_TOOLS), FOLLOW_UPS_TOOL_NAME)
 
 
-def _last_text_ids(items: list[Item]) -> set[str]:
-    """Ids of each turn's last assistant text (a user message starts a turn).
+def _last_text_ids(items: list[Item]) -> dict[int, str]:
+    """Turn number -> the id of that turn's last assistant text (a user message starts a turn).
 
     Nothing else decides which text is the reply: no word count, no card that closes the turn.
-    A turn still running shows its newest text until a later one replaces it.
+    A turn still running shows its newest text until a later one replaces it. A turn with no
+    text of its own shows its answer card's ``message`` as its words.
     """
     last: dict[int, str] = {}
     turn = 0
@@ -378,7 +383,7 @@ def _last_text_ids(items: list[Item]) -> set[str]:
             turn += 1
         elif item.get("role") == "assistant" and item_text(item) and "id" in item:
             last[turn] = item["id"]
-    return set(last.values())
+    return last
 
 
 def project_items(
@@ -404,10 +409,14 @@ def project_items(
     helpers: list[dict[str, Any]] = []
     cited: list[dict[str, Any]] = []
     seen_calls: set[str] = set()
-    final_text = _last_text_ids(items)
+    said = _last_text_ids(items)
+    final_text = set(said.values())
+    turn = 0  # counted as :func:`_last_text_ids` counts
     chips: list[dict[str, Any]] = []  # the turn's follow-ups, shown after its last message
     for item in items:
         kind = item.get("type")
+        if kind == "message" and item.get("role") == "user" and item.get("is_meta") is not True:
+            turn += 1
         if kind == "function_call":
             call_id = str(item.get("call_id") or "")
             if call_id and call_id in seen_calls:
@@ -426,6 +435,12 @@ def project_items(
                 continue
             if _is_call(item, CARD_TOOL_NAME):
                 block = _card_block(item, output)
+                words = block["card"].get("message") if block else None
+                if words and turn not in said:
+                    messages.append(
+                        _message(item, "assistant", [{"type": "text", "text": words}, block])
+                    )
+                    continue
             elif any(_is_call(item, name) for name in _INSTANT_CARD_TOOLS):
                 block = _card_block(item, output) if output is not None else None
                 if block and _is_call(item, FOLLOW_UPS_TOOL_NAME):

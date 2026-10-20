@@ -86,8 +86,8 @@ def format_saved_files(files: Iterable[Mapping[str, Any]]) -> str:
         return ""
     return (
         "Files it saved (already in the person's Library):\n" + "\n".join(lines) + "\n"
-        "After your check, say in one or two plain sentences what was made, then show each file "
-        "last with `render_card` "
-        '(card "file", data {"name": <file name>, "artifactId": <artifact_id>}). Never write a '
-        "file card without its artifact_id.\n"
+        "After your check, show each file with `render_card` "
+        '(card "file", data {"name": <file name>, "artifactId": <artifact_id>}) and put your one '
+        "or two plain sentences (what was made, anything still open) in its `message`. Never "
+        "write a file card without its artifact_id.\n"
     )
