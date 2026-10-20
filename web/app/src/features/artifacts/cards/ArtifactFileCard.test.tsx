@@ -62,7 +62,7 @@ vi.mock("@superchat/ui-web", () => {
   };
 });
 
-import { ArtifactPanelProvider, ReplyCardBotProvider } from "../../../components/cards/context";
+import { FileStudioProvider, ReplyCardBotProvider } from "../../../components/cards/context";
 import { readDeckThemeOpen, resetDeckUi } from "../../decks/deck-ui-state";
 import { ArtifactFileCard } from "./ArtifactFileCard";
 
@@ -125,11 +125,11 @@ it("a deck's card offers Change look: the panel opens on the Theme gallery (ADR 
   hosts.push(host);
   act(() =>
     createRoot(host).render(
-      <ArtifactPanelProvider value={{ openId: null, open, close: () => {} }}>
+      <FileStudioProvider value={{ open }}>
         <ReplyCardBotProvider botId="bot-1">
           <ArtifactFileCard data={{ name: "q3.deck.html", artifactId: "art-1" }} title="Q3" />
         </ReplyCardBotProvider>
-      </ArtifactPanelProvider>,
+      </FileStudioProvider>,
     ),
   );
   act(() => (host.querySelector('[data-testid="deck-change-look"]') as HTMLElement).click());

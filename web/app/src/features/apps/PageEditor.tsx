@@ -270,6 +270,8 @@ function usePageEditor({
         detail: target.where ?? label(target),
       })),
       onRemoveChip: (id: string) => editor.select(targets.map((x) => x.id).filter((x) => x !== id)),
+      clear: () => editor.select([]),
+      scope: whole,
       placeholder: selected
         ? t`Ask superchat to change this…`
         : app

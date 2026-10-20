@@ -1,28 +1,23 @@
+import { plural } from "@lingui/core/macro";
 import { useLingui } from "@lingui/react/macro";
+import { ChatMarkdown } from "@superchat/chat-ui/web";
 import type { ArtifactVersion } from "@superchat/contracts";
-import {
-  Button,
-  cn,
-  Dialog,
-  DialogContent,
-  DialogTitle,
-  Sheet,
-  SheetContent,
-  SheetTitle,
-} from "@superchat/ui-web";
+import { Button, cn } from "@superchat/ui-web";
 import { ChevronLeft, CornerDownRight, History, Pencil } from "lucide-react";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { SuperchatOrb } from "../../../components/ai/orb";
+import { useNow } from "../../../components/chrome/useNow";
 import { ShowMessageProvider, useShowMessage } from "../../../lib/show-message";
+import { formatClock, serverNow, useActivities } from "../../activity";
 import { formatDayAndTime } from "../../activity/activityGrouping";
-import type { AskDraft } from "../ask/AskBox";
 import type { ArtifactContent } from "../editor/ArtifactEditor";
-import { ArtifactEditor } from "../editor/ArtifactEditor";
-import { artifactKey, setArtifactEditing } from "../editor/editor-state";
+import { ArtifactEditor, isTypingTarget } from "../editor/ArtifactEditor";
+import { splitElementAsk } from "../editor/html-ask";
 import { useArtifactContent } from "../library/useArtifactContent";
 import { useArtifactPanelParts } from "../registry";
 import type { StudioRow } from "./thread";
-import { requestSlide, studioThread, threadSummary, versionOrigin } from "./thread";
+import { studioThread, versionOrigin } from "./thread";
 import { useOriginLabel } from "./useOriginLabel";
 import { usePhoneLayout } from "./usePhoneLayout";
 import { useSeenVersion } from "./useSeenVersion";
@@ -34,33 +29,48 @@ const HIGHLIGHT_MS = 2200;
 
 type StudioProps = {
   title?: string;
-  /** Sent from the panel's ask box: the studio opens and sends it. */
-  draft?: AskDraft;
-  onClose: () => void;
-  /** Where focus goes when the studio closes (the file card that opened the panel); the control
-   * that opened the studio when it is gone or not given. */
-  returnFocus?: HTMLElement | null;
+  /** Open a PDF at this page (a citation). */
+  page?: number;
+  /** Back to Super Chat; with an item id, scrolled to that message ("Show in Super Chat"). */
+  onClose: (revealItemId?: string) => void;
 };
 
 /**
- * A file's studio (ADR 0024): the file in the editor that exists (navigator, canvas, inspector)
- * over the whole window, with the file's own chat beside it. Requests go to the file's studio
- * session, never to the Conversation; the thread is that session's transcript merged with the
- * file's versions. "‹ Super Chat" (and Escape with nothing selected) closes it.
+ * The File Studio (ADR 0030): one view for a file, opened from its card, the Library or a
+ * citation. The file's conversation on the left (its prelude from Super Chat, the studio thread,
+ * the turn's live strip, the composer with the selection chip), the file on the right in the one
+ * editor (title bar, slide rail, canvas). Requests go to the file's studio session, never to the
+ * Conversation. "‹ Super Chat", close, and Escape with nothing selected go back.
  */
 export function ArtifactStudio({
   artifactId,
+  onResolved,
   ...props
 }: StudioProps & {
-  /** Any version of the file. */
+  /** Any version of the file, or its group id (the route's `?file=`). */
   artifactId: string;
+  /** The file's group id once known, for the route to name the file by it. */
+  onResolved?: (groupId: string) => void;
 }) {
-  const content = useArtifactContent(artifactId);
+  // The route moving from a version id to the file's group id is the same file: no reload.
+  const [familyId, setFamilyId] = useState(artifactId);
+  const content = useArtifactContent(familyId);
   const ready = content.status === "ready" ? content : null;
+  const groupId = ready?.artifact.groupId ?? null;
+  if (
+    artifactId !== familyId &&
+    artifactId !== groupId &&
+    !content.versions.some((version) => version.id === artifactId)
+  ) {
+    setFamilyId(artifactId);
+  }
+  useEffect(() => {
+    if (groupId && groupId !== artifactId) onResolved?.(groupId);
+  }, [groupId, artifactId, onResolved]);
   const chat = useStudioChat({
-    artifactId,
+    artifactId: familyId,
     botId: ready?.artifact.botId ?? null,
-    groupId: ready?.artifact.groupId ?? null,
+    groupId,
     onSaved: content.refresh,
   });
   return <StudioView content={content} chat={chat} {...props} />;
@@ -71,9 +81,8 @@ export function StudioView({
   content,
   chat,
   title,
-  draft,
+  page,
   onClose,
-  returnFocus,
 }: StudioProps & { content: ArtifactContent; chat: StudioChat }) {
   const { t } = useLingui();
   const ready = content.status === "ready" ? content : null;
@@ -84,42 +93,40 @@ export function StudioView({
     newestVersion: content.versions[0] ?? null,
   });
   const phone = usePhoneLayout();
-  // On a phone the chat is a sheet over the canvas; what is typed there outlives its closing.
-  const [chatOpen, setChatOpen] = useState(!!draft);
-  const typed = useRef<AskDraft | undefined>(draft);
-  // The panel's request is sent once, by the first ask box to open; any change to the words after
-  // that (the send clears them) is the person's own draft.
-  const sendDraft = useRef(!!draft);
-  const onDraftChange = useCallback((next: AskDraft) => {
-    typed.current = next;
-    sendDraft.current = false;
-  }, []);
-  // Escape leaves the studio only while nothing on the canvas is selected.
-  const selected = useRef(false);
-  const onSelectedChange = useCallback((on: boolean) => {
-    selected.current = on;
-  }, []);
-
-  // The canvas is in edit mode for as long as the studio is open.
-  const fileKey = ready ? artifactKey(ready.artifact) : null;
-  useEffect(() => {
-    if (!fileKey) return;
-    setArtifactEditing(fileKey, true);
-    return () => setArtifactEditing(fileKey, false);
-  }, [fileKey]);
-
-  // "Show in Super Chat" from the version menu leaves the studio first.
-  const showInConversation = useShowMessage();
-  const showMessage = useMemo(
-    () =>
-      showInConversation
-        ? (itemId: string) => {
-            onClose();
-            showInConversation(itemId);
-          }
-        : null,
-    [showInConversation, onClose],
+  // On a phone the conversation is a sheet under the file: a peek row until raised.
+  const [raised, setRaised] = useState(false);
+  // How to end the canvas selection while there is one: Escape does that before it leaves.
+  const clearSelection = useRef<(() => void) | null>(null);
+  const onSelection = useCallback(
+    (clear: (() => void) | null) => {
+      clearSelection.current = clear;
+      if (clear && phone) setRaised(true); // selecting raises the sheet with the chip in it
+    },
+    [phone],
   );
+
+  // Escape: a menu, a dialog or an overlay of the file's own (the Theme gallery) takes it first;
+  // then the selection; then, on a phone, the raised sheet; then the studio closes.
+  const holdsEscape = panel.holdsEscape;
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented || holdsEscape) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (isTypingTarget(target) || target?.closest('[role="menu"],[role="dialog"]')) return;
+      if (clearSelection.current) clearSelection.current();
+      else if (phone && raised) setRaised(false);
+      else onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [holdsEscape, phone, raised, onClose]);
+
+  // The studio takes focus when it opens, so the keyboard is in it, not behind it.
+  const root = useRef<HTMLElement>(null);
+  useEffect(() => root.current?.focus({ preventScroll: true }), []);
+
+  // "Show in Super Chat" (the prelude, the version menu) leaves the studio at that message.
+  const showMessage = useCallback((itemId: string) => onClose(itemId), [onClose]);
 
   const originLabel = useOriginLabel();
   const versionLabel = (version: ArtifactVersion) =>
@@ -130,9 +137,11 @@ export function StudioView({
     content.versions[0]?.version ?? null,
   );
   const rows = useMemo(
-    () => studioThread(chat.messages, content.versions, chat.sessionId, seen),
-    [chat.messages, content.versions, chat.sessionId, seen],
+    () => studioThread(chat.messages, content.versions, chat.sessionId, seen, chat.prelude),
+    [chat.messages, content.versions, chat.sessionId, seen, chat.prelude],
   );
+  // The thread paints once, whole: its transcript, its prelude and the versions together.
+  const threadReady = chat.loaded && (ready !== null || content.status === "error");
 
   // A version of this chat picked from the menu marks the message that made it.
   const [highlight, setHighlight] = useState<string | null>(null);
@@ -146,214 +155,204 @@ export function StudioView({
     return () => window.clearTimeout(timer);
   }, [picked]);
 
-  const back = (
-    <Button
-      variant="ghost"
-      size="sm"
-      aria-label={t`Back to Super Chat`}
-      data-testid="studio-back"
-      className="-ms-2 me-1 shrink-0 text-muted-foreground"
-      onClick={onClose}
+  const versionCount = content.versions.length;
+  const aside = (askBox: ReactNode) => (
+    <aside
+      data-testid="studio-chat"
+      data-raised={phone ? raised : undefined}
+      aria-label={t`This file's conversation`}
+      onFocus={phone ? () => setRaised(true) : undefined}
+      className={cn(
+        "flex min-h-0 flex-col bg-background",
+        phone
+          ? cn(
+              "absolute inset-x-0 bottom-0 z-30 rounded-t-[18px] border-t border-border bg-content shadow-float motion-safe:transition-[height] motion-safe:duration-300 motion-safe:ease-out",
+              raised ? "h-[82%]" : "h-[276px]",
+            )
+          : "w-[384px] shrink-0 border-e border-border",
+      )}
     >
-      <ChevronLeft />
-      {t`Super Chat`}
-    </Button>
+      {phone ? (
+        <button
+          type="button"
+          aria-label={raised ? t`Lower the conversation` : t`Raise the conversation`}
+          aria-expanded={raised}
+          data-testid="studio-chat-grab"
+          onClick={() => setRaised((on) => !on)}
+          className="mx-auto mt-1.5 h-4 w-12 shrink-0 rounded-full after:mx-auto after:block after:h-[5px] after:w-9 after:rounded-full after:bg-separator"
+        />
+      ) : null}
+      <header className="flex shrink-0 items-center gap-1.5 ps-2.5 pe-3.5 pt-3 pb-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label={t`Back to Super Chat`}
+          data-testid="studio-back"
+          className="text-muted-foreground"
+          onClick={() => onClose()}
+        >
+          <ChevronLeft />
+          {t`Super Chat`}
+        </Button>
+        {versionCount > 0 ? (
+          <span data-testid="studio-chat-summary" className="ms-auto text-[12px] text-ink-3">
+            {plural(versionCount, { one: "# version", other: "# versions" })}
+          </span>
+        ) : null}
+      </header>
+      <StudioThread
+        rows={rows}
+        ready={threadReady}
+        failed={chat.failed}
+        peek={phone && !raised}
+        highlight={highlight}
+        live={
+          chat.running && ready?.artifact.botId && chat.sessionId ? (
+            <TurnStrip
+              botId={ready.artifact.botId}
+              sessionId={chat.sessionId}
+              about={latestChip(rows)}
+              waiting={chat.blockedOn}
+            />
+          ) : null
+        }
+      />
+      <div className="shrink-0 px-3 pt-1 pb-3">{askBox}</div>
+    </aside>
   );
 
-  const body =
-    ready && chat.sessionId ? (
-      <ArtifactEditor
-        content={content}
-        panel={panel}
-        title={title}
-        onClose={onClose}
-        leading={back}
-        studio={{
-          chatId: chat.sessionId,
-          turn: { running: chat.running, onSent: chat.sent },
-          slide: requestSlide(rows),
-          layout: phone ? "phone" : "wide",
-          onSelectedChange,
-          versionOrigin: versionLabel,
-          draft: typed.current,
-          sendDraft: sendDraft.current,
-          onDraftChange,
-          waiting: chat.blockedOn,
-          aside: (askBox) =>
-            phone ? (
-              <PhoneChat
-                rows={rows}
-                highlight={highlight}
-                askBox={askBox}
-                open={chatOpen}
-                onOpenChange={setChatOpen}
-              />
-            ) : (
-              <aside
-                data-testid="studio-chat"
-                aria-label={t`This file's chat`}
-                className="flex w-[340px] shrink-0 flex-col border-s border-border bg-content"
-              >
-                <StudioChatThread rows={rows} highlight={highlight} />
-                <div className="px-3 pt-1 pb-3">{askBox}</div>
-              </aside>
-            ),
-        }}
-      />
-    ) : (
-      <div className="flex min-h-0 flex-1 flex-col">
-        <header className="flex shrink-0 items-center border-b border-border px-4 py-2.5">
-          {back}
-        </header>
-        <div
-          className={cn(
-            "grid flex-1 place-items-center text-[13.5px]",
-            content.status === "error" || chat.failed
-              ? "text-destructive"
-              : "text-muted-foreground",
-          )}
-        >
-          {content.status === "error"
-            ? content.message
-            : chat.failed
-              ? t`Could not load this.`
-              : t`Loading…`}
-        </div>
-      </div>
-    );
-
   return (
-    <Dialog
-      open
-      onOpenChange={(open, details) => {
-        if (open) return;
-        // Escape is the canvas's while something is selected, and an overlay's of the file's own
-        // (the Theme gallery) while it is open. Menus and the phone's chat sheet take it first
-        // on their own, being dialogs and menus over this one.
-        if (details.reason === "escape-key" && (selected.current || panel.holdsEscape)) {
-          details.cancel();
-          return;
-        }
-        onClose();
-      }}
+    <section
+      ref={root}
+      tabIndex={-1}
+      data-testid="artifact-studio"
+      data-layout={phone ? "phone" : "wide"}
+      aria-label={title || ready?.artifact.name || t`File`}
+      className={cn(
+        "relative flex h-full min-h-0 w-full overflow-hidden bg-content text-foreground outline-none",
+        phone && "flex-col pb-[276px]",
+      )}
     >
-      <DialogContent
-        showCloseButton={false}
-        finalFocus={() => (returnFocus?.isConnected ? returnFocus : true)}
-        data-testid="artifact-studio"
-        data-layout={phone ? "phone" : "wide"}
-        className={cn(
-          "top-0 left-0 flex h-dvh w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none bg-background p-0 text-foreground ring-0 sm:max-w-none",
-          "md:top-3.5 md:left-3.5 md:h-[calc(100dvh-1.75rem)] md:w-[calc(100vw-1.75rem)] md:rounded-[14px] md:shadow-float md:ring-[0.5px] md:ring-glass-line",
-        )}
-      >
-        <DialogTitle className="sr-only">
-          {title || ready?.artifact.name || t`Artifact`}
-        </DialogTitle>
-        <ShowMessageProvider value={showMessage}>{body}</ShowMessageProvider>
-      </DialogContent>
-    </Dialog>
+      <ShowMessageProvider value={showMessage}>
+        <ArtifactEditor
+          content={content}
+          panel={panel}
+          title={title}
+          page={page}
+          onClose={() => onClose()}
+          studio={{
+            chatId: chat.sessionId,
+            aside,
+            turn: { running: chat.running, onSent: chat.sent },
+            layout: phone ? "phone" : "wide",
+            onSelection,
+            versionOrigin: versionLabel,
+            waiting: chat.blockedOn,
+          }}
+        />
+      </ShowMessageProvider>
+    </section>
   );
 }
 
-/**
- * A phone's chat: under the canvas, a control that reads as the composer; it opens the thread
- * and the ask box as a sheet over the canvas, closed by its back control or Escape.
- */
-function PhoneChat({
+/** The chip of the newest request ("Slide 1 · cover-title"), what a running turn is about. */
+function latestChip(rows: readonly StudioRow[]): string | null {
+  for (let index = rows.length - 1; index >= 0; index--) {
+    const row = rows[index];
+    if (row?.kind === "me") return row.chip;
+  }
+  return null;
+}
+
+function StudioThread({
   rows,
+  ready,
+  failed,
+  peek,
   highlight,
-  askBox,
-  open,
-  onOpenChange,
+  live,
 }: {
   rows: readonly StudioRow[];
+  /** Everything it is made of has been read: until then it shows nothing, not pieces. */
+  ready: boolean;
+  failed: boolean;
+  /** The phone's lowered sheet: only the newest row shows. */
+  peek: boolean;
   highlight: string | null;
-  askBox: ReactNode;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  /** The running turn's strip, after the newest row. */
+  live: ReactNode;
 }) {
   const { t } = useLingui();
+  const list = useRef<HTMLDivElement>(null);
+  const count = ready ? rows.length : 0;
+  // Newest at the bottom, as a chat reads; a picked version's message is brought into view.
+  useEffect(() => {
+    const element = list.current;
+    if (!element || (count === 0 && !live)) return;
+    element.scrollTop = element.scrollHeight;
+  }, [count, live]);
   return (
-    <div data-testid="studio-chat" className="shrink-0 border-t border-border bg-content p-3">
-      <Button
-        variant="outline"
-        data-testid="studio-chat-open"
-        className="w-full justify-start rounded-full font-normal text-muted-foreground"
-        onClick={() => onOpenChange(true)}
-      >
-        {t`Ask superchat to change this file…`}
-      </Button>
-      <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent
-          side="bottom"
-          showCloseButton={false}
-          data-testid="studio-chat-sheet"
-          className="h-[85dvh] gap-0 rounded-t-[14px] bg-content"
-        >
-          <SheetTitle className="sr-only">{t`This file's chat`}</SheetTitle>
-          <StudioChatThread rows={rows} highlight={highlight} onBack={() => onOpenChange(false)} />
-          <div className="px-3 pt-1 pb-3">{askBox}</div>
-        </SheetContent>
-      </Sheet>
+    <div
+      ref={list}
+      data-testid="studio-thread"
+      aria-live="polite"
+      className={cn(
+        "flex min-h-0 flex-1 flex-col gap-3 px-4 pt-1 pb-2",
+        peek ? "justify-end overflow-hidden [&>*:not(:last-child)]:hidden" : "overflow-y-auto",
+      )}
+    >
+      {failed ? (
+        <p className="m-auto text-[13px] text-destructive">{t`Could not load this.`}</p>
+      ) : ready ? (
+        <>
+          {rows.map((row) => (
+            <ThreadRow key={row.id} row={row} highlighted={highlight === row.id} />
+          ))}
+          {live}
+        </>
+      ) : null}
     </div>
   );
 }
 
-function StudioChatThread({
-  rows,
-  highlight,
-  onBack,
+/** The running studio turn (ADR 0030 "While a turn runs"): the orb, what it is changing or the
+ * engine's title for the turn once it has one, and the time it has taken. */
+function TurnStrip({
+  botId,
+  sessionId,
+  about,
+  waiting,
 }: {
-  rows: readonly StudioRow[];
-  highlight: string | null;
-  /** The phone sheet's back control. */
-  onBack?: () => void;
+  botId: string;
+  sessionId: string;
+  about: string | null;
+  waiting: string | null;
 }) {
   const { t } = useLingui();
-  const summary = threadSummary(rows);
-  const list = useRef<HTMLDivElement>(null);
-  const count = rows.length;
-  // Newest at the bottom, as a chat reads; a picked version's message is brought into view.
-  useEffect(() => {
-    const element = list.current;
-    if (!element || count === 0) return;
-    element.scrollTop = element.scrollHeight;
-  }, [count]);
+  const { state } = useActivities(botId);
+  const activity =
+    state.status === "ready"
+      ? state.activities.find((item) => item.chatId === sessionId && item.status === "in_progress")
+      : undefined;
+  // Until the turn is listed, its clock runs from when this strip appeared.
+  const [shownAt] = useState(() => Date.now());
+  const now = useNow(true);
+  const startedAt = activity ? Date.parse(activity.startedAt) : Number.NaN;
+  const elapsed = Number.isNaN(startedAt) ? now - shownAt : serverNow(now) - startedAt;
+  const words = waiting || activity?.title || (about ? t`Changing ${about}` : t`Working`);
   return (
-    <>
-      <div className="flex items-center gap-2 px-4 pt-3 pb-2 text-[12px] text-ink-2">
-        {onBack ? (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={t`Back`}
-            data-testid="studio-chat-back"
-            className="-ms-2 text-muted-foreground"
-            onClick={onBack}
-          >
-            <ChevronLeft />
-          </Button>
-        ) : null}
-        <h3 className="text-[13px] font-semibold text-foreground">{t`This file's chat`}</h3>
-        {summary ? (
-          <span data-testid="studio-chat-summary">
-            {summary.edits === 1
-              ? t`1 edit · v${summary.first} to v${summary.last}`
-              : t`${summary.edits} edits · v${summary.first} to v${summary.last}`}
-          </span>
-        ) : null}
-      </div>
-      <div
-        ref={list}
-        data-testid="studio-thread"
-        className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto px-4 pt-1 pb-2"
-      >
-        {rows.map((row) => (
-          <ThreadRow key={row.id} row={row} highlighted={highlight === row.id} />
-        ))}
-      </div>
-    </>
+    <div
+      data-testid="studio-turn"
+      className="flex min-w-0 items-center gap-2.5 rounded-[12.5px] bg-content px-3 py-2.5 text-[13px] ring-[0.5px] ring-border"
+    >
+      <SuperchatOrb size={18} state="working" flies={false} />
+      <span className="min-w-0 flex-1 truncate font-[560]" dir="auto">
+        {words}
+      </span>
+      <span className="shrink-0 text-[12px] text-ink-3 tabular-nums">
+        {formatClock(Math.max(0, elapsed))}
+      </span>
+    </div>
   );
 }
 
@@ -365,6 +364,8 @@ function ThreadRow({ row, highlighted }: { row: StudioRow; highlighted: boolean 
     if (highlighted) self.current?.scrollIntoView?.({ block: "center", behavior: "smooth" });
   }, [highlighted]);
   switch (row.kind) {
+    case "prelude":
+      return <PreludeRow row={row} />;
     case "me":
       return (
         <div
@@ -376,7 +377,7 @@ function ThreadRow({ row, highlighted }: { row: StudioRow; highlighted: boolean 
           )}
         >
           {row.chip ? (
-            <span className="mb-[3px] flex items-center gap-1 text-[11px] text-tint">
+            <span className="mb-[3px] flex items-center gap-1 text-[11px] text-tint-ink">
               <CornerDownRight size={11} aria-hidden="true" />
               {row.chip}
             </span>
@@ -453,4 +454,69 @@ function ThreadRow({ row, highlighted }: { row: StudioRow; highlighted: boolean 
         </div>
       );
   }
+}
+
+/** What made a version in Super Chat (ADR 0030): where and when, the person's ask, and the
+ * hand-back's first paragraph, with the rest one click away here or in Super Chat. */
+function PreludeRow({ row }: { row: Extract<StudioRow, { kind: "prelude" }> }) {
+  const { t, i18n } = useLingui();
+  const [open, setOpen] = useState(false);
+  const showMessage = useShowMessage();
+  const asked = splitElementAsk(row.ask)?.rest ?? row.ask;
+  const handback = row.handback.trim();
+  const first = handback.split(/\n\s*\n/)[0] ?? "";
+  const more = first !== handback || first.length > 240;
+  const when = formatDayAndTime(row.askedAt, i18n.locale);
+  return (
+    <div data-testid="studio-prelude" className="flex flex-col gap-2.5">
+      <div className="flex items-center gap-1.5 text-[11px] text-ink-3">
+        <span>{when ? t`In Super Chat · ${when}` : t`In Super Chat`}</span>
+        <span aria-hidden="true" className="h-px flex-1 bg-separator" />
+      </div>
+      {asked ? (
+        <div
+          data-testid="studio-prelude-ask"
+          dir="auto"
+          className="max-w-[88%] self-end rounded-[14px] rounded-ee-[4px] bg-bubble px-[11px] py-[7px] text-[13.5px] leading-[1.4] whitespace-pre-wrap text-foreground"
+        >
+          {asked}
+        </div>
+      ) : null}
+      {handback ? (
+        <div
+          data-testid="studio-prelude-handback"
+          className={cn(
+            "text-[13.5px] leading-normal text-foreground [&_.sc-chat-markdown]:text-[13.5px] [&_.sc-chat-markdown]:leading-normal",
+            !open && "line-clamp-3",
+          )}
+        >
+          <ChatMarkdown>{open ? handback : first}</ChatMarkdown>
+        </div>
+      ) : null}
+      {more || (showMessage && row.itemId) ? (
+        <div className="-mt-1 flex gap-3 text-[12px]">
+          {more ? (
+            <button
+              type="button"
+              aria-expanded={open}
+              onClick={() => setOpen((value) => !value)}
+              className="text-tint-ink hover:underline"
+            >
+              {open ? t`Less` : t`More`}
+            </button>
+          ) : null}
+          {showMessage && row.itemId ? (
+            <button
+              type="button"
+              data-testid="studio-prelude-show"
+              onClick={() => row.itemId && showMessage(row.itemId)}
+              className="text-tint-ink hover:underline"
+            >
+              {t`Show in Super Chat ↗`}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
 }

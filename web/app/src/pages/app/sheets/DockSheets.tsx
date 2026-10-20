@@ -1,6 +1,7 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import { Plus, Upload } from "lucide-react";
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import { useFileStudio } from "../../../components/cards/context";
 import { DockSheet, DockSheetHeader } from "../../../components/chrome/DockSheet";
 import { QUIET_BUTTON } from "../../../components/ui";
 import { WaitingSheet } from "../../../features/approvals";
@@ -26,66 +27,24 @@ export function LibrarySheet({
   onSendIdea: (text: string) => void;
 }) {
   const { t } = useLingui();
-  // A file opened from the grid replaces it in the same sheet; the grid stays mounted underneath
-  // (hidden), so its filter and search survive, and its scroll position is put back.
-  const [openId, setOpenId] = useState<string | null>(null);
-  const scroller = useRef<HTMLDivElement>(null);
-  const scrollTop = useRef(0);
-  const holdsEscape = useRef(false);
-  const openFile = useCallback((id: string) => {
-    scrollTop.current = scroller.current?.scrollTop ?? 0;
-    holdsEscape.current = false;
-    setOpenId(id);
-  }, []);
-  useLayoutEffect(() => {
-    if (openId === null && scroller.current) scroller.current.scrollTop = scrollTop.current;
-  }, [openId]);
-  // The sheet closing by any route (another dock place) leaves the grid for next time.
-  useLayoutEffect(() => {
-    if (!open) setOpenId(null);
-  }, [open]);
-  const close = () => {
-    setOpenId(null);
+  // A file opens in the File Studio (ADR 0030), over the app; the Library closes behind it.
+  const studio = useFileStudio();
+  const openFile = (id: string) => {
     onClose();
+    studio?.open(id);
   };
   return (
-    <DockSheet
-      open={open}
-      title={t`Library`}
-      onClose={close}
-      bare={openId !== null}
-      // Escape inside a file goes back to the grid first; the next one closes the sheet.
-      onEscape={() => {
-        if (openId === null) return false;
-        if (!holdsEscape.current) setOpenId(null);
-        return true;
-      }}
-    >
-      <div className={openId ? "hidden" : "contents"}>
-        <DockSheetHeader title={t`Library`} subtitle={t`Apps, decks and documents I made for you.`}>
-          <button type="button" className={QUIET_BUTTON} onClick={onNewApp}>
-            <Plus size={15} strokeWidth={2} aria-hidden="true" className="me-1 -ms-0.5" />
-            <Trans>New app</Trans>
-          </button>
-        </DockSheetHeader>
-        {open ? (
-          <div
-            ref={scroller}
-            className="sc-scroll -mx-1 flex min-h-0 flex-1 flex-col overflow-y-auto px-1"
-          >
-            <LibraryScreen botId={botId} onSendIdea={onSendIdea} onOpenArtifact={openFile} />
-          </div>
-        ) : null}
-      </div>
-      {open && openId ? (
-        <LibraryArtifactView
-          artifactId={openId}
-          onBack={() => setOpenId(null)}
-          onClose={close}
-          onHoldsEscape={(holds) => {
-            holdsEscape.current = holds;
-          }}
-        />
+    <DockSheet open={open} title={t`Library`} onClose={onClose}>
+      <DockSheetHeader title={t`Library`} subtitle={t`Apps, decks and documents I made for you.`}>
+        <button type="button" className={QUIET_BUTTON} onClick={onNewApp}>
+          <Plus size={15} strokeWidth={2} aria-hidden="true" className="me-1 -ms-0.5" />
+          <Trans>New app</Trans>
+        </button>
+      </DockSheetHeader>
+      {open ? (
+        <div className="sc-scroll -mx-1 flex min-h-0 flex-1 flex-col overflow-y-auto px-1">
+          <LibraryScreen botId={botId} onSendIdea={onSendIdea} onOpenArtifact={openFile} />
+        </div>
       ) : null}
     </DockSheet>
   );

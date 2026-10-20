@@ -1,10 +1,16 @@
-import type { ArtifactVersion, MessageBlock, ThreadMessage } from "@superchat/contracts";
+import type {
+  ArtifactVersion,
+  MessageBlock,
+  StudioPrelude,
+  ThreadMessage,
+} from "@superchat/contracts";
 import { splitElementAsk } from "../editor/html-ask";
 
-// A file's studio thread (ADR 0024): the studio session's transcript merged with the file's
+// A file's studio thread (ADR 0024, 0030): the studio session's transcript merged with the file's
 // version list by time. Requests and replies come from the transcript, as do the engine's notices
 // (`notice` blocks with a structured kind: a hand edit, a version saved elsewhere, a stale save);
-// version markers come from the versions.
+// version markers come from the versions; the prelude (what made a version in Super Chat: the
+// person's ask and the hand-back) comes with the session and sits just before its version.
 
 /** Who made a version, in the studio's five words. */
 export type VersionOrigin = "chat" | "superchat" | "you" | "restored" | "updated";
@@ -57,7 +63,19 @@ export type StudioRow =
       at: number;
     }
   /** Above the first version saved since the person was last here. */
-  | { kind: "since"; id: string; at: number };
+  | { kind: "since"; id: string; at: number }
+  /** A version made in Super Chat: the person's ask there and the Assistant's hand-back. */
+  | {
+      kind: "prelude";
+      id: string;
+      ask: string;
+      handback: string;
+      /** The Conversation message "Show in Super Chat" scrolls to. */
+      itemId: string | null;
+      /** When the person asked (ISO). */
+      askedAt: string;
+      at: number;
+    };
 
 /** Who made `version`, seen from the studio session `studioId`. */
 export function versionOrigin(version: ArtifactVersion, studioId: string | null): VersionOrigin {
@@ -87,15 +105,16 @@ const noticeOf = (message: ThreadMessage): Notice | null =>
 /**
  * The studio thread, oldest first. A version saved by this chat sits after the reply of the turn
  * that saved it (the turn's request is its `itemId`); every other version at the time it was
- * saved, its hand edit just before it. Consecutive hand edits to one element read as one row.
- * `seenVersion` is the newest version the person saw last time: a "since you were here" row goes
- * above the first one newer than it.
+ * saved, its hand edit just before it, and its prelude (made in Super Chat) just before that.
+ * Consecutive hand edits to one element read as one row. `seenVersion` is the newest version the
+ * person saw last time: a "since you were here" row goes above the first one newer than it.
  */
 export function studioThread(
   messages: readonly ThreadMessage[],
   versions: readonly ArtifactVersion[],
   studioId: string | null,
   seenVersion: number | null = null,
+  prelude: readonly StudioPrelude[] = [],
 ): StudioRow[] {
   const rows: StudioRow[] = [];
   const replyAfter = new Map<string, number>();
@@ -148,6 +167,19 @@ export function studioThread(
       if (lastRequest !== null && !replyAfter.has(lastRequest)) replyAfter.set(lastRequest, at);
     }
   }
+  for (const made of prelude) {
+    if (!made.ask && !made.handback) continue;
+    rows.push({
+      kind: "prelude",
+      id: `prelude:${made.version}`,
+      ask: made.ask,
+      handback: made.handback,
+      itemId: made.itemId,
+      askedAt: made.at,
+      // Just before its version's marker (and any hand edit there); on its own time otherwise.
+      at: (savedAt.get(made.version) ?? time(made.at)) - 0.75,
+    });
+  }
   for (const version of [...versions].reverse()) {
     const origin = versionOrigin(version, studioId);
     let at = time(version.createdAt);
@@ -198,39 +230,13 @@ function collapseHandEdits(rows: StudioRow[]): StudioRow[] {
 
 function markSince(rows: StudioRow[], seen: number | null): StudioRow[] {
   if (seen === null) return rows;
-  const first = rows.findIndex(
+  let first = rows.findIndex(
     (row) =>
       (row.kind === "version" && row.version > seen) || (row.kind === "hand" && row.to > seen),
   );
   if (first < 0) return rows;
+  // Above the version's prelude too: it is part of what is new.
+  if (first > 0 && rows[first - 1]?.kind === "prelude") first -= 1;
   const at = rows[first]?.at ?? 0;
   return [...rows.slice(0, first), { kind: "since", id: "since", at }, ...rows.slice(first)];
-}
-
-/** "3 edits · v1 to v4": the changes the thread spans, one per version saved after the first. A
- * request that changed nothing, or a save that made no version, is not an edit. */
-export function threadSummary(rows: readonly StudioRow[]): {
-  edits: number;
-  first: number;
-  last: number;
-} | null {
-  let first = Number.POSITIVE_INFINITY;
-  let last = 0;
-  for (const row of rows) {
-    if (row.kind === "version") {
-      first = Math.min(first, row.version);
-      last = Math.max(last, row.version);
-    }
-  }
-  const edits = last - first;
-  return edits > 0 ? { edits, first, last } : null;
-}
-
-/** The slide the newest request is about, when it named one deck slide; null otherwise. */
-export function requestSlide(rows: readonly StudioRow[]): number | null {
-  for (let index = rows.length - 1; index >= 0; index--) {
-    const row = rows[index];
-    if (row?.kind === "me") return row.slide;
-  }
-  return null;
 }

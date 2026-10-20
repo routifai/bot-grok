@@ -12,10 +12,8 @@ import type { MutableRefObject } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CardAnswer } from "../../../components/cards/context";
 import { notifyAsksChanged } from "../../../features/approvals";
-import type { ShownArtifact } from "../../../features/artifacts/useChatArtifacts";
 import { requestBrowserNotificationPermission } from "../../../lib/browser-notifications";
 import { newClientId } from "../../../lib/client-id";
-import { splitComposerAttachments } from "../../../lib/composer-attachments";
 import { quotedMessageText } from "../../../lib/museTranscript";
 import { revokePendingAttachmentPreviews } from "../../../lib/pending-attachments";
 import { rpc } from "../../../lib/rpc";
@@ -52,7 +50,6 @@ export function useComposerSend({
   userId,
   messages,
   transcript,
-  openArtifact = null,
   botsRef,
   flushPendingBrowserNotifications,
 }: {
@@ -65,9 +62,6 @@ export function useComposerSend({
     ReturnType<typeof useMuseTranscript>,
     "beginSend" | "failSend" | "stopWaiting" | "refresh"
   >;
-  /** The artifact on screen beside the chat: a message sent now is about it unless it carries
-   * a hard-scope ask (docs/conversation.md). */
-  openArtifact?: ShownArtifact | null;
   botsRef: MutableRefObject<Bot[]>;
   flushPendingBrowserNotifications: () => void;
 }) {
@@ -373,21 +367,9 @@ export function useComposerSend({
         setUploadStatus(null);
         // A quote travels as text the engine records and the model reads, not as a reply link.
         const quoted = replyQuote ? quotedMessageText(replyQuote, trimmed) : trimmed;
-        // An element or sheet ask already says which artifact (and more): no soft link then.
-        const about =
-          openArtifact && splitComposerAttachments(trimmed).chips.length === 0
-            ? openArtifact
-            : null;
         // The message appears at once, as the engine will record it (file lines become chips).
         const shownText = promptTextForWorkspaceAttachments(quoted, workspaceAttachments, folders);
-        if (about) {
-          beginSend(shownText, {
-            artifactId: about.artifactId,
-            name: about.name,
-            version: null,
-            how: "open",
-          });
-        } else beginSend(shownText);
+        beginSend(shownText);
         showing = true;
         // A post once made is never cancelled: the engine may already have the message, and a
         // Stop waits for it instead.
@@ -397,18 +379,7 @@ export function useComposerSend({
             text: quoted || undefined,
             attachments: workspaceAttachments.length ? workspaceAttachments : undefined,
             folders: folders.length ? folders : undefined,
-            ...(about || cardAnswer
-              ? {
-                  context: {
-                    ...(about
-                      ? {
-                          openArtifact: { artifactId: about.artifactId, version: about.version },
-                        }
-                      : {}),
-                    ...(cardAnswer ? { cardAnswer } : {}),
-                  },
-                }
-              : {}),
+            ...(cardAnswer ? { context: { cardAnswer } } : {}),
           });
           return flight.posting;
         };
@@ -449,7 +420,6 @@ export function useComposerSend({
       hostFeed,
       failSend,
       flushPendingBrowserNotifications,
-      openArtifact,
       pendingAttachments,
       pendingFolders,
       refresh,

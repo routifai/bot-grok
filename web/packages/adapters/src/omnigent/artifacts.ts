@@ -135,19 +135,36 @@ export async function fetchOmnigentArtifactContent(
   return new Uint8Array(await response.arrayBuffer());
 }
 
+/** One prelude row of a file's studio (ADR 0030): a version made in Super Chat, the ask and the
+ * hand-back of the Round that saved it. */
+export type OmnigentStudioPrelude = {
+  version: number;
+  round_id: string | null;
+  ask: string;
+  handback: string;
+  item_id: string | null;
+  /** ISO time, or epoch seconds. */
+  at: string | number;
+};
+
 /** `POST /v1/artifacts/{id}/chat` — the file's studio chat session (any version id), made on
- * first open (ADR 0024). Never wakes the host. */
+ * first open (ADR 0024), with its prelude (ADR 0030; absent from an engine without it). Never
+ * wakes the host. */
 export async function openOmnigentArtifactChat(
   config: OmnigentClientConfig,
   email: string,
   id: string,
-): Promise<{ session_id: string; created: boolean }> {
+): Promise<{ session_id: string; created: boolean; prelude?: OmnigentStudioPrelude[] }> {
   const response = await fetch(artifactUrl(config, id, "/chat"), {
     method: "POST",
     headers: omnigentHeaders(config, email),
   });
   await throwOnError(response, "open artifact chat", config.secrets);
-  return (await response.json()) as { session_id: string; created: boolean };
+  return (await response.json()) as {
+    session_id: string;
+    created: boolean;
+    prelude?: OmnigentStudioPrelude[];
+  };
 }
 
 /** `POST /v1/artifacts/{id}/chat/open` — the file's studio is open (any version id): the engine

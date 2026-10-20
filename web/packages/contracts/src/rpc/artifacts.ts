@@ -67,6 +67,23 @@ export const ArtifactVersionSchema = z.object({
 
 export type ArtifactVersion = z.infer<typeof ArtifactVersionSchema>;
 
+/** One version of the file made in Super Chat, as its studio's opening rows (ADR 0030): the
+ * person's ask and the Assistant's hand-back in the Round that saved it, read from the
+ * Conversation, never copied. */
+export const StudioPreludeSchema = z.object({
+  version: z.number().int(),
+  roundId: z.string().nullable(),
+  /** The person's words that opened the Round. */
+  ask: z.string(),
+  /** The Assistant's last words in that Round. */
+  handback: z.string(),
+  /** The Conversation message to scroll to ("Show in Super Chat"). */
+  itemId: z.string().nullable(),
+  /** When the person asked (ISO). */
+  at: z.string(),
+});
+export type StudioPrelude = z.infer<typeof StudioPreludeSchema>;
+
 export const ArtifactWithContentSchema = ArtifactSchema.extend({
   contentBase64: z.string(),
 });
@@ -126,12 +143,17 @@ export const artifactsContract = {
       ),
     listVersions: oc.input(z.object({ familyId: Id })).output(z.array(ArtifactVersionSchema)),
     getById: oc.input(z.object({ artifactId: Id })).output(ArtifactWithContentSchema),
-    /** The file's studio chat (any version id), made on first open; never wakes the host. */
-    chat: oc
-      .input(z.object({ artifactId: Id }))
-      .output(z.object({ sessionId: Id, created: z.boolean() })),
+    /** The file's studio chat (any version id), made on first open; never wakes the host. With
+     * it, the prelude: what made each version in Super Chat (empty when nothing did). */
+    chat: oc.input(z.object({ artifactId: Id })).output(
+      z.object({
+        sessionId: Id,
+        created: z.boolean(),
+        prelude: z.array(StudioPreludeSchema),
+      }),
+    ),
     /** The file's studio is open (any version id): keeps its runner warm. Sent on open and
-     * every few minutes while it stays open; never from the panel. */
+     * every few minutes while it stays open. */
     chatOpen: oc
       .input(z.object({ artifactId: Id }))
       .output(z.object({ sessionId: Id, warm: z.boolean() })),

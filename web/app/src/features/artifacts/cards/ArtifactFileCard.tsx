@@ -11,7 +11,7 @@ import { Download, ExternalLink, MoreHorizontal, Palette } from "lucide-react";
 import { lazy, Suspense, useCallback, useState } from "react";
 import { catalog, formatSize } from "../../../components/cards/catalog";
 import {
-  useArtifactPanel,
+  useFileStudio,
   useLatestSavedFile,
   useReplyCardBotId,
 } from "../../../components/cards/context";
@@ -89,7 +89,7 @@ function SavedFileCard({
   // A deck reads as a deck: "Deck · 7 slides" once its file is here.
   const [slides, setSlides] = useState<number | null>(null);
   const countSlides = useCallback((text: string) => setSlides(deckSlideCount(text) || null), []);
-  const panel = useArtifactPanel();
+  const studio = useFileStudio();
   const botId = useReplyCardBotId();
   const newest = useLatestSavedFile(data.name);
   if (!artifactId) return null;
@@ -100,15 +100,15 @@ function SavedFileCard({
 
   function expand() {
     if (!artifactId) return;
-    if (panel) panel.open(artifactId, title);
+    if (studio) studio.open(artifactId, title);
     else setOpen(true);
   }
-  // A deck's look was chosen for it (ADR 0025): the panel opens on the Theme gallery to change it.
+  // A deck's look was chosen for it (ADR 0025): the studio opens on the Theme gallery to change it.
   const changeLook =
-    isDeck && panel && botId
+    isDeck && studio && botId
       ? () => {
           setDeckThemeOpen(artifactKey({ botId, name: data.name }), true);
-          panel.open(artifactId, title);
+          studio.open(artifactId, title);
         }
       : null;
   const tileKind = isDeck ? "deck" : data.kind ? kindFromLabel(data.kind) : "file";
@@ -180,7 +180,7 @@ function SavedFileCard({
             <button
               type="button"
               data-testid="artifact-updated"
-              onClick={() => panel?.open(superseded.artifactId, title)}
+              onClick={() => studio?.open(superseded.artifactId, title)}
               className="ms-1.5 rounded-full bg-white/15 px-2 py-0.5 text-[11.5px] font-normal tabular-nums text-white hover:bg-white/25"
             >
               {t`Updated — v${superseded.version}`}

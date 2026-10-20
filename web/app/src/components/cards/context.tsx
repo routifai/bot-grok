@@ -68,16 +68,14 @@ export function latestSavedFiles(messages: readonly ThreadMessage[]): Map<string
 
 export const useLatestSavedFile = (name: string) => useContext(LatestFilesContext)?.get(name);
 
-/** The artifact side panel: the shell owns what is open; cards ask to open or close it. */
-export type ArtifactPanelApi = {
-  openId: string | null;
-  /** `page` opens a PDF at that page. */
+/** The File Studio (ADR 0030): the shell owns the route; a card, a Library item or a citation
+ * opens a file in it (any version id; `page` opens a PDF at that page). */
+export type FileStudioApi = {
   open: (artifactId: string, title?: string, page?: number) => void;
-  close: () => void;
 };
-const ArtifactPanelContext = createContext<ArtifactPanelApi | null>(null);
-export const ArtifactPanelProvider = ArtifactPanelContext.Provider;
-export const useArtifactPanel = () => useContext(ArtifactPanelContext);
+const FileStudioContext = createContext<FileStudioApi | null>(null);
+export const FileStudioProvider = FileStudioContext.Provider;
+export const useFileStudio = () => useContext(FileStudioContext);
 
 /** The Muse whose chat this is; cards that talk to the API on the person's behalf need it. */
 const BotIdContext = createContext<string | null>(null);

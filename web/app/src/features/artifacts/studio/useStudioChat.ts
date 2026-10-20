@@ -1,4 +1,4 @@
-import type { ThreadMessage } from "@superchat/contracts";
+import type { StudioPrelude, ThreadMessage } from "@superchat/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { watchFamily } from "../../../lib/family-stream";
 import { rpc } from "../../../lib/rpc";
@@ -17,6 +17,11 @@ export type StudioChat = {
   sessionId: string | null;
   /** Its transcript, oldest first. */
   messages: ThreadMessage[];
+  /** What made the file's versions in Super Chat (ADR 0030), from the same response as the
+   * session; empty when nothing did, or from an engine without it. */
+  prelude: StudioPrelude[];
+  /** The transcript has been read once: the thread paints from it whole, never in pieces. */
+  loaded: boolean;
   /** A studio turn is running (in this tab or another): the studio's one running state. */
   running: boolean;
   /** A request was just sent from this tab: running until the turn says otherwise. */
@@ -48,6 +53,8 @@ export function useStudioChat({
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
+  const [prelude, setPrelude] = useState<StudioPrelude[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [running, setRunning] = useState(false);
   const [blockedOn, setBlockedOn] = useState<string | null>(null);
   // The session's status stream is connected; while it is not, a running turn is polled.
@@ -61,7 +68,9 @@ export function useStudioChat({
     void rpc.artifacts
       .chat({ artifactId })
       .then((opened) => {
-        if (!cancelled) setSessionId(opened.sessionId);
+        if (cancelled) return;
+        setPrelude(opened.prelude);
+        setSessionId(opened.sessionId);
       })
       .catch(() => {
         if (!cancelled) setFailed(true);
@@ -73,7 +82,7 @@ export function useStudioChat({
   }, [artifactId]);
 
   // The studio is open: the engine keeps its runner warm while it hears this (ADR 0024
-  // "Runner"). Only the studio sends it, never the panel.
+  // "Runner").
   useEffect(() => {
     const signal = () => void rpc.artifacts.chatOpen({ artifactId }).catch(() => {});
     signal();
@@ -84,6 +93,7 @@ export function useStudioChat({
   const read = useCallback(async () => {
     if (!botId || !sessionId) return;
     const page = await rpc.chats.transcript({ botId, chatId: sessionId }).catch(() => null);
+    setLoaded(true);
     if (!page) return;
     setMessages(page.messages);
     setRunning(page.running === true);
@@ -153,5 +163,5 @@ export function useStudioChat({
 
   const sent = useCallback(() => setRunning(true), []);
 
-  return { sessionId, messages, running, sent, failed, blockedOn };
+  return { sessionId, messages, prelude, loaded, running, sent, failed, blockedOn };
 }

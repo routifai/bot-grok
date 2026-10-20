@@ -16,7 +16,7 @@ import type { ArtifactEditorArgs, ArtifactEditorKind, ArtifactEditorParts } from
 import { ArtifactEditorView, isTypingTarget } from "../artifacts/editor/ArtifactEditor";
 import { artifactKey } from "../artifacts/editor/editor-state";
 import { EditStage } from "../artifacts/editor/html/EditStage";
-import { targetLabel } from "../artifacts/editor/html/edit-model";
+import { isPathId, targetLabel } from "../artifacts/editor/html/edit-model";
 import { EditNoticeBanner, StylePanel } from "../artifacts/editor/html/StylePanel";
 import {
   type HtmlEditSource,
@@ -371,13 +371,19 @@ function useDeckEditor({
     ownsDownload: true,
     history: editor.history,
     ask: {
+      // The chip reads as the request will: `Slide 1 · cover-title`; with nothing selected, the
+      // slide on screen.
       chips: targets.map((target) => ({
         id: target.id,
         label:
-          target.kind === "slide" ? targetLabel(target, words) : `${target.tag} · ${target.id}`,
-        detail: targetLabel(target, words),
+          target.kind === "slide"
+            ? targetLabel(target, words)
+            : `Slide ${target.slide} · ${isPathId(target.id) ? targetLabel(target, words) : target.id}`,
+        detail: `${target.tag} · ${targetLabel(target, words)}`,
       })),
       onRemoveChip: (id: string) => editor.select(targets.map((x) => x.id).filter((x) => x !== id)),
+      clear: () => editor.select([]),
+      scope: `Slide ${active + 1}`,
       placeholder: selected
         ? t`Ask superchat to change this…`
         : t`Ask superchat to change this slide…`,
