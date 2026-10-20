@@ -8,7 +8,7 @@
   read; :func:`open_rounds` lists the Rounds not settled, from their views (the turn prefix
   and the context brief).
 * :func:`attach_round_files` draws a transcript page's file cards from each recorded Round's
-  view instead of from the save calls on the page.
+  view: each file once, at its latest version, where the Round last showed it.
 * :func:`shadow_diff`, on when :data:`SHADOW_ENV` is set, folds a Round after a turn of it ends
   and logs at INFO each way the fold disagrees with what the engine derives today from the
   stored items and Helper sessions: status, start time, files and Helpers. Development only;
@@ -111,13 +111,16 @@ def _is_card(block: Mapping[str, Any]) -> bool:
     return block.get("type") == "file" and block.get("by") != "user"
 
 
-def _shows_file(block: Mapping[str, Any], ids: set[str], names: set[str]) -> bool:
-    """Whether *block* is a ``render_card`` file card for one of the files *ids* or *names*."""
+def _shown_file(block: Mapping[str, Any], ids: Mapping[str, str]) -> str | None:
+    """The artifact id of the Round's file *block* shows: a save call's ``file`` block or a
+    ``render_card`` file card. *ids* maps each of the Round's file ids and names to its id."""
+    if _is_card(block):
+        return ids.get(str(block.get("artifact_id")))
     if block.get("type") != "card" or block["card"].get("card") != "file":
-        return False
+        return None
     data = block["card"].get("data") or {}
     shown = data.get("artifactId")
-    return shown in ids if isinstance(shown, str) else data.get("name") in names
+    return ids.get(shown) if isinstance(shown, str) else ids.get(str(data.get("name")))
 
 
 class _Views:
@@ -229,15 +232,16 @@ def attach_round_files(
 ) -> None:
     """Draw each recorded Round's file cards from its view, in place on transcript *messages*.
 
-    The messages are in the Rounds their ``round_id`` names (:func:`attach_round_ids`). A
-    recorded Round's cards are its view's files in order, the Assistant's and its Helpers', as
-    ``file`` blocks after the words of its last assistant message, one per file at its latest
-    version; the cards its save calls drew are dropped, and so is a ``render_card`` file card for
-    one of those files, while one for any other file stays. A Round that goes on past the page
-    (*newer_round_id*, the Round of the oldest item of the page after this one, is the page's
-    last Round) draws its cards on the page that holds its end, so a page's size never moves a
-    card. A Round with no record, such as one from before Rounds, keeps the cards its calls
-    drew.
+    The messages are in the Rounds their ``round_id`` names (:func:`attach_round_ids`). Each of
+    a recorded Round's view files shows once, at its latest version: where the Round last showed
+    it (a save call's card, or a ``render_card`` file card such as a wake turn's), so every turn
+    keeps its own card in the order it was stored; a file the Round never showed (a Helper's,
+    saved without a card) goes after the words of the Round's last assistant text. A save call's
+    card of a file the view does not hold is dropped; a ``render_card`` card of any other file
+    stays. A Round that goes on past the page (*newer_round_id*, the Round of the oldest item of
+    the page after this one, is the page's last Round) draws the files it never showed on the
+    page that holds its end. A Round with no record, such as one from before Rounds, keeps the
+    cards its calls drew.
 
     :param newer_round_id: The Round of the oldest item of the page after this one; ``None`` on
         the newest page.
@@ -259,18 +263,8 @@ def attach_round_files(
         view = views(round_id) if round_id is not None else None
         if view is None:
             continue
-        ids = {f["artifact_id"] for f in view["files"]}
-        names = {f["name"] for f in view["files"]}
-        for message in mine:
-            message["blocks"] = [
-                b for b in message["blocks"] if not (_is_card(b) or _shows_file(b, ids, names))
-            ]
-        replies = [m for m in mine if m["role"] == "assistant"]
-        closing = next((m for m in reversed(replies) if m["blocks"]), None)
-        closing = closing or (replies[-1] if replies else None)
-        if closing is None or (index == len(rounds) - 1 and newer_round_id == round_id):
-            continue
         rows = {a.id: a for a in saved.get(round_id, [])}
+        cards: dict[str, dict[str, Any]] = {}
         for f in view["files"]:
             row = rows.get(f["artifact_id"])
             block = file_block(
@@ -285,7 +279,34 @@ def attach_round_files(
                 }
             )
             if block:
-                closing["blocks"].append(block)
+                cards[f["artifact_id"]] = block
+        ids = {key: f["artifact_id"] for f in view["files"] for key in (f["artifact_id"], f["name"])}
+        # Where the Round last showed each file: (message, block index).
+        last: dict[str, tuple[int, int]] = {}
+        for at, message in enumerate(mine):
+            for place, block in enumerate(message["blocks"]):
+                shown = _shown_file(block, ids)
+                if shown in cards:
+                    last[shown] = (at, place)
+        for at, message in enumerate(mine):
+            kept: list[dict[str, Any]] = []
+            for place, block in enumerate(message["blocks"]):
+                shown = _shown_file(block, ids)
+                if shown is None:
+                    if not _is_card(block):
+                        kept.append(block)
+                elif shown in cards and last[shown] == (at, place):
+                    kept.append(cards[shown] if _is_card(block) else block)
+            message["blocks"] = kept
+        if index == len(rounds) - 1 and newer_round_id == round_id:
+            continue
+        replies = [m for m in mine if m["role"] == "assistant"]
+        closing = next(
+            (m for m in reversed(replies) if any(b.get("type") == "text" for b in m["blocks"])),
+            replies[-1] if replies else None,
+        )
+        if closing is not None:
+            closing["blocks"].extend(cards[f] for f in cards if f not in last)
     messages[:] = [m for m in messages if m["blocks"]]
 
 
