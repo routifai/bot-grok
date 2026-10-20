@@ -79,6 +79,7 @@ const TranscriptView = memo(function Transcript({
   onScrollRequestHandled,
   artifactTarget,
   messages,
+  loading,
   olderCursor,
   loadingOlder,
   work,
@@ -106,6 +107,8 @@ const TranscriptView = memo(function Transcript({
   onScrollRequestHandled: () => void;
   artifactTarget: ArtifactTarget;
   messages: ThreadMessage[];
+  /** The transcript's first page has not arrived yet: a quiet loading line, never a blank. */
+  loading?: boolean;
   olderCursor: number | string | null;
   loadingOlder: boolean;
   /** The transcript's work (features/activity `transcriptWork`), read once by the caller: each
@@ -431,6 +434,15 @@ const TranscriptView = memo(function Transcript({
           >
             {loadingOlder ? t`Loading…` : t`Load earlier messages`}
           </button>
+        ) : null}
+        {loading && messages.length === 0 ? (
+          <div
+            role="status"
+            data-testid="transcript-loading"
+            className="flex flex-1 items-center justify-center text-[13px] text-muted-foreground"
+          >
+            {t`Loading…`}
+          </div>
         ) : null}
         {transcriptRows.map((row) => {
           if (row.kind === "failures") {

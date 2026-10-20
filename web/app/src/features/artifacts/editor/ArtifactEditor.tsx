@@ -66,8 +66,8 @@ export type ArtifactEditorProps = {
   fullScreen?: { on: boolean; toggle: () => void };
   /** Edit opens the file's studio instead of editing here (the side panel, ADR 0024). */
   onEdit?: () => void;
-  /** Typing in the ask box opens the file's studio with what was typed and the caret. */
-  onAskStart?: (draft: AskDraft) => void;
+  /** Sending from the ask box opens the file's studio, which sends what was typed there. */
+  onAskSend?: (draft: AskDraft) => void;
   /** The editor inside the file's studio (ADR 0024). */
   studio?: StudioSlot;
 };
@@ -90,6 +90,8 @@ export type StudioSlot = {
   versionOrigin?: (version: ArtifactVersion) => string;
   /** Typed in the panel before the studio opened, or in the chat sheet before it closed. */
   draft?: AskDraft;
+  /** The draft was sent from the panel: the studio's ask box sends it on opening. */
+  sendDraft?: boolean;
   /** The ask box's words as they change (a phone's chat sheet keeps them across closing). */
   onDraftChange?: (draft: AskDraft) => void;
   /** Why the studio's request waits (a runtime note): the ask box's status line meanwhile. */
@@ -523,8 +525,9 @@ function LoadedEditor({
           : undefined
       }
       canUndo={history?.canUndo}
-      onStartTyping={props.onAskStart}
+      onHandOff={props.onAskSend}
       initialDraft={studio?.draft}
+      sendInitialDraft={studio?.sendDraft}
       onDraftChange={studio?.onDraftChange}
       note={studio?.waiting}
     />

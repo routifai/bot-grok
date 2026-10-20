@@ -68,8 +68,8 @@ export function ArtifactPanel({
   const layout = rowWidth === null ? null : artifactPanelLayout(rowWidth, room);
   const overlay = layout?.mode === "overlay";
   const splitWidth = layout?.mode === "split" ? layout.width : undefined;
-  // A file the editor can show is edited in its studio (ADR 0024): Edit, or typing a change in
-  // the ask box, opens it over the app; the panel stays open on the file underneath.
+  // A file the editor can show is edited in its studio (ADR 0024): Edit, or sending a change from
+  // the ask box (the studio sends it), opens it over the app; the panel stays open underneath.
   const [studio, setStudio] = useState<{ draft?: AskDraft } | null>(null);
   const closeStudio = useCallback(() => setStudio(null), []);
   const studioCan = editable && !!ready?.artifact.botId;
@@ -115,7 +115,7 @@ export function ArtifactPanel({
         onClose={onClose}
         fullScreen={{ on: fullScreen, toggle: () => setFullScreen((on) => !on) }}
         onEdit={studioCan ? () => setStudio({}) : undefined}
-        onAskStart={studioCan ? (draft) => setStudio({ draft }) : undefined}
+        onAskSend={studioCan ? (draft) => setStudio({ draft }) : undefined}
         leading={
           overlay && !fullScreen ? (
             <Button
