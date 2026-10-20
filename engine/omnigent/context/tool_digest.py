@@ -214,7 +214,13 @@ def _result_text(output: Any) -> str:
             for block in (output if isinstance(output, list) else [output])
             if block.get("type") in _TEXT_BLOCK_TYPES
         )
-    elif isinstance(output, (dict, list)):
+        if output[:1] == "{":
+            with contextlib.suppress(ValueError):
+                output = json.loads(output)
+    if isinstance(output, dict) and output.get("type") == "card" and output.get("message"):
+        # A card's ``message`` is what the person was told: first, so the clip never cuts it.
+        output = {"message": output["message"], **output}
+    if isinstance(output, (dict, list)):
         output = json.dumps(output, ensure_ascii=False, default=str)
     text = "" if output is None else str(output)
     text = _DATA_URI.sub("[image omitted]", text)

@@ -68,11 +68,22 @@ PROJECTS_LATE_LINE = (
 
 
 IDLE_GAP_OPEN, IDLE_GAP_CLOSE = "It has been ", " since the last message."
+#: The line naming the model and harness a Super Chat turn runs on, so the model can say so.
+#: Per turn, not in the instructions: a model change then keeps the warm client.
+SETUP_OPEN, SETUP_CLOSE = (
+    "[Setup: you run on the model ",
+    " harness. Earlier messages may describe another setup: go by this one.]",
+)
 #: The line a turn gets when the model or harness changed since the Conversation's last turn.
 SETUP_CHANGED_OPEN, SETUP_CHANGED_CLOSE = (
     "[Since the last message the setup changed: ",
     ". Earlier messages may describe the old setup; go by the current one.]",
 )
+
+
+def setup_line(model: str, harness_label: str) -> str:
+    """One line naming the setup, e.g. ``[Setup: you run on the model X through the pi ...]``."""
+    return f"{SETUP_OPEN}{model} through the {harness_label}{SETUP_CLOSE}"
 
 
 def setup_changed_line(before: str, now: str) -> str:
@@ -439,6 +450,7 @@ def _injected_line(line: str) -> bool:
             ATTACHMENT_REMINDER,
         )
         or (line.startswith(IDLE_GAP_OPEN) and line.endswith(IDLE_GAP_CLOSE))
+        or (line.startswith(SETUP_OPEN) and line.endswith(SETUP_CLOSE))
         or (line.startswith(SETUP_CHANGED_OPEN) and line.endswith(SETUP_CHANGED_CLOSE))
         or (line.startswith(_MOVED_OPEN) and line.endswith(_MOVED_CLOSE))
         or line.startswith(FILE_LINE_OPEN)

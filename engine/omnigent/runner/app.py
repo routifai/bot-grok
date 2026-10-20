@@ -144,6 +144,7 @@ from omnigent.superchat.helpers.saved_files import (
 from omnigent.superchat.prompt_prefix import (
     message_needs_own_turn,
     setup_changed_line,
+    setup_line,
     turn_prefix_blocks,
 )
 
@@ -6725,7 +6726,18 @@ def create_runner_app(
             labels = await _session_labels_for_runner_spawn(
                 server_client=server_client, session_id=conv_id
             )
-            if not should_roll_over_for_threshold(labels, context_tokens=context_tokens):
+            # The window the server labels this session with, from the same catalog lookup:
+            # the label is written after this turn, so a first turn would otherwise get the
+            # 100k fallback whatever the model's window.
+            from omnigent.llms.context_window import find_model_context_window
+
+            try:
+                model_window = await asyncio.to_thread(find_model_context_window, resolved_model)
+            except Exception:  # noqa: BLE001 — a miss keeps the label or the default
+                model_window = None
+            if not should_roll_over_for_threshold(
+                labels, context_tokens=context_tokens, model_window=model_window
+            ):
                 return
             wire, connection = _summarize_route(conv_id, resolved_model)
             await roll_over_session(
@@ -6767,8 +6779,12 @@ def create_runner_app(
         *,
         prompt_key: str = "",
         idle_gap_seconds: float | None = None,
+        setup: str | None = None,
     ) -> _JsonObject:
         """Prepend the Super Chat per-turn blocks (Memory Profile, Projects, local time).
+
+        *setup* is the line naming the model and harness (``prompt_prefix.setup_line``); it goes
+        only when this warm client has not received it yet, the same way as the Memory Profile.
 
         *message* is this turn's own user message; features build blocks from its text
         (``Feature.message_prefix``) that go in front of it, for the harness only.
@@ -6816,6 +6832,10 @@ def create_runner_app(
             time.monotonic() - prefix_started,
             extra={"session_id": conv_id},
         )
+        if setup is not None:
+            sent_now["setup"] = setup
+            if last is None or last.get("setup") != setup:
+                blocks.append(setup)
         _mark_turn(conv_id, "prefixed")
         _superside_chat_prefix_pending[conv_id] = sent_now
         return _prepend_turn_blocks(body, blocks, conv_id)
@@ -7217,25 +7237,16 @@ def create_runner_app(
                             extra={"session_id": conv},
                         )
 
-        # Super Chat answers which model and harness it runs on when asked. In the instructions,
-        # so a change relaunches the harness (both key their launch on the prompt) and the line
-        # never goes stale; a turn after a change also says what changed (below).
+        # Super Chat answers which model and harness it runs on when asked: a per-turn line, not
+        # the instructions, so a model change keeps the warm client (Claude's ``set_model``) and
+        # the pre-launch, built from the same instructions, is kept (see the prefix below).
         _turn_model = msg_body.get("model_override")
-        _setup_now: str | None = None
-        if (
-            instructions
-            and isinstance(_turn_model, str)
-            and _turn_model
-            and (await _rollover_labels_for_session(conv)).get(CONTEXT_MODE_LABEL)
-            == SUPERSIDE_CHAT_MODE_VALUE
-        ):
-            _harness_label = _HARNESS_LABELS.get(harness_name, harness_name)
-            _setup_now = f"{_harness_label} with {_turn_model}"
-            instructions = (
-                f"{instructions}\n\nSetup: you run on the model {_turn_model} through the "
-                f"{_harness_label} harness. Earlier messages may describe another setup: go by "
-                "this one."
-            )
+        _harness_label = _HARNESS_LABELS.get(harness_name, harness_name)
+        _setup_now = (
+            f"{_harness_label} with {_turn_model}"
+            if isinstance(_turn_model, str) and _turn_model
+            else None
+        )
         _setup_env = time.monotonic() - _env_started
         ctx = TurnDispatch(
             agent_id=_dispatched_agent_id,
@@ -7384,11 +7395,13 @@ def create_runner_app(
         if _turn_context_mode == SUPERSIDE_CHAT_MODE_VALUE:
             # Placed after the tools are known: the key covers what the executor builds its
             # system prompt from, so a change to it (which rebuilds the client) is a cold start.
+            # The model too: pi respawns on a model change inside the same harness process and
+            # replays a history without the blocks (Claude keeps its client, and gets them again).
             _tool_names = sorted(
                 name for t in merged_tools if (name := _schema_tool_name(t)) is not None
             )
             _prompt_key = hashlib.sha256(
-                json.dumps([instructions, _tool_names]).encode()
+                json.dumps([instructions, _tool_names, _turn_model]).encode()
             ).hexdigest()
             harness_body = await _apply_turn_prefix_blocks(
                 harness_body,
@@ -7396,6 +7409,11 @@ def create_runner_app(
                 msg_body,
                 prompt_key=_prompt_key,
                 idle_gap_seconds=_idle_gap,
+                setup=(
+                    setup_line(cast(str, _turn_model), _harness_label)
+                    if _setup_now is not None
+                    else None
+                ),
             )
             if _setup_now is not None:
                 _setup_before = _superside_chat_setup.get(conv)
