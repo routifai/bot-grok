@@ -30,7 +30,6 @@ from collections.abc import (
     Awaitable,
     Callable,
     Coroutine,
-    Iterator,
     Mapping,
     Sequence,
 )
@@ -38,7 +37,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeAlias, cast, overload
 
 if TYPE_CHECKING:
-    from omnigent.context.rollover import CheckpointCause
     from omnigent.entities import CompactionData
     from omnigent.llms.client import Client as LLMClient
     from omnigent.runner.mcp_manager import RunnerMcpManager
@@ -3068,13 +3066,6 @@ def create_runner_app(
     _superside_chat_rollover_tasks: dict[str, asyncio.Task[None]] = {}
     # conv_id -> context fill the session's latest turn reported (hard-limit check).
     _superside_chat_last_context_tokens: dict[str, int] = {}
-    # Sessions whose latest record load had to drop whole turns to fit the kept tail: the next
-    # turn checkpoints them before it runs (see _maybe_superside_chat_cold_rollover).
-    _superside_chat_cold_overflow: set[str] = set()
-    # conv_id -> the cold checkpoint its first init on this runner started in the background (kept
-    # once done: one per session per runner start); a turn that comes meanwhile waits on it (see
-    # _start_superside_chat_catch_up).
-    _superside_chat_catch_ups: dict[str, asyncio.Task[None]] = {}
     # conv_id -> the view start this runner last wrote (VIEW_START_LABEL): the label is written,
     # and the turns before it indexed, only when it moves (see _assembled_history).
     _view_starts: dict[str, str] = {}
@@ -3950,7 +3941,6 @@ def create_runner_app(
             )
 
         _session_start_cache.setdefault(session_id, time.time())
-        _start_superside_chat_catch_up(session_id)
         if harness_name in ("claude-sdk", "pi") and spec is not None:
             _harness_prelaunches[session_id] = asyncio.create_task(
                 _prelaunch_harness(
@@ -4448,8 +4438,6 @@ def create_runner_app(
         _session_sub_agent_resolved.pop(session_id, None)
         _session_histories.pop(session_id, None)
         _history_process.pop(session_id, None)
-        _superside_chat_cold_overflow.discard(session_id)
-        _superside_chat_catch_ups.pop(session_id, None)
         _view_starts.pop(session_id, None)
         _forget_superside_chat_prefix(session_id)
         _last_server_item_id.pop(session_id, None)
@@ -4488,29 +4476,20 @@ def create_runner_app(
         session_id: str,
         drop_item_id: str | None = None,
         keep_tokens: int | None = None,
-        tail_tokens_out: list[int] | None = None,
     ) -> list[_JsonObject]:
         """Rebuild a session's harness input from its record.
 
         Reads from the latest checkpoint's anchor on, not from item 1 (see
         ``iter_items_from_checkpoint``); the record before it stays reachable
-        through ``session_history``. Only the newest whole turns after the
-        checkpoint that fit *keep_tokens* are kept. A superside-chat session
-        always trims, to its kept-tail budget by default: this load is what a
-        relaunched harness replays, so it gets the checkpoint's summary plus the
-        recent turns, never the whole record since. When that default trim drops
-        a turn, the session is marked so its next turn writes a checkpoint first
-        (``_maybe_superside_chat_cold_rollover``): the dropped turns go into the
-        summary, never silently out of the model's view. *tail_tokens_out*
-        receives the token count of the items after the checkpoint, before the
-        trim (the idle-return size check).
-
-        With ``OMNIGENT_CONTEXT_ASSEMBLE`` on (ADR 0031) a superside-chat session gets one
-        assembled block instead of the replay (``_assembled_history``), and nothing is marked
-        for a rollover: a restart bridges and never summarizes.
+        through ``session_history``. A superside-chat session gets one assembled
+        block of state plus its newest messages (``_assembled_history``, ADR 0031):
+        a restart, a relaunch, a harness switch or an idle return bridges and never
+        summarizes. Its tail is trimmed to the kept-tail budget, or to *keep_tokens*
+        (the hard-limit caller, which schedules its own rollover). Any other session
+        replays the items since the checkpoint, trimmed only to *keep_tokens*.
         """
         from omnigent.context.labels import is_superside_chat
-        from omnigent.context.rollover import assemble_on, resolve_keep_tokens
+        from omnigent.context.rollover import resolve_keep_tokens
         from omnigent.superchat.rollover import (
             ItemsPageFetchError,
             iter_items_from_checkpoint,
@@ -4518,12 +4497,7 @@ def create_runner_app(
 
         rollover_labels = await _rollover_labels_for_session(session_id)
         superside = is_superside_chat(rollover_labels)
-        # A Super Chat session starts from the assembled block (ADR 0031): no cold-start mark,
-        # no rollover before its turn; the hard-limit budget only trims the tail it shows.
-        assemble = superside and assemble_on()
-        # The hard-limit caller passes its own budget and schedules its own rollover.
-        default_trim = superside and keep_tokens is None
-        if default_trim:
+        if superside and keep_tokens is None:
             keep_tokens = resolve_keep_tokens(rollover_labels)
         all_items: list[_JsonObject] = []
         try:
@@ -4546,24 +4520,10 @@ def create_runner_app(
 
         if drop_item_id is not None:
             all_items = [it for it in all_items if it.get("id") != drop_item_id]
-        if tail_tokens_out is not None:
-            from omnigent.context.rollover import count_tokens, split_at_latest_compaction
-            from omnigent.models.model_fallbacks import ROLLOVER_TOKEN_COUNT_MODEL
-
-            tail_tokens_out.append(
-                count_tokens(split_at_latest_compaction(all_items)[0], ROLLOVER_TOKEN_COUNT_MODEL)
-            )
-        dropped: list[int] = []
-        if assemble:
+        if superside:
             converted = await _assembled_history(session_id, all_items, cast(int, keep_tokens))
         else:
-            converted = _convert_raw_items_to_input(
-                all_items, keep_tokens=keep_tokens, dropped_out=dropped
-            )
-        if default_trim and not assemble and dropped and dropped[0] > 0:
-            _superside_chat_cold_overflow.add(session_id)
-        else:
-            _superside_chat_cold_overflow.discard(session_id)
+            converted = _convert_raw_items_to_input(all_items, keep_tokens=keep_tokens)
         # Items are persisted pre-resolution, so reloaded history can still
         # carry raw file_id blocks (the runner has no file/artifact stores).
         # Resolve them the same way current-turn intake does.
@@ -4777,13 +4737,9 @@ def create_runner_app(
         task.add_done_callback(_background_tasks.discard)
         _background_tasks.add(task)
 
-    def _user_turns(items: list[_JsonObject]) -> int:
-        return sum(1 for it in items if it.get("type") == "message" and it.get("role") == "user")
-
     def _convert_raw_items_to_input(
         items: list[_JsonObject],
         keep_tokens: int | None = None,
-        dropped_out: list[int] | None = None,
     ) -> list[_JsonObject]:
         from omnigent.context.rollover import (
             clip_notices,
@@ -4801,10 +4757,6 @@ def create_runner_app(
                 select_recent(remaining, keep_tokens=keep_tokens, model=ROLLOVER_TOKEN_COUNT_MODEL)
                 or remaining
             )
-            if dropped_out is not None:
-                # Whole turns left out (counted by their user messages, so items before the
-                # first turn, which select_recent never keeps, do not count).
-                dropped_out.append(_user_turns(remaining) - _user_turns(kept))
             remaining = kept
         compaction_idx = None if c is None else items.index(c)
         # Notices replay as their outcome line plus a few hundred characters (ADR 0031), as
@@ -6873,7 +6825,6 @@ def create_runner_app(
     async def _maybe_superside_chat_idle_rollover(
         conv_id: str,
         *,
-        trimmed: bool = False,
         labels: Mapping[str, str] | None = None,
         idle_seconds: float | None = None,
     ) -> float | None:
@@ -6887,21 +6838,15 @@ def create_runner_app(
         non-superside-chat session (checked before the idle lookup, so
         those pay no extra round trip).
 
-        A return is not context pressure, so it makes no summarizer call: the warm
-        client is dropped and the turn cold-starts from the stored checkpoint plus the
-        items since its anchor. The history is read here, once, and left cached for the
-        turn (the same read the turn would make). Only when those items alone exceed the
-        kept-tail budget (``resolve_keep_tokens``, counted as the tail is) does the
-        normal rollover run, with the "return" cause in its header.
+        A return is not context pressure, so it makes no summarizer call and never waits: the
+        warm client is dropped and the turn's own history load assembles (ADR 0031).
 
-        :param trimmed: The hard-limit path already trimmed this turn's history.
         :param labels: The session's labels, read once for the turn (fetched when ``None``).
         :param idle_seconds: Seconds since the last item, read with the labels (fetched when
             ``None``).
         :returns: Seconds idle when this is a return, for the turn's gap line; else ``None``.
         """
         from omnigent.context.labels import is_superside_chat
-        from omnigent.context.rollover import assemble_on, resolve_keep_tokens
         from omnigent.superchat.rollover import should_roll_over_for_idle
 
         if labels is None:
@@ -6922,238 +6867,7 @@ def create_runner_app(
         await _drop_superside_chat_warm_client(
             conv_id, defer_if_active=False, reason="the person returned from idle"
         )
-        if trimmed or assemble_on():
-            # A return bridges (ADR 0031): the turn's own load assembles; no summary, no wait.
-            return idle_seconds
-        # Old path, kept behind OMNIGENT_CONTEXT_ASSEMBLE=0 until the chain arm passes.
-        since_anchor: list[int] = []
-        _session_histories[conv_id] = await _load_history_as_input(
-            conv_id, tail_tokens_out=since_anchor
-        )
-        # This return decides the summary itself; the load's cold-start mark is not a second one.
-        _superside_chat_cold_overflow.discard(conv_id)
-        keep_tokens = resolve_keep_tokens(labels)
-        if not since_anchor or since_anchor[0] <= keep_tokens:
-            return idle_seconds
-        # The turn's own read waits for the rollover; the cache is dropped with the client.
-        with _superside_chat_catching_up(conv_id):
-            await _superside_chat_roll_over_now(
-                conv_id, labels, cause="return", reason="the person returned from idle"
-            )
         return idle_seconds
-
-    async def _superside_chat_roll_over_now(
-        conv_id: str,
-        labels: Mapping[str, str] | None,
-        *,
-        cause: CheckpointCause,
-        reason: str,
-        drop: bool = True,
-    ) -> bool:
-        """Write the next checkpoint before this turn runs, then drop the warm client and cache.
-
-        The rollover the idle return and a cold start run in line (the threshold one runs in the
-        background). Summarizes on the session's own model: the turn body's ``model`` is the
-        agent name, and ROLLOVER_TOKEN_COUNT_MODEL (gpt-4o) is a tokenizer stand-in for sizing
-        text, never a model to actually call. Without a model it is skipped; the history the
-        caller already read is a valid cold start.
-
-        :param drop: Drop the warm client and cache after; the init catch-up passes ``False``,
-            since no turn has run on the harness its init just launched.
-        :returns: Whether a checkpoint was stored (the history cache is then empty).
-        """
-        from omnigent.superchat.rollover import roll_over_session
-
-        resolved_model = await _superside_chat_session_model(conv_id)
-        if resolved_model is None:
-            _logger.warning(
-                "superside-chat %s rollover: could not resolve a model for %s; skipping",
-                cause,
-                conv_id,
-                extra={"session_id": conv_id},
-            )
-            return False
-        wire, connection = _summarize_route(conv_id, resolved_model)
-        return await roll_over_session(
-            conv_id,
-            labels=labels,
-            model=resolved_model,
-            server_client=server_client,
-            llm_client=_get_runner_llm_client(),
-            connection=connection,
-            wire=wire,
-            on_rolled_over=(
-                (
-                    lambda: _drop_superside_chat_warm_client(
-                        conv_id, defer_if_active=False, reason=reason
-                    )
-                )
-                if drop
-                else None
-            ),
-            on_stored=_journal_checkpoint(conv_id, labels),
-            cause=cause,
-        )
-
-    @contextlib.contextmanager
-    def _superside_chat_catching_up(conv_id: str) -> Iterator[None]:
-        """While a turn waits on a checkpoint, the session says so instead of a bare "Working".
-
-        Cleared when the wait ends; a turn stopped or failed meanwhile ends with its own edge (a
-        ``running`` edge after a Stop would lift the engine's fence on the stopped turn).
-        """
-        from omnigent.superchat.rollover import CATCHING_UP_NOTE
-
-        _publish_session_status(conv_id, "running", blocked_on=CATCHING_UP_NOTE)
-        yield
-        _publish_session_status(conv_id, "running")
-
-    def _start_superside_chat_catch_up(conv_id: str) -> None:
-        """Write a Super Chat's cold checkpoint at its first init on this runner, before any turn.
-
-        Only for a Conversation in use: not archived, and active within the idle-return window.
-
-        The same rule and rollover as a turn's cold start
-        (``_maybe_superside_chat_cold_rollover``), run ahead so the first message after a restart
-        finds the checkpoint written. Once per session per runner start, and only before any turn
-        here: a turn that comes meanwhile waits on it (``_await_superside_chat_catch_up``). It
-        leaves the harness its init launched alone (nothing has run on it), so the pre-launch
-        goes on beside it. A record that fits the kept tail costs one read and no summarizer call.
-
-        Old path, kept behind OMNIGENT_CONTEXT_ASSEMBLE=0 until the chain arm passes: an
-        assembled start bridges a restart and never summarizes (ADR 0031), so no catch-up runs
-        and no turn waits on one (``_await_superside_chat_catch_up`` finds none, and
-        ``_maybe_superside_chat_cold_rollover`` finds no mark: the load sets none).
-        """
-        from omnigent.context.rollover import assemble_on
-
-        if assemble_on():
-            return
-        if (
-            conv_id in _superside_chat_catch_ups
-            or conv_id in _active_turns
-            or conv_id in _session_histories
-        ):
-            return
-        task = asyncio.create_task(
-            _superside_chat_catch_up(conv_id), name=f"superside-chat-catch-up-{conv_id}"
-        )
-        _superside_chat_catch_ups[conv_id] = task
-        task.add_done_callback(_background_tasks.discard)
-        _background_tasks.add(task)
-
-    async def _superside_chat_catch_up(conv_id: str) -> None:
-        from omnigent.context.labels import is_superside_chat
-        from omnigent.superchat.rollover import should_roll_over_for_idle
-
-        try:
-            rollover_labels = await _rollover_labels_for_session(conv_id)
-            if not is_superside_chat(rollover_labels):
-                return
-            # Only a Conversation in use: a reconnect re-inits archived and old ones too, and they
-            # keep the turn-time cold start. One idle past the return window gets the return's
-            # own check when the person comes back.
-            resp = await server_client.get(f"/v1/sessions/{conv_id}", timeout=10.0)
-            if resp.status_code != 200 or resp.json().get("archived"):
-                return
-            idle_seconds = await _superside_chat_idle_seconds(conv_id)
-            if idle_seconds is None or should_roll_over_for_idle(
-                rollover_labels, idle_seconds=idle_seconds
-            ):
-                return
-            # Marks the session when the kept tail had to leave whole turns out (the same load a
-            # turn's cold start makes); the history itself is the turn's to load.
-            await _load_history_as_input(conv_id)
-            if conv_id not in _superside_chat_cold_overflow:
-                return
-            _superside_chat_cold_overflow.discard(conv_id)
-            _logger.info(
-                "superside-chat catch-up for %s: the turns since the checkpoint exceed the kept "
-                "tail; writing a checkpoint before any turn",
-                conv_id,
-                extra={"session_id": conv_id},
-            )
-            started = time.monotonic()
-            labels = await _session_labels_for_runner_spawn(
-                server_client=server_client, session_id=conv_id
-            )
-            stored = await _superside_chat_roll_over_now(
-                conv_id,
-                labels,
-                cause="restart",
-                reason="a cold start whose history no longer fits the kept tail",
-                drop=False,
-            )
-            _logger.info(
-                "superside-chat catch-up for %s: checkpoint %s in %.1fs",
-                conv_id,
-                "stored" if stored else "not stored",
-                time.monotonic() - started,
-                extra={"session_id": conv_id},
-            )
-        except Exception:
-            # The turn's own cold start checks again.
-            _logger.warning(
-                "superside-chat catch-up failed for %s",
-                conv_id,
-                exc_info=True,
-                extra={"session_id": conv_id},
-            )
-
-    async def _await_superside_chat_catch_up(conv_id: str) -> None:
-        """Wait for the session's init catch-up if it still runs, saying so while it does."""
-        pending = _superside_chat_catch_ups.get(conv_id)
-        if pending is None or pending.done():
-            return
-        with _superside_chat_catching_up(conv_id):
-            # Shielded: a stopped turn leaves the checkpoint to finish.
-            await asyncio.shield(pending)
-
-    async def _maybe_superside_chat_cold_rollover(
-        conv_id: str, labels: Mapping[str, str] | None, latest_content: object
-    ) -> None:
-        """Checkpoint a cold start whose history no longer fits the kept tail, before the turn.
-
-        Old path (OMNIGENT_CONTEXT_ASSEMBLE=0 only): an assembled load never marks a session.
-
-        A record load (a runner restart, a dropped warm client) replays the latest checkpoint
-        plus the newest whole turns that fit the kept tail (``_load_history_as_input``). When
-        that trim had to leave turns out, they are in no summary and not in recall yet, so the
-        same rule as an idle return applies (docs/context.md, Rollover): the summarizer runs
-        when the items since the checkpoint exceed the kept tail. The checkpoint retires those
-        turns into the summary, the journal and recall (``on_stored``), and the turn then
-        replays the new checkpoint plus its tail. A failed rollover leaves the trimmed load as
-        the cold start; it is logged, and the next record load marks the session again.
-
-        :param latest_content: The content of the message that started this turn, put back at
-            the end when the reloaded record does not end with a user message.
-        """
-        if conv_id not in _superside_chat_cold_overflow:
-            return
-        _superside_chat_cold_overflow.discard(conv_id)
-        if labels is None:
-            labels = await _session_labels_for_runner_spawn(
-                server_client=server_client, session_id=conv_id
-            )
-        _logger.info(
-            "superside-chat cold start for %s: the turns since the checkpoint exceed the kept "
-            "tail; writing a checkpoint before the turn",
-            conv_id,
-            extra={"session_id": conv_id},
-        )
-        with _superside_chat_catching_up(conv_id):
-            stored = await _superside_chat_roll_over_now(
-                conv_id,
-                labels,
-                cause="restart",
-                reason="a cold start whose history no longer fits the kept tail",
-            )
-        if not stored:
-            return
-        history = await _load_history_as_input(conv_id)
-        if not history or history[-1].get("role") != "user":
-            history.append({"type": "message", "role": "user", "content": latest_content or []})
-        _session_histories[conv_id] = history
 
     async def _maybe_superside_chat_threshold_rollover(
         conv_id: str,
@@ -7540,10 +7254,6 @@ def create_runner_app(
         _setup_started = time.monotonic()
         _superside, _turn_labels, _idle_seconds = await _superside_chat_turn_reads(conv)
         _setup_reads = time.monotonic() - _setup_started
-        if _superside:
-            # Before anything reads the record or schedules a rollover: the init catch-up's
-            # checkpoint is the one this turn starts from.
-            await _await_superside_chat_catch_up(conv)
         # Cheap no-op for a session with no pending superside-chat rollover;
         # otherwise applies a deferred warm-client drop before anything below
         # touches the harness, and at the hard context limit returns the
@@ -7649,7 +7359,6 @@ def create_runner_app(
         _idle_gap = (
             await _maybe_superside_chat_idle_rollover(
                 conv,
-                trimmed=_trim_keep_tokens is not None,
                 labels=_turn_labels,
                 idle_seconds=_idle_seconds,
             )
@@ -7675,8 +7384,6 @@ def create_runner_app(
                 _history.append(
                     {"type": "message", "role": "user", "content": msg_body.get("content", [])}
                 )
-        if _superside:
-            await _maybe_superside_chat_cold_rollover(conv, _turn_labels, msg_body.get("content"))
         _setup_history = time.monotonic() - _history_started
         _raw_per_request_instructions = cast(str | None, msg_body.get("instructions"))
         _env_started = time.monotonic()

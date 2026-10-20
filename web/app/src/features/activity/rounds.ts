@@ -183,9 +183,8 @@ export function useRoundView(botId: string, roundId: string): RoundView | null {
   return useSyncExternalStore(subscribe, () => storeIn<RoundView | null>(views, key, null).value);
 }
 
-/** The engine's words while the Conversation's running turn waits before its work starts
- * ("Catching up on our conversation…" while a checkpoint is written), from its `chatStatus`
- * `blockedOn`; null otherwise. The Conversation's chat is the Muse's own (`botId`). */
+/** The engine's words while the Conversation's running turn waits before its work starts, from
+ * its `chatStatus` `blockedOn`; null otherwise. The Conversation's chat is the Muse's own (`botId`). */
 export function useConversationWaiting(botId: string | undefined): string | null {
   const subscribe = useCallback(
     (listener: () => void) => {

@@ -10,8 +10,7 @@ import { formatClock } from "./workStripState";
  * The lit state in the conversation header (ADR 0023): while the Conversation's work runs, the orb
  * and "Working · 0:12" in a pill whose edge carries a turning glow, so running work shows even
  * when the strip under its reply is scrolled away; "Paused" while Pause holds every running
- * Helper, and the engine's words while the turn waits before its work starts ("Catching up on our
- * conversation…"). Nothing while everything has settled.
+ * Helper, and the engine's words while the turn waits before its work starts. Nothing while everything has settled.
  */
 export function WorkingPill({
   work,

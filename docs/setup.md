@@ -61,7 +61,6 @@ host.
 | `OMNIGENT_VAULT_KEY` | filled by `setup.sh` | 32 random bytes, base64url; seals saved logins and saved model keys |
 | `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY` | blank | operator model keys (default config template) |
 | `SUPERCHAT_DEFAULT_AGENT` | `superchat-claude` | the harness a new conversation runs on: `superchat-claude` or `superchat-pi`; each person can switch in **Settings > Models** |
-| `CONTEXT_ASSEMBLE` | `1` | becomes `OMNIGENT_CONTEXT_ASSEMBLE`: a new session starts from one assembled block of state and a restart never summarizes (ADR 0031 step 3); `0` is the old replay |
 | `PROMPT_CACHE_1H` | `1` | becomes `OMNIGENT_PROMPT_CACHE_1H`: both harnesses keep the prompt cache 1 hour instead of 5 minutes; `0` turns it off ([context.md](context.md#prompt-cache)) |
 | `LITELLM_BASE_URL`, `LITELLM_API_KEY` | blank | set both to route every model call through a LiteLLM proxy; root URL without `/v1`, reachable from the engine container (`host.docker.internal` for a proxy on your machine) |
 | `SUPERCHAT_WEB_PORT`, `SUPERCHAT_ENGINE_PORT` | `5173`, `8012` | host ports |

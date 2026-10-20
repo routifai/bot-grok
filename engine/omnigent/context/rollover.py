@@ -6,7 +6,6 @@ In a rollover session each native CLI compacts its own context at
 
 from __future__ import annotations
 
-import os
 import posixpath
 import re
 from collections.abc import Mapping, Sequence
@@ -510,17 +509,6 @@ def select_recent(
             break
         selected_start = start
     return items[selected_start:]
-
-
-#: ADR 0031 step 3: a new session gets one assembled block (:func:`assemble_block`) instead of
-#: the replayed record. On unless set to ``0``/``false``/``off``; off is the replay (the
-#: checkpoint pair, the kept tail, and the restart and idle-return rollovers).
-ASSEMBLE_ENV = "OMNIGENT_CONTEXT_ASSEMBLE"
-
-
-def assemble_on() -> bool:
-    """Whether a new Super Chat session starts from the assembled block (:data:`ASSEMBLE_ENV`)."""
-    return os.environ.get(ASSEMBLE_ENV, "1").strip().lower() not in {"0", "false", "off"}
 
 
 #: The session label the history load writes: the last item before the assembled view starts

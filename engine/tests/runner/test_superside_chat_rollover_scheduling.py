@@ -26,7 +26,7 @@ from typing import Any
 
 import pytest
 
-from omnigent.context.rollover import checkpoint_header
+from omnigent.context.rollover import BLOCK_FRAME, checkpoint_header
 from omnigent.llms.types import MessageOutput, OutputText, Response
 from omnigent.runner import create_runner_app
 from tests.runner.conftest import (
@@ -795,37 +795,6 @@ async def test_threshold_rollover_skips_when_turn_reports_no_model(
     assert llm_client.call_count == 0
 
 
-@pytest.mark.asyncio
-async def test_idle_rollover_skips_when_session_model_unresolvable(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A session whose model can't be resolved (``GET /v1/sessions/{id}``
-    carries no usable model field) must skip the idle rollover rather than
-    summarizing on ROLLOVER_TOKEN_COUNT_MODEL."""
-    monkeypatch.setenv("OMNIGENT_ROLLOVER_IDLE_REFRESH_SECONDS", "10")
-    llm_client = _GatedLLMClient(asyncio.Event())
-    monkeypatch.setattr("omnigent.runner.app._get_runner_llm_client", lambda: llm_client)
-
-    # Stale by far more than the 10s idle-refresh threshold above, and longer than the
-    # kept tail, so the return would summarize.
-    stale = int(time.time()) - 10_000
-    server_client = _ThresholdServerClient(
-        labels=_hard_limit_labels(),
-        items=[{**it, "created_at": stale} for it in _long_history_items()],
-    )
-    harness_client = _SequencedHarnessClient([_plain_frames()])
-    app, _pm = _build_app(harness_client, server_client)
-    conv_id = "conv_idle_no_model"
-
-    async with _runner_client(app) as client:
-        resp = await asyncio.wait_for(_post_turn(client, conv_id, "hello"), timeout=5.0)
-        assert resp.status_code == 202
-        await _wait_until(lambda: conv_id not in app.state.active_turns, timeout=2.0)
-
-    assert server_client.posted_compactions == []
-    assert llm_client.call_count == 0
-
-
 # ── cold start reads the record from the checkpoint's anchor ─────────────
 
 
@@ -940,17 +909,21 @@ async def test_cold_start_reads_the_record_from_the_anchor_only() -> None:
 
     reads = [p for p in server_client.item_requests if p.get("order") == "asc"]
     assert reads == [{"limit": "1000", "order": "asc", "after": "old2999"}]
-    # Exactly what the full read yields: the checkpoint's exchange, the turn that ran
-    # while it summarized, everything since, then this turn's message.
-    assert _texts(content)[:-1] == [
-        ("user", "HEADER"),
-        ("assistant", "REAL STATE"),
-        ("user", "asked during"),
-        ("assistant", "answered"),
-        ("user", "after"),
-        ("assistant", "after answer"),
-    ]
-    assert "hello" in _texts(content)[-1][1]
+    # One assembled block (the working list once, the turn that ran while it summarized and
+    # everything since), the last answer as it is, then this turn's message (ADR 0031).
+    texts = _texts(content)
+    block = texts[0][1]
+    assert texts[0][0] == "user" and block.startswith(BLOCK_FRAME)
+    for line in (
+        "REAL STATE",
+        "They said: asked during",
+        "You said: answered",
+        "They said: after",
+    ):
+        assert line in block
+    assert "HEADER" not in block
+    assert texts[1:-1] == [("assistant", "after answer")]
+    assert "hello" in texts[-1][1]
 
 
 @pytest.mark.asyncio
@@ -962,7 +935,9 @@ async def test_cold_start_without_a_checkpoint_reads_from_the_start() -> None:
 
     reads = [p for p in server_client.item_requests if p.get("order") == "asc"]
     assert reads == [{"limit": "1000", "order": "asc"}]
-    assert _texts(content)[:2] == [("user", "question"), ("assistant", "answer")]
+    texts = _texts(content)
+    assert texts[0][1].startswith(BLOCK_FRAME) and "They said: question" in texts[0][1]
+    assert texts[1] == ("assistant", "answer")
 
 
 @pytest.mark.asyncio
@@ -980,12 +955,10 @@ async def test_cold_start_does_not_feed_a_placeholder_checkpoint_back_as_state()
 
     content = await _first_turn_content(server_client, "conv_cold_placeholder")
 
-    assert _texts(content)[:-1] == [
-        ("user", "HEADER"),
-        ("assistant", "REAL STATE"),
-        ("user", "work the placeholder covered"),
-        ("assistant", "its answer"),
-    ]
+    texts = _texts(content)
+    assert "REAL STATE" in texts[0][1]
+    assert "They said: work the placeholder covered" in texts[0][1]
+    assert texts[1:-1] == [("assistant", "its answer")]
     assert not any(placeholder in text for _role, text in _texts(content))
 
 
@@ -1200,11 +1173,10 @@ async def test_a_turn_that_is_not_a_return_has_no_gap_line() -> None:
 
 
 @pytest.mark.asyncio
-async def test_return_after_idle_with_more_than_the_tail_budget_rolls_over(
+async def test_return_after_idle_with_more_than_the_tail_budget_never_summarizes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from omnigent.context.rollover import checkpoint_header
-
+    """A return bridges (ADR 0031): the turn assembles, no summary is written or waited on."""
     monkeypatch.setenv("OMNIGENT_ROLLOVER_IDLE_REFRESH_SECONDS", "10")
     llm_client = _GatedLLMClient(asyncio.Event(), text="STATE")
     llm_client._gate.set()
@@ -1221,9 +1193,8 @@ async def test_return_after_idle_with_more_than_the_tail_budget_rolls_over(
         await _wait_until(lambda: len(harness_client.posted_bodies) == 1, timeout=2.0)
         await _wait_until(lambda: conv_id not in app.state.active_turns, timeout=2.0)
 
-    assert llm_client.call_count == 1
-    [posted] = server_client.posted_compactions
-    assert posted["data"]["summary"].startswith(checkpoint_header("return"))
+    assert llm_client.call_count == 0
+    assert server_client.posted_compactions == []
     assert _GAP_LINE in _last_user_text(harness_client.posted_bodies[0])
 
 

@@ -57,9 +57,6 @@ OMNIGENT_ROLLOVER_IDLE_REFRESH_SECONDS_ENV = "OMNIGENT_ROLLOVER_IDLE_REFRESH_SEC
 #: 12 hours.
 DEFAULT_IDLE_REFRESH_SECONDS = 43_200
 
-#: What a turn shows (``session.status`` ``blocked_on``) while a checkpoint is written before it.
-CATCHING_UP_NOTE = "Catching up on our conversation…"
-
 
 def resolve_idle_refresh_seconds() -> int:
     """Resolve the idle period before a superside-chat session refreshes on return.

@@ -299,19 +299,18 @@ async def _current_epoch(ctx: HandlerCtx) -> dict[str, str] | None:
     them with no checkpoint (as the hint leaves them out)."""
     if ctx.server_client is None or not ctx.conversation_id:
         return None
-    from omnigent.context.rollover import VIEW_START_LABEL, assemble_on
+    from omnigent.context.rollover import VIEW_START_LABEL
     from omnigent.superchat.rollover import fetch_latest_checkpoint
 
-    if assemble_on():
-        try:
-            resp = await ctx.server_client.get(
-                f"/v1/sessions/{ctx.conversation_id}/labels", timeout=10.0
-            )
-            labels = resp.json().get("labels") if resp.status_code == 200 else None
-        except Exception:  # noqa: BLE001 - an unread label falls back to the checkpoint
-            labels = None
-        if isinstance(labels, dict) and isinstance(labels.get(VIEW_START_LABEL), str):
-            return {ctx.conversation_id: labels[VIEW_START_LABEL]}
+    try:
+        resp = await ctx.server_client.get(
+            f"/v1/sessions/{ctx.conversation_id}/labels", timeout=10.0
+        )
+        labels = resp.json().get("labels") if resp.status_code == 200 else None
+    except Exception:  # noqa: BLE001 - an unread label falls back to the checkpoint
+        labels = None
+    if isinstance(labels, dict) and isinstance(labels.get(VIEW_START_LABEL), str):
+        return {ctx.conversation_id: labels[VIEW_START_LABEL]}
     try:
         checkpoint = await fetch_latest_checkpoint(
             ctx.server_client, ctx.conversation_id, skip_placeholders=True
