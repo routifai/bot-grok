@@ -269,6 +269,21 @@ class ToolCallComplete(ExecutorEvent):
 
 
 @dataclass
+class ContextFill(ExecutorEvent):
+    """How full the context is going into, or coming out of, one model call of the turn.
+
+    Yielded once per model call, so Omnigent can bound a single long turn
+    (``CreateResponseRequest.turn_context_ceiling``) while the harness's own
+    compaction stays off. Consumers that do not watch it ignore it.
+
+    :param tokens: The call's whole context in tokens (input plus cache read and write),
+        e.g. ``182_340``.
+    """
+
+    tokens: int
+
+
+@dataclass
 class CompactionStarted(ExecutorEvent):
     """The harness detected that compaction is about to begin.
 

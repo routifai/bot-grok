@@ -75,6 +75,29 @@ def resolve_idle_refresh_seconds() -> int:
     return value if value > 0 else DEFAULT_IDLE_REFRESH_SECONDS
 
 
+#: Context tokens one background-job (Helper) turn may reach before it is asked to wrap up.
+#: Rollover acts between turns only and the harness's own compaction is off, so without this a
+#: long tool loop grows up to the model's window. The Conversation keeps its between-turn rule.
+OMNIGENT_HELPER_TURN_CONTEXT_CEILING_ENV = "OMNIGENT_HELPER_TURN_CONTEXT_CEILING"
+
+DEFAULT_HELPER_TURN_CONTEXT_CEILING = 300_000
+
+
+def resolve_helper_turn_context_ceiling() -> int:
+    """The in-turn context ceiling for a Helper turn.
+
+    Reads :data:`OMNIGENT_HELPER_TURN_CONTEXT_CEILING_ENV`, default
+    :data:`DEFAULT_HELPER_TURN_CONTEXT_CEILING`. A missing, non-integer or non-positive value
+    falls back to the default.
+    """
+    raw = os.environ.get(OMNIGENT_HELPER_TURN_CONTEXT_CEILING_ENV)
+    try:
+        value = int(raw) if raw is not None else 0
+    except ValueError:
+        value = 0
+    return value if value > 0 else DEFAULT_HELPER_TURN_CONTEXT_CEILING
+
+
 def should_roll_over_for_threshold(
     labels: Mapping[str, str] | None,
     *,

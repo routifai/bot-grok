@@ -28,6 +28,7 @@ from omnigent.errors import ElicitationDeclinedError, ErrorPhase
 from omnigent.harnesses.executor import (
     CompactionComplete,
     CompactionStarted,
+    ContextFill,
     Executor,
     ExecutorConfig,
     ExecutorError,
@@ -91,6 +92,22 @@ _HARNESS_ALREADY_GONE_ERRORS = (TimeoutError, ConnectionError)
 # Consecutive orphaned tool callbacks (no active turn context) before forcing a Tier-1 SDK reset.
 # Reset to zero at each ``run_turn`` start so a single late straggler never trips it.
 _ORPHAN_RESYNC_THRESHOLD = 3
+
+# A turn with a context ceiling (``CreateResponseRequest.turn_context_ceiling``) is asked once
+# to wrap up when a model call passes it; one that keeps going to this multiple of the ceiling
+# is stopped, so a model that ignores the request cannot run on to the window.
+TURN_CONTEXT_HARD_STOP_FACTOR = 1.25
+
+
+def turn_ceiling_notice(tokens: int, ceiling: int) -> str:
+    """The message steered into a turn whose context passed its ceiling."""
+    return (
+        f"[Context limit: this job's working context is at {tokens:,} tokens, past its limit "
+        f"of {ceiling:,}. Start no new steps. Save any unsaved work to its files now, then "
+        "end this turn with a short status: what is done, where it is saved, and what is "
+        f"left. At {int(ceiling * TURN_CONTEXT_HARD_STOP_FACTOR):,} tokens the turn is "
+        "stopped.]"
+    )
 
 
 def _strip_mcp_tool_prefix(name: str) -> str:
@@ -273,6 +290,9 @@ class ExecutorAdapter(HarnessApp):
 
         # Steers offered to the executor whose outcome it has not reported yet, by injection id.
         offered: set[str] = set()
+        # The in-turn context bound (background jobs only); asked to wrap up at most once.
+        ceiling = request.turn_context_ceiling
+        wrap_up_asked = False
         # Watcher forwards mid-turn steering injections into the in-flight executor session.
         injection_watcher = asyncio.create_task(
             self._watch_injections(ctx, executor, offered),
@@ -320,6 +340,42 @@ class ExecutorAdapter(HarnessApp):
                         if event.steer_id in offered:
                             offered.discard(event.steer_id)
                             _report_injection(ctx, event.steer_id, taken=event.taken)
+                        continue
+                    if isinstance(event, ContextFill):
+                        if ceiling and event.tokens >= ceiling and not wrap_up_asked:
+                            wrap_up_asked = True
+                            _logger.warning(
+                                "turn context at %d tokens passed its ceiling of %d for %s; "
+                                "asking the model to wrap up",
+                                event.tokens,
+                                ceiling,
+                                self._session_key,
+                            )
+                            try:
+                                offer = await executor.steer_session_message(
+                                    self._session_key,
+                                    turn_ceiling_notice(event.tokens, ceiling),
+                                    steer_id=f"ceiling_{uuid.uuid4().hex[:12]}",
+                                )
+                            except Exception:
+                                _logger.exception("steering the context-ceiling notice failed")
+                                offer = "refused"
+                            if offer == "refused":
+                                _logger.warning(
+                                    "the context-ceiling notice was refused for %s",
+                                    self._session_key,
+                                )
+                        elif ceiling and event.tokens >= ceiling * TURN_CONTEXT_HARD_STOP_FACTOR:
+                            _logger.warning(
+                                "turn context at %d tokens is past %.2fx its ceiling of %d "
+                                "for %s; stopping the turn",
+                                event.tokens,
+                                TURN_CONTEXT_HARD_STOP_FACTOR,
+                                ceiling,
+                                self._session_key,
+                            )
+                            # Handled by the cancelled check at the top of the loop.
+                            ctx.cancelled.set()
                         continue
                     # --- Tracing: emit spans per event ---
                     if tctx is not None:
