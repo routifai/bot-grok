@@ -6815,7 +6815,7 @@ def create_runner_app(
         :returns: Seconds idle when this is a return, for the turn's gap line; else ``None``.
         """
         from omnigent.context.labels import is_superside_chat
-        from omnigent.context.rollover import resolve_keep_tokens
+        from omnigent.context.rollover import assemble_on, resolve_keep_tokens
         from omnigent.superchat.rollover import should_roll_over_for_idle
 
         if labels is None:
@@ -6836,8 +6836,10 @@ def create_runner_app(
         await _drop_superside_chat_warm_client(
             conv_id, defer_if_active=False, reason="the person returned from idle"
         )
-        if trimmed:
+        if trimmed or assemble_on():
+            # A return bridges (ADR 0031): the turn's own load assembles; no summary, no wait.
             return idle_seconds
+        # Old path, kept behind OMNIGENT_CONTEXT_ASSEMBLE=0 until the chain arm passes.
         since_anchor: list[int] = []
         _session_histories[conv_id] = await _load_history_as_input(
             conv_id, tail_tokens_out=since_anchor
@@ -6931,7 +6933,16 @@ def create_runner_app(
         here: a turn that comes meanwhile waits on it (``_await_superside_chat_catch_up``). It
         leaves the harness its init launched alone (nothing has run on it), so the pre-launch
         goes on beside it. A record that fits the kept tail costs one read and no summarizer call.
+
+        Old path, kept behind OMNIGENT_CONTEXT_ASSEMBLE=0 until the chain arm passes: an
+        assembled start bridges a restart and never summarizes (ADR 0031), so no catch-up runs
+        and no turn waits on one (``_await_superside_chat_catch_up`` finds none, and
+        ``_maybe_superside_chat_cold_rollover`` finds no mark: the load sets none).
         """
+        from omnigent.context.rollover import assemble_on
+
+        if assemble_on():
+            return
         if (
             conv_id in _superside_chat_catch_ups
             or conv_id in _active_turns
@@ -7016,6 +7027,8 @@ def create_runner_app(
         conv_id: str, labels: Mapping[str, str] | None, latest_content: object
     ) -> None:
         """Checkpoint a cold start whose history no longer fits the kept tail, before the turn.
+
+        Old path (OMNIGENT_CONTEXT_ASSEMBLE=0 only): an assembled load never marks a session.
 
         A record load (a runner restart, a dropped warm client) replays the latest checkpoint
         plus the newest whole turns that fit the kept tail (``_load_history_as_input``). When
