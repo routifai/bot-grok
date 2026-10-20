@@ -21,7 +21,13 @@ from omnigent.superchat.artifact_kinds import (
     kind_for_name,
 )
 from omnigent.superchat.artifacts.look import is_page, saved_look
-from omnigent.superchat.decks.outline import deck_outline
+from omnigent.superchat.decks.outline import (
+    MAX_RANGE_CHARS,
+    clip_source,
+    deck_outline,
+    element_source,
+    slide_sources,
+)
 from omnigent.superchat.feature import HandlerCtx
 from omnigent.superchat.sheets.table import TABLE_KINDS, read_table
 
@@ -368,8 +374,48 @@ def outline_text(name: str, kind: str, data: bytes) -> str:
     return f"{name} is a {kind} file; it has no text outline."
 
 
+def _range(raw: object) -> tuple[int, int] | None:
+    """``"3"`` or ``"2-4"`` as 1-based first and last, or ``None`` when it is not one."""
+    first, _, last = str(raw).strip().partition("-")
+    try:
+        a, b = int(first), int(last or first)
+    except ValueError:
+        return None
+    return (a, b) if 1 <= a <= b else None
+
+
+def read_part(
+    name: str, kind: str, data: bytes, element: object, span: object
+) -> str | dict[str, Any]:
+    """One element's source, or a run of slides (a deck) or lines (a text file); an error
+    sentence when there is no such part. Never the whole file.
+    """
+    if element:
+        found = element_source(data, str(element)) if kind == "html" else None
+        if found is None:
+            return f"{name} has no element with data-superchat-id {element!r}; see its outline."
+        return {"element": element, "source": found}
+    bounds = _range(span)
+    if bounds is None:
+        return "range must be one number or two joined by a hyphen, e.g. 2 or 2-4"
+    first, last = bounds
+    if kind == "html" and is_deck_name(name):
+        slides = slide_sources(data)
+        if first > len(slides):
+            return f"{name} has {len(slides)} slides."
+        picked = "\n".join(slides[first - 1 : last])
+        shown = f"{first}-{min(last, len(slides))}"
+        return {"slides": shown, "source": clip_source(picked, MAX_RANGE_CHARS)}
+    if kind not in _TEXT_KINDS:
+        return f"{name} is a {kind} file; it has no lines to read."
+    lines = data.decode("utf-8", "replace").splitlines()
+    picked = "\n".join(lines[first - 1 : last])
+    shown = f"{first}-{min(last, len(lines))}"
+    return {"lines": shown, "source": clip_source(picked, MAX_RANGE_CHARS)}
+
+
 async def _outline(client: Any, args: dict[str, Any]) -> str:
-    """``artifact_outline``: the newest version's outline, read through the engine."""
+    """``artifact_outline``: the newest version's outline, or one element or range of it."""
     artifact_id = args.get("artifact_id")
     if not isinstance(artifact_id, str) or not HEX_ID_RE.match(artifact_id):
         return error("artifact_outline requires a valid artifact_id")
@@ -387,12 +433,11 @@ async def _outline(client: Any, args: dict[str, Any]) -> str:
         return finish(content)
     name = str(item.get("name") or "")
     kind = str(item.get("kind") or kind_for_name(name) or "")
+    head = {"artifact_id": item.get("group_id") or artifact_id, "name": name, "version": newest}
+    if args.get("element") or args.get("range"):
+        part = await asyncio.to_thread(
+            read_part, name, kind, content.content, args.get("element"), args.get("range")
+        )
+        return error(part) if isinstance(part, str) else json.dumps({**head, **part})
     outline = await asyncio.to_thread(outline_text, name, kind, content.content)
-    return json.dumps(
-        {
-            "artifact_id": item.get("group_id") or artifact_id,
-            "name": name,
-            "version": newest,
-            "outline": outline,
-        }
-    )
+    return json.dumps({**head, "outline": outline})

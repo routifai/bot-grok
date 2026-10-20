@@ -62,7 +62,8 @@ from omnigent.superchat.artifacts.studio import (
     is_studio_of,
     studio_of,
 )
-from omnigent.superchat.decks.outline import deck_outline
+from omnigent.superchat.artifacts.studio_turn import MAX_SELECTED, selected_block
+from omnigent.superchat.decks.outline import deck_outline, element_source, slide_sources
 from omnigent.superchat.family.signals import notify_item_updated
 from omnigent.superchat.rounds.record import file_saved, round_of
 from omnigent.superchat.transcript.blocks import project_items
@@ -608,10 +609,11 @@ def create_artifacts_router(
 
     @router.get("/artifacts/hint")
     async def artifacts_hint(request: Request, session_id: str = Query()) -> dict[str, Any]:
-        """The runtime hint for the start of a turn in the Conversation (``None``: none).
+        """The file handles for the start of a turn in the Conversation (``None``: none).
 
-        The runner calls this when a turn starts: this Conversation's artifacts, newest first,
-        with the one the person's latest message was sent with open marked. A Helper has none.
+        The runner calls this when a turn starts: this Conversation's files, most recently
+        changed first, with the one the person's latest message was sent with open marked, cut
+        to the hint's budget with a count of the rest. A Helper has none.
         """
         owner = _owner(request)
         check_id(session_id, "session_id")
@@ -622,23 +624,28 @@ def create_artifacts_router(
         if conversation is None or conversation.parent_conversation_id is not None:
             return {"hint": None}
         rows = await asyncio.to_thread(
-            store.list_latest, user_id=owner, parent_session_id=session_id, limit=MAX_ARTIFACTS
+            store.list_latest, user_id=owner, parent_session_id=session_id
         )
         _, asked = await asyncio.to_thread(producing_turn, conversation_store, session_id, None)
         opened = await asyncio.to_thread(open_artifact, store, session_id, asked)
         newest = [a for a, _n in rows]
-        editing = await asyncio.to_thread(
-            _being_edited, conversation_store, [*newest, *([opened] if opened else [])]
-        )
+        shown = [*newest[:MAX_ARTIFACTS], *([opened] if opened else [])]
+        editing = await asyncio.to_thread(_being_edited, conversation_store, shown)
         return {"hint": artifact_hint(newest, opened, editing)}
 
     @router.get("/artifacts/studio-turn")
-    async def studio_turn(request: Request, session_id: str = Query()) -> dict[str, Any]:
+    async def studio_turn(
+        request: Request,
+        session_id: str = Query(),
+        element: list[str] = Query(default=[]),
+        slide: int | None = Query(default=None, ge=1),
+    ) -> dict[str, Any]:
         """What a file's studio turn starts with (``{"studio": null}`` for any other session).
 
         The runner calls this at the start of every studio turn: the file line, a deck's slide
-        outline, and the Conversation and group its write-back is scoped to (resolved the way
-        saves are: the studio's parent, ADR 0024).
+        outline, the source of the elements (by ``data-superchat-id``) or the slide the message
+        selected (ADR 0031), and the Conversation and group its write-back is scoped to
+        (resolved the way saves are: the studio's parent, ADR 0024).
         """
         owner = _owner(request)
         check_id(session_id, "session_id")
@@ -653,9 +660,16 @@ def create_artifacts_router(
         if newest is None or newest.parent_session_id != session.parent_conversation_id:
             return {"studio": None}
         outline: str | None = None
-        if is_deck_name(newest.name):  # the slides by code, so most turns need not read it
+        selected: str | None = None
+        wanted = element[:MAX_SELECTED]
+        if is_deck_name(newest.name) or ((wanted or slide) and newest.kind == "html"):
             try:
-                outline = await asyncio.to_thread(lambda: deck_outline(store.read(newest)))
+                source = await asyncio.to_thread(store.read, newest)
+                if is_deck_name(newest.name):  # the slides by code: most turns need no read
+                    outline = await asyncio.to_thread(deck_outline, source)
+                selected = await asyncio.to_thread(
+                    _selected, source, newest.version, wanted, slide
+                )
             except Exception:
                 _logger.warning("artifacts: no outline for %s", newest.id, exc_info=True)
         rows = await asyncio.to_thread(_prelude, newest, session_id)
@@ -666,8 +680,20 @@ def create_artifacts_router(
                 "file_line": file_line(newest, session_id),
                 "brief": brief_line(rows),
                 "outline": outline,
+                "selected": selected,
             }
         }
+
+    def _selected(
+        source: bytes, version: int, ids: list[str], slide: int | None
+    ) -> str | None:
+        """The source of the selected elements, else of the one slide the ask is about."""
+        parts = [(f"element {i}", found) for i in ids if (found := element_source(source, i))]
+        if not ids and slide is not None:
+            slides = slide_sources(source)
+            if slide <= len(slides):
+                parts = [(f"slide {slide}", slides[slide - 1])]
+        return selected_block(version, parts)
 
     def _prelude(item: Artifact, studio_id: str) -> list[dict[str, Any]]:
         """The file's prelude (ADR 0030)."""

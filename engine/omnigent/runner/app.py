@@ -3075,9 +3075,10 @@ def create_runner_app(
     # once done: one per session per runner start); a turn that comes meanwhile waits on it (see
     # _start_superside_chat_catch_up).
     _superside_chat_catch_ups: dict[str, asyncio.Task[None]] = {}
-    # conv_id -> what the session's current warm client was last sent of the Memory Profile and
-    # Projects blocks (hashes, plus the prompt and subprocess it was sent under); and what the
-    # turn in flight carries, kept once the turn completes (see _apply_turn_prefix_blocks).
+    # conv_id -> what the session's current warm client was last sent of the Memory Profile,
+    # Projects and file handle blocks (hashes or lines, plus the prompt and subprocess it was
+    # sent under); and what the turn in flight carries, kept once the turn completes (see
+    # _apply_turn_prefix_blocks).
     _superside_chat_prefix_sent: dict[str, dict[str, str]] = {}
     _superside_chat_prefix_pending: dict[str, dict[str, str]] = {}
     # conv_id -> the setup ("<harness> with <model>") its last turn ran on, so a turn after a

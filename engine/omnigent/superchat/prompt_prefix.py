@@ -19,10 +19,14 @@ from typing import TYPE_CHECKING, cast
 import httpx
 
 from omnigent.memory.service import PROFILE_BLOCK_FOOTER, PROFILE_BLOCK_HEADER
+from omnigent.superchat.artifacts.hint import DELTA_HEADER as FILES_DELTA_HEADER
 from omnigent.superchat.artifacts.hint import HEADER as ARTIFACT_HINT_HEADER
+from omnigent.superchat.artifacts.hint import fetch_artifact_hint
 from omnigent.superchat.artifacts.studio_turn import (
     BRIEF_OPEN,
     FILE_LINE_OPEN,
+    SELECTED_CLOSE,
+    SELECTED_OPEN,
     studio_turn_blocks,
 )
 from omnigent.superchat.artifacts.writeback import NOTE_LINE as EDIT_NOTE_LINE
@@ -58,6 +62,7 @@ _known_timezone: dict[str, str | None] = {}
 #: Sent in place of a block the warm client already holds, see :func:`turn_prefix_blocks`.
 PROFILE_UNCHANGED_LINE = "Standing memory unchanged since the last message."
 PROJECTS_UNCHANGED_LINE = "Projects unchanged since the last message."
+STUDIO_FILE_UNCHANGED_LINE = "The file is unchanged since the last message."
 #: Sent in place of a block not read within the budget, so the model knows it is missing and
 #: how to get it, instead of acting as if there were no memory or no Projects.
 PROFILE_LATE_LINE = (
@@ -122,6 +127,26 @@ def _delta_block(
     if last_sent is not None and last_sent.get(name) == digest:
         return unchanged_line
     return block
+
+
+def files_block(
+    hint: str, last_sent: Mapping[str, str] | None, sent_now: dict[str, str] | None
+) -> str | None:
+    """The file handles on a harness session's first turn; after that only the changed lines.
+
+    A line changes when its file is new, has a new version or a new state (open, being
+    edited), so a warm session hears of exactly those; nothing changed means no block. What
+    this turn's handles are is recorded in *sent_now* (the lines, not a hash: the next turn
+    compares them line by line).
+    """
+    lines = [line for line in hint.split("\n")[1:] if line.startswith("- ")]
+    if sent_now is not None:
+        sent_now["files"] = "\n".join(lines)
+    if last_sent is None or "files" not in last_sent:
+        return hint
+    before = set(last_sent["files"].split("\n"))
+    changed = [line for line in lines if line not in before]
+    return "\n".join([FILES_DELTA_HEADER, *changed]) if changed else None
 
 
 async def fetch_memory_profile(
@@ -318,7 +343,8 @@ async def turn_prefix_blocks(
     :param idle_gap_seconds: How long the person was away, when this is the first message back
         from an idle break; adds one line next to the local time.
     :param last_sent: Hashes (by ``profile`` / ``projects``) of the blocks the current warm
-        client last received. A block with the same hash goes as one short line instead.
+        client last received, and the file handle lines (``files``). A block with the same hash
+        goes as one short line instead; the file handles go only as their changed lines.
         ``None`` (a cold start, or anything unproven) sends every block in full.
     :param sent_now: Filled with the hashes of the profile and Projects blocks this turn
         carries, for the caller to remember once the turn completes.
@@ -326,8 +352,9 @@ async def turn_prefix_blocks(
         memory profile (its brief carries the preference lines that apply). A file's studio
         drops the Conversation-only blocks the same way.
     :param studio: The session is a file's studio (ADR 0024): its turn gets the memory profile,
-        the file line and this file's write-back notes only (no Projects, no feature notes, no
-        Conversation artifact hint).
+        the file line and outline (again only once the version changed), the elements the
+        message selected and this file's write-back notes only (no Projects, no feature notes,
+        no Conversation file handles).
 
     The reads share one budget (:data:`PREFIX_BUDGET_SECONDS`, longer for the person's own
     material): a block not read in time is left out of this turn, the profile and Projects with
@@ -355,18 +382,24 @@ async def turn_prefix_blocks(
                 if message_texts
                 else _no_blocks(),
                 "profile": fetch_memory_profile(server_client, conversation_id),
-                "studio": studio_turn_blocks(server_client, conversation_id),
+                "studio": studio_turn_blocks(server_client, conversation_id, message_texts),
             },
         )
         message_blocks = cast("list[MessageBlock]", got.get("message", []))
         profile = cast(str | None, got.get("profile"))
-        studio_blocks = cast(list[str], got.get("studio", []))
+        file_blocks, turn_blocks = cast(tuple[list[str], list[str]], got.get("studio", ([], [])))
         blocks: list[MessageBlock] = [*message_blocks, *_reminders(message_texts)]
         if profile:
             blocks.append(
                 _delta_block("profile", profile, PROFILE_UNCHANGED_LINE, last_sent, sent_now)
             )
-        blocks.extend(studio_blocks)
+        if file_blocks:
+            # The file line and outline again only once the version changed (ADR 0031).
+            file_block = "\n\n".join(file_blocks)
+            blocks.append(
+                _delta_block("file", file_block, STUDIO_FILE_UNCHANGED_LINE, last_sent, sent_now)
+            )
+        blocks.extend(turn_blocks)
         return blocks
     carried = _carried_feature_blocks(conversation_id)
     features = asyncio.ensure_future(_feature_prefix_blocks(server_client, conversation_id))
@@ -384,6 +417,8 @@ async def turn_prefix_blocks(
                 {} if helper else {"profile": fetch_memory_profile(server_client, conversation_id)}
             ),
             "projects": asyncio.to_thread(_safe_projects_block, workspace),
+            # The Conversation's file handles; a Helper names its files in its own work.
+            **({} if helper else {"files": fetch_artifact_hint(server_client, conversation_id)}),
             "features": features,
             "local_time": fetch_local_time_line(server_client),
         },
@@ -409,6 +444,15 @@ async def turn_prefix_blocks(
     elif "projects" not in got:
         blocks.append(PROJECTS_LATE_LINE)
     blocks.extend(feature_blocks)
+    hint = cast(list[str], got.get("files", []))
+    if hint:
+        files = files_block(hint[0], last_sent, sent_now)
+        if files:
+            blocks.append(files)
+    elif "files" not in got and last_sent is not None and "files" in last_sent:
+        # Not read in time: this session still holds what it was sent, so keep comparing to it.
+        if sent_now is not None:
+            sent_now["files"] = last_sent["files"]
     if idle_gap_seconds is not None:
         blocks.append(idle_gap_line(idle_gap_seconds))
     blocks.append(local_time)
@@ -433,8 +477,10 @@ _FENCED_BLOCKS = (
     (HINT_HEADER, "\n" + HINT_FOOTER),
     (ATTACHMENT_OPEN, ATTACHMENT_REMINDER),
     (PROJECTS_OPEN, "]\n\n"),
-    # The artifact hint's lines run to the blank line before the next block.
+    # The file handles' lines run to the blank line before the next block, as do their changes.
     (ARTIFACT_HINT_HEADER, "\n\n"),
+    (FILES_DELTA_HEADER, "\n\n"),
+    (SELECTED_OPEN, SELECTED_CLOSE),
     # A studio deck's slide outline (ADR 0024), likewise.
     (OUTLINE_HEADER, "\n\n"),
 )
@@ -452,6 +498,7 @@ def _injected_line(line: str) -> bool:
         in (
             PROFILE_UNCHANGED_LINE,
             PROJECTS_UNCHANGED_LINE,
+            STUDIO_FILE_UNCHANGED_LINE,
             PROFILE_LATE_LINE,
             PROJECTS_LATE_LINE,
             ATTACHMENT_REMINDER,

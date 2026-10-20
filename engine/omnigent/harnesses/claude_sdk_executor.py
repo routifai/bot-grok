@@ -2874,8 +2874,10 @@ class ClaudeSDKExecutor(Executor):
         # tests/harnesses/test_claude_sdk_executor.py). The plugin's
         # ``name`` (and thus the skill-listing prefix) comes from
         # the manifest written at construction time.
+        # A superside-chat session reads its bundle skills through Omnigent's ``load_skill``,
+        # as on pi (ADR 0006): no second, native copy of them through a plugin.
         bundle_plugins: list[Any] = []  # type: ignore[explicit-any]  # SdkPluginConfig is a TypedDict — typed Any here to keep the import lazy
-        if self._bundle_dir is not None:
+        if self._bundle_dir is not None and not is_superside_chat:
             bundle_plugins.append({"type": "local", "path": str(self._bundle_dir)})
         options_kwargs: dict[str, Any] = {  # type: ignore[explicit-any]  # ClaudeAgentOptions accepts mixed-typed kwargs (str / list / dict / callable / etc.)
             "tools": base_tools,

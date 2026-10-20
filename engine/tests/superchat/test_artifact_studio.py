@@ -437,7 +437,7 @@ def test_the_studio_turn_reads_its_file_and_writes_back_only_its_own(
     studio, _ = find_or_create_studio(conversations, first)
     _NOTED.pop(studio, None)
 
-    async def run() -> tuple[list[str], list[str], dict[str, Any]]:
+    async def run() -> tuple[Any, Any, dict[str, Any]]:
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://engine") as client:
             blocks = await studio_turn_blocks(client, studio)
@@ -448,12 +448,12 @@ def test_the_studio_turn_reads_its_file_and_writes_back_only_its_own(
             return blocks, again, pending
 
     blocks, again, pending = asyncio.run(run())
-    line, note = blocks
+    (line,), (note,) = blocks
     assert line.startswith("The file of this chat: deck.md (deck.md, document, group ")
     assert "Newest: v2, saved by you" in line and "base_version 2" in line
     assert note.startswith("The person edited deck.md by hand (v1 → v2): made the title larger")
     assert deck.read_bytes() == b"# bigger"
     assert not memo.exists()  # another file's edit is the Conversation's to deliver
-    assert again == [line]  # told once
+    assert again == ([line], [])  # told once
     # Not acknowledged: the Conversation's next turn still gets both notes.
     assert {e["name"] for e in pending["edits"]} == {"deck.md", "memo.md"}

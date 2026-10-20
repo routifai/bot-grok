@@ -396,6 +396,8 @@ def step_title_for_call(tool_name: str, raw_arguments: str, output: str | None =
         return (
             f"Reviewed {name}" if isinstance(name, str) and name.strip() else "Reviewed the file"
         )
+    if tool_name == "load_skill":
+        return "Looked up the deck layouts" if args.get("name") == "decks" else "Looked up a guide"
     if tool_name == "memory_search":
         query = args.get("query") or args.get("q")
         return f"Searched memory for '{query}'" if query else "Searched memory"

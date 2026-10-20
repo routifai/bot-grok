@@ -155,13 +155,30 @@ def chart_recipes() -> dict[str, str]:
     return {path.stem: path.read_text("utf-8") for path in sorted(CHARTS_DIR.glob("chart-*.html"))}
 
 
-def menu() -> str:
-    """The layout menu and the chart recipes (what ``deck_new`` returns to the Muse)."""
-    recipes = "\n\n".join(
-        f"`{name}`:\n\n```html\n{text.strip()}\n```" for name, text in chart_recipes().items()
-    )
-    heading = "Chart recipes (Open Design's chart templates, ported):"
-    return (KIT_DIR / "menu.md").read_text("utf-8").rstrip() + f"\n\n{heading}\n\n{recipes}\n"
+_LAYOUT_RE = re.compile(r'<section\b[^>]*\bclass="[^"]*\b(l-[a-z]+)\b[^"]*"')
+
+
+def layout_names() -> list[str]:
+    """What ``deck_new(layout=…)`` gives an example of: each layout (``l-cover`` ...) of the
+    sample deck, then each chart recipe (``chart-bar`` ...)."""
+    sample = (KIT_DIR / "sample-slides.html").read_text("utf-8")
+    layouts = list(dict.fromkeys(_LAYOUT_RE.findall(sample)))
+    return [*layouts, *chart_recipes()]
+
+
+def layout_example(name: str) -> str | None:
+    """One example slide (the sample deck's first of that layout) or one chart recipe, or
+    ``None`` for a name that is neither. The layout menu itself is the deck skill (the bundle's
+    ``skills/decks/SKILL.md``, rendered from ``kit/menu.md``), read on demand."""
+    recipes = chart_recipes()
+    if name in recipes:
+        return recipes[name].strip()
+    sample = (KIT_DIR / "sample-slides.html").read_text("utf-8")
+    for match in _SECTION_RE.finditer(sample):
+        found = _LAYOUT_RE.match(match.group(0).strip())
+        if found is not None and found.group(1) == name:
+            return match.group(0).strip()
+    return None
 
 
 @cache

@@ -42,7 +42,8 @@ const MUSE_BUNDLES = [
 /** One directory per Sub-agent Type (docs/glossary.md), each a config.yaml template rendered
  * with the bundle's harness keys. */
 const SUB_AGENT_TYPES = ["worker", "worker/agents/subworker", "notes", "editor"];
-/** The deck kit's layout menu (engine/omnigent/superchat/decks/kit/menu.md). */
+/** The deck kit's layout menu (engine/omnigent/superchat/decks/kit/menu.md): Helper prompts and
+ * the Conversation's deck skill. */
 const DECK_LAYOUTS_PATH = "../omnigent/superchat/decks/kit/menu.md";
 const GENERATED_HEADER =
   "# GENERATED FILE — do not edit by hand. Edit the matching file under\n" +
@@ -69,15 +70,20 @@ function indent(text, spaces) {
 function main() {
   const configTemplate = readFileSync(join(here, "templates/config.yaml.tmpl"), "utf8");
   const filesystem = readFileSync(join(here, "templates/filesystem.md"), "utf8").trimEnd();
-  // The layout menu is the deck kit's own file (one source for the prompt and the deck_new
-  // result); the rules around it live in templates/deck-rules.md.
+  // The layout menu is the deck kit's own file (one source for the Helper prompts and the deck
+  // skill); the rules around it live in templates/deck-rules.md.
   const deckLayouts = readFileSync(join(here, DECK_LAYOUTS_PATH), "utf8").trimEnd();
   // The full deck rules go to every Helper Type that builds decks. The Conversation gets the
-  // short templates/decks.md instead: deck_new without slides returns the layouts to it.
+  // short templates/decks.md instead, and the layouts in its deck skill.
   const deckRules = render(readFileSync(join(here, "templates/deck-rules.md"), "utf8"), {
     DECK_LAYOUTS: deckLayouts,
   }).trimEnd();
   const decks = readFileSync(join(here, "templates/decks.md"), "utf8").trimEnd();
+  // The Conversation's deck skill (ADR 0031): the same layout menu, read with load_skill when it
+  // builds a deck, instead of riding every prompt or coming back from deck_new.
+  const deckSkill = render(readFileSync(join(here, "templates/deck-skill.md"), "utf8"), {
+    DECK_LAYOUTS: deckLayouts,
+  });
   // The template opens with a provenance comment for ported text; the prompt does not carry it.
   const agentsTemplate = readFileSync(join(here, "templates/AGENTS.md"), "utf8").replace(
     /^<!--[\s\S]*?-->\n/,
@@ -105,7 +111,10 @@ function main() {
         HARNESS_NAME: bundle.harnessName,
       }),
     );
-    console.log(`wrote ${outDir}/config.yaml and AGENTS.md`);
+    const skillDir = join(outDir, "skills", "decks");
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(join(skillDir, "SKILL.md"), deckSkill);
+    console.log(`wrote ${outDir}/config.yaml, AGENTS.md and skills/decks/SKILL.md`);
 
     for (const type of SUB_AGENT_TYPES) {
       const subTemplate = readFileSync(join(here, `templates/agents/${type}/config.yaml`), "utf8");

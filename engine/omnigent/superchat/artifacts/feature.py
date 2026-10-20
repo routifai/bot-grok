@@ -2,16 +2,14 @@
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 from omnigent.context.labels import is_artifact_chat, is_superside_chat
 from omnigent.superchat.artifacts.handlers import handle_artifact_tool
-from omnigent.superchat.artifacts.hint import fetch_artifact_hint
 from omnigent.superchat.artifacts.tools import ARTIFACT_TOOL_NAMES
 from omnigent.superchat.artifacts.writeback import deliver_manual_edits
-from omnigent.superchat.feature import Feature, InstallDeps, ToolManagerCtx, is_super_chat
+from omnigent.superchat.feature import Feature, InstallDeps, ToolManagerCtx
 from omnigent.superchat.risk import Risk, register_classifier, register_target_namer
 
 if TYPE_CHECKING:
@@ -38,7 +36,7 @@ def _tools(labels: Mapping[str, str] | None, _ctx: ToolManagerCtx) -> list[Tool]
     """Offered to the Super Chat and to Helpers alike (a Helper saves under its parent).
 
     ``artifact_patch`` only in a file's studio (ADR 0024): it edits that one file.
-    ``artifact_outline`` only in the Conversation itself (ADR 0027): it reviews a Helper's file.
+    ``artifact_outline`` everywhere: a file is read by element, never by the shell (ADR 0031).
     """
     from omnigent.superchat.artifacts.tools import (
         ArtifactDeleteTool,
@@ -50,25 +48,21 @@ def _tools(labels: Mapping[str, str] | None, _ctx: ToolManagerCtx) -> list[Tool]
 
     if not is_superside_chat(labels):
         return []
-    tools: list[Tool] = [ArtifactSaveTool(), ArtifactListTool(), ArtifactDeleteTool()]
+    tools: list[Tool] = [
+        ArtifactSaveTool(),
+        ArtifactListTool(),
+        ArtifactDeleteTool(),
+        ArtifactOutlineTool(),
+    ]
     if is_artifact_chat(labels):
         tools.append(ArtifactPatchTool())
-    elif is_super_chat(labels):
-        tools.append(ArtifactOutlineTool())
     return tools
 
 
 async def _turn_prefix(server_client: httpx.AsyncClient | None, conversation_id: str) -> list[str]:
-    """Hand edits written back (one note each), then the hint naming this chat's artifacts.
-
-    The two engine calls are independent (the hint reads the store, the write-back reads the
-    pending list and writes the workspace), so they run together (ADR 0026).
-    """
-    notes, hint = await asyncio.gather(
-        deliver_manual_edits(server_client, conversation_id),
-        fetch_artifact_hint(server_client, conversation_id),
-    )
-    return [*notes, *hint]
+    """Hand edits written back, one note each. The file handles are the prefix's own block
+    (``prompt_prefix.files_block``): it knows what this harness session was already sent."""
+    return await deliver_manual_edits(server_client, conversation_id)
 
 
 #: The studio's save hook (ADR 0024), made at install; its loop is captured by :func:`_jobs`.

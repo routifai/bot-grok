@@ -137,20 +137,23 @@ async def handle_deck_new(args: dict[str, Any], ctx: HandlerCtx | None = None) -
     if look.refusal is not None:
         return error(look.refusal)
     if not isinstance(slides, str) or not slides.strip():
-        menu: dict[str, Any] = {
-            "ok": True,
-            "written": False,
-            "note": (
-                "This is the kit; nothing was written. Next: one deck_new call with the same "
-                "path and title and all the slides, built from these layouts, with nothing "
-                "loaded from the web and no script but a chart's."
-            ),
-            "layouts": kit.menu(),
-            "deck": _deck_record(look, title, None, None),
-        }
+        # No slides: the record, and with ``layout`` one example. The layouts themselves are
+        # the deck skill (ADR 0031), so nothing here repeats them per call or per session.
+        layout = args.get("layout")
+        reply: dict[str, Any] = {"ok": True, "written": False}
+        if layout is not None:
+            example = kit.layout_example(str(layout))
+            if example is None:
+                return error(f"deck_new layout must be one of: {', '.join(kit.layout_names())}")
+            reply.update(layout=layout, example=example)
+        reply["note"] = (
+            "Nothing was written. Next: one deck_new call with the same path and title and all "
+            "the slides."
+        )
         if look.chosen:
-            menu["note"] += " " + _look_note(look, written=False)
-        return json.dumps(menu)
+            reply["note"] += " " + _look_note(look, written=False)
+        reply["deck"] = _deck_record(look, title, None, None)
+        return json.dumps(reply)
     target = _resolve(raw.strip(), must_exist=False)
     if isinstance(target, str):
         return error(target)

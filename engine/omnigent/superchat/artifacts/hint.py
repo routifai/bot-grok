@@ -1,13 +1,16 @@
-"""The runtime hint naming this Conversation's artifacts, put at the start of every turn.
+"""The handle lines naming this Conversation's files, put in front of a turn (ADR 0031, part 4).
 
-Pure: the artifact store's newest versions and the artifact open beside the chat in, a few lines
-out (docs/conversation.md "Runtime hint"). No model call and no tool: the assistant reads which
-artifact "it" most likely is before its first word.
+Pure: the artifact store's newest versions and the artifact open beside the chat in, one handle
+line per file out (title · kind · version · id, its state, its last change). No model call, no
+tool and never file content. The engine renders the lines; the runner's turn prefix sends them
+whole on a harness session's first turn and only the changed lines after that
+(``prompt_prefix.files_block``).
 """
 
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Collection, Sequence
 
 import httpx
@@ -17,12 +20,17 @@ from omnigent.superchat.artifacts.store import Artifact
 
 _logger = logging.getLogger(__name__)
 
-HEADER = "Artifacts in this conversation (newest first):"
+HEADER = "Files in this conversation (most recently changed first):"
+#: The block a warm session gets instead when a file is new, has a new version or a new state.
+DELTA_HEADER = "Files changed since the last message:"
 OPEN_MARK = " — open beside the chat"
 #: A file whose studio (ADR 0024) has a turn running: the person is changing it there now.
 EDITING_MARK = " — being edited in its studio"
-#: Most artifacts the hint names; with the header it stays within ten lines.
-MAX_ARTIFACTS = 8
+#: Most files the block names, and the characters its lines may take (about 0.8k tokens).
+MAX_ARTIFACTS = 20
+MAX_CHARS = 2800
+#: The tool that lists every file, named when some are left out.
+LIST_TOOL = "artifact_list"
 
 _KIND_WORDS = {
     "html": "page",
@@ -46,10 +54,26 @@ def kind_word(item: Artifact) -> str:
     return _KIND_WORDS.get(item.kind, item.kind)
 
 
+_LAST_CHANGE = {
+    "manual": "their hand edit",
+    "restore": "they restored it",
+    "update": "a live update",
+}
+
+
 def _line(item: Artifact, *, is_open: bool, editing: bool = False) -> str:
     label = " ".join((item.title or item.name).split())
     mark = (OPEN_MARK if is_open else "") + (EDITING_MARK if editing else "")
-    return f"- {label} ({kind_word(item)}, v{item.version}, {item.id}){mark}"
+    when = time.strftime("%Y-%m-%d", time.gmtime(item.created_at))
+    who = _LAST_CHANGE.get(item.origin or "")
+    last = when
+    if who:
+        summary = " ".join((item.edit_summary or "").split())[:60]
+        last = f"{when}, {who}" + (f": {summary}" if summary else "")
+    return (
+        f"- {label} · {kind_word(item)} · v{item.version} · {item.group_id or item.id}"
+        f" · last change {last}{mark}"
+    )
 
 
 def artifact_hint(
@@ -57,38 +81,42 @@ def artifact_hint(
     open_artifact: Artifact | None = None,
     editing: Collection[str] = (),
 ) -> str | None:
-    """The hint block, or ``None`` when the Conversation has no artifacts.
+    """The handle block, or ``None`` when the Conversation has no files.
 
-    :param newest: The newest version of each artifact, newest first (as the store lists them).
-    :param open_artifact: The newest version of the artifact open beside the chat, if any. It is
-        marked where it stands, or named first when it is older than the ones listed.
+    :param newest: The newest version of every file, most recently changed first (as the store
+        lists them).
+    :param open_artifact: The newest version of the file open beside the chat, if any. It is
+        named first, so the cut never leaves it out.
     :param editing: Names of the files whose studio has a turn running (marked as being edited).
-    :returns: The header and at most :data:`MAX_ARTIFACTS` lines.
+    :returns: The header, one line per file within :data:`MAX_CHARS`, then how many more there
+        are and the tool that lists them.
     """
     items = list(newest)
     if open_artifact is not None:
-        at = next((i for i, a in enumerate(items) if a.name == open_artifact.name), None)
-        if at is None:
-            items.insert(0, open_artifact)
-        else:
-            items[at] = open_artifact
-    items = items[:MAX_ARTIFACTS]
+        items = [open_artifact, *(a for a in items if a.name != open_artifact.name)]
     if not items:
         return None
     open_name = open_artifact.name if open_artifact is not None else None
-    lines = [
-        _line(item, is_open=item.name == open_name, editing=item.name in editing) for item in items
-    ]
-    return "\n".join([HEADER, *lines])
+    lines: list[str] = []
+    size = len(HEADER)
+    for item in items[:MAX_ARTIFACTS]:
+        line = _line(item, is_open=item.name == open_name, editing=item.name in editing)
+        if lines and size + 1 + len(line) > MAX_CHARS:
+            break
+        lines.append(line)
+        size += 1 + len(line)
+    more = len(items) - len(lines)
+    tail = [f"{more} more: {LIST_TOOL}"] if more > 0 else []
+    return "\n".join([HEADER, *lines, *tail])
 
 
 async def fetch_artifact_hint(
     server_client: httpx.AsyncClient | None, conversation_id: str
 ) -> list[str]:
-    """The hint for this turn from the engine (``GET /v1/artifacts/hint``), as a prefix block.
+    """The handle block for this turn from the engine (``GET /v1/artifacts/hint``), or ``[]``.
 
-    Runs on the runner at the start of every Super Chat turn; a Helper, a Conversation with no
-    artifacts or any failure gives no block.
+    Read by the runner's turn prefix for a Conversation turn; a Helper, a Conversation with no
+    files or any failure gives no block.
     """
     if server_client is None or not conversation_id:
         return []

@@ -2,9 +2,10 @@
   the answer to "a deck", "slides" or "a presentation". PowerPoint or PDF is a separate export
   (`deck_export`), only when they ask for one; the panel exports too. A native `.pptx` built from
   scratch is only for someone who will keep working in PowerPoint, and goes to a Helper.
-- To build one: `deck_new` with only path and title is the kit (layouts, chart recipes, the
-  rules slides must pass), then one `deck_new` call with all the slides and the theme the person
-  named (none named: leave the look out and let it choose; never ask), then `artifact_save`. Then `deck_check`, fix what it lists by exact edits, check
+- To build one: `load_skill` `decks` for the layouts (once; it stays in this chat), then one
+  `deck_new` call with all the slides and the theme the person named (none named: leave the look
+  out and let it choose; never ask), then `artifact_save`. A chart recipe or a layout's example
+  is `deck_new` with `layout`. Then `deck_check`, fix what it lists by exact edits, check
   again, every figure against its source, and save again. A headline is 8 words or fewer, one idea
   per slide, only facts you were given, found or know well, no placeholder text.
 - Redoing, fixing or extending a deck keeps its theme and its file. A new look the person named

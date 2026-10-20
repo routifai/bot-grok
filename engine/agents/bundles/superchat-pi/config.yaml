@@ -46,8 +46,7 @@ tools:
   # task cancelling (a Helper's result arrives as a message, running work is listed in front of
   # each message, and Stop belongs to the person), the vault
   # (no browser tool is granted), memory_get and memory_explain (recall_get reads a claim),
-  # artifact_list (each turn lists the files), files_vsearch and files_multi_get (files_query and
-  # files_get cover them). files_status and files_query also serve the web's file panel relays.
+  # files_vsearch and files_multi_get (files_query and files_get cover them). files_status and files_query also serve the web's file panel relays.
   allow:
     - "sys_os_*"
     - memory_remember
@@ -65,6 +64,7 @@ tools:
     - sys_session_get_history
     - "sys_scheduled_task_*"
     - artifact_save
+    - artifact_list
     - artifact_delete
     - artifact_outline
     - artifact_publish
@@ -77,6 +77,8 @@ tools:
     - files_read_page
     - files_status
     - "deck_*"
+    # The deck layouts (skills/decks), read when it builds a deck.
+    - load_skill
     - render_card
     - ask_clarification
     - suggest_follow_ups

@@ -47,6 +47,7 @@ tools:
     - recall_get
     - artifact_save
     - artifact_list
+    - artifact_outline
     - live_update_context
     - live_update_save
     - files_search

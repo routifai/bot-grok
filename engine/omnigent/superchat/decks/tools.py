@@ -78,11 +78,10 @@ class DeckNewTool(Tool):
         names = ", ".join(kit.templates())
         return (
             "Create a deck: an HTML `.deck.html` file of 1920x1080 slides, never a PowerPoint "
-            "(that is a separate export, deck_export). Two uses. The kit: `path` and `title` "
-            "only writes nothing and returns the layouts, the chart recipes and the theme it "
-            "will use; skip it when your instructions list the layouts and you need no chart. "
-            "The deck: the same call with all the slides adds the framework, theme and fonts, "
-            "writes the file and returns the layout problems to fix before artifact_save. "
+            "(that is a separate export, deck_export). The layouts are the decks skill. With "
+            "all the slides it adds the framework, theme and fonts, writes the file and returns "
+            "the layout problems to fix before artifact_save. Without slides it writes nothing: "
+            "with `layout` it returns one example slide of that layout or one chart recipe. "
             "Slides are refused, nothing written, when anything in them loads from the web (an "
             "http(s) or // URL in src, url() or an href other than a link's <a href>, a web "
             "font, @import) or they carry a "
@@ -130,10 +129,18 @@ class DeckNewTool(Tool):
                             ),
                         },
                         "title": {"type": "string", "description": "The deck's title."},
+                        "layout": {
+                            "type": "string",
+                            "enum": kit.layout_names(),
+                            "description": (
+                                "Without slides: one example of this layout, or this chart "
+                                "recipe, to copy. Nothing is written."
+                            ),
+                        },
                         "slides": {
                             "type": "string",
                             "description": (
-                                "Omit only for the kit. Every slide in one string: a "
+                                "Omit only with layout. Every slide in one string: a "
                                 '<section class="slide <surface> <layout>" '
                                 'data-screen-label="NN Name" data-superchat-id="..."> per '
                                 "slide, using the deck layouts, every text block with its own "

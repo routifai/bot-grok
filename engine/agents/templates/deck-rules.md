@@ -17,7 +17,7 @@
   there is one; it assembles the file (scale-to-fit, navigation, print rules, fonts) and checks
   the layout.
 - Building a new deck (a Helper's work, or yours when the person says to do it here): the
-  layouts are below, so skip the kit call unless you need a chart recipe. One `deck_new` call
+  layouts are below (`deck_new` with `layout` gives a chart recipe or a layout's example). One `deck_new` call
   with all the slides (one idea each) and the theme named (`look_from: named`; with none, leave
   `look_from` out and let it choose; never ask for a look), then `artifact_save` at once. Then the check, last before the final save: `deck_check`, fix what it lists, check
   again, every figure against its source, then `artifact_save` again.
@@ -48,7 +48,7 @@
   those cannot become PowerPoint text. Italics only for Latin text. Put inline emphasis
   (`<em>`, `<strong>`) in paragraphs, not in a headline of 100px or more. Nothing is loaded from
   the web (a source link, `<a href="https://...">`, is fine), and slides carry no script except a chart's `<script data-superchat-chart>`.
-- Charts: use the `l-chart` layout and copy a chart recipe (call `deck_new` without slides to read them;
+- Charts: use the `l-chart` layout and copy a chart recipe (`deck_new` with `layout` set to its name returns it;
   Chart.js on a `<canvas>`, already in the deck); change only its ids, labels, data and colors. The
   export turns every chart into a real PowerPoint chart (Edit Data works), so use only types
   PowerPoint has: bar (clustered, stacked, horizontal), line, area (a filled line), pie,

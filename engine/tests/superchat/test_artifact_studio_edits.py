@@ -226,12 +226,12 @@ def test_a_studio_deck_turn_starts_with_its_outline(
     _v1, studio = _deck_with_studio(env)
     _NOTED.pop(studio, None)
 
-    async def run() -> list[str]:
+    async def run() -> tuple[list[str], list[str]]:
         transport = httpx.ASGITransport(app=env.app)
         async with httpx.AsyncClient(transport=transport, base_url="http://engine") as client:
             return await studio_turn_blocks(client, studio)
 
-    line, outline = asyncio.run(run())
+    (line, outline), _notes = asyncio.run(run())
     assert line.startswith("The file of this chat: ")
     assert outline == deck_outline(DECK)
     # A reader of the stored message cuts the outline as it cuts the file line.

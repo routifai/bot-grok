@@ -16,3 +16,7 @@ else and copy or move it afterwards: a copy leaves two documents that drift, and
 link the person has. Intermediates go to `/tmp` and are thrown away, not promoted. Never write an
 intermediate into `your_files/`. `artifact_save` reads the file where it is
 and leaves it there.
+
+Read a saved file (a deck, a page, a document) with `artifact_outline`: its outline, one
+`element` by its `data-superchat-id`, or a `range` of slides or lines. Never `cat`, `grep`, `head`
+or another shell read of it: that pours the whole file into the chat.

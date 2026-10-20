@@ -6,10 +6,14 @@ without reading the whole file. An element with no text and no named element ins
 chart's canvas, an image) is listed by its id alone. The slide footer (``class="foot"``) repeats
 on every slide and is left out. Bounded: at most :data:`MAX_SLIDES` slides and
 :data:`MAX_CHARS` characters in all.
+
+A read by element (ADR 0031): one element's source by its ``data-superchat-id``, or a run of
+slides, cut from the file as written, so an edit reads what it changes and never the file.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
 
@@ -141,3 +145,87 @@ def deck_outline(source: str | bytes) -> str | None:
     if len(slides) > MAX_SLIDES:
         lines.append(_CUT)
     return "\n".join(lines)
+
+
+#: Characters of one element's source a read returns, and of a run of slides.
+MAX_ELEMENT_CHARS = 4000
+MAX_RANGE_CHARS = 8000
+
+
+class _SpanParser(HTMLParser):
+    """Where each outermost element a start-tag test accepts starts and ends in the source."""
+
+    def __init__(self, text: str, want: Callable[[str, dict[str, str | None]], bool]) -> None:
+        super().__init__(convert_charrefs=False)
+        self.text = text
+        self.want = want
+        self.spans: list[tuple[int, int]] = []
+        self._lines = [0]
+        for at, char in enumerate(text):
+            if char == "\n":
+                self._lines.append(at + 1)
+        self._open: list[str] | None = None
+        self._start = 0
+
+    def _offset(self) -> int:
+        line, col = self.getpos()
+        return self._lines[line - 1] + col
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if self._open is not None:
+            if tag not in _VOID:
+                self._open.append(tag)
+            return
+        if not self.want(tag, dict(attrs)):
+            return
+        start = self._offset()
+        if tag in _VOID:
+            self.spans.append((start, start + len(self.get_starttag_text() or "")))
+        else:
+            self._open, self._start = [tag], start
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if self._open is None and self.want(tag, dict(attrs)):
+            start = self._offset()
+            self.spans.append((start, start + len(self.get_starttag_text() or "")))
+
+    def handle_endtag(self, tag: str) -> None:
+        if self._open is None or tag not in self._open:
+            return
+        del self._open[len(self._open) - 1 - self._open[::-1].index(tag) :]
+        if not self._open:
+            end = self.text.find(">", self._offset())
+            self.spans.append((self._start, len(self.text) if end < 0 else end + 1))
+            self._open = None
+
+
+def _spans(text: str, want: Callable[[str, dict[str, str | None]], bool]) -> list[str]:
+    parser = _SpanParser(text, want)
+    parser.feed(text)
+    parser.close()
+    return [text[a:b] for a, b in parser.spans]
+
+
+def clip_source(source: str, limit: int) -> str:
+    """*source*, or its first *limit* characters and a note saying it was cut."""
+    if len(source) <= limit:
+        return source
+    return source[:limit] + f"\n… (cut at {limit} characters; read a smaller element)"
+
+
+def element_source(source: str | bytes, element_id: str) -> str | None:
+    """The source of the element whose ``data-superchat-id`` is *element_id*, or ``None``.
+
+    Cut to :data:`MAX_ELEMENT_CHARS` with a note.
+    """
+    text = source.decode("utf-8", "replace") if isinstance(source, bytes) else source
+    found = _spans(text, lambda _tag, attrs: attrs.get("data-superchat-id") == element_id)
+    return clip_source(found[0], MAX_ELEMENT_CHARS) if found else None
+
+
+def slide_sources(source: str | bytes) -> list[str]:
+    """Every slide's source (``<section class="slide ...">``), in order."""
+    text = source.decode("utf-8", "replace") if isinstance(source, bytes) else source
+    return _spans(
+        text, lambda tag, attrs: tag == "section" and "slide" in (attrs.get("class") or "").split()
+    )

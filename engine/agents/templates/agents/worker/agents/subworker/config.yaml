@@ -38,6 +38,7 @@ tools:
     - recall_get
     - artifact_save
     - artifact_list
+    - artifact_outline
     - files_search
     - files_vsearch
     - files_query

@@ -171,7 +171,8 @@ async def test_deck_new_without_slides_returns_the_layout_menu_and_writes_nothin
             helper_ctx(),
         )
     )
-    assert out["written"] is False and "l-statement" in out["layouts"]
+    # The record only: the layouts are the deck skill (ADR 0031), never a tool result.
+    assert out["written"] is False and "layouts" not in out and out["deck"]["title"] == "T"
     assert not (workspace / "d.deck.html").exists()
 
 

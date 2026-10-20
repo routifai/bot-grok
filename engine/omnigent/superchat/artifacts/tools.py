@@ -7,7 +7,7 @@ endpoints (``artifact_save`` first reads the file from the host workspace).
 * ``artifact_list`` — list the Conversation's saved files.
 * ``artifact_delete`` — delete a saved file (the person is asked first).
 * ``artifact_patch`` — change named elements of a file in place (a file's studio only, ADR 0024).
-* ``artifact_outline`` — a saved file's outline, to review a Helper's result (Conversation only).
+* ``artifact_outline`` — a saved file's outline, one element or a range of it (ADR 0031).
 """
 
 from __future__ import annotations
@@ -100,23 +100,31 @@ class ArtifactListTool(ArtifactTool):
 
 
 class ArtifactOutlineTool(ArtifactTool):
-    """A saved file's outline; read from ``GET /v1/artifacts/{id}`` and its content (ADR 0027).
-
-    Offered to the Conversation only, for reviewing a Helper's result against the ask. A read,
-    like ``artifact_list``: it is never work.
+    """A saved file's outline, or one element or range; read from ``GET /v1/artifacts/{id}``
+    and its content (ADR 0027, ADR 0031). A read, like ``artifact_list``: it is never work.
     """
 
     _NAME = "artifact_outline"
     _DESC = (
-        "Read the outline of a saved file to review a helper's result against what the person "
-        "asked: a deck's slides with their text, a sheet's headers, or the first lines of any "
-        "other text file. Read-only; use it before handing back a helper's file."
+        "Read a saved file without loading all of it: its outline (a deck's slides with their "
+        "element ids and text, a sheet's headers, the first lines of a text file), or with "
+        "element one element's source by its data-superchat-id, or with range a run of slides "
+        "(a deck) or lines (a text file). Read-only. Use it to review a file before handing it "
+        "back and to read what you are about to change."
     )
     _PROPERTIES = {
         "artifact_id": {
             "type": "string",
             "description": "The file's id from the file line or artifact_list (any version id).",
-        }
+        },
+        "element": {
+            "type": "string",
+            "description": "A data-superchat-id: that element's source, up to 4,000 characters.",
+        },
+        "range": {
+            "type": "string",
+            "description": "Slides of a deck or lines of a text file, e.g. '2' or '2-4'.",
+        },
     }
     _REQUIRED = ("artifact_id",)
 

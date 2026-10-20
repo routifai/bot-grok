@@ -23,7 +23,7 @@ from omnigent.stores.artifact_store.local import LocalArtifactStore
 from omnigent.stores.conversation_store.sqlalchemy_store import SqlAlchemyConversationStore
 from omnigent.superchat.artifacts import links
 from omnigent.superchat.artifacts import routes as artifact_routes
-from omnigent.superchat.artifacts.hint import HEADER, MAX_ARTIFACTS, artifact_hint
+from omnigent.superchat.artifacts.hint import HEADER, LIST_TOOL, MAX_ARTIFACTS, artifact_hint
 from omnigent.superchat.artifacts.links import (
     STEER_NONE,
     next_link,
@@ -72,22 +72,23 @@ def test_hint_names_artifacts_newest_first_and_marks_the_open_one() -> None:
     assert hint == "\n".join(
         [
             HEADER,
-            f"- Q3 Lending Review (deck, v4, {deck.id}) — open beside the chat",
-            f"- Provisions memo (document, v1, {memo.id})",
+            f"- Q3 Lending Review · deck · v4 · {deck.id} · last change 1970-01-01"
+            " — open beside the chat",
+            f"- Provisions memo · document · v1 · {memo.id} · last change 1970-01-01",
         ]
     )
 
 
-def test_hint_is_skipped_without_artifacts_and_stays_within_ten_lines() -> None:
+def test_hint_is_skipped_without_artifacts_and_counts_the_rest() -> None:
     assert artifact_hint([]) is None
-    many = [_artifact(f"p{i}.html") for i in range(12)]
+    many = [_artifact(f"p{i}.html") for i in range(MAX_ARTIFACTS + 3)]
     older_open = _artifact("old.csv", 2, kind="csv")
-    hint = artifact_hint(many[:MAX_ARTIFACTS], open_artifact=older_open)
+    hint = artifact_hint(many, open_artifact=older_open)
     assert hint is not None
     lines = hint.splitlines()
-    assert len(lines) <= 10 and len(lines) == MAX_ARTIFACTS + 1
+    assert len(lines) == MAX_ARTIFACTS + 2 and lines[-1] == f"4 more: {LIST_TOOL}"
     # An open artifact older than the ones listed is still named, first.
-    assert lines[1].startswith("- old.csv (sheet, v2, ") and lines[1].endswith("chat")
+    assert lines[1].startswith("- old.csv · sheet · v2 · ") and lines[1].endswith("chat")
 
 
 def test_the_hint_is_cut_from_the_persons_words() -> None:
