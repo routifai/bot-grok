@@ -114,8 +114,8 @@ def _install(app: FastAPI, deps: InstallDeps) -> None:
     )
 
     def views(conversation_id: str, round_ids: list[str]) -> dict[str, dict[str, Any]]:
-        read = {r: store.events(r, conversation_id) for r in round_ids}
-        return {r: fold(events, r) for r, events in read.items() if events}
+        read = store.events_of(conversation_id, round_ids)
+        return {r: fold(events, r) for r, events in read.items()}
 
     ROUND_VIEWS["rounds"] = views
     ON_SESSION_DELETED["rounds"] = store.delete_conversation

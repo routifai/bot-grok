@@ -26,7 +26,8 @@ Helper and events that arrive after settlement are cases of the fold, not rules 
 * ``helper.titled`` renames a Helper (its model-written name), before or after settlement.
 * Each actor has one live slot (the Assistant, or one Helper by its id): the newest tool it
   started. ``now`` is the slot started last; a settled Round has none. A delivery tool (a card,
-  the follow-up chips, a question to the person) is not work and never takes a slot.
+  the follow-up chips, a question to the person) is not work and never takes a slot, nor is
+  handing a job to a Helper (``start_helper``, ``message_helper``): the Helper's row names it.
 * A Round has **delivered** (``delivered_at``) once the Assistant's turn showed its answer (a
   terminal card, the chips or a question) and no Helper of it runs or waits to be read; the
   Assistant starting more work, a new turn or a new Helper takes it back. It only says what to
@@ -45,6 +46,7 @@ from omnigent.superchat.cards.tools import (
     FOLLOW_UPS_TOOL_NAME,
     TERMINAL_CARDS,
 )
+from omnigent.superchat.helpers.tools import MESSAGE_HELPER_TOOL_NAME, START_HELPER_TOOL_NAME
 
 #: Event kinds (ADR 0029). ``record`` writes them; the fold reads them.
 ROUND_OPENED = "round.opened"
@@ -70,6 +72,8 @@ PERSON, SYSTEM, ASSISTANT, HELPER = "person", "system", "assistant", "helper"
 
 #: Tools that show the person something rather than work on it: never the live tool.
 _DELIVERY = frozenset({CARD_TOOL_NAME, CLARIFICATION_TOOL_NAME, FOLLOW_UPS_TOOL_NAME})
+#: Tools that never take an actor's live slot: delivery, and handing a job to a Helper.
+_NO_SLOT = _DELIVERY | {START_HELPER_TOOL_NAME, MESSAGE_HELPER_TOOL_NAME}
 
 #: Events that still apply to a settled Round.
 _AFTER_SETTLE = frozenset({TURN_ENDED, HELPER_FINISHED, HELPER_TITLED})
@@ -142,7 +146,8 @@ def fold(events: Sequence[Mapping[str, Any]], round_id: str | None = None) -> di
     """
     if round_id is None and events:
         round_id = events[-1].get("round_id")
-    mine = [copy.deepcopy(dict(e)) for e in events if e.get("round_id") == round_id]
+    # Read, never changed: what the view keeps of an event (``after_settle``, ``chips``) is a copy.
+    mine = [e for e in events if e.get("round_id") == round_id]
     v: dict[str, Any] = {
         "status": "idle",
         "hidden": False,
@@ -171,12 +176,13 @@ def fold(events: Sequence[Mapping[str, Any]], round_id: str | None = None) -> di
     live: dict[str, dict[str, Any]] = {}
     ended: Mapping[str, Any] | None = None  # the last Assistant turn.ended
     cards: dict[str, Any] = {}  # call id -> the kind of card it showed
+    digests: dict[str, str] = {}  # call id -> the digest of a call that takes no slot
     delivered: float | None = None  # when the Assistant's turn showed its answer
     for ev in mine:
         kind, t, actor = ev["kind"], ev["t"], ev.get("actor")
         settled = v["settled_at"] is not None
         if settled:
-            v["after_settle"].append(ev)
+            v["after_settle"].append(copy.deepcopy(dict(ev)))
             if kind not in _AFTER_SETTLE:
                 continue
         if kind == ROUND_OPENED:
@@ -194,9 +200,11 @@ def fold(events: Sequence[Mapping[str, Any]], round_id: str | None = None) -> di
                         v["words"].append(ev["text"])
                 else:
                     cur_words.append(ev["text"])
-        elif kind in (TOOL_STARTED, TOOL_CALLED) and ev.get("name") in _DELIVERY:
+        elif kind in (TOOL_STARTED, TOOL_CALLED) and ev.get("name") in _NO_SLOT:
             if ev.get("card"):
                 cards[str(ev.get("call_id"))] = ev["card"]
+            if ev.get("digest"):
+                digests[str(ev.get("call_id"))] = ev["digest"]
         elif kind in (TOOL_STARTED, TOOL_CALLED):
             slot = _slot(ev)
             if slot == ASSISTANT:
@@ -222,7 +230,7 @@ def fold(events: Sequence[Mapping[str, Any]], round_id: str | None = None) -> di
         elif kind == TOOL_RESULT:
             slot = _slot(ev)
             cur = live.get(slot)
-            digest = None
+            digest = digests.get(str(ev.get("call_id")))
             if cur and cur["call_id"] == ev.get("call_id"):
                 digest = cur["digest"]
                 del live[slot]
@@ -256,7 +264,7 @@ def fold(events: Sequence[Mapping[str, Any]], round_id: str | None = None) -> di
                 }
             )
         elif kind == CHIPS:
-            v["chips"] = list(ev.get("items") or [])
+            v["chips"] = copy.deepcopy(list(ev.get("items") or []))
         elif kind == CHECKLIST_CREATED:
             item_id = ev.get("item_id")
             v["checklist"] = [i for i in v["checklist"] if i["id"] != item_id]
@@ -332,12 +340,12 @@ def fold(events: Sequence[Mapping[str, Any]], round_id: str | None = None) -> di
                 v.update(status="failed", reason=ended.get("reason"))
         if v["settled_at"] is not None:
             live = {}  # nothing is live on a settled Round
-        v["now"] = copy.deepcopy(list(live.values())[-1]) if live else None
         if v["settled_at"] is None:
             v["delivered_at"] = (
                 delivered if not _running(v["helpers"]) and not unconsumed else None
             )
-        v["live_words"] = "".join(cur_words or []) if v["settled_at"] is None else ""
+    v["now"] = copy.deepcopy(list(live.values())[-1]) if live else None
+    v["live_words"] = "".join(cur_words or []) if v["settled_at"] is None else ""
     unsettled = v["status"] == "running"
     v["turn_due"] = unsettled and (
         (assistant_running and not turned) or (not assistant_running and bool(unconsumed - steered))

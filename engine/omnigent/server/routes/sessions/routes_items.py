@@ -555,9 +555,10 @@ def register_items_routes(
                 conversation_store, background_title_coordinator, missing_titles, title_chats
             )
         redactor = await session_redactor(request, conversation_store, session_id, user_id)
-        return PaginatedList(
-            data=[redactor.deep(activity_to_dict(activity, tz)) for activity in activities]
+        data = await asyncio.to_thread(
+            lambda: [redactor.deep(activity_to_dict(activity, tz)) for activity in activities]
         )
+        return PaginatedList(data=data)
 
     # ── GET /sessions/{session_id}/activities/stream ─────────────
     # Live "the feed changed" signal for the same family (no content: the
