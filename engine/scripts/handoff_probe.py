@@ -96,6 +96,7 @@ PROBE_PREFIX = "probe:"
 #: Host owner key of each probe session's own host (container and home volume).
 PROBE_HOST_PREFIX = "probe-"
 TRACE_DIR_IN_HOST = "/home/superchat/.omnigent/llm-trace"
+RUNNER_LOG_DIR_IN_HOST = "/home/superchat/.omnigent/logs/runner"
 #: Source person messages that are dev pings, not work.
 SKIP_DEFAULT = r"^(Reply with one word|Quick check after a restart|say hi$|hi$)"
 #: Tools that read the past back.
@@ -936,9 +937,14 @@ def cmd_cleanup(args: argparse.Namespace) -> int:
         dest.parent.mkdir(parents=True, exist_ok=True)
         subprocess.run(["docker", "cp", "-q", f"{container}:{TRACE_DIR_IN_HOST}", str(dest)],
                        check=False, capture_output=True)
+        # The runner logs to files, not to docker logs: keep them beside the traces.
+        logs = Path(args.out_dir) / "runner-logs" / owner
+        logs.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run(["docker", "cp", "-q", f"{container}:{RUNNER_LOG_DIR_IN_HOST}", str(logs)],
+                       check=False, capture_output=True)
         subprocess.run(["docker", "rm", "-f", container], check=False, capture_output=True)
         subprocess.run(["docker", "volume", "rm", volume], check=False, capture_output=True)
-        say(f"  {container}: traces kept in {dest}, container and home removed")
+        say(f"  {container}: traces kept in {dest}, runner logs in {logs}, container and home removed")
     return 0
 
 
