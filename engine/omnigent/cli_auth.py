@@ -829,7 +829,14 @@ def open_server_client(
         **(headers or {}),
         **databricks_request_headers(server_url, bearer_token=bearer_token, host_id=host_id),
     }
-    kwargs: dict[str, Any] = {}
+    kwargs: dict[str, Any] = {
+        # Retire an idle pooled connection before the server does: uvicorn closes one 5 s after
+        # its last response, and a request sent on it in that instant fails as if the server
+        # were gone (a runner tool call then waits for a reconnect that never comes).
+        "limits": httpx.Limits(
+            max_connections=100, max_keepalive_connections=20, keepalive_expiry=2.0
+        ),
+    }
     if timeout is not _TIMEOUT_UNSET:
         kwargs["timeout"] = timeout
     if transport is not None:
