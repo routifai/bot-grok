@@ -36,7 +36,12 @@ import json
 import logging
 from typing import Any
 
-from omnigent.harnesses.os_env import _DEFAULT_READ_LIMIT, OSEnvironment
+from omnigent.harnesses.os_env import (
+    _DEFAULT_READ_LIMIT,
+    MODEL_SHELL_OUTPUT_CHARS,
+    OSEnvironment,
+    cap_model_read,
+)
 from omnigent.tools.base import Tool, ToolContext
 
 _logger = logging.getLogger(__name__)
@@ -234,7 +239,7 @@ class SysOsReadTool(_OSEnvBackedTool):
         :param kwargs: Parsed args; ``path`` is required.
         :returns: OpResult from the OSEnvironment.
         """
-        return dict(
+        return cap_model_read(
             await self._os_env.read(
                 path=kwargs["path"],
                 offset=kwargs.get("offset", 1),
@@ -381,6 +386,7 @@ class SysOsShellTool(_OSEnvBackedTool):
             await self._os_env.shell(
                 command=kwargs["command"],
                 timeout=kwargs.get("timeout"),
+                max_output=MODEL_SHELL_OUTPUT_CHARS,
             )
         )
 

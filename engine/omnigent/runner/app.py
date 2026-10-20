@@ -5251,12 +5251,15 @@ def create_runner_app(
         from omnigent.superchat.projects.card import project_slug_from_workspace
 
         async def _record(item: CompactionData, window: list[dict[str, Any]]) -> None:
-            await record_checkpoint(conv_id, dict(labels or {}), item)
+            # Stored labels never mark a Helper or a studio: the parent does (one rule for tools
+            # and memory), so neither writes the Conversation's STATE.md, journal or turns.
+            lineage = {**dict(labels or {}), **await _tool_labels_for_session(conv_id)}
+            await record_checkpoint(conv_id, lineage, item)
             workspace = await _session_workspace_value(conv_id)
             await index_retired_turns(
                 server_client,
                 conv_id,
-                dict(labels or {}),
+                lineage,
                 window,
                 project=project_slug_from_workspace(workspace) or "",
             )
@@ -5279,8 +5282,10 @@ def create_runner_app(
 
         async def _run() -> None:
             try:
-                await reconcile(server_client, conv_id, dict(labels or {}))
-                await backfill_turns(server_client, conv_id, dict(labels or {}))
+                # The parent marks a Helper or a studio (see ``_journal_checkpoint``).
+                lineage = {**dict(labels or {}), **await _tool_labels_for_session(conv_id)}
+                await reconcile(server_client, conv_id, lineage)
+                await backfill_turns(server_client, conv_id, lineage)
             finally:
                 _memory_rebuilds.discard(conv_id)
 
@@ -6826,7 +6831,7 @@ def create_runner_app(
             stored = await _superside_chat_roll_over_now(
                 conv_id,
                 labels,
-                cause="size",
+                cause="restart",
                 reason="a cold start whose history no longer fits the kept tail",
                 drop=False,
             )
@@ -6889,7 +6894,7 @@ def create_runner_app(
             stored = await _superside_chat_roll_over_now(
                 conv_id,
                 labels,
-                cause="size",
+                cause="restart",
                 reason="a cold start whose history no longer fits the kept tail",
             )
         if not stored:

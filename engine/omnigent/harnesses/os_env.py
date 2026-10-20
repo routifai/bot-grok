@@ -163,6 +163,13 @@ _DEFAULT_ENV_PASSTHROUGH_PREFIXES: tuple[str, ...] = ("LC_",)
 # the LLM to fail with a context-length-exceeded error. The limit applies
 # independently to stdout and stderr — each may be up to this size.
 _MAX_TOOL_OUTPUT_CHARS = 100_000
+# What the model's own shell tool (``sys_os_shell``) returns per field: whatever it reads stays in
+# its context for the rest of the session, so a dump of a one-line page or deck is cut to its head
+# and tail. Internal callers that parse stdout keep :data:`_MAX_TOOL_OUTPUT_CHARS`.
+MODEL_SHELL_OUTPUT_CHARS = 16_000
+# What the model's ``sys_os_read`` returns at most: the line window alone does not bound a
+# one-line page or deck.
+MODEL_READ_OUTPUT_CHARS = 40_000
 
 # Default line limit for sys_os_read when the caller does not specify one.
 # Without a cap an agent can ask to read an unbounded file and saturate the
@@ -1392,6 +1399,34 @@ def _edit_impl(
     }
 
 
+def cap_model_read(result: OpResult) -> OpResult:
+    """Cut a text ``sys_os_read`` result to :data:`MODEL_READ_OUTPUT_CHARS`, on a line end when
+    one is near, and say where to continue."""
+    content = result.get("content")
+    if result.get("encoding") != "utf-8" or not isinstance(content, str):
+        return result
+    if len(content) <= MODEL_READ_OUTPUT_CHARS:
+        return result
+    cut = content.rfind("\n", 0, MODEL_READ_OUTPUT_CHARS) + 1
+    if cut < MODEL_READ_OUTPUT_CHARS // 2:
+        cut = MODEL_READ_OUTPUT_CHARS
+    kept = content[:cut]
+    lines = kept.count("\n")
+    offset = result.get("offset") if isinstance(result.get("offset"), int) else 1
+    where = (
+        f"continue with offset={offset + lines}"
+        if lines
+        else "the line is longer than that: slice it with sys_os_shell (grep -o, python)"
+    )
+    return {
+        **result,
+        "content": kept,
+        "returned_lines": lines,
+        "truncated": True,
+        "note": f"{len(content) - cut:,} characters omitted at the end; {where}.",
+    }
+
+
 def _truncate_output(text: str, label: str, limit: int = _MAX_TOOL_OUTPUT_CHARS) -> str:
     """
     Truncate a tool output field to ``limit`` characters.
@@ -1404,17 +1439,20 @@ def _truncate_output(text: str, label: str, limit: int = _MAX_TOOL_OUTPUT_CHARS)
         e.g. ``"stdout"``.
     :param limit: Maximum number of characters to return. Defaults to
         :data:`_MAX_TOOL_OUTPUT_CHARS`.
-    :returns: The original string if within the limit, otherwise the
-        first ``limit`` characters followed by a ``"[truncated: ...]"``
-        sentinel.
+    :returns: The original string if within the limit, otherwise its head
+        and tail (``limit`` characters together) around a ``"[... truncated:
+        ...]"`` note.
     """
     if len(text) <= limit:
         return text
-    truncated = text[:limit]
+    head = limit * 3 // 4
+    tail = limit - head
     dropped = len(text) - limit
     return (
-        truncated + f"\n[{label} truncated: {dropped:,} characters omitted."
-        " Use a more targeted command to see the full output.]"
+        text[:head]
+        + f"\n[... {label} truncated: {dropped:,} characters omitted. Write the output to a"
+        " file and read line ranges of it, or narrow it with grep / head / tail ...]\n"
+        + text[len(text) - tail :]
     )
 
 

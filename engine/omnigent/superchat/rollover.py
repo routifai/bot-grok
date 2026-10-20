@@ -443,6 +443,10 @@ async def _clear_closes(
         )
 
 
+def _is_user_message(item: Mapping[str, Any]) -> bool:
+    return item.get("type") == "message" and item.get("role") == "user"
+
+
 async def roll_over_session(
     conversation_id: str,
     *,
@@ -476,10 +480,10 @@ async def roll_over_session(
 
     *connection* and *wire* are the session's own provider (see :func:`summarizer_model`): the
     summary is written through the connection the session runs on. *cause* says why the
-    checkpoint is made (size, return after idle, manual ``/compact``); it names the reason in
-    the checkpoint's header. *on_stored* gets the stored item (its journal lines and evicted
-    entries) and the window it retired (the items it summarized, as read for it) once it is
-    persisted, before *on_rolled_over*; a failure in it is logged and swallowed.
+    checkpoint is made (size, a restart's cold start, return after idle, manual ``/compact``);
+    it names the reason in the checkpoint's header. *on_stored* gets the stored item (its journal
+    lines and evicted entries) and the window it retired (the items it summarized, as read for
+    it) once it is persisted, before *on_rolled_over*; a failure in it is logged and swallowed.
 
     :returns: ``True`` iff a new compaction item was posted.
     """
@@ -500,6 +504,11 @@ async def roll_over_session(
                 exc_info=True,
             )
             return False
+        # The unanswered newest message (the turn a cold or idle rollover runs before) stays
+        # after the anchor with the answer it gets: anchored on it, the summary would call it
+        # unanswered and its answer would follow the checkpoint with no message before it.
+        while items_since and _is_user_message(items_since[-1]):
+            items_since = items_since[:-1]
         if not items_since:
             return False
         closes = pending_closes(labels)

@@ -73,10 +73,14 @@ _SUMMARY_REQUEST_TEXT = (
 # the LLM, so its wording can't drift.
 CHECKPOINT_MARKER = "[Context checkpoint inserted by the system, not a message from the user.]"
 # Why a checkpoint was made: its first sentence. The rest of the header is the same for all.
-CheckpointCause = Literal["size", "return", "manual"]
+CheckpointCause = Literal["size", "restart", "return", "manual"]
 _CHECKPOINT_REASONS: dict[CheckpointCause, str] = {
     "size": (
         "This conversation grew past its context limit and earlier turns were "
+        "compacted into the summary below."
+    ),
+    "restart": (
+        "This conversation was reloaded and the earlier turns that no longer fit were "
         "compacted into the summary below."
     ),
     "return": (
@@ -394,9 +398,12 @@ def select_recent(
 
     A turn is a user message plus everything after it up to (not including)
     the next user message; turns are never split, so a kept ``function_call``
-    keeps its output. The most recent turn is always kept (rollover runs right
-    after it finishes); earlier turns are added while the whole tail, last turn
-    included, stays within *keep_tokens*.
+    keeps its output. Items before the first user message (the end of a turn
+    whose message is behind the checkpoint's anchor, e.g. the answer to the
+    message a cold rollover ran before) count as one more turn: never dropped
+    on their own while a later turn is kept. The most recent turn is always
+    kept (rollover runs right after it finishes); earlier turns are added while
+    the whole tail, last turn included, stays within *keep_tokens*.
 
     :param items: Chronological (oldest first) flat item dicts.
     :param keep_tokens: Token budget for the whole tail, last turn included.
@@ -411,11 +418,12 @@ def select_recent(
     ]
     if not turn_starts:
         return []
+    starts = turn_starts if turn_starts[0] == 0 else [0, *turn_starts]
     # A token is at least one byte, so a tail this small fits without loading a tokenizer.
     if len(json.dumps(items, ensure_ascii=False).encode()) <= keep_tokens:
-        return items[turn_starts[0] :]
+        return items
     selected_start = turn_starts[-1]
-    for start in reversed(turn_starts[:-1]):
+    for start in reversed(starts[:-1]):
         if count_tokens(items[start:], model) > keep_tokens:
             break
         selected_start = start
