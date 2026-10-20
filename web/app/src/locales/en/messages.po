@@ -55,12 +55,6 @@ msgstr "{0} (max {ATTACHMENT_MAX_COUNT} attachments)"
 msgid "{0} (over 10 MiB)"
 msgstr "{0} (over 10 MiB)"
 
-#. placeholder {0}: summary.edits
-#. placeholder {1}: summary.first
-#. placeholder {2}: summary.last
-msgid "{0} edits · v{1} to v{2}"
-msgstr "{0} edits · v{1} to v{2}"
-
 #. placeholder {0}: targets.length
 msgid "{0} elements"
 msgstr "{0} elements"
@@ -121,6 +115,9 @@ msgstr "{slides, plural, one {# slide} other {# slides}}"
 msgid "{spent} of {0}"
 msgstr "{spent} of {0}"
 
+msgid "{versionCount, plural, one {# version} other {# versions}}"
+msgstr "{versionCount, plural, one {# version} other {# versions}}"
+
 msgid "••••{hint} · Checked {checked}"
 msgstr "••••{hint} · Checked {checked}"
 
@@ -129,11 +126,6 @@ msgstr "••••{hint} · Needs attention"
 
 msgid "1 cell"
 msgstr "1 cell"
-
-#. placeholder {0}: summary.first
-#. placeholder {1}: summary.last
-msgid "1 edit · v{0} to v{1}"
-msgstr "1 edit · v{0} to v{1}"
 
 msgid "A file below changes"
 msgstr "A file below changes"
@@ -245,9 +237,6 @@ msgstr "Apps, decks and documents I made for you."
 msgid "Apps, decks, documents and files your Muse makes will appear here."
 msgstr "Apps, decks, documents and files your Muse makes will appear here."
 
-msgid "Artifact"
-msgstr "Artifact"
-
 msgid "Ask me"
 msgstr "Ask me"
 
@@ -314,9 +303,6 @@ msgstr "Automations"
 msgid "Average"
 msgstr "Average"
 
-msgid "Back"
-msgstr "Back"
-
 msgid "Back to steps"
 msgstr "Back to steps"
 
@@ -378,8 +364,14 @@ msgstr "cancelled"
 msgid "Cancelled"
 msgstr "Cancelled"
 
+msgid "Canvas tools"
+msgstr "Canvas tools"
+
 msgid "Change look"
 msgstr "Change look"
+
+msgid "Changing {about}"
+msgstr "Changing {about}"
 
 msgid "Chat Settings"
 msgstr "Chat Settings"
@@ -414,6 +406,9 @@ msgstr "Click an element to edit it."
 
 msgid "Close"
 msgstr "Close"
+
+msgid "Close and go back to Super Chat"
+msgstr "Close and go back to Super Chat"
 
 msgid "Close image preview"
 msgstr "Close image preview"
@@ -744,9 +739,6 @@ msgstr "Edit memory"
 msgid "Edited by you"
 msgstr "Edited by you"
 
-msgid "Editing"
-msgstr "Editing"
-
 msgid "Editorial"
 msgstr "Editorial"
 
@@ -966,6 +958,12 @@ msgstr "Images"
 msgid "In progress"
 msgstr "In progress"
 
+msgid "In Super Chat"
+msgstr "In Super Chat"
+
+msgid "In Super Chat · {when}"
+msgstr "In Super Chat · {when}"
+
 msgid "Inbox"
 msgstr "Inbox"
 
@@ -1020,6 +1018,9 @@ msgstr "Last checked {0} · nothing new"
 
 msgid "Layers"
 msgstr "Layers"
+
+msgid "Less"
+msgstr "Less"
 
 msgid "Letter spacing"
 msgstr "Letter spacing"
@@ -1078,6 +1079,9 @@ msgstr "Loading preview…"
 
 msgid "Loading…"
 msgstr "Loading…"
+
+msgid "Lower the conversation"
+msgstr "Lower the conversation"
 
 msgid "Machine"
 msgstr "Machine"
@@ -1467,6 +1471,9 @@ msgstr "Radius"
 msgid "Raise budget"
 msgstr "Raise budget"
 
+msgid "Raise the conversation"
+msgstr "Raise the conversation"
+
 msgid "Ran"
 msgstr "Ran"
 
@@ -1632,6 +1639,9 @@ msgstr "Search your Library…"
 msgid "Searchable"
 msgstr "Searchable"
 
+msgid "Select"
+msgstr "Select"
+
 msgid "Select a block to change it."
 msgstr "Select a block to change it."
 
@@ -1698,6 +1708,9 @@ msgstr "Show hidden files"
 
 msgid "Show in Files"
 msgstr "Show in Files"
+
+msgid "Show in Super Chat ↗"
+msgstr "Show in Super Chat ↗"
 
 msgid "Show layers"
 msgstr "Show layers"
@@ -1844,12 +1857,6 @@ msgstr "superchat"
 msgid "superchat is editing…"
 msgstr "superchat is editing…"
 
-msgid "superchat is updating slide {slide}…"
-msgstr "superchat is updating slide {slide}…"
-
-msgid "superchat is updating this file…"
-msgstr "superchat is updating this file…"
-
 msgid "superchat reads it where it is; nothing is copied."
 msgstr "superchat reads it where it is; nothing is copied."
 
@@ -1930,8 +1937,8 @@ msgstr "This deletes all {0} versions of this. This can't be undone."
 msgid "This file is not valid UTF-8 text."
 msgstr "This file is not valid UTF-8 text."
 
-msgid "This file's chat"
-msgstr "This file's chat"
+msgid "This file's conversation"
+msgstr "This file's conversation"
 
 msgid "This isn't the latest version. Open the latest to edit it."
 msgstr "This isn't the latest version. Open the latest to edit it."

@@ -25,7 +25,9 @@ The web UI uses Lingui catalogs. To add a locale, register it in
 `web/app/src/lib/i18n.ts`, then run `pnpm --filter @superchat/web intl:extract`, fill the new
 `web/app/src/locales/<locale>/messages.po` catalog, and validate it with
 `pnpm --filter @superchat/web intl:compile`. Keep message IDs, placeholders, JSX markers, and
-ICU plural branches intact; do not commit generated `*.js`/`*.mjs` catalog files.
+ICU plural branches intact; do not commit generated `*.js`/`*.mjs` catalog files. The web
+build runs `lingui extract` first, so a new string never ships as a bare message id; still
+commit the extracted catalog with the change that adds the string.
 
 Update the locale unit tests for the new locale.
 
