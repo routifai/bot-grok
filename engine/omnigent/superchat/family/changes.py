@@ -46,7 +46,8 @@ _FEED_EVENT_TYPES = frozenset(
 #: A Helper's own status edges that mean it is no longer working.
 _SETTLED_SESSION_STATUSES = frozenset({"idle", "failed"})
 
-_DEBOUNCE_SECONDS = 0.25
+#: A feed read costs a family read: one per second at most, however fast the steps land.
+_DEBOUNCE_SECONDS = 1.0
 _HEARTBEAT_SECONDS = 15.0
 
 

@@ -43,6 +43,18 @@ class RoundEvent:
     body: dict[str, Any] = field(default_factory=dict)
 
 
+def _flat(row: SqlRoundEvent) -> dict[str, Any]:
+    """A stored event, flat as the fold reads it (``t`` in seconds)."""
+    return {
+        **json.loads(row.body),
+        "round_id": row.round_id,
+        "seq": row.seq,
+        "t": row.at_ms / 1000,
+        "kind": row.kind,
+        "actor": row.actor,
+    }
+
+
 class SqlAlchemyRoundStore:
     """SQLAlchemy-backed store for the ``round_events`` table."""
 
@@ -106,17 +118,29 @@ class SqlAlchemyRoundStore:
             query = query.where(SqlRoundEvent.conversation_id == conversation_id)
         with self._session("round_events_list") as session:
             rows = session.execute(query.order_by(SqlRoundEvent.seq)).scalars()
-            return [
-                {
-                    **json.loads(row.body),
-                    "round_id": row.round_id,
-                    "seq": row.seq,
-                    "t": row.at_ms / 1000,
-                    "kind": row.kind,
-                    "actor": row.actor,
-                }
-                for row in rows
-            ]
+            return [_flat(row) for row in rows]
+
+    def events_of(
+        self, conversation_id: str, round_ids: Sequence[str]
+    ) -> dict[str, list[dict[str, Any]]]:
+        """:meth:`events` of each of the Conversation's *round_ids* in one read; a Round with no
+        event is left out."""
+        if not round_ids:
+            return {}
+        out: dict[str, list[dict[str, Any]]] = {}
+        with self._session("round_events_list_many") as session:
+            rows = session.execute(
+                select(SqlRoundEvent)
+                .where(
+                    SqlRoundEvent.workspace_id == current_workspace_id(),
+                    SqlRoundEvent.conversation_id == conversation_id,
+                    SqlRoundEvent.round_id.in_(list(dict.fromkeys(round_ids))),
+                )
+                .order_by(SqlRoundEvent.round_id, SqlRoundEvent.seq)
+            ).scalars()
+            for row in rows:
+                out.setdefault(row.round_id, []).append(_flat(row))
+        return out
 
     def recent(self, conversation_id: str, limit: int) -> list[str]:
         """The Conversation's *limit* Rounds with the newest last event, newest first."""

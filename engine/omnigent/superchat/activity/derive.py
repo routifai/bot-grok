@@ -134,6 +134,8 @@ def _resolve_items_scan_limit() -> int:
 
 
 _DEFAULT_LIMIT = 20
+#: Seconds a row may start after its chat's last write (a Round's record lags its message).
+_LAST_WRITE_SLACK = 60
 _MAX_LIMIT = 100
 _OUTCOME_MAX_CHARS = 140
 _TITLE_MAX_CHARS = 80
@@ -758,18 +760,31 @@ def _round_activity(
     )
 
 
-def _round_views(conversation_id: str, round_ids: Iterable[str | None]) -> dict[str, Any]:
+#: ``(conversation id, round id) -> its view`` (``None``: not shown), read once per feed read:
+#: every Helper of a Round reads the Round its parent folded.
+_Views = dict[tuple[str, str], dict[str, Any] | None]
+
+
+def _round_views(
+    conversation_id: str, round_ids: Iterable[str | None], seen: _Views | None = None
+) -> dict[str, Any]:
     """The folded view of each recorded Round a person opened (:data:`ROUND_VIEWS`); empty
-    without the rounds capability or when its read fails (a row then reads as before)."""
+    without the rounds capability or when its read fails (a row then reads as before). The
+    views already in *seen* are not read again, and the ones read are added to it."""
+    seen = {} if seen is None else seen
     wanted = list(dict.fromkeys(r for r in round_ids if r))
-    for read in ROUND_VIEWS.values() if wanted else ():
+    missing = [r for r in wanted if (conversation_id, r) not in seen]
+    for read in ROUND_VIEWS.values() if missing else ():
         try:
-            views = read(conversation_id, wanted)
+            views = read(conversation_id, missing)
         except Exception:
             _logger.warning("round views of %s not read", conversation_id, exc_info=True)
             return {}
-        return {r: v for r, v in views.items() if v["ask"] and not v["hidden"]}
-    return {}
+        for r in missing:
+            view = views.get(r)
+            seen[conversation_id, r] = view if view and view["ask"] and not view["hidden"] else None
+        break
+    return {r: v for r in wanted if (v := seen.get((conversation_id, r))) is not None}
 
 
 def _calls_line(calls: list[ConversationItem]) -> str | None:
@@ -915,6 +930,7 @@ def _activities_for_conversation(
     conversation: Conversation,
     *,
     include_step_detail: bool,
+    views_seen: _Views | None = None,
 ) -> list[Activity]:
     # Newest-first, bounded, then reversed to chronological order: for a
     # conversation with more than _ITEMS_SCAN_LIMIT items, an ascending scan
@@ -935,9 +951,9 @@ def _activities_for_conversation(
             conversation.id, (None, None)
         )
         round_id = (conversation.labels or {}).get(ROUND_LABEL_KEY) or None
-        view = _round_views(conversation.root_conversation_id or conversation.id, [round_id]).get(
-            round_id or ""
-        )
+        view = _round_views(
+            conversation.root_conversation_id or conversation.id, [round_id], views_seen
+        ).get(round_id or "")
         return [
             _sub_agent_activity(
                 conversation,
@@ -949,7 +965,7 @@ def _activities_for_conversation(
         ]
     groups = _group_items_by_response(items)
     rounds = _item_rounds(conversation.id, items) if not studio else {}
-    views = _round_views(conversation.id, rounds.values())
+    views = _round_views(conversation.id, rounds.values(), views_seen)
     stored_labels = conv_store.get_activity_labels(
         [group[0].response_id for group in groups] + list(views)
     )
@@ -1129,19 +1145,53 @@ def list_activities(
     super_chat_id = resolve_super_chat_id(conv_store, session_id)
     if super_chat_id is None:
         return []
-    # A file's studio (ADR 0024) is never one row or a Helper: each of its turns is a row.
-    chats = list_chat_family(conv_store, super_chat_id)
-    activities: list[Activity] = []
-    for conversation in chats:
-        activities.extend(
-            _activities_for_conversation(conv_store, conversation, include_step_detail=False)
-        )
-    activities.sort(key=lambda activity: activity.started_at, reverse=True)
-    activities = _feed(activities, tz)
-    if before is not None:
-        activities = [activity for activity in activities if activity.started_at < before]
     bounded_limit = max(1, min(limit, _MAX_LIMIT))
-    return activities[:bounded_limit]
+    # Newest chats first: once the page is full, a chat last written before its oldest row
+    # has no row on it and is never read, so a read costs the page, not the whole history.
+    # A file's studio (ADR 0024) is never one row or a Helper: each of its turns is a row.
+    chats = sorted(
+        list_chat_family(conv_store, super_chat_id),
+        key=lambda chat: chat.updated_at,
+        reverse=True,
+    )
+    activities: list[Activity] = []
+    seen: _Views = {}
+    page: list[Activity] = []
+    for conversation in chats:
+        if len(page) == bounded_limit and _off_page(conversation, page[-1].started_at, tz):
+            continue
+        activities.extend(
+            _activities_for_conversation(
+                conv_store, conversation, include_step_detail=False, views_seen=seen
+            )
+        )
+        page = _page(activities, tz, before, bounded_limit)
+    return page
+
+
+def _page(
+    activities: list[Activity], tz: str | None, before: int | None, limit: int
+) -> list[Activity]:
+    """The feed's newest *limit* rows started before *before*."""
+    rows = _feed(activities, tz)
+    if before is not None:
+        rows = [row for row in rows if row.started_at < before]
+    return rows[:limit]
+
+
+def _off_page(conversation: Conversation, oldest: int, tz: str | None) -> bool:
+    """Whether none of *conversation*'s rows can be on a full page whose oldest row started at
+    *oldest*: every row of a chat starts by its last write, give or take
+    :data:`_LAST_WRITE_SLACK`. An upkeep run joins its local day's row, so one is left out only
+    before that row's day."""
+    last = conversation.updated_at + _LAST_WRITE_SLACK
+    if last >= oldest:
+        return False
+    studio = is_artifact_chat(conversation.labels)
+    if conversation.kind == "sub_agent" and not studio:
+        if _sub_agent_source(conversation) == SOURCE_HOUSEKEEPING:
+            return local_day(last, tz) < local_day(oldest, tz)
+    return True
 
 
 def activities_missing_titles(activities: list[Activity]) -> list[Activity]:

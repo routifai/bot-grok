@@ -29,6 +29,7 @@ from omnigent.llms.adapters.base import BaseAdapter
 from omnigent.llms.anthropic_model_metadata import parse_anthropic_model_metadata
 from omnigent.models.model_metadata import ModelMetadata, ModelReasoningMode
 from omnigent.util.reasoning_effort import ANTHROPIC_EFFORTS, validate_effort_or_llm_error
+from omnigent.util.tls import client_ssl_context
 
 _logger = logging.getLogger(__name__)
 
@@ -762,7 +763,7 @@ async def _send_request(
     :returns: Chat Completions response dict.
     """
     url = f"{base_url}/messages"
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    async with httpx.AsyncClient(timeout=timeout, verify=client_ssl_context()) as client:
         resp = await client.post(
             url,
             headers=headers,
@@ -791,7 +792,7 @@ async def _stream_request(
     """
     url = f"{base_url}/messages"
     async with (
-        httpx.AsyncClient(timeout=timeout) as client,
+        httpx.AsyncClient(timeout=timeout, verify=client_ssl_context()) as client,
         client.stream(
             "POST",
             url,

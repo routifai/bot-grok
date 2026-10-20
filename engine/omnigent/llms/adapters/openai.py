@@ -33,6 +33,7 @@ from omnigent.llms.types import (
     ResponseTextDeltaEvent,
     Usage,
 )
+from omnigent.util.tls import client_ssl_context
 
 _logger = logging.getLogger(__name__)
 
@@ -198,7 +199,7 @@ class OpenAICompatibleAdapter(BaseAdapter):
         :returns: Parsed JSON response dict.
         :raises httpx.HTTPStatusError: On non-2xx status.
         """
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        async with httpx.AsyncClient(timeout=timeout, verify=client_ssl_context()) as client:
             resp = await client.post(
                 url,
                 headers=headers,
@@ -233,7 +234,7 @@ class OpenAICompatibleAdapter(BaseAdapter):
             dicts.
         """
         async with (
-            httpx.AsyncClient(timeout=timeout) as client,
+            httpx.AsyncClient(timeout=timeout, verify=client_ssl_context()) as client,
             client.stream(
                 "POST",
                 url,
@@ -567,7 +568,7 @@ class OpenAIAdapter(OpenAICompatibleAdapter):
         # arrives, instead of emitting U+FFFD replacement chars per chunk.
         decoder = codecs.getincrementaldecoder("utf-8")("replace")
         async with (
-            httpx.AsyncClient(timeout=timeout) as client,
+            httpx.AsyncClient(timeout=timeout, verify=client_ssl_context()) as client,
             client.stream(
                 "POST",
                 url,
