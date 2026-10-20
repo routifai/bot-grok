@@ -6907,6 +6907,12 @@ async def _relay_runner_stream_once(
                                     session_id,
                                     _context_labels,
                                 )
+                            # Between turns: check whether this session's past is due
+                            # to be folded into its checkpoint (ADR 0031), in the
+                            # background, never awaited here.
+                            from omnigent.server.memory_upkeep import schedule_fold
+
+                            schedule_fold(session_id, _resp_usage)
                             # Push the server-computed cost AND token breakdown
                             # to the web client's session indicator, rolled up
                             # over the spawn subtree. The session's own event

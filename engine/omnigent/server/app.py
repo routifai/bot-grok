@@ -1523,6 +1523,7 @@ def create_app(
 
             await cancel_managed_launch_tasks()
             await background_title_coordinator.shutdown()
+            await app_inst.state.session_folds.shutdown()
             _uninstall_subagent_block_notifier()
             set_resource_registry(None)
             set_runner_ws_factory(None)
@@ -2985,6 +2986,13 @@ def create_app(
             llm_caller_resolver=resolve_upkeep_llm_caller,
         )
     app.state.memory_upkeep_coordinator = memory_upkeep_coordinator
+    # The fold (ADR 0031): after a superside-chat turn, beside memory upkeep.
+    from omnigent.server.memory_upkeep import SessionFolds, register_session_folds
+
+    app.state.session_folds = SessionFolds(
+        conversation_store=conversation_store, coordinator=memory_upkeep_coordinator
+    )
+    register_session_folds(app.state.session_folds)
     if scheduled_task_store is not None:
         app.include_router(
             create_scheduled_tasks_router(

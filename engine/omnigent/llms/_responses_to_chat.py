@@ -238,10 +238,12 @@ def chat_response_to_response(
 
     usage = _extract_usage(chat_dict.get("usage"))
 
+    finish = choice.get("finish_reason")
     return Response(
         output=output,
         model=chat_dict["model"],
         usage=usage,
+        stop=finish if isinstance(finish, str) else None,
     )
 
 

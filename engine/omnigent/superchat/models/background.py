@@ -65,13 +65,19 @@ class BackgroundModels:
         target = deployment.for_provider(None) if deployment is not None else None
         return (target.host_config or None) if target is not None else None
 
-    async def resolve(self, owner_id: str | None) -> BackgroundLLM | None:
-        """``(model string, connection)`` for *owner_id*'s background work, or ``None``."""
+    async def resolve(
+        self, owner_id: str | None, *, model: str | None = None
+    ) -> BackgroundLLM | None:
+        """``(model string, connection)`` for *owner_id*'s background work, or ``None``.
+
+        :param model: Route this model id instead of the owner's Light one (same connection).
+        """
         owner = owner_id or RESERVED_USER_WORKSPACE
-        if owner in self._cache:
-            return self._cache[owner]
-        resolved = await self._resolve(owner)
-        self._cache[owner] = resolved
+        key = f"{owner}\0{model or ''}"
+        if key in self._cache:
+            return self._cache[key]
+        resolved = await self._resolve(owner, model)
+        self._cache[key] = resolved
         return resolved
 
     async def light_model(self, owner_id: str | None) -> str | None:
@@ -93,11 +99,11 @@ class BackgroundModels:
         picks = await asyncio.to_thread(store.read, owner) if store is not None else ModelPicks()
         return background_harness(bindings, picks)
 
-    async def _resolve(self, owner: str) -> BackgroundLLM | None:
+    async def _resolve(self, owner: str, chosen: str | None = None) -> BackgroundLLM | None:
         harness = await self._harness(owner)
         if harness is None:
             return None
-        model = (await person_models(self._state, owner, harness)).light
+        model = chosen or (await person_models(self._state, owner, harness)).light
         if not model:
             return None
         raw = self._host_config()

@@ -1,24 +1,13 @@
-"""Rollover for superside-chat sessions on the Claude SDK engine (S2).
+"""The fold and the checkpoint of superside-chat sessions (ADR 0031).
 
-A superside-chat session (Super Chat, Side Chat, or Sub-agent alike) rolls
-over at two points — see ``docs/context.md`` and the
-**Rollover** term in ``docs/glossary.md``:
-
-- the engine-reported context size crosses :func:`~omnigent.context.rollover.
-  resolve_rollover_threshold` after a turn (:func:`should_roll_over_for_threshold`);
-- the session's first message after being idle past
-  :func:`resolve_idle_refresh_seconds` (:func:`should_roll_over_for_idle`), but only
-  when the items since the last checkpoint no longer fit the kept-tail budget; otherwise
-  the return is a cold start from the stored checkpoint with no summarizer call.
-
-Either trigger runs the same action (:func:`roll_over_session`): build the
-next rollover item over this session's record since the latest ``compaction``
-item (reusing :func:`~omnigent.context.rollover.build_rollover_item`'s
-progressive summarization), POST it as a new ``compaction`` item, then signal
-the caller to drop the warm engine client so the next turn cold-starts from
-it (``ADR 0001``: Omnigent decides when, the engine only runs the model loop).
-Never during a turn — both call sites in ``harnesses/claude_sdk_executor.py`` and
-``runner/app.py`` trigger only between turns.
+A session's past is folded into its checkpoint (the tagged working list and the journal lines)
+by :func:`roll_over_session`, the one summarizer. The fold runs in the engine after a turn
+(:func:`fold_session`, scheduled by ``server/memory_upkeep.py``) when the settled-turn lines a
+new session would list pass 2k tokens or the warm context reaches :func:`fold_at`, on the
+owner's Light model. It only writes the checkpoint: it never drops a warm client, and a turn
+never waits on it. The manual ``/compact`` (``runner/app.py``) runs the same function and then
+drops the warm client. A new session is assembled from the checkpoint and the record after its
+anchor (``_load_history_as_input``); a restart or a return from idle never summarizes.
 """
 
 from __future__ import annotations
@@ -26,7 +15,7 @@ from __future__ import annotations
 import logging
 import os
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
-from typing import Any
+from typing import Any, Protocol
 
 import httpx
 
@@ -96,29 +85,6 @@ def resolve_helper_turn_context_ceiling() -> int:
     except ValueError:
         value = 0
     return value if value > 0 else DEFAULT_HELPER_TURN_CONTEXT_CEILING
-
-
-def should_roll_over_for_threshold(
-    labels: Mapping[str, str] | None,
-    *,
-    context_tokens: int | None,
-    model_window: int | None = None,
-) -> bool:
-    """Whether a superside-chat turn's reported context size hit the rollover threshold.
-
-    ``False`` for a non-superside-chat session or when *context_tokens* is
-    ``None`` (the turn carried no window-fill signal).
-
-    :param labels: The session's labels.
-    :param context_tokens: The turn's reported window fill (e.g.
-        ``usage.context_tokens`` from a claude-sdk ``ResultMessage``), or
-        ``None``.
-    :param model_window: The session's model's context window, forwarded to
-        :func:`~omnigent.context.rollover.resolve_rollover_threshold`.
-    """
-    if not is_superside_chat(labels) or context_tokens is None:
-        return False
-    return context_tokens >= resolve_rollover_threshold(labels, model_window=model_window)
 
 
 #: Fraction of the model's context window at which another turn would overflow
@@ -403,22 +369,19 @@ async def _current_labels(
     return {str(k): str(v) for k, v in labels.items()} if isinstance(labels, dict) else None
 
 
-async def _clear_closes(
-    server_client: httpx.AsyncClient,
-    conversation_id: str,
+def _consumed_labels(
     closes: Mapping[str, str],
-    adds: Mapping[str, str] | None = None,
-) -> None:
-    """Empty the ``state_close`` and added-entry labels the stored checkpoint consumed.
+    adds: Mapping[str, str] | None,
+    current: Mapping[str, str] | None,
+) -> dict[str, str]:
+    """The ``state_close`` and added-entry labels a stored checkpoint consumed, emptied.
 
-    Labels are upsert-only, so "cleared" is an empty value. A failure leaves the close pending,
-    which the next checkpoint finds already closed: harmless. An added entry is cleared only when
+    Labels are upsert-only, so "cleared" is an empty value. An added entry is cleared only when
     its label still holds the text the checkpoint wrote (compare and clear): a newer decision
     written while the summary was built stays pending for the next checkpoint.
     """
     consumed = {close_label_key(tag): "" for tag in closes}
     if adds:
-        current = await _current_labels(server_client, conversation_id)
         consumed.update(
             {
                 entry_label_key(tag): ""
@@ -426,22 +389,191 @@ async def _clear_closes(
                 if current is not None and current.get(entry_label_key(tag), "").strip() == text
             }
         )
-    if not consumed:
-        return
-    try:
-        await server_client.patch(
-            f"/v1/sessions/{conversation_id}", json={"labels": consumed}, timeout=10.0
-        )
-    except (httpx.HTTPError, RuntimeError):
-        logger.warning(
-            "superside-chat rollover: failed to clear applied closes for %s",
-            conversation_id,
-            exc_info=True,
-        )
+    return consumed
 
 
-def _is_user_message(item: Mapping[str, Any]) -> bool:
-    return item.get("type") == "message" and item.get("role") == "user"
+class SessionRecord(Protocol):
+    """Where :func:`roll_over_session` reads a session's window and stores its checkpoint: the
+    runner over HTTP (:class:`HttpRecord`), the engine over its store (:class:`StoreRecord`)."""
+
+    async def window(self) -> tuple[list[dict[str, Any]], str | None, str | None]:
+        """``(items since the latest real checkpoint, its summary, its id)``.
+
+        :raises ItemsPageFetchError: the record could not be read in full.
+        """
+        ...
+
+    async def store(self, body: dict[str, Any]) -> bool:
+        """Store a ``compaction`` event body; ``False`` when another checkpoint won the race or
+        the write failed."""
+        ...
+
+    async def clear(self, closes: Mapping[str, str], adds: Mapping[str, str] | None) -> None:
+        """Empty the labels the stored checkpoint consumed (:func:`_consumed_labels`)."""
+        ...
+
+
+class HttpRecord:
+    """The record as the runner reaches it: the engine's session routes."""
+
+    def __init__(self, server_client: httpx.AsyncClient, conversation_id: str) -> None:
+        self._client = server_client
+        self._id = conversation_id
+
+    async def window(self) -> tuple[list[dict[str, Any]], str | None, str | None]:
+        return await _fetch_items_since_last_compaction(self._client, self._id)
+
+    async def store(self, body: dict[str, Any]) -> bool:
+        try:
+            resp = await self._client.post(
+                f"/v1/sessions/{self._id}/events",
+                json={"type": "compaction", "data": body},
+                timeout=10.0,
+            )
+        except (httpx.HTTPError, RuntimeError):
+            logger.warning(
+                "superside-chat rollover: failed to persist the rollover item for %s",
+                self._id,
+                exc_info=True,
+            )
+            return False
+        if resp.status_code == 409:
+            # Someone else (another process for this same session) already rolled over past
+            # the checkpoint this summary was built from: not a failure, just a lost race.
+            return False
+        if resp.status_code < 200 or resp.status_code >= 300:
+            logger.warning(
+                "superside-chat rollover: persisting the rollover item for %s returned %s",
+                self._id,
+                resp.status_code,
+            )
+            return False
+        return True
+
+    async def clear(self, closes: Mapping[str, str], adds: Mapping[str, str] | None) -> None:
+        current = await _current_labels(self._client, self._id) if adds else None
+        consumed = _consumed_labels(closes, adds, current)
+        if not consumed:
+            return
+        try:
+            await self._client.patch(
+                f"/v1/sessions/{self._id}", json={"labels": consumed}, timeout=10.0
+            )
+        except (httpx.HTTPError, RuntimeError):
+            # The close stays pending; the next checkpoint finds it already closed: harmless.
+            logger.warning(
+                "superside-chat rollover: failed to clear applied closes for %s",
+                self._id,
+                exc_info=True,
+            )
+
+
+class StoreRecord:
+    """The record as the engine holds it: its conversation store, no HTTP hop (the fold)."""
+
+    def __init__(self, conversation_store: Any, conversation_id: str) -> None:
+        self._store = conversation_store
+        self._id = conversation_id
+
+    def _read(self) -> tuple[list[dict[str, Any]], str | None, str | None]:
+        from omnigent.errors import StaleCursorError
+
+        checkpoint: dict[str, Any] | None = None
+        after: str | None = None
+        while checkpoint is None:
+            page = self._store.list_items(
+                self._id, limit=20, after=after, order="desc", type="compaction"
+            )
+            checkpoint = next(
+                (
+                    item.to_api_dict()
+                    for item in page.data
+                    if not is_placeholder_summary(item.to_api_dict().get("summary"))
+                ),
+                None,
+            )
+            if checkpoint is None and (not page.data or not page.has_more):
+                break
+            after = page.data[-1].id if page.data else None
+        anchor = checkpoint.get("last_item_id") if checkpoint is not None else None
+        items: list[dict[str, Any]] = []
+        prefix: list[dict[str, Any]] = []
+        after = None
+        if checkpoint is not None:
+            after = anchor or checkpoint["id"]
+            prefix = [{"id": anchor}] if anchor else [checkpoint]
+        while True:
+            try:
+                page = self._store.list_items(self._id, limit=1000, after=after, order="asc")
+            except StaleCursorError:
+                if checkpoint is None or after == checkpoint["id"]:
+                    raise
+                # An anchor the record does not hold reads after the checkpoint itself.
+                after, prefix, items = checkpoint["id"], [checkpoint], []
+                continue
+            items.extend(item.to_api_dict() for item in page.data)
+            if not page.data or not page.has_more:
+                break
+            after = page.data[-1].id
+        items = [
+            it
+            for it in prefix + items
+            if not (it.get("type") == "compaction" and is_placeholder_summary(it.get("summary")))
+        ]
+        since, found = split_at_latest_compaction(items)
+        if found is None:
+            return items, None, None
+        return since, found.get("summary"), found.get("id")
+
+    async def window(self) -> tuple[list[dict[str, Any]], str | None, str | None]:
+        import asyncio
+
+        try:
+            return await asyncio.to_thread(self._read)
+        except Exception as exc:
+            raise ItemsPageFetchError(f"record of {self._id!r} not read: {exc}", 500) from exc
+
+    def _append(self, body: dict[str, Any]) -> bool:
+        import uuid
+
+        from omnigent.entities import NewConversationItem
+        from omnigent.entities.conversation import parse_item_data
+
+        # The stale-anchor guard the events route applies: a checkpoint built on one that is no
+        # longer the latest is dropped, never stored over it.
+        latest = self._store.list_items(self._id, limit=1, order="desc", type="compaction")
+        latest_id = latest.data[0].id if latest.data else None
+        if latest_id != body.get("expected_previous_compaction_id"):
+            return False
+        data = {k: v for k, v in body.items() if k != "expected_previous_compaction_id"}
+        item = NewConversationItem(
+            type="compaction",
+            response_id=f"compact_{uuid.uuid4().hex}",
+            data=parse_item_data("compaction", data),
+        )
+        self._store.append(self._id, [item])
+        return True
+
+    async def store(self, body: dict[str, Any]) -> bool:
+        import asyncio
+
+        try:
+            return await asyncio.to_thread(self._append, body)
+        except Exception:
+            logger.warning("fold: could not store the checkpoint of %s", self._id, exc_info=True)
+            return False
+
+    async def clear(self, closes: Mapping[str, str], adds: Mapping[str, str] | None) -> None:
+        import asyncio
+
+        try:
+            conv = await asyncio.to_thread(self._store.get_conversation, self._id)
+            current = dict(conv.labels) if conv is not None else None
+            consumed = _consumed_labels(closes, adds, current)
+            if consumed:
+                await asyncio.to_thread(self._store.set_labels, self._id, consumed)
+        except Exception:
+            logger.warning("fold: could not clear applied closes for %s", self._id, exc_info=True)
 
 
 async def roll_over_session(
@@ -449,7 +581,8 @@ async def roll_over_session(
     *,
     labels: Mapping[str, str] | None,
     model: str,
-    server_client: httpx.AsyncClient,
+    server_client: httpx.AsyncClient | None = None,
+    record: SessionRecord | None = None,
     llm_client: Any = None,
     connection: dict[str, str] | None = None,
     on_rolled_over: Callable[[], Awaitable[None]] | None = None,
@@ -457,43 +590,43 @@ async def roll_over_session(
     cause: CheckpointCause = "size",
     on_stored: Callable[[CompactionData, list[dict[str, Any]]], Awaitable[None]] | None = None,
 ) -> bool:
-    """Build and persist the next rollover compaction item for *conversation_id*.
+    """Fold the turns since the latest checkpoint, up to the newest ones, into the next one.
 
-    Fetches this session's record since the latest ``compaction`` item
-    (progressive summarization reuses that item's summary —
-    :func:`~omnigent.context.rollover.build_rollover_item`), builds the next
-    rollover item, and POSTs it as a new ``compaction`` item
-    (``POST /v1/sessions/{id}/events``). On success, calls *on_rolled_over* —
-    the caller's hook to drop the warm engine client so the next turn
-    cold-starts from the new item (e.g. releasing the claude-sdk harness
-    subprocess, which runs ``ClaudeSDKExecutor.close_session`` on teardown).
+    Reads this session's record since the latest ``compaction`` item through *record* (else
+    over *server_client*), leaves out the newest whole turns a new session shows in full (the
+    kept tail, :func:`~omnigent.context.rollover.select_recent`) and at most
+    :data:`~omnigent.context.rollover.FOLD_TURNS_MAX_CHARS` of the rest, oldest first, folds
+    those into the next checkpoint (:func:`~omnigent.context.rollover.build_rollover_item`) and
+    stores it anchored after the last of them. The newest turns stay after the anchor, so a new
+    session's assembled block keeps them, and its turn lines shrink to what came after.
 
-    Single-flight per *conversation_id*: a call that arrives while another is
-    already building for the same session returns ``False`` immediately
-    rather than racing it. Every failure (history load, summarization, the
-    POST, or *on_rolled_over* itself) is logged and swallowed — the turn that
-    triggered this call has already been delivered, so a rollover failure
-    must never fail it.
+    The fold (``server/memory_upkeep.py``) leaves *on_rolled_over* unset: it only writes the
+    checkpoint and never drops a warm client (ADR 0031). The manual ``/compact`` passes the
+    runner's drop. Single-flight per *conversation_id*: a call that arrives while another is
+    already building for the same session returns ``False`` at once. Every failure (history
+    load, summarization, a cut-off reply, the store, a hook) is logged and swallowed, and the
+    previous checkpoint stays.
 
-    *connection* and *wire* are the session's own provider (see :func:`summarizer_model`): the
-    summary is written through the connection the session runs on. *cause* says why the
-    checkpoint is made (size, a restart's cold start, return after idle, manual ``/compact``);
-    it names the reason in the checkpoint's header. *on_stored* gets the stored item (its journal
-    lines and evicted entries) and the window it retired (the items it summarized, as read for
-    it) once it is persisted, before *on_rolled_over*; a failure in it is logged and swallowed.
+    *connection* and *wire* say how the summarizer is called (see :func:`summarizer_model`).
+    *cause* names the reason in the checkpoint's header. *on_stored* gets the stored item and
+    the window it folded once it is persisted, before *on_rolled_over*.
 
-    :returns: ``True`` iff a new compaction item was posted.
+    :returns: ``True`` iff a new compaction item was stored.
     """
+    import asyncio
+
+    from omnigent.context.rollover import fold_window, select_recent
+    from omnigent.models.model_fallbacks import ROLLOVER_TOKEN_COUNT_MODEL
+
     if conversation_id in _in_flight:
         return False
+    if record is None:
+        assert server_client is not None, "roll_over_session needs a record or a server client"
+        record = HttpRecord(server_client, conversation_id)
     _in_flight.add(conversation_id)
     try:
         try:
-            (
-                items_since,
-                previous_summary,
-                previous_compaction_id,
-            ) = await _fetch_items_since_last_compaction(server_client, conversation_id)
+            items_since, previous_summary, previous_compaction_id = await record.window()
         except (httpx.HTTPError, ValueError, ItemsPageFetchError):
             logger.warning(
                 "superside-chat rollover: failed to load history for %s",
@@ -501,20 +634,26 @@ async def roll_over_session(
                 exc_info=True,
             )
             return False
-        # The unanswered newest message (the turn a cold or idle rollover runs before) stays
-        # after the anchor with the answer it gets: anchored on it, the summary would call it
-        # unanswered and its answer would follow the checkpoint with no message before it.
-        while items_since and _is_user_message(items_since[-1]):
-            items_since = items_since[:-1]
-        if not items_since:
+
+        # The newest whole turns stay after the anchor, as the history load shows them. Off
+        # the loop: the engine's relay runs on it, and counting the tail tokenizes the window.
+        def _window() -> list[dict[str, Any]]:
+            kept = select_recent(
+                items_since,
+                keep_tokens=resolve_keep_tokens(labels),
+                model=ROLLOVER_TOKEN_COUNT_MODEL,
+            )
+            return fold_window(items_since[: len(items_since) - len(kept)])
+
+        window = await asyncio.to_thread(_window)
+        if not window:
             return False
         closes = pending_closes(labels)
         adds = pending_entries(labels)
         try:
             compaction = await build_rollover_item(
-                items_since,
+                window,
                 previous_summary=previous_summary,
-                keep_tokens=resolve_keep_tokens(labels),
                 model=summarizer_model(model, connection, wire),
                 llm_client=llm_client,
                 connection=connection,
@@ -530,42 +669,24 @@ async def roll_over_session(
                 exc_info=True,
             )
             return False
-        try:
-            resp = await server_client.post(
-                f"/v1/sessions/{conversation_id}/events",
-                json={
-                    "type": "compaction",
-                    "data": _compaction_event_body(
-                        compaction,
-                        expected_previous_compaction_id=previous_compaction_id,
-                    ),
-                },
-                timeout=10.0,
-            )
-        except (httpx.HTTPError, RuntimeError):
-            logger.warning(
-                "superside-chat rollover: failed to persist the rollover item for %s",
-                conversation_id,
-                exc_info=True,
-            )
+        body = _compaction_event_body(
+            compaction, expected_previous_compaction_id=previous_compaction_id
+        )
+        if not await record.store(body):
             return False
-        if resp.status_code == 409:
-            # Someone else (another runner process for this same session)
-            # already rolled over past the checkpoint this summary was
-            # built from — not a failure, just a lost race.
-            return False
-        if resp.status_code < 200 or resp.status_code >= 300:
-            logger.warning(
-                "superside-chat rollover: persisting the rollover item for %s "
-                "returned %s, not dropping the warm client",
-                conversation_id,
-                resp.status_code,
-            )
-            return False
-        await _clear_closes(server_client, conversation_id, closes, adds)
+        await record.clear(closes, adds)
+        logger.info(
+            "superside-chat rollover: stored a checkpoint for %s on %s: %d items folded, "
+            "anchor %s, %d newer items kept after it",
+            conversation_id,
+            compaction.model,
+            len(window),
+            compaction.last_item_id,
+            len(items_since) - len(window),
+        )
         if on_stored is not None:
             try:
-                await on_stored(compaction, items_since)
+                await on_stored(compaction, window)
             except Exception:  # the item is already persisted; log and move on
                 logger.warning(
                     "superside-chat rollover: on_stored failed for %s",
@@ -584,3 +705,167 @@ async def roll_over_session(
         return True
     finally:
         _in_flight.discard(conversation_id)
+
+
+# ---------------------------------------------------------------------------
+# The fold: when, and on which model (ADR 0031, "When the past is folded")
+# ---------------------------------------------------------------------------
+
+#: Settled-turn lines (tokens, as rendered) past which the turns are folded. Lower it (e.g. 200)
+#: to see a fold on a short test chat.
+OMNIGENT_FOLD_TURN_LINES_TOKENS_ENV = "OMNIGENT_FOLD_TURN_LINES_TOKENS"
+DEFAULT_FOLD_TURN_LINES_TOKENS = 2_000
+#: ``fold_on_light``: ``0`` folds on the session's own model instead of the owner's Light model.
+OMNIGENT_FOLD_ON_LIGHT_ENV = "OMNIGENT_FOLD_ON_LIGHT"
+#: Failed folds on Light after which a session folds on its own model.
+_LIGHT_FAILURES_BEFORE_FALLBACK = 2
+_light_failures: dict[str, int] = {}
+
+
+def resolve_fold_turn_lines_tokens() -> int:
+    """:data:`OMNIGENT_FOLD_TURN_LINES_TOKENS_ENV`, default 2k; invalid falls back."""
+    raw = os.environ.get(OMNIGENT_FOLD_TURN_LINES_TOKENS_ENV)
+    try:
+        value = int(raw) if raw is not None else 0
+    except ValueError:
+        value = 0
+    return value if value > 0 else DEFAULT_FOLD_TURN_LINES_TOKENS
+
+
+def fold_on_light() -> bool:
+    """The ``fold_on_light`` flag (default on)."""
+    return os.environ.get(OMNIGENT_FOLD_ON_LIGHT_ENV, "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
+    )
+
+
+def fold_at(threshold: int) -> int:
+    """The warm context at which the turns are folded: ``T − min(32k, 0.25 × T)``."""
+    return threshold - min(32_000, threshold // 4)
+
+
+def fold_due(
+    items_since: list[dict[str, Any]],
+    labels: Mapping[str, str] | None,
+    *,
+    context_tokens: int | None,
+    model_window: int | None,
+) -> str | None:
+    """Why the turns since the checkpoint should be folded now, or ``None``.
+
+    ``"turn lines"`` when the settled turns a new session would list one line each (those
+    before the kept tail) pass :func:`resolve_fold_turn_lines_tokens`; ``"context"`` when the
+    warm context reached :func:`fold_at` of the handoff threshold.
+    """
+    from omnigent.context.rollover import (
+        select_recent,
+        transcript_turn_lines,
+        turn_lines_tokens,
+    )
+    from omnigent.models.model_fallbacks import ROLLOVER_TOKEN_COUNT_MODEL
+
+    kept = select_recent(
+        items_since, keep_tokens=resolve_keep_tokens(labels), model=ROLLOVER_TOKEN_COUNT_MODEL
+    )
+    retired = items_since[: len(items_since) - len(kept)]
+    if not retired:
+        return None
+    lines = transcript_turn_lines(retired)
+    if turn_lines_tokens(lines, ROLLOVER_TOKEN_COUNT_MODEL) > resolve_fold_turn_lines_tokens():
+        return "turn lines"
+    threshold = resolve_rollover_threshold(labels, model_window=model_window)
+    if context_tokens is not None and context_tokens >= fold_at(threshold):
+        return "context"
+    return None
+
+
+async def fold_session(
+    conversation_store: Any,
+    conversation_id: str,
+    *,
+    context_tokens: int | None,
+    session_model: str | None,
+) -> bool:
+    """Fold a superside-chat session's past in the engine, if it is due (one session at a time).
+
+    Runs in the background after a turn, never in it: it reads the record from the store,
+    checks :func:`fold_due` and calls :func:`roll_over_session` on the owner's Light model
+    (``resolve_background_llm``, the route memory upkeep uses; keys never reach the host), with
+    ``on_rolled_over`` unset, so the warm client is never dropped. With ``fold_on_light`` off,
+    no Light model, or after two failed folds on Light, it folds on *session_model* over the
+    same connection. Turns are indexed for recall by the history load, not here.
+
+    :returns: ``True`` iff a checkpoint was stored.
+    """
+    import asyncio
+    import functools
+
+    from omnigent.context.labels import is_superside_chat
+    from omnigent.llms.background import resolve_background_llm
+    from omnigent.llms.client import Client
+    from omnigent.llms.context_window import find_model_context_window
+
+    if conversation_id in _in_flight:
+        return False
+    conv = await asyncio.to_thread(conversation_store.get_conversation, conversation_id)
+    if conv is None or not is_superside_chat(conv.labels):
+        return False
+    record = StoreRecord(conversation_store, conversation_id)
+    try:
+        items_since, _, _ = await record.window()
+    except ItemsPageFetchError:
+        logger.warning("fold: could not read %s", conversation_id, exc_info=True)
+        return False
+    window = None
+    if session_model:
+        try:
+            window = await asyncio.to_thread(find_model_context_window, session_model)
+        except Exception:  # noqa: BLE001 — a miss keeps the label or the default
+            window = None
+    # Off the loop: counting the tail tokenizes the window.
+    reason = await asyncio.to_thread(
+        functools.partial(
+            fold_due,
+            items_since,
+            conv.labels,
+            context_tokens=context_tokens,
+            model_window=window,
+        )
+    )
+    if reason is None:
+        return False
+    owner = await asyncio.to_thread(conversation_store.get_session_owner, conversation_id)
+    light = fold_on_light() and (
+        _light_failures.get(conversation_id, 0) < _LIGHT_FAILURES_BEFORE_FALLBACK
+    )
+    route = await resolve_background_llm(owner) if light else None
+    on_light = route is not None
+    if route is None and session_model:
+        route = await resolve_background_llm(owner, model=session_model)
+    if route is None:
+        logger.info("fold: no model to fold %s on; skipped", conversation_id)
+        return False
+    model, connection = route
+    logger.info(
+        "fold: folding %s on %s (%s; %s)",
+        conversation_id,
+        model,
+        "Light" if on_light else "the session's model",
+        reason,
+    )
+    stored = await roll_over_session(
+        conversation_id,
+        labels=conv.labels,
+        model=model,
+        record=record,
+        llm_client=Client(),
+        connection=connection,
+    )
+    if on_light:
+        _light_failures[conversation_id] = (
+            0 if stored else _light_failures.get(conversation_id, 0) + 1
+        )
+    return stored

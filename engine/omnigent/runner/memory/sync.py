@@ -278,15 +278,35 @@ async def _daily_notes(server_client: Any) -> list[dict[str, Any]]:
     return [row for row in rows if isinstance(row, dict)]
 
 
-async def _apply_reset(server_client: Any, main_id: str, root: Path) -> None:
-    """Write the latest reset to the files once: a journal line, then an empty working list."""
+async def _apply_latest(server_client: Any, main_id: str, root: Path) -> None:
+    """Write the latest checkpoint to the files once: a reset (a journal line, then an empty
+    working list), or a checkpoint the engine's fold stored (its journal lines and ``STATE.md``;
+    ADR 0031). A line already in a day file is not added again."""
     params = {"limit": "1", "order": "desc", "type": "compaction"}
     page = await _get_items_page(server_client, main_id, params)
     latest = next(iter(page.get("data", [])), None)
-    if not isinstance(latest, dict) or not is_reset_item(latest):
+    if not isinstance(latest, dict):
         return
     item_id = latest.get("id")
-    if not isinstance(item_id, str) or files.last_reset_of(root) == item_id:
+    if not isinstance(item_id, str):
+        return
+    if not is_reset_item(latest):
+        if not _is_checkpoint(latest) or files.last_checkpoint_of(root) == item_id:
+            return
+        entries = files.checkpoint_lines(
+            files.Origin("main", main_id),
+            latest.get("journal_lines"),
+            latest.get("evicted_entries"),
+            default_date=_item_date(latest),
+            refs=latest.get("journal_refs"),
+        )
+        ok = await asyncio.to_thread(files.append_lines, root, entries, skip_present=True)
+        state = files.state_text_of(latest.get("summary"))
+        ok = ok and await asyncio.to_thread(files.write_state, root, state)
+        if ok:
+            await asyncio.to_thread(files.write_last_checkpoint, root, item_id)
+        return
+    if files.last_reset_of(root) == item_id:
         return
     ok = await asyncio.to_thread(
         files.append_lines, root, [_reset_entry(latest, main_id)], skip_present=True
@@ -312,7 +332,7 @@ async def reconcile(
       the other one still exists (or its state is unknown) the folder is left alone. The deleted
       Conversation's passages leave the index with it.
     * An unmarked folder (made before the marker): adopt it.
-    * A reset the files have not seen: write it once.
+    * A reset, or a checkpoint the engine's fold stored, the files have not seen: write it once.
 
     """
     try:
@@ -333,7 +353,7 @@ async def reconcile(
             return
         if owner is None:
             await asyncio.to_thread(files.write_owner, root, main_id)
-        await _apply_reset(server_client, main_id, root)
+        await _apply_latest(server_client, main_id, root)
     except Exception:  # a copy must never fail the turn
         _logger.warning("memory: could not reconcile for %s", chat_id, exc_info=True)
 
@@ -491,27 +511,23 @@ async def backfill_turns(
     *,
     runtime: KnowledgeRuntime | None = None,
 ) -> None:
-    """Index, once, the turns a Conversation had before turns were indexed. Never raises.
+    """Index the turns of a Conversation up to its latest checkpoint's anchor. Never raises.
 
-    Reads the record of the Conversation from its first item to its latest checkpoint's anchor
-    (every retired turn, none of the current epoch), at most :data:`_BACKFILL_PAGES` pages and
-    :data:`_BACKFILL_TURNS` turns per run. Progress (the last item read) is saved with the
-    passages, so a restart resumes where it stopped and never writes a turn twice. Once it was
-    read to its anchor the Conversation is marked done; from then on its turns arrive with each
-    compaction.
+    Reads the record from the saved cursor to the anchor (every retired turn, none of the
+    current epoch), at most :data:`_BACKFILL_PAGES` pages and :data:`_BACKFILL_TURNS` turns per
+    run. Progress (the last item read) is saved with the passages, so a restart resumes where it
+    stopped and never writes a turn twice. A cursor already at the anchor costs one checkpoint
+    read. A fold moves the anchor without a history load (ADR 0031), so the turns it folded
+    arrive here at the next turn; the ones a new session leaves out arrive with its history load.
     """
     try:
         main_id = chat_id
         found = _knowledge(server_client, runtime)
         if is_helper(labels) or found is None:
             return
-        db = found.indexer.db
-        if await asyncio.to_thread(db.meta, f"{BACKFILLED_KEY}{main_id}"):
-            return
         budget = {"pages": _BACKFILL_PAGES, "turns": _BACKFILL_TURNS}
         origin = files.Origin("main", main_id)
-        if await _backfill_chat(server_client, found, origin, main_id, budget):
-            await asyncio.to_thread(db.set_meta, f"{BACKFILLED_KEY}{main_id}", "done")
+        await _backfill_chat(server_client, found, origin, main_id, budget)
     except Exception:  # indexing must never fail the turn
         _logger.warning("recall: could not backfill the turns of %s", chat_id, exc_info=True)
 

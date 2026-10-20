@@ -125,11 +125,14 @@ class Response:
     :param model: The model identifier that produced the response,
         e.g. ``"claude-sonnet-4-20250514"``.
     :param usage: Token usage information, or ``None`` if unavailable.
+    :param stop: Why the model stopped: ``"stop"`` (a clean end), ``"length"`` (cut off at the
+        output limit), ``"tool_calls"``, or ``None`` when the provider did not say.
     """
 
     output: list[MessageOutput | FunctionCallOutput | NativeToolOutput]
     model: str
     usage: Usage | None = None
+    stop: str | None = None
 
 
 # ── Streaming event types ─────────────────────────────────

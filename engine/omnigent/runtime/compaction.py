@@ -506,7 +506,7 @@ async def _summarize_history_uncached(
     )
     summary_text = extract_summary_text(resp)
     token_count = count_tokens([{"role": "assistant", "content": summary_text}], model)
-    return {"text": summary_text, "token_count": token_count}
+    return {"text": summary_text, "token_count": token_count, "stop": getattr(resp, "stop", None)}
 
 
 async def _summarize_via_runner_uncached(

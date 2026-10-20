@@ -61,6 +61,9 @@ REFLECTION_HEADING = "## Reflection"
 OWNER_FILE = ".owner"
 #: The id of the last reset item written to the journal and ``STATE.md``.
 LAST_RESET_FILE = ".last_reset"
+#: The id of the last checkpoint stored without this host (the engine's fold) that was written
+#: to the journal and ``STATE.md``.
+LAST_CHECKPOINT_FILE = ".last_checkpoint"
 RESET_TEXT = "conversation reset"
 STATE_NOTE = "This is a copy of the working list, for reading. Edits here change nothing."
 EVICTED_PREFIX = "Moved out of the working list: "
@@ -408,6 +411,16 @@ def last_reset_of(workspace: Path) -> str | None:
 def write_last_reset(workspace: Path, item_id: str) -> bool:
     """Record that the reset *item_id* is written to the files. Never raises."""
     return _write_marker(workspace, LAST_RESET_FILE, item_id)
+
+
+def last_checkpoint_of(workspace: Path) -> str | None:
+    """:returns: The id of the last checkpoint already written to the files, or ``None``."""
+    return _marker(workspace, LAST_CHECKPOINT_FILE)
+
+
+def write_last_checkpoint(workspace: Path, item_id: str) -> bool:
+    """Record that the checkpoint *item_id* is written to the files. Never raises."""
+    return _write_marker(workspace, LAST_CHECKPOINT_FILE, item_id)
 
 
 def wipe(workspace: Path) -> bool:

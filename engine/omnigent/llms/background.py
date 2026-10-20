@@ -21,7 +21,7 @@ _logger = logging.getLogger(__name__)
 
 #: ``(model string for the LLM client, connection params or None)``.
 BackgroundLLM = tuple[str, dict[str, str] | None]
-BackgroundResolver = Callable[[str | None], Awaitable[BackgroundLLM | None]]
+BackgroundResolver = Callable[..., Awaitable[BackgroundLLM | None]]
 
 _resolver: BackgroundResolver | None = None
 
@@ -29,19 +29,25 @@ _resolver: BackgroundResolver | None = None
 def register_background_llm(resolver: BackgroundResolver | None) -> None:
     """Register the deployment's background-model resolver (``None`` unregisters).
 
-    The resolver takes the owner the work is for (``None`` for the organization) and returns
-    the model and connection, or ``None`` when no model can be called yet.
+    The resolver takes the owner the work is for (``None`` for the organization) and an
+    optional ``model`` keyword (another model of the owner's to call over the same connection)
+    and returns the model and connection, or ``None`` when no model can be called yet.
     """
     global _resolver
     _resolver = resolver
 
 
-async def resolve_background_llm(owner_id: str | None = None) -> BackgroundLLM | None:
+async def resolve_background_llm(
+    owner_id: str | None = None, *, model: str | None = None
+) -> BackgroundLLM | None:
     """The model and connection background work for *owner_id* runs on, or ``None``.
 
     The server config's static ``llm:`` block wins when present; otherwise the registered
     resolver answers. A resolver failure is logged and reads as ``None`` (the work is skipped,
     never failed).
+
+    :param model: Call this model id instead of the owner's background (Light) one, over the
+        same connection: the fold's fallback to the session's own model.
     """
     from omnigent.runtime import get_caps
 
@@ -54,7 +60,7 @@ async def resolve_background_llm(owner_id: str | None = None) -> BackgroundLLM |
     if resolver is None:
         return None
     try:
-        return await resolver(owner_id)
+        return await (resolver(owner_id, model=model) if model else resolver(owner_id))
     except Exception:
         _logger.warning("background model could not be resolved", exc_info=True)
         return None

@@ -14,6 +14,12 @@ Two triggers (``docs/context.md``): applies only to ``superside-chat`` sessions
 Both ultimately call :func:`omnigent.memory.upkeep.run_upkeep_once`, which
 holds the real per-user lease (a ``running`` row) — the in-process dedup
 sets here are just a cheap short-circuit for the common case.
+
+Beside them, :class:`SessionFolds` runs the fold (ADR 0031): after a superside-chat turn
+completes, it checks in the background whether the session's past is due to be folded into its
+checkpoint and folds it on the owner's Light model
+(:func:`omnigent.superchat.rollover.fold_session`). A stored fold then schedules upkeep, as a
+compaction always did.
 """
 
 from __future__ import annotations
@@ -250,3 +256,83 @@ class MemoryUpkeepScheduler:
             except Exception:
                 _logger.exception("Memory upkeep sweep failed; retrying later")
             await asyncio.sleep(self._sweep_interval_s)
+
+
+class SessionFolds:
+    """Fold a superside-chat session's past after its turns, in the background (ADR 0031).
+
+    At most one check or fold per session at a time: a turn that completes while one runs adds
+    nothing, and the next turn checks again. Nothing here is awaited by a turn.
+    """
+
+    def __init__(
+        self,
+        *,
+        conversation_store: ConversationStore,
+        coordinator: MemoryUpkeepCoordinator | None = None,
+    ) -> None:
+        self._conversation_store = conversation_store
+        self._coordinator = coordinator
+        self._running: dict[str, asyncio.Task[None]] = {}
+
+    def after_turn(self, session_id: str, usage: dict[str, Any] | None) -> None:
+        """Schedule the fold check for *session_id*, whose turn just completed with *usage*."""
+        if session_id in self._running:
+            return
+        usage = usage or {}
+        tokens = usage.get("context_tokens")
+        model = usage.get("model")
+        task = asyncio.create_task(
+            self._run(
+                session_id,
+                tokens if isinstance(tokens, int) else None,
+                model if isinstance(model, str) and model else None,
+            ),
+            name=f"fold-{session_id}",
+        )
+        self._running[session_id] = task
+        task.add_done_callback(lambda _t, _sid=session_id: self._running.pop(_sid, None))
+
+    async def _run(self, session_id: str, tokens: int | None, model: str | None) -> None:
+        from omnigent.superchat.rollover import fold_session
+
+        try:
+            stored = await fold_session(
+                self._conversation_store,
+                session_id,
+                context_tokens=tokens,
+                session_model=model,
+            )
+            if stored and self._coordinator is not None:
+                owner = await asyncio.to_thread(
+                    self._conversation_store.get_session_owner, session_id
+                )
+                if owner:
+                    self._coordinator.schedule(owner)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # background job must never crash the relay
+            _logger.warning("fold failed session=%s", session_id, exc_info=True)
+
+    async def shutdown(self) -> None:
+        """Cancel and drain running folds during server shutdown."""
+        running = tuple(self._running.values())
+        for task in running:
+            task.cancel()
+        if running:
+            await asyncio.gather(*running, return_exceptions=True)
+
+
+_folds: SessionFolds | None = None
+
+
+def register_session_folds(folds: SessionFolds | None) -> None:
+    """Install this process's :class:`SessionFolds` (``None`` turns the fold off)."""
+    global _folds
+    _folds = folds
+
+
+def schedule_fold(session_id: str, usage: dict[str, Any] | None) -> None:
+    """After a turn's ``response.completed``: schedule its session's fold check, if installed."""
+    if _folds is not None:
+        _folds.after_turn(session_id, usage)
