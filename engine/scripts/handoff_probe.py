@@ -429,7 +429,8 @@ def expected(engine: Engine, sid: str, case: dict, stop: int) -> dict[str, Any]:
     files = [] if engine.dry else engine.artifacts(sid)
     newest = files[0] if files else {}
     return {"words": first, "file_id": newest.get("artifact_id") or newest.get("id"),
-            "file_version": newest.get("version"), "files": len(files)}
+            "file_version": newest.get("version"), "file_name": newest.get("name") or "",
+            "files": len(files)}
 
 
 def leak_words(case: dict, stop: int) -> set[str]:
@@ -446,7 +447,8 @@ def score_exact(kind: str, reply: str, exp: dict) -> int | None:
         return int(len(want & set(words(reply))) >= 0.8 * len(want))
     if kind == "file" and exp["file_id"]:
         has_id = exp["file_id"][:8] in reply
-        has_v = bool(re.search(rf"\b(v|version\s*)\s*{exp['file_version']}\b", reply, re.I))
+        # "v2", "version 2", "**Version:** 2"
+        has_v = bool(re.search(rf"\bv(?:ersion)?\W{{0,4}}{exp['file_version']}\b", reply, re.I))
         return int(has_id and has_v)
     return None
 
@@ -461,7 +463,9 @@ def score_task(kind: str, res: dict, exp: dict, files_before: int, files_after: 
     }
     if kind == "file" and exp["file_id"]:
         args = " ".join(res.get("args") or [])
-        out["right_file"] = exp["file_id"] in args
+        # Saves name the file by its path, edits and outlines by id.
+        name = os.path.basename(exp.get("file_name") or "")
+        out["right_file"] = exp["file_id"] in args or bool(name and name in args)
         out["right_version"] = bool(re.search(
             rf'"base_version":\s*{exp["file_version"]}\b', args))
     return out
