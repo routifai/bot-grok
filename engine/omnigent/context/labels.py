@@ -90,10 +90,10 @@ STATE_ADD_LABEL_PREFIX = "omnigent.state_add."
 # (see rollover.resolve_rollover_threshold).
 ROLLOVER_AT_TOKENS_LABEL = "omnigent.context.rollover_at_tokens"
 
-# Token budget for the kept tail (whole turns only; the last turn is always kept; see
-# rollover.select_recent). Unset -> DEFAULT_KEEP_TOKENS.
+# Token budget for the kept tail, counted as the model reads it (whole Rounds only; the last
+# is always kept; see rollover.select_recent; ADR 0031 part 7). Unset -> DEFAULT_KEEP_TOKENS.
 ROLLOVER_KEEP_TOKENS_LABEL = "omnigent.context.rollover_keep_tokens"
-DEFAULT_KEEP_TOKENS = 16_000
+DEFAULT_KEEP_TOKENS = 8_000
 
 
 def is_rollover(labels: Mapping[str, str] | None) -> bool:

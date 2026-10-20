@@ -6,7 +6,6 @@ In a rollover session each native CLI compacts its own context at
 
 from __future__ import annotations
 
-import json
 import re
 from collections.abc import Mapping
 from datetime import UTC, datetime
@@ -29,8 +28,9 @@ from omnigent.context.state_file import (
 )
 from omnigent.context.tool_digest import digest_tool_items
 from omnigent.entities import CompactionData, ConversationItem, MessageData
+from omnigent.entities.conversation import is_system_notice_text
 from omnigent.entities.session_project import open_project
-from omnigent.runtime.compaction import count_tokens, summarize_history
+from omnigent.runtime.compaction import count_text_tokens, count_tokens, summarize_history
 from omnigent.server.auth import local_single_user_enabled
 from omnigent.server.routes._sessions.common import (
     _LAST_CONTEXT_TOKENS_LABEL_KEY,
@@ -387,6 +387,76 @@ def _cap_tool_outputs(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return capped
 
 
+#: Longest a runtime notice reads in a replayed history, after its outcome line (ADR 0031).
+NOTICE_BODY_LIMIT = 600
+_NOTICE_CUT_NOTE = " … [cut here; the whole notice is in session_history]"
+#: What one attachment a replay re-sends counts for; a tokenizer cannot count its bytes.
+_ATTACHMENT_TOKENS = 1_600
+_ATTACHMENT_TYPES = frozenset({"input_image", "input_file", "input_audio"})
+#: tiktoken under-counts Claude by 15-20%, so a rendered count carries this margin (ADR 0031).
+_TOKENIZER_MARGIN = 1.15
+
+
+def _is_user_message(item: dict[str, Any]) -> bool:
+    return item.get("type") == "message" and item.get("role", "user") == "user"
+
+
+def _is_notice(item: dict[str, Any]) -> bool:
+    """Whether *item* is a runtime notice (a wake, a Helper's progress, a timer)."""
+    return _is_user_message(item) and (
+        item.get("is_system_notice") is True
+        or is_system_notice_text(_block_text(item.get("content")))
+    )
+
+
+def clip_notices(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """*items* with each runtime notice cut to its outcome line plus :data:`NOTICE_BODY_LIMIT`
+    characters, as a replayed history shows it.
+
+    The trailing run of user messages is what this turn answers (a wake's own Result): whole.
+    """
+    end = len(items)
+    while end and _is_user_message(items[end - 1]):
+        end -= 1
+    clipped: list[dict[str, Any]] = []
+    for index, item in enumerate(items):
+        if index < end and _is_notice(item):
+            head, _, body = _block_text(item.get("content")).partition("\n")
+            if len(body) > NOTICE_BODY_LIMIT:
+                text = f"{head}\n{body[:NOTICE_BODY_LIMIT].rstrip()}{_NOTICE_CUT_NOTE}"
+                item = {**item, "content": [{"type": "input_text", "text": text}]}
+        clipped.append(item)
+    return clipped
+
+
+def _rendered_lines(items: list[dict[str, Any]]) -> list[str]:
+    """Each item as a cold harness's history shows it, ``""`` for what it leaves out.
+
+    The executor adapter turns a call and its result into one framed digest line and drops
+    reasoning and errors (``_extract_role_keyed_messages``); the pi and Claude prompts write
+    ``role: text`` per message. Notices are taken as :func:`clip_notices` leaves them.
+    """
+    digests = digest_tool_items(items)
+    return [
+        f"tool: {digests[index]}"
+        if index in digests
+        else f"{item.get('role', 'user')}: {_block_text(item.get('content'))}"
+        if item.get("type") == "message"
+        else ""
+        for index, item in enumerate(items)
+    ]
+
+
+def _attachments(items: list[dict[str, Any]]) -> int:
+    return sum(
+        1
+        for item in items
+        if item.get("type") == "message" and isinstance(item.get("content"), list)
+        for block in item["content"]
+        if isinstance(block, dict) and block.get("type") in _ATTACHMENT_TYPES
+    )
+
+
 def select_recent(
     items: list[dict[str, Any]],
     *,
@@ -394,37 +464,45 @@ def select_recent(
     model: str,
 ) -> list[dict[str, Any]]:
     """
-    Select the trailing whole turns to keep verbatim.
+    Select the trailing whole Rounds to keep, counted as the model will read them.
 
-    A turn is a user message plus everything after it up to (not including)
-    the next user message; turns are never split, so a kept ``function_call``
-    keeps its output. Items before the first user message (the end of a turn
-    whose message is behind the checkpoint's anchor, e.g. the answer to the
-    message a cold rollover ran before) count as one more turn: never dropped
-    on their own while a later turn is kept. The most recent turn is always
-    kept (rollover runs right after it finishes); earlier turns are added while
-    the whole tail, last turn included, stays within *keep_tokens*.
+    A Round is a person's message plus everything after it up to the next one: its tool calls,
+    wake notices and answers. Rounds are never split, so a call keeps its result (one digest
+    line). Items before the first person's message count as one more Round. The newest Round is
+    always kept; earlier ones are added while the tail stays within *keep_tokens*, counted on
+    the history the cold harness renders (:func:`_rendered_lines`, notices clipped), not on the
+    raw items. A record with notices but no person's message falls back to every user message.
 
     :param items: Chronological (oldest first) flat item dicts.
-    :param keep_tokens: Token budget for the whole tail, last turn included.
+    :param keep_tokens: Token budget for the whole tail, as rendered, newest Round included.
     :param model: LLM model string, used to pick a tokenizer for the budget.
-    :returns: The selected trailing whole turns, chronological, or ``[]`` when
-        *items* has no user message.
+    :returns: The selected trailing whole Rounds, chronological, or ``[]`` when *items* has no
+        user message.
     """
-    turn_starts = [
-        i
-        for i, item in enumerate(items)
-        if item.get("type") == "message" and item.get("role") == "user"
-    ]
+    users = [i for i, item in enumerate(items) if _is_user_message(item)]
+    turn_starts = [i for i in users if not _is_notice(items[i])] or users
     if not turn_starts:
         return []
     starts = turn_starts if turn_starts[0] == 0 else [0, *turn_starts]
+    clipped = clip_notices(items)
+    lines = _rendered_lines(clipped)
+
+    def rendered_tokens(start: int, stop: int) -> int:
+        text = "\n".join(line for line in lines[start:stop] if line)
+        return int(count_text_tokens(text, model) * _TOKENIZER_MARGIN) + (
+            _ATTACHMENT_TOKENS * _attachments(clipped[start:stop])
+        )
+
     # A token is at least one byte, so a tail this small fits without loading a tokenizer.
-    if len(json.dumps(items, ensure_ascii=False).encode()) <= keep_tokens:
+    small = sum(len(line.encode()) + 1 for line in lines) * _TOKENIZER_MARGIN
+    if small + _ATTACHMENT_TOKENS * _attachments(clipped) <= keep_tokens:
         return items
-    selected_start = turn_starts[-1]
-    for start in reversed(starts[:-1]):
-        if count_tokens(items[start:], model) > keep_tokens:
+    stops = [*starts[1:], len(items)]
+    total = rendered_tokens(starts[-1], stops[-1])
+    selected_start = starts[-1]
+    for start, stop in zip(reversed(starts[:-1]), reversed(stops[:-1]), strict=True):
+        total += rendered_tokens(start, stop)
+        if total > keep_tokens:
             break
         selected_start = start
     return items[selected_start:]

@@ -28,6 +28,7 @@ from omnigent.superchat.subagents import (
     resolve_default_concurrency_cap,
     resolve_helper_dispatch,
     resolve_scheduled_helper,
+    result_notice_reminder,
 )
 
 # ── resolve_default_concurrency_cap ────────────────────────────────────────
@@ -281,7 +282,7 @@ def test_wake_notice_inlines_short_result() -> None:
     assert "the vault key rotated on March 3" in notice
 
 
-def test_wake_notice_tells_the_muse_to_finish_the_original_request() -> None:
+def test_wake_notice_is_data_and_its_wake_turn_gets_the_reminder() -> None:
     notice = format_subagent_wake_notice_with_result(
         agent="researcher",
         title="auth",
@@ -289,11 +290,10 @@ def test_wake_notice_tells_the_muse_to_finish_the_original_request() -> None:
         child_session_id="conv_child123",
         result_text="r",
     )
-    assert "complete what the person originally asked for" in notice
-    assert "not a status update" in notice
-    assert "still open in one line" in notice
-    assert "unrelated topics" in notice
-    assert notice.startswith("[System:") and notice.endswith("]")
+    assert notice.startswith("[System:") and "complete what the person" not in notice
+    reminder = result_notice_reminder([notice])
+    assert reminder is not None and "complete what the person originally asked for" in reminder
+    assert result_notice_reminder(["[System: timer 1 fired]"]) is None
 
 
 def test_wake_notice_handles_missing_result() -> None:

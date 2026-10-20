@@ -34,6 +34,7 @@ from omnigent.superchat.projects.block import PROJECTS_OPEN, projects_block
 from omnigent.superchat.projects.choice import MOVED_NOTE
 from omnigent.superchat.recall_hint.hint import FOOTER as HINT_FOOTER
 from omnigent.superchat.recall_hint.hint import HEADER as HINT_HEADER
+from omnigent.superchat.subagents import RESULT_REMINDER, result_notice_reminder
 
 if TYPE_CHECKING:
     from omnigent.superchat.feature import Feature, MessageBlock
@@ -360,7 +361,7 @@ async def turn_prefix_blocks(
         message_blocks = cast("list[MessageBlock]", got.get("message", []))
         profile = cast(str | None, got.get("profile"))
         studio_blocks = cast(list[str], got.get("studio", []))
-        blocks: list[MessageBlock] = list(message_blocks)
+        blocks: list[MessageBlock] = [*message_blocks, *_reminders(message_texts)]
         if profile:
             blocks.append(
                 _delta_block("profile", profile, PROFILE_UNCHANGED_LINE, last_sent, sent_now)
@@ -394,7 +395,7 @@ async def turn_prefix_blocks(
     projects = cast(str | None, got.get("projects"))
     feature_blocks = _merge_carried(carried, cast(list[str], got.get("features", [])))
     local_time = cast(str | None, got.get("local_time")) or late_local_time_line()
-    blocks: list[MessageBlock] = list(message_blocks)
+    blocks: list[MessageBlock] = [*message_blocks, *_reminders(message_texts)]
     if profile:
         blocks.append(
             _delta_block("profile", profile, PROFILE_UNCHANGED_LINE, last_sent, sent_now)
@@ -416,6 +417,12 @@ async def turn_prefix_blocks(
 
 async def _no_blocks() -> list[str]:
     return []
+
+
+def _reminders(texts: Sequence[str]) -> list[str]:
+    """The reminder a wake carrying a Result gets, next to the notice; never stored."""
+    reminder = result_notice_reminder(texts)
+    return [reminder] if reminder else []
 
 
 #: The blocks that span lines, as (how one starts, what ends it). Projects end at the ``]`` that
@@ -453,8 +460,7 @@ def _injected_line(line: str) -> bool:
         or (line.startswith(SETUP_OPEN) and line.endswith(SETUP_CLOSE))
         or (line.startswith(SETUP_CHANGED_OPEN) and line.endswith(SETUP_CHANGED_CLOSE))
         or (line.startswith(_MOVED_OPEN) and line.endswith(_MOVED_CLOSE))
-        or line.startswith(FILE_LINE_OPEN)
-        or line.startswith(BRIEF_OPEN)
+        or line.startswith((FILE_LINE_OPEN, BRIEF_OPEN, RESULT_REMINDER))
         or EDIT_NOTE_LINE.fullmatch(line) is not None
     )
 

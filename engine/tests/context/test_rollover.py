@@ -23,7 +23,7 @@ from omnigent.context.rollover import (
 )
 from omnigent.llms.types import MessageOutput, OutputText, Response
 from omnigent.runner.memory.files import state_text_of
-from omnigent.runtime.compaction import count_tokens
+from omnigent.runtime.compaction import count_text_tokens, count_tokens
 from omnigent.server.routes._sessions.common import (
     _LAST_CONTEXT_WINDOW_LABEL_KEY,
 )
@@ -127,7 +127,11 @@ def test_select_recent_keeps_tool_items_riding_within_their_turn() -> None:
 
 def test_select_recent_adds_earlier_whole_turns_within_budget() -> None:
     items = _turn(1) + _turn(2) + _turn(3)
-    two_turns = count_tokens(items[2:], "gpt-4o")
+    # Counted as rendered ("role: text" lines, not the raw item JSON), with the 15% margin.
+    two_turns = sum(
+        int(count_text_tokens(f"user: question {n}\nassistant: answer {n}", "gpt-4o") * 1.15)
+        for n in (2, 3)
+    )
     result = select_recent(items, keep_tokens=two_turns, model="gpt-4o")
     assert [i["id"] for i in result] == ["u2", "a2", "u3", "a3"]
 
@@ -219,9 +223,9 @@ def test_threshold_ignores_invalid_label() -> None:
 
 
 def test_resolve_keep_tokens_default_and_override() -> None:
-    assert resolve_keep_tokens(None) == 16_000
+    assert resolve_keep_tokens(None) == 8_000
     assert resolve_keep_tokens({"omnigent.context.rollover_keep_tokens": "5000"}) == 5000
-    assert resolve_keep_tokens({"omnigent.context.rollover_keep_tokens": "-1"}) == 16_000
+    assert resolve_keep_tokens({"omnigent.context.rollover_keep_tokens": "-1"}) == 8_000
 
 
 # ── build_rollover_item + resume-rebuilder acceptance ────────────────────

@@ -12,6 +12,7 @@ from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
 from omnigent.superchat.feature import HandlerCtx, is_helper
+from omnigent.superchat.subagents import FILES_OPEN
 
 SAVE_TOOL_NAME = "artifact_save"
 
@@ -76,7 +77,7 @@ def forget_saved_files(
 
 
 def format_saved_files(files: Iterable[Mapping[str, Any]]) -> str:
-    """The wake-notice block naming a Helper's saved files and how to show them ("" if none)."""
+    """The wake-notice block naming a Helper's saved files ("" if none); data only."""
     lines = []
     for item in files:
         label = item.get("title") or item["name"]
@@ -84,10 +85,4 @@ def format_saved_files(files: Iterable[Mapping[str, Any]]) -> str:
         lines.append(f'- "{label}" (file name {item["name"]}, artifact_id {item["id"]}{version})')
     if not lines:
         return ""
-    return (
-        "Files it saved (already in the person's Library):\n" + "\n".join(lines) + "\n"
-        "After your check, show each file with `render_card` "
-        '(card "file", data {"name": <file name>, "artifactId": <artifact_id>}) and put your one '
-        "or two plain sentences (what was made, anything still open) in its `message`. Never "
-        "write a file card without its artifact_id.\n"
-    )
+    return "\n".join([FILES_OPEN, *lines]) + "\n"

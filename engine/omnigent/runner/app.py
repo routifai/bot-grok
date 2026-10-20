@@ -165,6 +165,7 @@ from omnigent.superchat.subagents import (
     STUDIO_WARM_SECONDS,
     StudioRunners,
     format_subagent_wake_notice_with_result,
+    result_notice_reminder,
 )
 from omnigent.terminals.control_bridge import bridge_tmux_control_to_websocket
 from omnigent.terminals.ws_common import WS_CLOSE_TERMINAL_NOT_FOUND
@@ -4564,7 +4565,11 @@ def create_runner_app(
         keep_tokens: int | None = None,
         dropped_out: list[int] | None = None,
     ) -> list[_JsonObject]:
-        from omnigent.context.rollover import select_recent, split_at_latest_compaction
+        from omnigent.context.rollover import (
+            clip_notices,
+            select_recent,
+            split_at_latest_compaction,
+        )
         from omnigent.models.model_fallbacks import ROLLOVER_TOKEN_COUNT_MODEL
 
         # Items after the checkpoint's anchor, including any turn that ran
@@ -4582,10 +4587,14 @@ def create_runner_app(
                 dropped_out.append(_user_turns(remaining) - _user_turns(kept))
             remaining = kept
         compaction_idx = None if c is None else items.index(c)
+        # Notices replay as their outcome line plus a few hundred characters (ADR 0031), as
+        # select_recent counted them; the message this turn answers stays whole.
+        _compacted = cast(list[_JsonObject], (c or {}).get("compacted_messages") or [])
+        _clipped = clip_notices([*_compacted, *remaining])
+        _compacted, remaining = _clipped[: len(_compacted)], _clipped[len(_compacted) :]
 
         result: list[_JsonObject] = []
         if c is not None:
-            _compacted = cast(list[_JsonObject] | None, c.get("compacted_messages"))
             if _compacted:
                 result.extend(_compacted)
             else:
@@ -8712,6 +8721,15 @@ def create_runner_app(
                         _harness_body = {
                             k: v for k, v in message_body.items() if k != _ONLY_RUNNING_TURN
                         }
+                        # A Result steered in gets its wake reminder here, as a turn's prefix
+                        # does (ADR 0031); the stored notice never holds it.
+                        _reminder = result_notice_reminder(
+                            _message_texts(message_body.get("content"))
+                        )
+                        if _reminder:
+                            _harness_body["content"] = _prefix_content_with_tail(
+                                _harness_body.get("content"), _reminder
+                            )
                         try:
                             _hc = await process_manager.get_client(conversation_id, "any")
                             _injection_resp = await _hc.post(

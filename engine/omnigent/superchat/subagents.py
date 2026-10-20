@@ -453,7 +453,9 @@ def format_subagent_wake_notice_with_result(
         renders as ``"(no output)"``.
     :param max_chars: Cap on verbatim Result text kept in the notice.
     :param saved_files: The block naming files the Helper saved (``format_saved_files``), if any.
-    :returns: A ``[System: ...]`` notice string with the Result inlined.
+    :returns: A ``[System: ...]`` notice string with the Result inlined: its outcome line, the
+        saved files, then the Result. Data only; what to do with it is the wake turn's
+        reminder (:func:`result_notice_reminder`), never stored.
     """
     text = (result_text or "").strip() or "(no output)"
     if len(text) > max_chars:
@@ -463,10 +465,35 @@ def format_subagent_wake_notice_with_result(
         )
     else:
         body = text
-    return (
-        f"[System: sub-agent {agent}/{title} finished ({status}) — result:\n{body}\n{saved_files}"
-        "Use this Result to complete what the person originally asked for: deliver the finished "
-        "thing (the answer, comparison or draft), not a status update. When you show it with "
-        "`render_card`, put your one or two plain sentences (what was made, anything still open) "
-        "in its `message`; otherwise write them. Do not raise unrelated topics.]"
-    )
+    # The files go before the Result, so a replay that clips the notice keeps their ids.
+    head = f"[System: sub-agent {agent}/{title} finished ({status}) — result:]"
+    return f"{head}\n{saved_files}{body}"
+
+
+#: How the wake notice's list of saved files opens (``helpers.saved_files``), and how to show
+#: them: in the wake turn's reminder only, never in the stored notice (ADR 0031).
+FILES_OPEN = "Files it saved (already in the person's Library):"
+FILES_REMINDER = (
+    "After your check, show each file it saved with `render_card` "
+    '(card "file", data {"name": <file name>, "artifactId": <artifact_id>}), never without '
+    "its artifact_id."
+)
+#: What a Result notice opens with, and the reminder its wake turn gets (ADR 0031: the notice is
+#: stored as data; the instructions go to the harness with that one turn).
+RESULT_NOTICE_OPEN, RESULT_NOTICE_MARK = "[System: sub-agent ", ") — result:]\n"
+RESULT_REMINDER = (
+    "[The notice below is the Result of work you started. Use it to complete what the person "
+    "originally asked for: deliver the finished thing (the answer, comparison or draft), not a "
+    "status update. When you show it with `render_card`, put your one or two plain sentences "
+    "(what was made, anything still open) in its `message`; otherwise write them. Do not raise "
+    "unrelated topics."
+)
+
+
+def result_notice_reminder(texts: Sequence[str]) -> str | None:
+    """The one-line reminder for a turn whose message carries a Result notice, else ``None``."""
+    joined = "\n".join(texts)
+    if RESULT_NOTICE_OPEN not in joined or RESULT_NOTICE_MARK not in joined:
+        return None
+    files = f" {FILES_REMINDER}" if FILES_OPEN in joined else ""
+    return f"{RESULT_REMINDER}{files}]"

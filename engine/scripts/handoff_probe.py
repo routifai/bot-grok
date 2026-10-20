@@ -587,6 +587,9 @@ def cmd_run(args: argparse.Namespace) -> int:
                     rows.append(row)
                 if args.dry_run:
                     continue
+                stored = stored_boilerplate(engine, sid)
+                for row in rows[-len(kinds):]:
+                    row["stored"] = stored
                 with (out / "results.jsonl").open("a", encoding="utf-8") as fh:
                     for row in rows[-len(kinds):]:
                         fh.write(json.dumps(row) + "\n")
@@ -659,11 +662,77 @@ def trace_probe_turns(records: list[dict], ref: str, kinds: dict[str, tuple[str,
     return out
 
 
+#: How a cold harness frames the replayed history (pi and Claude prompt builders).
+HISTORY_OPEN = "Conversation so far:"
+HISTORY_CLOSE = "Respond to the latest user message, using the conversation above as context."
+_ENTRY = re.compile(r"^(user|assistant|tool): ", re.M)
+#: A checkpoint's summary pair opens the history before the kept tail (outside its budget).
+SUMMARY_OPENS = ("[This is an automatically generated summary", "[Context checkpoint inserted")
+NOTICE_OPENS = ("[System", "[helper ")
+#: The wake turn's reminder and the boilerplate older notices stored (ADR 0031 step 1): never
+#: in a stored item, never in a replayed history.
+BOILERPLATE = ("The notice below is the Result of work you started",
+               "Use this Result to complete what the person", "After your check, show each file")
+NOTICE_LIMIT = 600
+
+
+def _texts(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    return "\n".join(str(b.get("text", "")) for b in content or [] if isinstance(b, dict))
+
+
+def history_shape(req: dict) -> dict | None:
+    """The replayed history of a cold first call, as the model read it.
+
+    ``rounds``: person's messages in the kept tail; ``tail_chars``/``tail_tok_est`` its size
+    (chars / 4); ``summary_chars`` the checkpoint pair before it; ``notice_max`` the longest
+    notice body after its outcome line; ``boilerplate`` how many entries carry the reminder or
+    old boilerplate. The trailing user entries (the turn's own message, which pi lists inside
+    the block with its prefix) are left out of the notice and boilerplate checks.
+    """
+    text = next((t for m in req.get("messages") or [] if m.get("role") == "user"
+                 for t in [_texts(m.get("content"))] if HISTORY_OPEN in t), "")
+    if not text:
+        return None
+    block = text.split(HISTORY_OPEN, 1)[1].split(HISTORY_CLOSE, 1)[0]
+    marks = list(_ENTRY.finditer(block))
+    entries = [(m.group(1), block[m.end():marks[i + 1].start() if i + 1 < len(marks)
+                                  else len(block)].strip()) for i, m in enumerate(marks)]
+    summary = 0
+    if entries and entries[0][0] == "user" and entries[0][1].startswith(SUMMARY_OPENS):
+        summary = sum(len(body) for _, body in entries[:2])
+        entries = entries[2:]
+    end = len(entries)
+    while end and entries[end - 1][0] == "user":
+        end -= 1
+    older = entries[:end]
+    notices = [body.partition("\n")[2] for role, body in older
+               if role == "user" and body.startswith(NOTICE_OPENS)]
+    chars = sum(len(role) + 2 + len(body) for role, body in entries)
+    return {
+        "rounds": sum(role == "user" and not body.startswith(NOTICE_OPENS)
+                      for role, body in older),
+        "tail_chars": chars, "tail_tok_est": chars // 4, "summary_chars": summary,
+        "notices": len(notices), "notice_max": max((len(n) for n in notices), default=0),
+        "boilerplate": sum(any(b in body for b in BOILERPLATE) for _, body in older),
+    }
+
+
+def stored_boilerplate(engine: Engine, sid: str) -> dict[str, int]:
+    """Stored notices of *sid*, and how many stored items carry the reminder or boilerplate."""
+    items = [] if engine.dry else engine.items(sid)
+    texts = [item_text(i) for i in items if i.get("type") == "message"]
+    return {"notices": sum(t.lstrip().startswith(NOTICE_OPENS) for t in texts),
+            "boilerplate": sum(any(b in t for b in BOILERPLATE) for t in texts)}
+
+
 def trace_cold_starts(records: list[dict], ref: str) -> list[dict]:
     """The arm's traced cold starts: a call with fewer messages than the one before it.
 
     For each: its input size and split, whether tools + system hashed the same as the call
-    before (ADR 0032) and the cache TTLs it asked for.
+    before (ADR 0032), the cache TTLs it asked for and the replayed history's shape
+    (:func:`history_shape`).
     """
     keys = {r.get("session") for r in records
             if r.get("kind") == "prompt" and f"(ref {ref})" in json.dumps(r.get("data"))}
@@ -676,7 +745,8 @@ def trace_cold_starts(records: list[dict], ref: str) -> list[dict]:
             u = usage_of(rec)
             found.append({**u, "same_prefix": prefix_hash(rec["request"]) == prefix_hash(
                 prev["request"]), "ttl": sorted(set(ttls(rec["request"]))),
-                "gap_s": round(rec["t"] - prev["t"], 1)})
+                "gap_s": round(rec["t"] - prev["t"], 1),
+                "history": history_shape(rec["request"])})
         prev = rec
     return found
 
@@ -749,6 +819,17 @@ def report(out: Path, trace_dir: str | None, engine_log: str | None) -> int:
                     f"{sum(c['read'] > 0 for c in colds)}/{len(colds)}; tools+system unchanged "
                     f"{sum(c['same_prefix'] for c in colds)}/{len(colds)}; TTLs "
                     f"{sorted({t for c in colds for t in c['ttl']})}")
+                shapes = [c["history"] for c in colds if c.get("history")]
+                for h in shapes:  # ADR 0031 step 1: the kept tail as the model read it
+                    say(f"    history: {h['rounds']} Rounds, tail ~{h['tail_tok_est']:,} tok "
+                        f"({h['tail_chars']:,} chars; budget 8k unless 1 Round), summary "
+                        f"{h['summary_chars']:,} chars, {h['notices']} notices (longest body "
+                        f"{h['notice_max']}, limit {NOTICE_LIMIT} + cut note), boilerplate "
+                        f"{h['boilerplate']} (must be 0)")
+        stored = [r["stored"] for r in mine if r.get("stored")]
+        if stored:
+            say(f"  stored notices {sum(s['notices'] for s in stored)}; stored items with the "
+                f"reminder or boilerplate {sum(s['boilerplate'] for s in stored)} (must be 0)")
     fails = [r for r in rows if r["hard_fail"]]
     for r in fails[:5]:
         say(f"  HARD FAIL {r['arm']} {r['kind']}: {r['reply'][:160]!r}")

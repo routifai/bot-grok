@@ -33,6 +33,7 @@ from omnigent.superchat.models.tiers import CATEGORIES
 from omnigent.superchat.subagents import (
     HELPER_EFFORT_CHOICES,
     format_subagent_wake_notice_with_result,
+    result_notice_reminder,
 )
 
 CHAT = {CONTEXT_MODE_LABEL: SUPERSIDE_CHAT_MODE_VALUE}
@@ -430,7 +431,7 @@ def test_files_of_helper_and_its_helpers_reach_the_notice() -> None:
     assert "artifact_id a1" in notice
     assert "artifact_id a2" in notice
     assert "report.html" in notice
-    assert "Never write a file card without its artifact_id" in notice
+    assert "never without its artifact_id" in (result_notice_reminder([notice]) or "")
 
 
 def test_resave_keeps_newest_version_and_no_files_adds_nothing() -> None:
