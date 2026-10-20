@@ -730,12 +730,16 @@ def cmd_run_script(args: argparse.Namespace) -> int:
     if not args.dry_run:
         out.mkdir(parents=True, exist_ok=True)
     agents = engine.agent_ids()
+    # The mode, tenant and sandbox labels of the person's own Conversation, as a replay borrows
+    # them: without them the session is no Super Chat and gets no managed host.
+    found = source_cases(args.db_container, 1, args.source, re.compile(args.skip, re.I))
+    base_labels = (found[0]["labels"] or {}) if found else {}
     state: dict[str, Any] = {"run": run_id, "harness": args.harness, "sessions": [], "hosts": []}
     for arm, points in plans.items():
         for rep_n in range(1, (1 if args.dry_run else args.repeats) + 1):
             title = f"{PROBE_PREFIX}{run_id}:{script['id']}:{arm}:r{rep_n}"
             host_owner = f"{PROBE_HOST_PREFIX}{run_id}-{len(state['sessions']) + 1}"
-            sid = engine.create(title, agents[args.harness], {}, host_owner, extra_labels)
+            sid = engine.create(title, agents[args.harness], base_labels, host_owner, extra_labels)
             state["sessions"].append(sid)
             state["hosts"].append(host_owner)
             if not args.dry_run:
