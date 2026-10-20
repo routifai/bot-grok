@@ -14,8 +14,9 @@ Events carry ids only; the client refetches what changed:
 * ``chats.changed {root_id}``: the Conversation was renamed or archived, or a Helper started;
 * ``activities.changed {root_id}``: the Activity Feed may have changed;
 * ``artifacts.changed {root_id, group_id}``: a version of a file was saved;
-* ``round.updated {root_id, round_id, status, started_at, live, helpers, files, steps}``: a
-  Round's record grew (at most four a second per Round); its view is ``GET .../rounds/{id}``;
+* ``round.updated {root_id, round_id, status, started_at, settled_at, delivered_at, live, helpers,
+  files, steps}``: a Round's record grew (at most four a second per Round); its view is
+  ``GET .../rounds/{id}``;
 * ``session.heartbeat``: sent after ~15s of quiet.
 
 It reuses the Activity Feed watcher (``family/changes.py``) for *which* sessions to follow

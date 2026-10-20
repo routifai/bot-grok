@@ -12,6 +12,10 @@ export const RoundSummarySchema = z.object({
   roundId: z.string(),
   status: z.string(),
   startedAt: z.number().nullable(),
+  /** When it settled; null while it runs. */
+  settledAt: z.number().nullable(),
+  /** When it delivered its answer (see `RoundView.deliveredAt`); null until then. */
+  deliveredAt: z.number().nullable(),
   /** The running tool's digest, else its name. */
   live: z.string().nullable(),
   helpers: z.number(),

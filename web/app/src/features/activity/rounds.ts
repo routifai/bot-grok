@@ -5,8 +5,10 @@ import { rpc } from "../../lib/rpc";
 
 // The Conversation's Rounds (ADR 0029), read from the engine's record: the recent list, kept
 // current from the family stream's `roundUpdated` (it carries the Round's summary), and one Round
-// in full, read again on each update to it. An update only says the record grew, so reads are
-// coalesced: one in flight, at most one more after it.
+// in full, read again on each update to it. Reads are coalesced: one in flight, at most one more
+// after it. The update's own status and times apply to the Round in full at once: a read can wait
+// behind the browser's few connections per origin (each open tab holds its streams), and a
+// finished turn must not read as working until it lands.
 
 type Store<T> = {
   value: T;
@@ -113,19 +115,64 @@ export function useRounds(botId: string | undefined): readonly RoundSummary[] {
   );
 }
 
+/** *view* with what an update's summary says of whether it runs: a settled Round runs nothing. */
+function withSummary(view: RoundView, round: RoundSummary): RoundView {
+  if (
+    view.status === round.status &&
+    view.settledAt === round.settledAt &&
+    view.deliveredAt === round.deliveredAt
+  ) {
+    return view;
+  }
+  const { settledAt } = round;
+  return {
+    ...view,
+    status: round.status,
+    settledAt,
+    deliveredAt: round.deliveredAt,
+    now: settledAt === null ? view.now : null,
+    elapsedMs:
+      settledAt !== null && view.startedAt !== null ? settledAt - view.startedAt : view.elapsedMs,
+  };
+}
+
+/** The fields of a settled *view* that say it no longer runs. */
+function settledPart(
+  view: RoundView,
+): Pick<RoundView, "status" | "settledAt" | "deliveredAt" | "now" | "elapsedMs"> {
+  return {
+    status: view.status,
+    settledAt: view.settledAt,
+    deliveredAt: view.deliveredAt,
+    now: null,
+    elapsedMs: view.elapsedMs,
+  };
+}
+
 /** One Round in full, read when first shown and again on each update to it; null until read. */
 export function useRoundView(botId: string, roundId: string): RoundView | null {
   const key = `${botId}\n${roundId}`;
   const subscribe = useCallback(
     (listener: () => void) => {
       const store = storeIn<RoundView | null>(views, key, null);
-      const load = () => rpc.chats.round({ botId, roundId });
+      // Settlement never moves: a read that left before the Round settled does not undo it.
+      const load = () =>
+        rpc.chats
+          .round({ botId, roundId })
+          .then((next) =>
+            store.value?.settledAt != null && next.settledAt === null
+              ? { ...next, ...settledPart(store.value) }
+              : next,
+          );
       return listen(
         store,
         botId,
         load,
         (event) => {
-          if (event.type === "roundUpdated" && event.roundId === roundId) read(store, load);
+          if (event.type !== "roundUpdated" || event.roundId !== roundId) return;
+          const { type: _, ...round } = event;
+          if (store.value) publish(store, withSummary(store.value, round));
+          read(store, load);
         },
         listener,
       );

@@ -150,6 +150,8 @@ export function roundSummary(round: OmnigentRoundSummary): RoundSummary {
     roundId: round.round_id,
     status: round.status,
     startedAt: round.started_at === null ? null : ms(round.started_at),
+    settledAt: round.settled_at == null ? null : ms(round.settled_at),
+    deliveredAt: round.delivered_at == null ? null : ms(round.delivered_at),
     live: round.live,
     helpers: round.helpers,
     files: round.files,

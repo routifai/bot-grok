@@ -133,6 +133,8 @@ export interface OmnigentRoundSummary {
   round_id: string;
   status: string;
   started_at: number | null;
+  settled_at: number | null;
+  delivered_at: number | null;
   live: string | null;
   helpers: number;
   files: number;
