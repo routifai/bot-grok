@@ -161,7 +161,8 @@ async def record_hand_edits(
             return
         body = await _snapshot(server_client, chat_id)
         labels = body.get("labels") if isinstance(body.get("labels"), dict) else None
-        if is_helper(labels):
+        # Stored labels never mark a Helper or a studio; their parent does.
+        if is_helper(labels) or body.get("parent_session_id"):
             return
         origin = files.Origin("main", chat_id)
         entries = [

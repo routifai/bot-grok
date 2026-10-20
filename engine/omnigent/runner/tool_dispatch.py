@@ -6260,17 +6260,19 @@ async def _session_history_read_via_rest(
     )
     if isinstance(limit, str):
         return limit
+    oldest = _session_history.read_order(args.get("order"))
+    if oldest is None:
+        return json.dumps({"error": "order must be one of ['newest', 'oldest']"})
 
     async def fetch_page(cursor_item_id: str | None) -> tuple[list[_JsonObject], bool]:
         params: dict[str, str | int] = {
             "limit": _session_history._READ_BATCH_SIZE,
-            "order": "desc",
+            "order": "asc" if oldest else "desc",
         }
         if cursor_item_id is not None:
-            # ``after`` (not ``before``) is correct here: in desc order,
-            # "after" means "further in sort direction" — i.e. older,
-            # continuing the newest-first walk (see list_session_items /
-            # ConversationStore.list_items).
+            # ``after`` (not ``before``) is correct here: it means "further
+            # in sort direction" — older in desc order, newer in asc (see
+            # list_session_items / ConversationStore.list_items).
             params["after"] = cursor_item_id
         resp = await server_client.get(
             f"/v1/sessions/{target_id}/items", params=params, timeout=30.0
@@ -6280,7 +6282,7 @@ async def _session_history_read_via_rest(
         items = [_session_history.project_api_item(raw) for raw in body.get("data", [])]
         return items, bool(body.get("has_more"))
 
-    collector = _session_history.TurnCollector(limit)
+    collector = _session_history.TurnCollector(limit, oldest_first=oldest)
     next_fetch_cursor: str | None = cursor
     try:
         while collector.wants_more:
@@ -6289,12 +6291,14 @@ async def _session_history_read_via_rest(
                 break
             done = collector.feed(items, has_more)
             if done is not None:
-                return _session_history.read_response(*done)
+                return _session_history.read_response(*done, oldest_first=oldest)
             last_id = items[-1].get("id")
             next_fetch_cursor = last_id if isinstance(last_id, str) else None
     except Exception as exc:  # noqa: BLE001 — a failed page read is reported to the model
         return json.dumps({"error": f"session_history read failed: {exc}"})
-    return _session_history.read_response(*collector.finish(next_fetch_cursor))
+    return _session_history.read_response(
+        *collector.finish(next_fetch_cursor), oldest_first=oldest
+    )
 
 
 async def _session_history_search_via_rest(
@@ -7188,7 +7192,12 @@ async def _execute_os_env_tool(
         session.
     :returns: Serialized tool result string.
     """
-    from omnigent.harnesses.os_env import _DEFAULT_READ_LIMIT, create_os_environment
+    from omnigent.harnesses.os_env import (
+        _DEFAULT_READ_LIMIT,
+        MODEL_SHELL_OUTPUT_CHARS,
+        cap_model_read,
+        create_os_environment,
+    )
 
     os_env = None
     try:
@@ -7200,18 +7209,20 @@ async def _execute_os_env_tool(
             return "Error: unable to create OSEnvironment"
 
         if tool_name == SysOsReadTool.name():
-            result = await os_env.read(
-                path=cast("str", args.get("path", "")),
-                offset=cast("int", args.get("offset", 1)),
-                # Unspecified limit → agent-tool default (2 000 lines).
-                # None is now "unlimited" in _read_impl, so we must be explicit.
-                # Use is-None check (not `or`) so that invalid values like 0 are
-                # forwarded to os_env.read for validation rather than silently
-                # replaced with the default.
-                limit=cast(
-                    "int | None",
-                    lv if (lv := args.get("limit")) is not None else _DEFAULT_READ_LIMIT,
-                ),
+            result = cap_model_read(
+                await os_env.read(
+                    path=cast("str", args.get("path", "")),
+                    offset=cast("int", args.get("offset", 1)),
+                    # Unspecified limit → agent-tool default (2 000 lines).
+                    # None is now "unlimited" in _read_impl, so we must be explicit.
+                    # Use is-None check (not `or`) so that invalid values like 0 are
+                    # forwarded to os_env.read for validation rather than silently
+                    # replaced with the default.
+                    limit=cast(
+                        "int | None",
+                        lv if (lv := args.get("limit")) is not None else _DEFAULT_READ_LIMIT,
+                    ),
+                )
             )
         elif tool_name == SysOsWriteTool.name():
             _path = cast("str", args.get("path", ""))
@@ -7243,6 +7254,7 @@ async def _execute_os_env_tool(
             result = await os_env.shell(
                 command=cast("str", args.get("command", "")),
                 timeout=cast("int | None", args.get("timeout")),
+                max_output=MODEL_SHELL_OUTPUT_CHARS,
             )
         else:
             return f"Error: {tool_name} not implemented"
