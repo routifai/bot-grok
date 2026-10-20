@@ -25,7 +25,15 @@ import time
 import urllib.parse
 import uuid
 from collections import OrderedDict
-from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine, Mapping, Sequence
+from collections.abc import (
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    Coroutine,
+    Iterator,
+    Mapping,
+    Sequence,
+)
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeAlias, cast, overload
 
@@ -3062,6 +3070,10 @@ def create_runner_app(
     # Sessions whose latest record load had to drop whole turns to fit the kept tail: the next
     # turn checkpoints them before it runs (see _maybe_superside_chat_cold_rollover).
     _superside_chat_cold_overflow: set[str] = set()
+    # conv_id -> the cold checkpoint its first init on this runner started in the background (kept
+    # once done: one per session per runner start); a turn that comes meanwhile waits on it (see
+    # _start_superside_chat_catch_up).
+    _superside_chat_catch_ups: dict[str, asyncio.Task[None]] = {}
     # conv_id -> what the session's current warm client was last sent of the Memory Profile and
     # Projects blocks (hashes, plus the prompt and subprocess it was sent under); and what the
     # turn in flight carries, kept once the turn completes (see _apply_turn_prefix_blocks).
@@ -3929,6 +3941,7 @@ def create_runner_app(
             )
 
         _session_start_cache.setdefault(session_id, time.time())
+        _start_superside_chat_catch_up(session_id)
         if harness_name in ("claude-sdk", "pi") and spec is not None:
             _harness_prelaunches[session_id] = asyncio.create_task(
                 _prelaunch_harness(
@@ -4426,6 +4439,7 @@ def create_runner_app(
         _session_sub_agent_resolved.pop(session_id, None)
         _session_histories.pop(session_id, None)
         _superside_chat_cold_overflow.discard(session_id)
+        _superside_chat_catch_ups.pop(session_id, None)
         _forget_superside_chat_prefix(session_id)
         _last_server_item_id.pop(session_id, None)
         _session_event_queues.pop(session_id, None)
@@ -6677,13 +6691,19 @@ def create_runner_app(
         if not since_anchor or since_anchor[0] <= keep_tokens:
             return idle_seconds
         # The turn's own read waits for the rollover; the cache is dropped with the client.
-        await _superside_chat_roll_over_now(
-            conv_id, labels, cause="return", reason="the person returned from idle"
-        )
+        with _superside_chat_catching_up(conv_id):
+            await _superside_chat_roll_over_now(
+                conv_id, labels, cause="return", reason="the person returned from idle"
+            )
         return idle_seconds
 
     async def _superside_chat_roll_over_now(
-        conv_id: str, labels: Mapping[str, str] | None, *, cause: CheckpointCause, reason: str
+        conv_id: str,
+        labels: Mapping[str, str] | None,
+        *,
+        cause: CheckpointCause,
+        reason: str,
+        drop: bool = True,
     ) -> bool:
         """Write the next checkpoint before this turn runs, then drop the warm client and cache.
 
@@ -6693,6 +6713,8 @@ def create_runner_app(
         text, never a model to actually call. Without a model it is skipped; the history the
         caller already read is a valid cold start.
 
+        :param drop: Drop the warm client and cache after; the init catch-up passes ``False``,
+            since no turn has run on the harness its init just launched.
         :returns: Whether a checkpoint was stored (the history cache is then empty).
         """
         from omnigent.superchat.rollover import roll_over_session
@@ -6715,12 +6737,108 @@ def create_runner_app(
             llm_client=_get_runner_llm_client(),
             connection=connection,
             wire=wire,
-            on_rolled_over=lambda: _drop_superside_chat_warm_client(
-                conv_id, defer_if_active=False, reason=reason
+            on_rolled_over=(
+                (
+                    lambda: _drop_superside_chat_warm_client(
+                        conv_id, defer_if_active=False, reason=reason
+                    )
+                )
+                if drop
+                else None
             ),
             on_stored=_journal_checkpoint(conv_id, labels),
             cause=cause,
         )
+
+    @contextlib.contextmanager
+    def _superside_chat_catching_up(conv_id: str) -> Iterator[None]:
+        """While a turn waits on a checkpoint, the session says so instead of a bare "Working".
+
+        Cleared when the wait ends; a turn stopped or failed meanwhile ends with its own edge (a
+        ``running`` edge after a Stop would lift the engine's fence on the stopped turn).
+        """
+        from omnigent.superchat.rollover import CATCHING_UP_NOTE
+
+        _publish_session_status(conv_id, "running", blocked_on=CATCHING_UP_NOTE)
+        yield
+        _publish_session_status(conv_id, "running")
+
+    def _start_superside_chat_catch_up(conv_id: str) -> None:
+        """Write a Super Chat's cold checkpoint at its first init on this runner, before any turn.
+
+        The same rule and rollover as a turn's cold start
+        (``_maybe_superside_chat_cold_rollover``), run ahead so the first message after a restart
+        finds the checkpoint written. Once per session per runner start, and only before any turn
+        here: a turn that comes meanwhile waits on it (``_await_superside_chat_catch_up``). It
+        leaves the harness its init launched alone (nothing has run on it), so the pre-launch
+        goes on beside it. A record that fits the kept tail costs one read and no summarizer call.
+        """
+        if (
+            conv_id in _superside_chat_catch_ups
+            or conv_id in _active_turns
+            or conv_id in _session_histories
+        ):
+            return
+        task = asyncio.create_task(
+            _superside_chat_catch_up(conv_id), name=f"superside-chat-catch-up-{conv_id}"
+        )
+        _superside_chat_catch_ups[conv_id] = task
+        task.add_done_callback(_background_tasks.discard)
+        _background_tasks.add(task)
+
+    async def _superside_chat_catch_up(conv_id: str) -> None:
+        from omnigent.context.labels import is_superside_chat
+
+        try:
+            if not is_superside_chat(await _rollover_labels_for_session(conv_id)):
+                return
+            # Marks the session when the kept tail had to leave whole turns out (the same load a
+            # turn's cold start makes); the history itself is the turn's to load.
+            await _load_history_as_input(conv_id)
+            if conv_id not in _superside_chat_cold_overflow:
+                return
+            _superside_chat_cold_overflow.discard(conv_id)
+            _logger.info(
+                "superside-chat catch-up for %s: the turns since the checkpoint exceed the kept "
+                "tail; writing a checkpoint before any turn",
+                conv_id,
+                extra={"session_id": conv_id},
+            )
+            started = time.monotonic()
+            labels = await _session_labels_for_runner_spawn(
+                server_client=server_client, session_id=conv_id
+            )
+            stored = await _superside_chat_roll_over_now(
+                conv_id,
+                labels,
+                cause="size",
+                reason="a cold start whose history no longer fits the kept tail",
+                drop=False,
+            )
+            _logger.info(
+                "superside-chat catch-up for %s: checkpoint %s in %.1fs",
+                conv_id,
+                "stored" if stored else "not stored",
+                time.monotonic() - started,
+                extra={"session_id": conv_id},
+            )
+        except Exception:
+            # The turn's own cold start checks again.
+            _logger.warning(
+                "superside-chat catch-up failed for %s",
+                conv_id,
+                exc_info=True,
+                extra={"session_id": conv_id},
+            )
+
+    async def _await_superside_chat_catch_up(conv_id: str) -> None:
+        """Wait for the session's init catch-up if it still runs, saying so while it does."""
+        pending = _superside_chat_catch_ups.get(conv_id)
+        if pending is None or pending.done():
+            return
+        with _superside_chat_catching_up(conv_id):
+            # Shielded: a stopped turn leaves the checkpoint to finish.
+            await asyncio.shield(pending)
 
     async def _maybe_superside_chat_cold_rollover(
         conv_id: str, labels: Mapping[str, str] | None, latest_content: object
@@ -6752,12 +6870,14 @@ def create_runner_app(
             conv_id,
             extra={"session_id": conv_id},
         )
-        if not await _superside_chat_roll_over_now(
-            conv_id,
-            labels,
-            cause="size",
-            reason="a cold start whose history no longer fits the kept tail",
-        ):
+        with _superside_chat_catching_up(conv_id):
+            stored = await _superside_chat_roll_over_now(
+                conv_id,
+                labels,
+                cause="size",
+                reason="a cold start whose history no longer fits the kept tail",
+            )
+        if not stored:
             return
         history = await _load_history_as_input(conv_id)
         if not history or history[-1].get("role") != "user":
@@ -7149,6 +7269,10 @@ def create_runner_app(
         _setup_started = time.monotonic()
         _superside, _turn_labels, _idle_seconds = await _superside_chat_turn_reads(conv)
         _setup_reads = time.monotonic() - _setup_started
+        if _superside:
+            # Before anything reads the record or schedules a rollover: the init catch-up's
+            # checkpoint is the one this turn starts from.
+            await _await_superside_chat_catch_up(conv)
         # Cheap no-op for a session with no pending superside-chat rollover;
         # otherwise applies a deferred warm-client drop before anything below
         # touches the harness, and at the hard context limit returns the
