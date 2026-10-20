@@ -1,6 +1,6 @@
 # Glossary
 
-One word per thing, as of 2026-10-18. The infrastructure words come from
+One word per thing, as of 2026-10-19. The infrastructure words come from
 [ADR 0018](adr/0018-one-vocabulary-engine-host-runner-harness.md); a pull request that introduces a
 second word for one of these is sent back. Deprecated words are marked here with what replaced
 them; where code still uses one, the entry says so.
@@ -11,7 +11,7 @@ them; where code still uses one, the entry says so.
 - **Ask**: anything the assistant is waiting on the person for (an approval, a question); open asks are listed by `GET /v1/me/asks`. Not the unit of work: that is a **Round**.
 - **Assistant**: the one persistent agent a person has; it owns the conversation, the memory and the host. The canonical word in copy, docs and prompts ([ADR 0029](adr/0029-a-round-is-recorded-and-the-harness-owns-the-words.md)). Retired words, kept here only: Muse, "Super Chat" and Nova. Code identifiers still say Muse (`/v1/me/muse`, `superchat/muse.py`, `muse_*` names) and super chat until the naming PR of the ADR 0029 train; the stored label value `omnigent.context.mode=superside-chat`, carried by the Conversation and its helpers, stays an identifier.
 - **Brief**: the task a helper starts from (`start_helper`'s `task`), with engine facts appended: the folder, the files in play and the preference lines that apply, never the whole profile ([ADR 0029](adr/0029-a-round-is-recorded-and-the-harness-owns-the-words.md)); the helper does not see the conversation.
-- **Checklist**: the model's own list of steps, words only: the Claude harness's native task tools or the `checklist` tool on pi, folded to one `checklist.*` event. Never bound to a Helper; it drives no state, refusal or tick ([ADR 0029](adr/0029-a-round-is-recorded-and-the-harness-owns-the-words.md)).
+- **Checklist**: the model's own list of steps, words only: Omnigent's `checklist` tool on both harnesses (Claude's native task tools are disallowed), folded to one `checklist.*` event. Never bound to a Helper; it drives no state, refusal or tick ([ADR 0029](adr/0029-a-round-is-recorded-and-the-harness-owns-the-words.md)).
 - **Checkpoint**: the `compaction` item a rollover stores: a fixed header written by code, the working list, and the kept tail.
 - **Chip**: the pointer on a message to the artifact, or part of one, the message is about ([conversation.md](conversation.md)).
 - **Claim**: one sentence about the person in long-term memory, with its quote, evidence, kind and confidence (table `memory_claims`).
@@ -41,7 +41,7 @@ them; where code still uses one, the entry says so.
 - **Recall**: finding earlier work over one index: the `recall` tool when the model asks, and the optional per-turn recall hint ([ADR 0016](adr/0016-recall-is-a-bounded-hint-and-a-deep-pull-over-one-index.md)).
 - **Result**: a helper's final message, posted to the chat that started it as a system notice.
 - **Rollover**: replacing older turns with a checkpoint when the conversation grows large or the person returns after a long break.
-- **Round**: one message from the person through its settlement: no turn running, no Helper running, no result unconsumed. Assigned at write time; every item, Helper session and artifact carries its `round_id`, and the view is a pure fold of its events. A steer joins the running Round, a wake turn belongs to the Round that started the Helper, and scheduled and system runs get hidden Rounds of their own. Stop stops one whole Round ([ADR 0029](adr/0029-a-round-is-recorded-and-the-harness-owns-the-words.md)).
+- **Round**: one message from the person through its settlement: no turn running, no Helper running, no result unconsumed. Assigned at write time; every item, Helper session and artifact carries its `round_id`, and the view is a pure fold of its events. A steer joins the running Round, a wake turn belongs to the Round that started the Helper, and scheduled and system runs get hidden Rounds of their own. Stop stops one whole Round ([ADR 0029](adr/0029-a-round-is-recorded-and-the-harness-owns-the-words.md)). A Round has **delivered** (`delivered_at`) once its answer was shown (a terminal card, the chips or a question) with no Helper of it running or unread; the strip settles then, the Round at its turn's end.
 - **Runner**: the per-session process a host launches; runs one harness.
 - **Sandbox**: only the OS process jail (bubblewrap). "Sandbox provider" and the server config's `sandbox:` block are old names for the host provider and its `hosts:` block. Some code still says sandbox for the host (`sandbox_id`, `sandbox_provider`, `sandbox_status`, `managed_sandbox_reaper`).
 - **Side chat**: deprecated and removed ([ADR 0021](adr/0021-one-conversation-messages-link-to-artifacts.md)); there is one conversation.

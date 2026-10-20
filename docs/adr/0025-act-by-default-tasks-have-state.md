@@ -56,3 +56,14 @@ Follow-up under this rule: a helper that reported no progress still shows a flat
 ## Update: categories and evidence (ADR 0027, 2026-10-17)
 
 The task record now keeps the plan and its evidence state, and the decision line of a finished deliverable goes to the working list and the journal. Model picks are three categories, Foundation, Builder and Light; Settings is their source of truth.
+
+## Amendments
+
+**Amended 2026-10-19 (fix wave): the task record is replaced by the Round record ([ADR 0029](0029-a-round-is-recorded-and-the-harness-owns-the-words.md)).** Nothing creates, updates, settles or reads a task any more: no hook on `deck_new`, `artifact_save` or `start_helper`, no `open` / `building` / `done` lifecycle, no plan or evidence state, no runtime stall log. What stays, in `superchat/tasks/`:
+
+- **Open task lines** are written from the Rounds not settled (`rounds.read.open_rounds`): `Open task: "<ask>" · helper "<title>" · next: wait for the helper`, plus the asking Round while its Helper runs, with `now` and `steps done` (`tasks/service.py` `TaskService.view`, `tasks/record.py` `round_line`). The look, data source and slide-count fields are gone from the line.
+- **A pick resumes the work.** The structured card answer is kept on the message that carried it (table `card_answers`, `tasks/store.py`), and the turn prefix leads with the pick line; `deck_new` reads it.
+- **The stall rule** (`tasks/record.py` `ends_well`) is used only by the scenario runner (`engine/scripts/scenarios.py`), not at turn end.
+- **Leftover:** the `tasks` table (`SqlTask` in `db/db_models.py`) is still in the schema and is only deleted from when a Conversation is deleted; nothing writes it.
+
+Act by default, the look chooser (`decks/look.py` `choose_look`, `look_from` as a record) and "Change look" stand as decided above.

@@ -440,10 +440,9 @@ Fields:
 
   agent_name (string, optional)
     Human-readable display name of the bound agent (e.g.
-    `"claude-native-ui"`). For switch-created session-scoped clones
-    this is the spec's clean name, not the clone row's
-    `"… (switch ag_…)"` disambiguation name. Changes when the session
-    is switched to a different agent in place
+    `"superchat-claude"`). A switch binds the target built-in itself
+    (no per-session copy), so this is the built-in's name. Changes when
+    the session is switched to a different agent in place
     (`POST /v1/sessions/{id}/switch-agent`), so attached clients can
     refresh their displayed agent label. `null` when the server cannot
     resolve the agent row.

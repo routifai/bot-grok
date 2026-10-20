@@ -1,7 +1,7 @@
 # Helpers
 
 How the assistant delegates work, how scheduled work runs, and what the activity panel shows, as
-of 2026-10-17. The decisions are [ADR 0007](adr/0007-the-muse-delegates-multi-step-work.md) (the
+of 2026-10-19. The decisions are [ADR 0007](adr/0007-the-muse-delegates-multi-step-work.md) (the
 assistant delegates multi-step work), [ADR 0005](adr/0005-proactive-work-is-scheduled-helper-runs.md)
 (proactive work is scheduled helper runs) and
 [ADR 0022](adr/0022-the-orchestrator-narrates-while-helpers-work.md) (the assistant narrates while
@@ -23,7 +23,7 @@ The assistant starts one with `start_helper` (`superchat/helpers/tools.py`):
 | `model` | `builder` (the default, for writing), `light` (fetch-and-compare) or `foundation` (judgement): the person's pick for that category ([ADR 0027](adr/0027-super-chat-is-an-agentic-layer.md)); `fast` and `strong` are accepted as Light and Foundation for one release |
 | `reasoning` | `low`, `medium` or `high`, or omitted |
 | `files` | uploaded file ids |
-| `project`, `path` | start in another Project's or file's folder |
+| `project`, `path` | start in another Project's or file's folder; a `path` inside the workspace that does not exist yet is made |
 
 The same task from the same chat within 10 seconds is treated as one hand-off. Several calls in one
 step run helpers in parallel. Under [ADR 0029](adr/0029-a-round-is-recorded-and-the-harness-owns-the-words.md)
@@ -79,7 +79,7 @@ runs on the bundle's harness. No type pins a model.
 | `worker` | `start_helper` from the assistant | 5 | the work toolset: `sys_os_*`, `artifact_save`, `artifact_list`, `deck_*` authoring, `files_*`, the live-update tools, `memory_search`, `memory_get`, `session_history`, `vault_fill`, plus `start_helper` for parts |
 | `subworker` | `start_helper` from a `worker` | 5 | the worker set without `start_helper` |
 | `notes` | the engine only, for the daily-note passes | 2 | `daily_note_get`, `daily_note_update`, `memory_*` (read, remember, forget), `session_history` |
-| `editor` | the engine only, one per file, when its studio is first used (`POST /v1/artifacts/{id}/chat`, [ADR 0024](adr/0024-the-artifact-studio.md)) | none (outside helper caps) | `artifact_save` (with `base_version`), `artifact_list`, `deck_check`, `deck_export`, `files_*`, `sys_os_*`, `session_history`, `memory_search`, `memory_get`, `memory_remember`; never wakes the conversation, never listed as its helper |
+| `editor` | the engine only, one per file, when its studio is first used (`POST /v1/artifacts/{id}/chat`, [ADR 0024](adr/0024-the-artifact-studio.md)) | none (outside helper caps) | `artifact_patch`, `artifact_save` (with `base_version`; a deck's save returns its `layout` check, an identical save makes no version), `artifact_list`, `deck_check`, `deck_export`, `files_*`, `sys_os_*`, `session_history`, `memory_search`, `memory_get`, `memory_remember`; never wakes the conversation, never listed as its helper |
 
 ## Scheduled runs
 
@@ -109,8 +109,16 @@ files it saved (`format_subagent_wake_notice_with_result` in `superchat/subagent
 failing that, after the next reconnect or turn.
 
 If the parent is idle, the notice starts a turn, so the assistant speaks without the person
-writing. If a parent turn is running, the notice is steered into it or runs next. The transcript
-hides the notice and shows the helper as a `helper` block (`session_id`, `title`, `status`).
+writing. If a parent turn is running, the notice is steered into it or runs next; a steered
+result counts as read once the Conversation's session goes idle with nothing queued, and its
+Round then settles ([ADR 0029](adr/0029-a-round-is-recorded-and-the-harness-owns-the-words.md)
+amendments). The transcript hides the notice and shows the helper as a `helper` block
+(`session_id`, `title`, `status`).
+
+The notice asks for the hand-back as one or two plain sentences, then the card. An answer card
+carries those sentences in `render_card`'s `message`, drawn above the card and used as the turn's
+words when the turn wrote none; a terminal card without `message`, or chips, in a turn with no
+words yet is sent back with `say_first`, at most twice per turn (`superchat/cards/handlers.py`).
 
 Two more notice kinds, `progress` (one line per completed helper step) and `flag` (a decision or
 surprise the person should hear now), come from ADR 0022; a progress notice wakes an idle parent
@@ -120,7 +128,11 @@ at most once every 30 seconds, a flag always. Their contract is in
 ## The activity panel
 
 An activity is one piece of multi-step work, derived on read from sessions and items and never
-stored (`superchat/activity/derive.py`). It is either a conversation turn that did real work (at
+stored (`superchat/activity/derive.py`). The panel shows one row per request: the turn's
+background job and the file it made, with that file's later studio edits, sit under it (a studio
+turn's `artifact.round_id` names the Round that created its file, `activityTree.ts`), and a
+request whose job outlives its turn reads as running until the job ends, then shows the job's
+outcome. It is either a conversation turn that did real work (at
 least 3 steps, a work tool, or more than 60 seconds) or a whole helper task. Each has a title, a
 one-line outcome, a status (`in_progress`, `done`, `failed`, `cancelled`), a source (`turn`,
 `background`, `scheduled`, `housekeeping`) and plain-language steps. Titles are tidied from the

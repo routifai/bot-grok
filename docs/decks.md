@@ -1,6 +1,6 @@
 # Decks
 
-How the assistant makes slide decks and how they become PowerPoint, as of 2026-10-17. The
+How the assistant makes slide decks and how they become PowerPoint, as of 2026-10-19. The
 decisions are [ADR 0011](adr/0011-a-deck-is-an-html-file-exported-in-the-host.md) (a deck is
 an HTML file exported in the host), [ADR 0012](adr/0012-native-powerpoint-is-a-second-deck-path.md)
 (native PowerPoint as a second path) and
@@ -33,7 +33,12 @@ The assistant writes only slides. Its tools (`decks/tools.py`) are:
   (or `look_from` is `ask`), the engine chooses one from the topic and the person's taste and the
   result says which and why; the file card offers "Change look". The one refusal is background
   work with no template and no topic. Every text or media block gets a stable
-  `data-superchat-id`.
+  `data-superchat-id`. It has two uses, both stated in its description: the kit (`path` and
+  `title` only) writes nothing and returns the layouts, chart recipes and theme, and says the next
+  call carries all the slides; Helpers, whose prompt lists the layouts, skip it. The deck call is
+  refused, nothing written, when the slides load anything from the web (a `src`, `url()`, an SVG
+  `href`, a web font, `@import`; the refusal quotes it) or carry a script other than a chart's. A
+  link's `<a href>` loads nothing and is allowed.
 - `deck_check` measures the laid-out deck in the host's Chromium, the same render the export reads:
   content past the slide or in the footer band, clipped text, missing ids, unembedded fonts,
   charts with no PowerPoint equivalent. The assistant fixes the HTML and checks again. Every

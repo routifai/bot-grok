@@ -41,3 +41,7 @@ Omnigent's database under our rules rather than in the engine's local files.
 - Neither option survives a runner crash in the middle of a sub-agent's task;
   finished Results are recovered either way.
 - Turning off engine features is part of every engine adapter, not optional.
+
+## Amendments
+
+**Amended 2026-10-19 (fix wave).** The Claude CLI's native task tools (`TaskCreate`, `TaskUpdate`, `TaskList`, `TaskGet`) are disallowed on every Claude session, like its built-in sub-agents: the checklist is Omnigent's `checklist` tool on both harnesses ([ADR 0029](0029-a-round-is-recorded-and-the-harness-owns-the-words.md)), and the flag that turned the native tools on is deleted (`harnesses/claude_sdk_executor.py`). The host image pins Claude Code to the version the bundle is verified with (`CLAUDE_CODE_VERSION=2.1.302` in `deployment/host.Dockerfile`), as pi already was (0.87.1).

@@ -18,3 +18,11 @@ People ask the Muse for slide decks and want them in PowerPoint they can keep ed
 - The host image carries `superchat-deck-export`, the page-side capture module and the vendored bundle; a change to them needs an image rebuild.
 - A deck is recognised by its file name (`.deck.html`), so the panel and the cards know without opening the file.
 - The viewer and the export share the framework's navigation protocol (`superchat:slide`, `superchat:slide-state`, `superchat:deck-ready`).
+
+## Amendments
+
+**Amended 2026-10-19 (fix wave).**
+
+- **Every save of a deck is checked.** `artifact_save` and `artifact_patch` of a `*.deck.html` run `deck_check`'s own check on the saved bytes and return it as `layout` (`{"ok", "errors"?, "warnings"?}`, or `{"checked": false, "why"}` when the render could not run), so a reply reports fit from the save, not from a separate call the model may skip (`artifacts/handlers.py`, `decks/authoring.py` `saved_layout`).
+- **Links are allowed in slides.** A link's `<a href>` loads nothing, so it no longer gets a deck refused; any other web reference (a `src`, `url()`, an SVG `href`, a web font, `@import`) still does, and the refusal quotes the reference (`decks/kit.py`).
+- **The kit step is explicit.** `deck_new` with `path` and `title` only is the kit: it writes nothing and returns the layouts, the chart recipes and the theme, and says the next call carries all the slides. The tool description states the no-web-assets and no-script rules up front; Helpers, whose prompt lists the layouts, skip the kit call (`decks/tools.py`).

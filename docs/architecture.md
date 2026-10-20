@@ -1,6 +1,6 @@
 # Architecture
 
-How Superchat is put together, as of 2026-10-17. Words are defined in [glossary.md](glossary.md);
+How Superchat is put together, as of 2026-10-19. Words are defined in [glossary.md](glossary.md);
 where each piece of code lives is the layer map in [`engine/README.md`](../engine/README.md).
 
 Superchat gives each person one persistent assistant that keeps their conversation, memory and
@@ -33,7 +33,9 @@ web ──HTTP /v1 + SSE──▶ engine ──host tunnel (WebSocket)──▶ 
    runner, which dials back on `/v1/runners/{runner_id}/tunnel`.
 4. The runner builds the turn (the per-turn prefix, see [context.md](context.md)), runs the harness,
    and dispatches Superchat tools to their feature handlers (`runner/tool_dispatch.py`). Tool calls
-   that need the database go back to the engine over HTTP.
+   that need the database go back to the engine over HTTP. That client retires idle pooled
+   connections after 2 seconds (the engine closes them at 5), and the MCP proxy retries a
+   transport error once on a fresh connection before waiting for a reconnect.
 5. The harness's model calls go to the engine's model proxy, never straight to a provider when the
    key must stay in the engine ([Models and keys](#models-and-keys)).
 
@@ -48,6 +50,22 @@ A message sent while a turn runs is a steer: `claude-sdk` receives it on the CLI
 priority `next`, `pi` through its RPC `steer`. Anything the harness did not take runs as the next
 turn, so nothing is lost or answered twice.
 
+The harnesses, as configured today:
+
+- **Launch.** The runner starts the harness at session init, before the first message: the Claude
+  CLI or the pi process ([ADR 0026](adr/0026-a-turn-speaks-in-a-second.md)). The host image pins
+  both CLIs (`CLAUDE_CODE_VERSION`, `PI_VERSION` in `deployment/host.Dockerfile`).
+- **Tools.** Superchat's tools reach the harness as Omnigent tools. On pi each is registered with
+  `executionMode: "sequential"`, so one message's calls run in the order the model wrote them, as
+  Claude Code already runs MCP tools. Claude's native task tools and built-in sub-agents are
+  disallowed: the checklist is Omnigent's `checklist` on both. On Claude a `PreToolUse` hook notes
+  each call's `tool_use_id`, so the call is stored once under the model's own id.
+- **Turn end on pi.** A pi turn ends at `agent_settled`, after pi's own retries, overflow recovery
+  and queued steers. Its retry settings cap the backoff with `retry.maxAgentDelayMs` and set no
+  `retry.provider.timeoutMs`, so pi's 300 s `httpIdleTimeoutMs` bounds a request.
+- **Setup line.** A Conversation turn's instructions end with the model and harness it runs on, and
+  the turn after a change of either gets one line saying what changed ([context.md](context.md)).
+
 ## Sessions and helpers
 
 Everything is a session in Postgres. Two kinds matter:
@@ -56,7 +74,10 @@ Everything is a session in Postgres. Two kinds matter:
   (`superchat/muse.py`). Its id is derived from a hash of the person and tenant, so two first calls
   land on one row. It carries the label `omnigent.context.mode=superside-chat`, which turns on the
   Superchat tools, and `omnigent.host.owner`, which picks the host. The agent bundle it runs is
-  `OMNIGENT_SUPERCHAT_DEFAULT_AGENT` (`superchat-claude` by default, `superchat-pi` for Pi).
+  `OMNIGENT_SUPERCHAT_DEFAULT_AGENT` (`superchat-claude` by default, `superchat-pi` for Pi). A
+  harness switch (`POST /v1/sessions/{id}/switch-agent`) binds the target built-in itself, as a new
+  conversation does, so a refreshed bundle reaches it; startup moves sessions still on an old
+  per-session switch copy onto the built-in of that name.
   `POST /v1/sessions/{id}/reset` clears it; the old items stay stored.
 - **Helpers.** Child sessions the assistant starts with `start_helper` for one bounded job. They
   run in the same host, report back to the chat that started them, and are read-only to the
@@ -95,6 +116,13 @@ config's `hosts:` block; the engine's side is `engine/omnigent/server/hosts.py`.
 - **Registration.** A launch waits up to 120 seconds for the host to register
   (`HOST_ONLINE_TIMEOUT_S`); a message that arrives during a launch waits up to 240 seconds
   for it to settle.
+- **Readiness is the connection.** With one engine (the default) a host is up exactly when this
+  engine holds its tunnel (`HostRegistry`); the hosts row is not proof of life. A launch or wake
+  waits on the registry's connect signal (`HostRegistry.wait_for`, bounded) before starting the
+  runner and fails loudly if the host never connects. A row still reading "online" with no
+  connection here (after an engine restart) gives the host 15 seconds to reconnect, then it is
+  relaunched. `OMNIGENT_MULTI_REPLICA=1` turns on the cross-replica checks for several engines on
+  one database ([ADR 0004](adr/0004-engine-owns-the-host.md)).
 - **Tunnel ping and liveness.** The engine pings each host and runner tunnel every 30 seconds and
   drops one after 3 missed pings. Liveness is a database stamp refreshed on that ping and read as
   stale after 90 seconds (`HOST_LIVENESS_TTL_S`, `RUNNER_LIVENESS_TTL_S`), so a crashed host or a
@@ -129,7 +157,14 @@ the assistant names (Builder by default); background work runs on Light.
 The model proxy is `/v1/model/{provider}/{path}` (`superchat/models/proxy.py`). It resolves the
 launch token to the host and its owner, strips whatever auth the caller sent, injects the owner's
 key (their own first, else the organisation's), refuses a suspended owner or an exhausted budget,
-and records the call's cost. The upstreams it knows are `anthropic`, `openrouter` and `litellm`
+and records the call's cost.
+
+pi is told each model's real limits: a provider family's `context_window` and `max_output_tokens`
+in the engine config (the templates set 1,000,000 and 32,000 for `anthropic`), else the model
+catalog's, go into its managed `models.json` (`HARNESS_PI_GATEWAY_MODEL_LIMITS`); without them pi
+assumes 128k context and 16k output. A session's inference snapshot fixes its provider, but the
+limits follow the current config (`inference_config.snapshot_runtime_config`), so a long-lived
+conversation gets a change without a reset. The upstreams it knows are `anthropic`, `openrouter` and `litellm`
 (`superchat/models/upstreams.py`). Saved keys are per person or per organisation, sealed with
 AES-256-GCM (`superchat/models/store.py`). Operator setup is in [setup.md](setup.md#secrets).
 

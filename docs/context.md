@@ -1,7 +1,7 @@
 # Context and memory
 
 What the assistant sees on each turn, how a year-long conversation stays inside the model's window,
-and what it remembers, as of 2026-10-17. The code paths are the "Memory and recall" row of
+and what it remembers, as of 2026-10-19. The code paths are the "Memory and recall" row of
 [`engine/README.md`](../engine/README.md); paths below are relative to `engine/omnigent/`. The
 decisions are [ADR 0006](adr/0006-omnigent-owns-everything.md) (the engine owns context, the harness
 only runs the loop), [ADR 0016](adr/0016-recall-is-a-bounded-hint-and-a-deep-pull-over-one-index.md)
@@ -13,8 +13,12 @@ only runs the loop), [ADR 0016](adr/0016-recall-is-a-bounded-hint-and-a-deep-pul
 In the order the model reads it:
 
 1. **System prompt.** The bundle's `AGENTS.md` (see [architecture.md](architecture.md#where-the-system-prompt-lives)),
-   framework instructions, and on `claude-sdk` a tool-naming note. Fixed for the life of a warm
-   harness session.
+   framework instructions (the web-search line only for an agent that declares a `web_search` or
+   `web_fetch` tool, `runtime/prompt.py`), and on `claude-sdk` a tool-naming note. A Conversation
+   turn's instructions end with the Setup line: `Setup: you run on the model <model> through the
+   <pi | Claude Agent SDK> harness. Earlier messages may describe another setup: go by this one.`
+   (`runner/app.py`). Fixed for the life of a warm harness session; a change of model or harness
+   changes the prompt, so both harnesses relaunch.
 2. **Tool definitions.** What the bundle's `tools.allow` list leaves.
 3. **History.** Either the harness's warm session, or a replay of the stored items from the latest
    checkpoint on: the checkpoint header, the working list, the kept tail, then the items since,
@@ -27,11 +31,18 @@ In the order the model reads it:
      ([ADR 0025](adr/0025-act-by-default-tasks-have-state.md));
    - the person's local time (from the timezone in `GET /v1/me/proactivity`, UTC if unknown), and
      one gap line on the first message back from an idle break;
+   - after a change of model or harness, one line: `[Since the last message the setup changed:
+     was pi with <model>, now Claude Agent SDK with <model>. Earlier messages may describe the old
+     setup; go by the current one.]` (the runner remembers the last setup per Conversation in
+     memory, so a runner restart forgets it);
    - feature notes, such as "the person edited this file by hand" (see
      [artifacts.md](artifacts.md#write-back));
    - the Rounds still working, one line each, read from the Round record: a Round counts while
      a Helper it started still runs, so a finished or failed one never lingers (`Open task: "a
-     deck on RBC vs TD" · helper "RBC vs TD deck" · next: wait for the helper`);
+     deck on RBC vs TD" · helper "RBC vs TD deck" · next: wait for the helper`). The Round the
+     message itself joined (a status question asked while its job runs) is listed too while its
+     Helper runs, with what the work is doing now and its finished steps (`· now: slides.html ·
+     steps done: 4`, `tasks/service.py`);
    - the Projects list: one line per `PROJECT.md` card under `~/workspace/projects/`, the 15 most
      recent plus the open one;
    - the memory profile (below);
@@ -54,10 +65,13 @@ that fails or is late is left out. It renders as plain lines under four headings
 and 2,500 characters, fenced as data. Helpers and a file's studio never get it.
 
 The memory profile and Projects blocks go in full on a cold start or when they changed; otherwise
-each is one line ("Standing memory unchanged since the last message."). The per-turn prefix exists
+each is one line ("Standing memory unchanged since the last message."). The prefix reads share one
+budget (0.5 s, 5 s with the person's files); a profile or Projects list not read in time is
+replaced by one line saying so and how to get it (`memory_search`, or listing
+`~/workspace/projects/`), so the model never answers as if there were none. The per-turn prefix exists
 because a harness's system prompt is frozen per warm session, and changing it would force a cold
-start and break prompt caching. Any failure building a block drops that block; no block can fail a
-turn. Helpers carry the same `superside-chat` label and get the same prefix.
+start and break prompt caching. Any other failure building a block drops that block; no block can
+fail a turn. Helpers carry the same `superside-chat` label and get the same prefix.
 
 ## Rollover
 

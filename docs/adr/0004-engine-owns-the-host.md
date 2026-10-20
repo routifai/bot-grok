@@ -10,3 +10,7 @@ Turns now run on the Omnigent engine, inside the Muse's host. Superchat and the 
 ## Consequences
 
 - The host stays on; nothing stops it when idle. The Pi-era idle-sleep job goes away.
+
+## Amendments
+
+**Amended 2026-10-19 (fix wave): readiness is the real connection.** With one engine (the default) a host is connected exactly when this engine's `HostRegistry` holds its tunnel; an "online" hosts row with no connection here is left over from a gone connection, never another replica's. Such a row only buys the host a 15 s reconnect window (`_HOST_RECONNECT_GRACE_S`), then it is relaunched; nothing is rejected as "on another replica". A launch or wake waits on `HostRegistry.wait_for` (the registry's connect signal, bounded) before starting the runner and fails loudly if the host never connects; the wake's polling loop is gone. `OMNIGENT_MULTI_REPLICA=1` restores the cross-replica checks for several engines on one database (`server/host_registry.py` `multi_replica`, `server/routes/_sessions/orchestration.py`, `server/routes/sessions/routes_events.py`). After an engine restart the row read "online" for up to 90 s and every message was rejected.
