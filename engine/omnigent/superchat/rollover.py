@@ -125,6 +125,8 @@ _CACHE_EXPIRY_MARGIN_SECONDS = 30
 _ASSEMBLED_FIXED_TOKENS = 13_000 + 4_000 + 4_000 + 3_000
 
 HandoffReason = Literal["size", "expiry", "model switch", "return"]
+#: Sessions already warned that their window is too small for a size handoff to help.
+_small_window_warned: set[str] = set()
 
 
 def expiry_handoff() -> bool:
@@ -163,13 +165,16 @@ def handoff_reason(
     context_tokens: int | None,
     since_request_start: float | None,
     model_switch: bool = False,
+    conversation_id: str | None = None,
 ) -> HandoffReason | None:
     """Why a warm client should be dropped before this turn, or ``None`` to keep it.
 
     The one decision point (ADR 0031, "Handoff by size and on cache expiry"); the turn's own
     history load then assembles. In order:
 
-    * ``size``: the warm context reached the handoff threshold T.
+    * ``size``: the warm context reached the handoff threshold T and is over twice what a new
+      session costs (else a small window would hand off every turn; it is logged once and the
+      hard limit applies).
     * ``return``: the last model request started :func:`resolve_idle_refresh_seconds` ago.
     * ``expiry`` (behind ``expiry_handoff``): it started longer ago than the cache lifetime
       minus 30 s, so the next call rewrites the whole context, and that context is more than
@@ -184,11 +189,24 @@ def handoff_reason(
     """
     if not is_superside_chat(labels):
         return None
-    if context_tokens is not None and context_tokens >= resolve_rollover_threshold(labels):
-        return "size"
+    # A handoff pays only when the warm context is over twice what a new session costs: below
+    # that, a new session is about as large and every turn would hand off again.
+    heavy = context_tokens is not None and context_tokens > 2 * assembled_estimate(labels)
+    threshold = resolve_rollover_threshold(labels)
+    if context_tokens is not None and context_tokens >= threshold:
+        if heavy:
+            return "size"
+        if conversation_id and conversation_id not in _small_window_warned:
+            _small_window_warned.add(conversation_id)
+            logger.warning(
+                "superside-chat %s: the handoff threshold (%d tokens) is below twice a new "
+                "session's size (%d), so a size handoff would not help; the hard limit applies",
+                conversation_id,
+                threshold,
+                2 * assembled_estimate(labels),
+            )
     if since_request_start is not None and since_request_start >= resolve_idle_refresh_seconds():
         return "return"
-    heavy = context_tokens is not None and context_tokens > 2 * assembled_estimate(labels)
     if (
         heavy
         and expiry_handoff()

@@ -138,7 +138,7 @@ decision point (`superchat/rollover.py`, `handoff_reason`; `runner/app.py`,
 
 | Handoff | Rule |
 |---|---|
-| Size | the context the last turn reported (completed, stopped or failed) reaches T = `min(120k, 0.6 × window)`; 100,000 when the window is unknown; an explicit `omnigent.context.rollover_at_tokens` label sets it (`resolve_rollover_threshold`). Right after a handoff the old reading is ignored |
+| Size | the context the last turn reported (completed, stopped or failed) reaches T = `min(120k, 0.6 × window)`; 100,000 when the window is unknown; an explicit `omnigent.context.rollover_at_tokens` label sets it (`resolve_rollover_threshold`); and the context is over twice what a new session costs (`assembled_estimate`), so a small window never hands off every turn (logged once; the hard limit applies). Right after a handoff the old reading is ignored |
 | Return | the last request started 12 hours ago (`OMNIGENT_ROLLOVER_IDLE_REFRESH_SECONDS`); the turn gets a gap line (after a runner restart, from the record) |
 | Cache expiry (flag `OMNIGENT_EXPIRY_HANDOFF`, off until the probe's chain arm passes) | the last request started longer ago than the cache lifetime minus 30 s (3,600 s with the 1-hour cache, else 300 s; `OMNIGENT_PROMPT_CACHE_LIFETIME_SECONDS` overrides it), and the warm context is more than twice what a new session costs at most (`assembled_estimate`: 24,000 tokens plus the kept tail) |
 | Claude model switch | the same twice rule; otherwise the switch keeps the warm client (`set_model`). pi respawns on a switch anyway |

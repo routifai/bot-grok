@@ -6643,7 +6643,8 @@ def create_runner_app(
         _superside_chat_last_context_tokens[conv_id] = 0
         if process_manager is not None:
             _logger.info(
-                "dropping the warm Claude CLI for %s: %s",
+                "dropping the warm %s client for %s: %s",
+                _session_harness_name(conv_id) or "harness",
                 conv_id,
                 reason,
                 extra={"session_id": conv_id},
@@ -6802,7 +6803,11 @@ def create_runner_app(
             and prior[1] != model
         )
         reason = handoff_reason(
-            labels, context_tokens=tokens, since_request_start=since, model_switch=switch
+            labels,
+            context_tokens=tokens,
+            since_request_start=since,
+            model_switch=switch,
+            conversation_id=conv_id,
         )
         if reason is None:
             return None
