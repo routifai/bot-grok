@@ -1,0 +1,1034 @@
+"""Handoff probe and today's cache numbers (ADR 0031 step 0; dev only, stdlib only).
+
+Two jobs:
+
+``numbers TRACE_DIR``
+    Today's baseline from model-call traces (``OMNIGENT_LLM_TRACE_DIR`` records, copied out of
+    the host; sub-folders are read and duplicate copies of a record counted once), per harness
+    and role (Conversation, Helper, studio, notes; told apart by the system prompt): tokens per
+    Round, cache-read share, cache-write share of input dollars, the first call after a cold
+    start, and the cache lifetime seen (gap since the previous request's *start* vs cache hit).
+
+``run``
+    Replays real Conversations into new throwaway Conversations on the running stack and asks
+    the same probes in each arm:
+
+    * ``warm@C``: replay the person's messages up to cut point C (25/50/75% of their turns),
+      then probe. The baseline.
+    * ``single@C``: replay to C, hand off once, then probe.
+    * ``chain``: replay to 75% with 5 handoffs spread over it, the last at 75%, then probe.
+
+    A handoff drops the warm harness so the next turn is a cold start from stored state. Today
+    the only engine route that does that is a harness switch: ``POST
+    /v1/sessions/{id}/switch-agent`` to the other built-in Assistant and straight back (each
+    switch resets the runner-side harness). ``--handoff-cmd`` runs your own command instead
+    (``{session}`` is replaced by the session id).
+
+    Probes, one question and one task follow-up each: ``words`` (the person's earliest
+    request), ``file`` (the newest file's id, version and last change), ``decision``, ``next``
+    and ``open`` (an open ask or a pending job). Exact answers are scored by string match; the
+    rest by ``--judge-cmd`` (a command of another model family that reads a prompt on stdin
+    and prints ``{"score": 0-5}``; blind to the arm), or later with ``judge``. 10% of judged
+    rows are marked for a human spot check. A reply that mentions a reload, a summary or
+    catching up is a hard fail.
+
+``report OUT_DIR``  paired difference of each arm against ``warm`` at the same cut point
+    (same case, probe and repeat), with a 95% confidence interval; with ``--trace-dir`` the
+    per-probe tool, ``recall``/``session_history`` counts and the first call after a handoff
+    come from the model-call traces (request bodies, usage, tool_use blocks).
+``judge OUT_DIR --judge-cmd CMD``  scores rows left unjudged by ``run``.
+``cleanup OUT_DIR``  deletes the sessions this probe created (and only those: ids from
+    ``OUT_DIR/state.json`` whose title still starts with ``probe:``). Deleting a session
+    deletes its Helpers.
+
+Source Conversations are read from the train Postgres inside ``BEGIN READ ONLY … ROLLBACK``
+(``docker exec <container> psql``); nothing is ever posted into them. The engine runs in local
+single-user mode (no token). ``--dry-run`` prints the plan and every HTTP call without sending
+anything (it still reads the database).
+
+Point in time: a replay builds its own Conversation, so its artifacts, Rounds, cards,
+checkpoint and recall entries exist only up to the cut point. Person-level state (memory
+profile, Projects, daily notes, ``memory/`` files) is shared and cannot be filtered over HTTP;
+the plan prints how many such rows are newer than each cut point, and every reply is checked
+for words that only appear in the source *after* the cut point (``leak``).
+
+Billable: every replayed turn is a real model call (Helpers included). Start small::
+
+    python3 -I engine/scripts/handoff_probe.py numbers ./llm-trace
+    python3 -I engine/scripts/handoff_probe.py run --harness pi --dry-run
+    python3 -I engine/scripts/handoff_probe.py run --harness pi --cases 1 --max-turns 8 \\
+        --arms warm@50,single@50 --repeats 1 --probes words,file --out ./probe-out
+    python3 -I engine/scripts/handoff_probe.py report ./probe-out/<run> --trace-dir ./llm-trace
+    python3 -I engine/scripts/handoff_probe.py cleanup ./probe-out/<run>
+"""
+
+from __future__ import annotations
+
+import argparse
+import collections
+import datetime
+import glob
+import hashlib
+import json
+import math
+import os
+import random
+import re
+import shlex
+import statistics
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+from typing import Any
+
+ENGINE = "http://localhost:8013"
+DB_CONTAINER = "superchat-train-postgres-1"
+BUNDLE = {"pi": "superchat-pi", "claude-sdk": "superchat-claude"}
+OTHER = {"pi": "claude-sdk", "claude-sdk": "pi"}
+CUTS = (25, 50, 75)
+CHAIN_HANDOFFS = 5
+PROBE_PREFIX = "probe:"
+#: Source person messages that are dev pings, not work.
+SKIP_DEFAULT = r"^(Reply with one word|Quick check after a restart|say hi$|hi$)"
+#: Tools that read the past back.
+RECALL_TOOLS = frozenset({"recall", "session_history", "sys_session_get_history"})
+#: Hard fail: the reply talks about the machinery of a new session.
+HARD_FAIL = re.compile(
+    r"\b(reload(ed|ing)?|summar(y|ies|ised|ized) (of|from) (our|the|this) (chat|conversation|"
+    r"session)|from (the|a|my) summary|catch(ing)? up|caught up|(fresh|new) session|"
+    r"session (was )?(restart|reset)|after (the|a) restart|context (was )?(reset|cleared|lost))\b",
+    re.I,
+)
+#: Prices relative to one uncached input token (Anthropic: write 1.25x for 5 minutes, 2x for
+#: one hour, read 0.1x).
+PRICE = {"input": 1.0, "w5m": 1.25, "w1h": 2.0, "read": 0.1}
+
+PROBES: dict[str, tuple[str, str]] = {
+    # kind: (question, task follow-up)
+    "words": (
+        "What was the first thing I asked you for in this chat? Quote my words exactly.",
+        "Turn that first request of mine into a one-line title for this chat.",
+    ),
+    "file": (
+        "Which file did we work on most recently? Give its id, its version and what changed "
+        "last.",
+        "Make that file a little darker in tone. Keep everything else as it is.",
+    ),
+    "decision": (
+        "What is the most recent decision we made together, and why did we make it?",
+        "Write that decision as a one-line note I can send to the team.",
+    ),
+    "next": (
+        "What is the next step on what we are doing?",
+        "Go ahead with that next step.",
+    ),
+    "open": (
+        "Is anything still open: a question waiting for me, or work still running?",
+        "Give me a one-line status update I can paste to the team.",
+    ),
+}
+
+
+# ── small helpers ─────────────────────────────────────────────────────────────
+
+
+def say(*parts: Any) -> None:
+    print(*parts, flush=True)
+
+
+def pct(values: list[float], q: float) -> float:
+    if not values:
+        return 0.0
+    ordered = sorted(values)
+    return ordered[min(len(ordered) - 1, int(q * (len(ordered) - 1) + 0.5))]
+
+
+def t_crit(n: int) -> float:
+    """Two-sided 95% Student t critical value for *n* - 1 degrees of freedom."""
+    table = {1: 12.71, 2: 4.30, 3: 3.18, 4: 2.78, 5: 2.57, 6: 2.45, 7: 2.36, 8: 2.31, 9: 2.26}
+    df = n - 1
+    if df in table:
+        return table[df]
+    return 2.23 if df <= 10 else 2.09 if df <= 20 else 2.04 if df <= 30 else 1.96
+
+
+def paired(diffs: list[float]) -> str:
+    if not diffs:
+        return "n=0"
+    mean = statistics.fmean(diffs)
+    if len(diffs) < 2:
+        return f"{mean:+.2f} (n=1, no CI)"
+    half = t_crit(len(diffs)) * statistics.stdev(diffs) / math.sqrt(len(diffs))
+    return f"{mean:+.2f} [{mean - half:+.2f}, {mean + half:+.2f}] n={len(diffs)}"
+
+
+def words(text: str) -> list[str]:
+    return re.findall(r"[a-z0-9']+", text.lower())
+
+
+# ── database (read only) ──────────────────────────────────────────────────────
+
+
+def db_query(container: str, sql: str) -> Any:
+    """One ``select json_agg(...)`` inside a read-only transaction that is rolled back."""
+    script = f"BEGIN READ ONLY;\n{sql};\nROLLBACK;\n"
+    out = subprocess.run(
+        ["docker", "exec", "-i", container, "psql", "-U", "omnigent", "-d", "omnigent", "-qAt",
+         "-v", "ON_ERROR_STOP=1"],
+        input=script, capture_output=True, text=True, timeout=60, check=False,
+    )
+    if out.returncode != 0:
+        raise SystemExit(f"database read failed: {out.stderr.strip()[:300]}")
+    text = out.stdout.strip()  # -q: only the one result; json_agg may span lines
+    return json.loads(text) if text else None
+
+
+def source_cases(container: str, n: int, only: str | None, skip: re.Pattern[str]) -> list[dict]:
+    """The *n* top-level Conversations with the most person messages, each with its turns."""
+    where = f"and encode(c.id,'hex') = '{only}'" if only else ""
+    if only and not re.fullmatch(r"[0-9a-f]{32}", only):
+        raise SystemExit("--source must be a 32-hex session id")
+    convs = db_query(container, f"""
+        select json_agg(x) from (
+          select encode(c.id,'hex') as id, c.title, c.created_at,
+            (select json_object_agg(l.key, l.value) from engine.conversation_labels l
+              where l.conversation_id = c.id and l.key in
+              ('omnigent.context.mode','omnigent.host.owner','omnigent.tenant',
+               'omnigent.sandbox.provider')) as labels
+          from engine.conversations c
+          where c.parent_conversation_id is null and coalesce(c.title,'') not like 'probe:%'
+            and exists (select 1 from engine.conversation_labels l where l.conversation_id=c.id
+              and l.key='omnigent.context.mode' and l.value='superside-chat') {where}
+          order by c.updated_at desc limit 50) x""") or []
+    cases = []
+    for conv in convs:
+        items = db_query(container, f"""
+            select json_agg(x order by x.position) from (
+              select position, created_at, data from engine.conversation_items
+              where conversation_id = decode('{conv["id"]}','hex') and type = 1) x""") or []
+        person, said = [], []
+        for row in items:
+            data = json.loads(row["data"])
+            text = "".join(
+                p.get("text", "") for p in data.get("content") or [] if isinstance(p, dict)
+            ).strip()
+            if data.get("role") == "user":
+                if text and not text.startswith("[System:") and not skip.search(text):
+                    person.append({"at": row["created_at"], "text": text})
+            elif data.get("role") == "assistant" and text:
+                said.append({"at": row["created_at"], "text": text})
+        if len(person) >= 4:
+            cases.append({**conv, "person": person, "assistant": said})
+    cases.sort(key=lambda c: -len(c["person"]))
+    return cases[:n]
+
+
+def person_state_newer(container: str, at: int) -> dict[str, int]:
+    """Person-level rows written after *at* (they leak into a replay; not filterable)."""
+    row = db_query(container, f"""
+        select json_build_object(
+          'memory_claims', (select count(*) from engine.memory_claims where updated_at > {at}),
+          'projects', (select count(*) from engine.projects where updated_at > {at}),
+          'daily_notes', (select count(*) from engine.daily_notes where updated_at > {at}))""")
+    return dict(row or {})
+
+
+# ── engine over HTTP ──────────────────────────────────────────────────────────
+
+
+class Engine:
+    """The engine routes the probe uses. With ``dry`` it prints each call and sends nothing."""
+
+    def __init__(self, base: str, dry: bool) -> None:
+        self.base, self.dry, self._fake = base.rstrip("/"), dry, 0
+
+    def call(self, method: str, path: str, body: dict | None = None) -> Any:
+        if self.dry:
+            say(f"    HTTP {method} {path}" + (f"  {json.dumps(body)[:300]}" if body else ""))
+            return None
+        data = json.dumps(body).encode() if body is not None else None
+        req = urllib.request.Request(self.base + path, data=data, method=method)
+        req.add_header("Content-Type", "application/json")
+        for attempt in range(2):
+            try:
+                with urllib.request.urlopen(req, timeout=60) as resp:
+                    raw = resp.read()
+                return json.loads(raw) if raw else {}
+            except urllib.error.HTTPError:
+                raise
+            except OSError:
+                if method != "GET" or attempt:
+                    raise
+        return None
+
+    def agent_ids(self) -> dict[str, str]:
+        """``{harness: built-in agent id}`` of the two Assistant bundles."""
+        if self.dry:
+            self.call("GET", "/v1/agents?limit=200")
+            return {h: f"<agent-id:{b}>" for h, b in BUNDLE.items()}
+        page = self.call("GET", "/v1/agents?limit=200") or {}
+        by_name = {a.get("name"): a.get("id") for a in page.get("data") or []}
+        missing = [b for b in BUNDLE.values() if b not in by_name]
+        if missing:
+            raise SystemExit(f"built-in agents missing: {missing}")
+        return {h: by_name[b] for h, b in BUNDLE.items()}
+
+    def create(self, title: str, agent_id: str, labels: dict[str, str]) -> str:
+        """A new top-level Super Chat session on the person's own host, without Muse labels.
+
+        Mirrors ``/v1/me/muse``'s create body minus ``omnigent.superchat.muse*``, so it never
+        becomes the person's Super Chat.
+        """
+        keep = {
+            k: v for k, v in labels.items()
+            if k in ("omnigent.context.mode", "omnigent.host.owner", "omnigent.tenant")
+        }
+        provider = labels.get("omnigent.sandbox.provider")
+        body = {
+            "agent_id": agent_id,
+            "title": title,
+            "labels": keep,
+            "host_type": "managed" if provider else "external",
+            "sandbox_provider": provider,
+        }
+        made = self.call("POST", "/v1/sessions", body)
+        if self.dry:
+            self._fake += 1
+            return f"<new-session-{self._fake}>"
+        return str(made["id"])
+
+    def send(self, sid: str, text: str) -> None:
+        self.call("POST", f"/v1/sessions/{sid}/events", {"type": "message", "data": {
+            "role": "user", "content": [{"type": "input_text", "text": text}]}})
+
+    def items(self, sid: str) -> list[dict]:
+        return list((self.call("GET", f"/v1/sessions/{sid}?include_liveness=false") or {})
+                    .get("items") or [])
+
+    def status(self, sid: str) -> str:
+        snap = self.call("GET", f"/v1/sessions/{sid}?include_items=false&include_liveness=false")
+        return str((snap or {}).get("status") or "")
+
+    def rounds_running(self, sid: str) -> bool:
+        page = self.call("GET", f"/v1/sessions/{sid}/rounds?limit=3") or {}
+        return any(r.get("status") == "running" for r in page.get("data") or [])
+
+    def artifacts(self, sid: str) -> list[dict]:
+        page = self.call("GET", f"/v1/artifacts?parent_session_id={sid}&limit=50") or {}
+        return list(page.get("artifacts") or [])
+
+    def switch(self, sid: str, agent_id: str) -> None:
+        self.call("POST", f"/v1/sessions/{sid}/switch-agent", {"agent_id": agent_id})
+
+    def delete(self, sid: str) -> None:
+        self.call("DELETE", f"/v1/sessions/{sid}")
+
+    def title(self, sid: str) -> str:
+        snap = self.call("GET", f"/v1/sessions/{sid}?include_items=false&include_liveness=false")
+        return str((snap or {}).get("title") or "")
+
+
+def fields(item: dict) -> dict:
+    data = item.get("data")
+    return data if isinstance(data, dict) else item
+
+
+def item_text(item: dict) -> str:
+    parts = fields(item).get("content") or []
+    if isinstance(parts, str):
+        return parts
+    return "".join(p.get("text", "") for p in parts if isinstance(p, dict))
+
+
+def tool_name(item: dict) -> str:
+    return str(fields(item).get("name") or "").rsplit("__", 1)[-1]
+
+
+def turn(engine: Engine, sid: str, text: str, timeout: float, quiet_s: float) -> dict:
+    """Send one person message and wait until the turn and any Helper it started settle."""
+    if engine.dry:
+        engine.send(sid, text)
+        return {"reply": "", "tools": [], "first_word_s": None, "items": []}
+    seen = {i.get("id") for i in engine.items(sid)}
+    t0 = time.monotonic()
+    engine.send(sid, text)
+    first_word, still, last_n = None, 0.0, -1
+    while time.monotonic() - t0 < timeout:
+        time.sleep(2.0)
+        new = [i for i in engine.items(sid) if i.get("id") not in seen]
+        if first_word is None and any(
+            i.get("type") == "message" and fields(i).get("role") == "assistant"
+            and item_text(i).strip() for i in new
+        ):
+            first_word = round(time.monotonic() - t0, 1)
+        settled = (
+            any(fields(i).get("role") != "user" for i in new)
+            and engine.status(sid) in ("idle", "waiting")
+            and not engine.rounds_running(sid)
+        )
+        still = still + 2.0 if settled and len(new) == last_n else 0.0
+        last_n = len(new)
+        if still >= quiet_s:
+            break
+    else:
+        say(f"      TIMEOUT after {timeout:.0f}s")
+    new = [i for i in engine.items(sid) if i.get("id") not in seen]
+    replies = [item_text(i) for i in new
+               if i.get("type") == "message" and fields(i).get("role") == "assistant"]
+    calls = [i for i in new if i.get("type") in ("function_call", "tool_call")]
+    return {
+        "reply": "\n".join(r for r in replies if r.strip()),
+        "tools": [tool_name(c) for c in calls],
+        "args": [str(fields(c).get("arguments") or "") for c in calls],
+        "first_word_s": first_word,
+        "sent_at": time.time(),
+    }
+
+
+# ── run ───────────────────────────────────────────────────────────────────────
+
+
+def arm_plan(arm: str, n_person: int) -> tuple[int, list[int]]:
+    """``(person turns replayed before probing, turn indices after which to hand off)``."""
+    if arm == "chain":
+        stop = max(1, round(n_person * 0.75))
+        points = sorted({max(1, round(stop * k / CHAIN_HANDOFFS)) for k in
+                         range(1, CHAIN_HANDOFFS + 1)})
+        return stop, points
+    kind, _, cut = arm.partition("@")
+    stop = max(1, round(n_person * int(cut) / 100))
+    return stop, ([stop] if kind == "single" else [])
+
+
+def handoff(engine: Engine, sid: str, harness: str, agents: dict[str, str], cmd: str | None,
+            settle_s: float) -> None:
+    if cmd:
+        line = cmd.replace("{session}", sid)
+        say(f"    RUN {line}")
+        if not engine.dry:
+            subprocess.run(shlex.split(line), check=True, timeout=300)
+    else:
+        engine.switch(sid, agents[OTHER[harness]])
+        engine.switch(sid, agents[harness])
+    if not engine.dry:
+        time.sleep(settle_s)  # the runner-side reset runs as a background task after the switch
+
+
+def expected(engine: Engine, sid: str, case: dict, stop: int) -> dict[str, Any]:
+    """What a string match can check: the earliest request and the newest file."""
+    first = next((p["text"] for p in case["person"][:stop] if len(words(p["text"])) >= 4), "")
+    files = [] if engine.dry else engine.artifacts(sid)
+    newest = files[0] if files else {}
+    return {"words": first, "file_id": newest.get("artifact_id") or newest.get("id"),
+            "file_version": newest.get("version"), "files": len(files)}
+
+
+def leak_words(case: dict, stop: int) -> set[str]:
+    before = {w for p in case["person"][:stop] for w in words(p["text"])}
+    before |= {w for p in case["assistant"] for w in words(p["text"])
+               if p["at"] <= case["person"][stop - 1]["at"]}
+    after = {w for p in case["person"][stop:] for w in words(p["text"]) if len(w) >= 6}
+    return after - before - set(" ".join(q for pair in PROBES.values() for q in pair).split())
+
+
+def score_exact(kind: str, reply: str, exp: dict) -> int | None:
+    if kind == "words" and exp["words"]:
+        want = set(words(exp["words"]))
+        return int(len(want & set(words(reply))) >= 0.8 * len(want))
+    if kind == "file" and exp["file_id"]:
+        has_id = exp["file_id"][:8] in reply
+        has_v = bool(re.search(rf"\b(v|version\s*)\s*{exp['file_version']}\b", reply, re.I))
+        return int(has_id and has_v)
+    return None
+
+
+def score_task(kind: str, res: dict, exp: dict, files_before: int, files_after: int) -> dict:
+    tools = res.get("tools") or []
+    out = {
+        "tool_calls": len(tools),
+        "recall_calls": sum(t in RECALL_TOOLS for t in tools),
+        "asked_back": "ask_clarification" in tools,
+        "redo": files_after > files_before and kind != "next",
+    }
+    if kind == "file" and exp["file_id"]:
+        args = " ".join(res.get("args") or [])
+        out["right_file"] = exp["file_id"] in args
+        out["right_version"] = bool(re.search(
+            rf'"base_version":\s*{exp["file_version"]}\b', args))
+    return out
+
+
+def judge_prompt(kind: str, question: str, reply: str, case: dict, stop: int, exp: dict) -> str:
+    cutoff_at = case["person"][stop - 1]["at"]
+    lines = [f"PERSON: {p['text'][:400]}" for p in case["person"][:stop]]
+    lines += [f"ASSISTANT: {a['text'][:400]}" for a in case["assistant"] if a["at"] <= cutoff_at]
+    return (
+        "You grade whether an assistant remembers a conversation. Score its answer 0-5:\n"
+        "5 = fully right and specific, 3 = partly right or vague, 0 = wrong, invented or "
+        "refuses. Reply with JSON only: {\"score\": <0-5>, \"why\": \"<one line>\"}.\n\n"
+        f"Reference (the conversation so far, unordered excerpts):\n" + "\n".join(lines[-60:])
+        + f"\nNewest file: id {exp.get('file_id')} version {exp.get('file_version')}\n\n"
+        f"Question ({kind}): {question}\n\nAnswer to grade:\n{reply[:3000]}\n"
+    )
+
+
+def run_judge(cmd: str, prompt: str) -> int | None:
+    out = subprocess.run(shlex.split(cmd), input=prompt, capture_output=True, text=True,
+                         timeout=300, check=False)
+    found = re.search(r'"score"\s*:\s*([0-5])', out.stdout)
+    return int(found.group(1)) if found else None
+
+
+def cmd_run(args: argparse.Namespace) -> int:
+    skip = re.compile(args.skip, re.I)
+    cases = source_cases(args.db_container, args.cases, args.source, skip)
+    if not cases:
+        raise SystemExit("no source Conversation with 4+ person messages")
+    arms = args.arms.split(",")
+    for arm in arms:
+        if arm != "chain" and not re.fullmatch(r"(warm|single)@\d{1,2}", arm):
+            raise SystemExit(f"bad arm {arm!r}: warm@C, single@C or chain")
+    kinds = args.probes.split(",")
+    run_id = datetime.datetime.now(datetime.UTC).strftime("%Y%m%d-%H%M%S")
+    out = Path(args.out) / run_id
+    engine = Engine(args.engine, args.dry_run)
+    say(f"handoff probe {run_id}: harness={args.harness} arms={arms} repeats={args.repeats} "
+        f"probes={kinds} handoff={'command' if args.handoff_cmd else 'switch-agent there and back'}")
+    for case in cases:
+        n = min(len(case["person"]), args.max_turns or len(case["person"]))
+        case["person"] = case["person"][:n]
+        say(f"source {case['id']} {case['title']!r}: {n} person turns replayed at most")
+        for arm in arms:
+            stop, points = arm_plan(arm, n)
+            newer = person_state_newer(args.db_container, case["person"][stop - 1]["at"])
+            say(f"  {arm}: replay {stop} turns, handoffs after turns {points or '-'}, then "
+                f"{len(kinds)} probes + {len(kinds)} tasks; person-level rows newer than the "
+                f"cut: {newer}")
+    if args.dry_run:
+        say("\nHTTP calls, repeat 1: the first arm in full, then each other arm's create and "
+            "handoffs. After each send the probe polls GET /v1/sessions/{id}?include_liveness="
+            "false, GET /v1/sessions/{id}?include_items=false&include_liveness=false and GET "
+            "/v1/sessions/{id}/rounds?limit=3 every 2 s until settled, and GET "
+            "/v1/artifacts?parent_session_id={id}&limit=50 around each task.")
+    else:
+        out.mkdir(parents=True, exist_ok=True)
+    agents = engine.agent_ids()
+    state: dict[str, Any] = {"run": run_id, "harness": args.harness, "sessions": []}
+    rows: list[dict] = []
+    for case in cases:
+        for arm in arms:
+            stop, points = arm_plan(arm, len(case["person"]))
+            for rep in range(1, (1 if args.dry_run else args.repeats) + 1):
+                full = not args.dry_run or arm == arms[0]
+                title = f"{PROBE_PREFIX}{run_id}:{case['id'][:8]}:{arm}:r{rep}"
+                sid = engine.create(title, agents[args.harness], case["labels"] or {})
+                state["sessions"].append(sid)
+                if not args.dry_run:
+                    (out / "state.json").write_text(json.dumps(state, indent=1))
+                say(f"  [{title}] session {sid}")
+                # Trace session keys are not session ids: a ref on the first message (it is in
+                # every later cold start's history too) ties this arm's traced calls to it.
+                ref = hashlib.sha256(title.encode()).hexdigest()[:8]
+                for i, msg in enumerate(case["person"][:stop], start=1):
+                    if full:
+                        text = f"{msg['text']} (ref {ref})" if i == 1 else msg["text"]
+                        say(f"    turn {i}/{stop}: {text[:70]!r}")
+                        turn(engine, sid, text, args.turn_timeout, args.quiet)
+                    if i in points:
+                        say(f"    handoff after turn {i}")
+                        handoff(engine, sid, args.harness, agents, args.handoff_cmd,
+                                args.handoff_settle)
+                if not full:
+                    say(f"    (the {stop} turns around these handoffs and the probes, as above)")
+                    continue
+                exp = expected(engine, sid, case, stop)
+                avoid = leak_words(case, stop)
+                for kind in kinds:
+                    question, task = PROBES[kind]
+                    asked = turn(engine, sid, question, args.turn_timeout, args.quiet)
+                    before = exp["files"] if args.dry_run else len(engine.artifacts(sid))
+                    done = turn(engine, sid, task, args.turn_timeout, args.quiet)
+                    after = before if args.dry_run else len(engine.artifacts(sid))
+                    replies = asked["reply"] + "\n" + done["reply"]
+                    row = {
+                        "run": run_id, "case": case["id"], "arm": arm, "repeat": rep,
+                        "cut": 75 if arm == "chain" else int(arm.split("@")[1]),
+                        "harness": args.harness, "session": sid, "ref": ref, "kind": kind,
+                        "question": question, "task": task, "reply": asked["reply"],
+                        "task_reply": done["reply"],
+                        "exact": score_exact(kind, asked["reply"], exp),
+                        "task_score": score_task(kind, done, exp, before, after),
+                        "hard_fail": bool(HARD_FAIL.search(replies)),
+                        "leak": sorted(avoid & set(words(replies)))[:10],
+                        "first_word_s": asked["first_word_s"],
+                        "item_tools": asked["tools"],
+                        "expected": exp,
+                        "judge_prompt": judge_prompt(kind, question, asked["reply"], case,
+                                                     stop, exp),
+                        "judge": None,
+                    }
+                    if args.judge_cmd and row["exact"] is None and not args.dry_run:
+                        row["judge"] = run_judge(args.judge_cmd, row["judge_prompt"])
+                    rows.append(row)
+                if args.dry_run:
+                    continue
+                with (out / "results.jsonl").open("a", encoding="utf-8") as fh:
+                    for row in rows[-len(kinds):]:
+                        fh.write(json.dumps(row) + "\n")
+    if args.dry_run:
+        say(f"\ndry run: {args.repeats} repeats of each arm would run; cleanup deletes only "
+            f"the sessions listed in OUT/state.json")
+        return 0
+    mark_spot_checks(out)
+    say(f"\nresults: {out}/results.jsonl")
+    return report(out, args.trace_dir, args.engine_log)
+
+
+def mark_spot_checks(out: Path) -> None:
+    path = out / "results.jsonl"
+    rows = [json.loads(ln) for ln in path.read_text().splitlines() if ln.strip()]
+    rng = random.Random(0)
+    for row in rows:
+        row["spot_check"] = row.get("exact") is None and rng.random() < 0.10
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+
+
+# ── report ────────────────────────────────────────────────────────────────────
+
+
+def score_of(row: dict) -> float | None:
+    if row.get("exact") is not None:
+        return 5.0 * row["exact"]
+    return None if row.get("judge") is None else float(row["judge"])
+
+
+def first_words_from_log(path: str | None) -> dict[str, list[float]]:
+    """``{session: [first-word seconds, ...]}`` from the engine's turn-metrics lines."""
+    found: dict[str, list[float]] = collections.defaultdict(list)
+    if not path:
+        return found
+    pattern = re.compile(r"first word for (\S+) ([\d.]+)s after the message")
+    for line in open(path, encoding="utf-8", errors="replace"):
+        hit = pattern.search(re.sub(r"\x1b\[[0-9;]*m", "", line))
+        if hit:
+            found[hit.group(1)].append(float(hit.group(2)))
+    return found
+
+
+def trace_probe_turns(records: list[dict], ref: str, kinds: dict[str, tuple[str, str]]) -> dict:
+    """Per probe question and task: tool_use names from the traced calls after its prompt.
+
+    The arm's trace sessions are the ones whose prompts carry its ``ref``; the probes run last,
+    so the newest prompt naming a probe is the one that counts.
+    """
+    keys = {r.get("session") for r in records
+            if r.get("kind") == "prompt" and f"(ref {ref})" in json.dumps(r.get("data"))}
+    mine = [r for r in records if r.get("session") in keys]
+    out: dict[str, dict] = {}
+    prompts = [i for i, r in enumerate(mine) if r.get("kind") == "prompt"]
+    for n, start in enumerate(prompts):
+        text = json.dumps(mine[start].get("data"))
+        end = prompts[n + 1] if n + 1 < len(prompts) else len(mine)
+        calls = [r for r in mine[start:end] if is_main_call(r)]
+        tools = [b.get("name", "") for r in calls for b in (r.get("response") or {})
+                 .get("content") or [] if isinstance(b, dict) and b.get("type") == "tool_use"]
+        for kind, (q, t) in kinds.items():
+            for label, needle in (("q", q), ("t", t)):
+                if needle[:60] in text:
+                    first = calls[0] if calls else {}
+                    out[f"{kind}:{label}"] = {
+                        "tools": len(tools),
+                        "recall": sum(x.rsplit("__", 1)[-1] in RECALL_TOOLS for x in tools),
+                        "first_call": usage_of(first) if first else None,
+                    }
+    return out
+
+
+def trace_cold_starts(records: list[dict], ref: str) -> list[dict]:
+    """The arm's traced cold starts: a call with fewer messages than the one before it.
+
+    For each: its input size and split, whether tools + system hashed the same as the call
+    before (ADR 0032) and the cache TTLs it asked for.
+    """
+    keys = {r.get("session") for r in records
+            if r.get("kind") == "prompt" and f"(ref {ref})" in json.dumps(r.get("data"))}
+    calls = [r for r in records if r.get("session") in keys and is_main_call(r)
+             and role_of(r["request"]) == "conversation"]
+    found, prev = [], None
+    for rec in calls:
+        n = len(rec["request"].get("messages") or [])
+        if prev is not None and n < len(prev["request"].get("messages") or []):
+            u = usage_of(rec)
+            found.append({**u, "same_prefix": prefix_hash(rec["request"]) == prefix_hash(
+                prev["request"]), "ttl": sorted(set(ttls(rec["request"]))),
+                "gap_s": round(rec["t"] - prev["t"], 1)})
+        prev = rec
+    return found
+
+
+def report(out: Path, trace_dir: str | None, engine_log: str | None) -> int:
+    rows = [json.loads(ln) for ln in (out / "results.jsonl").read_text().splitlines()
+            if ln.strip()]
+    records = load_traces(trace_dir) if trace_dir else []
+    log_words = first_words_from_log(engine_log)
+    if records:
+        for ref in {r.get("ref") for r in rows if r.get("ref")}:
+            per = trace_probe_turns(records, ref, PROBES)
+            for row in rows:
+                if row.get("ref") == ref:
+                    row["trace_q"] = per.get(f"{row['kind']}:q")
+                    row["trace_t"] = per.get(f"{row['kind']}:t")
+    warm = {(r["case"], r["cut"], r["kind"], r["repeat"]): r for r in rows
+            if r["arm"].startswith("warm@")}
+    say(f"{len(rows)} probe rows; hard fails {sum(r['hard_fail'] for r in rows)}; "
+        f"rows with leak words {sum(bool(r['leak']) for r in rows)}; "
+        f"unjudged {sum(score_of(r) is None for r in rows)}")
+    for arm in sorted({r["arm"] for r in rows}):
+        mine = [r for r in rows if r["arm"] == arm]
+        scores = [s for s in (score_of(r) for r in mine) if s is not None]
+        diffs, tool_diffs, recall_diffs, word_diffs = [], [], [], []
+        from_traces = 0
+        for r in mine:
+            base = warm.get((r["case"], r["cut"], r["kind"], r["repeat"]))
+            if base is None or base is r:
+                continue
+            a, b = score_of(r), score_of(base)
+            if a is not None and b is not None:
+                diffs.append(a - b)
+            src_r = r.get("trace_t") or {}
+            src_b = base.get("trace_t") or {}
+            if src_r and src_b:  # from the model-call traces
+                from_traces += 1
+                tool_diffs.append(src_r["tools"] - src_b["tools"])
+                recall_diffs.append(src_r["recall"] - src_b["recall"])
+            else:  # from stored items
+                ta, tb = r["task_score"], base["task_score"]
+                tool_diffs.append(ta["tool_calls"] - tb["tool_calls"])
+                recall_diffs.append(ta["recall_calls"] - tb["recall_calls"])
+            fa = (log_words.get(r["session"]) or [None])[0] or r.get("first_word_s")
+            fb = (log_words.get(base["session"]) or [None])[0] or base.get("first_word_s")
+            if fa is not None and fb is not None:
+                word_diffs.append(fa - fb)
+        files = [r for r in mine if r["kind"] == "file" and r["exact"] is not None]
+        say(f"\n{arm}: score mean {statistics.fmean(scores) if scores else float('nan'):.2f} "
+            f"(n={len(scores)}); files exact {sum(r['exact'] for r in files)}/{len(files)}; "
+            f"hard fails {sum(r['hard_fail'] for r in mine)}")
+        if not arm.startswith("warm@"):
+            src = f"{from_traces} of {len(tool_diffs)} pairs from traces, rest from items"
+            say(f"  score vs warm (paired, 95% CI): {paired(diffs)}  target within -0.5")
+            say(f"  tool calls per task vs warm ({src}): {paired(tool_diffs)}  target <= +1")
+            say(f"  recall/session_history per task vs warm ({src}): {paired(recall_diffs)}")
+            say(f"  first word vs warm, s: {paired(word_diffs)}  target <= +3")
+        tasks = [r["task_score"] for r in mine]
+        say(f"  tasks: asked back {sum(t['asked_back'] for t in tasks)}, redo "
+            f"{sum(t['redo'] for t in tasks)}, right file "
+            f"{sum(bool(t.get('right_file')) for t in tasks)}/"
+            f"{sum('right_file' in t for t in tasks)}")
+        if records:
+            colds = [c for ref in sorted({r["ref"] for r in mine if r.get("ref")})
+                     for c in trace_cold_starts(records, ref)]
+            if colds:  # from the model-call traces: what each handoff's first call cost
+                say(f"  traced cold starts: {len(colds)}; first-call input p50 "
+                    f"{pct([c['total'] for c in colds], .5):,.0f} max "
+                    f"{max(c['total'] for c in colds):,}; cache read on it "
+                    f"{sum(c['read'] > 0 for c in colds)}/{len(colds)}; tools+system unchanged "
+                    f"{sum(c['same_prefix'] for c in colds)}/{len(colds)}; TTLs "
+                    f"{sorted({t for c in colds for t in c['ttl']})}")
+    fails = [r for r in rows if r["hard_fail"]]
+    for r in fails[:5]:
+        say(f"  HARD FAIL {r['arm']} {r['kind']}: {r['reply'][:160]!r}")
+    return 1 if fails else 0
+
+
+def cmd_report(args: argparse.Namespace) -> int:
+    return report(Path(args.out_dir), args.trace_dir, args.engine_log)
+
+
+def cmd_judge(args: argparse.Namespace) -> int:
+    path = Path(args.out_dir) / "results.jsonl"
+    rows = [json.loads(ln) for ln in path.read_text().splitlines() if ln.strip()]
+    order = list(range(len(rows)))
+    random.Random(1).shuffle(order)  # blind to the arm: graded out of order, one at a time
+    for i in order:
+        if rows[i].get("exact") is None and rows[i].get("judge") is None:
+            rows[i]["judge"] = run_judge(args.judge_cmd, rows[i]["judge_prompt"])
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    return report(Path(args.out_dir), args.trace_dir, args.engine_log)
+
+
+def cmd_cleanup(args: argparse.Namespace) -> int:
+    state = json.loads((Path(args.out_dir) / "state.json").read_text())
+    engine = Engine(args.engine, args.dry_run)
+    for sid in state.get("sessions") or []:
+        try:
+            title = engine.title(sid) if not args.dry_run else PROBE_PREFIX
+        except urllib.error.HTTPError as exc:
+            say(f"  {sid}: {exc.code}, skipped")
+            continue
+        if not title.startswith(PROBE_PREFIX):
+            say(f"  {sid}: title {title!r} is not a probe's, kept")
+            continue
+        engine.delete(sid)
+        say(f"  {sid}: deleted")
+    return 0
+
+
+# ── numbers ───────────────────────────────────────────────────────────────────
+
+
+def load_traces(folder: str, since: float = 0) -> list[dict]:
+    """Every trace record under *folder* (recursive), each copy of a record counted once."""
+    seen: set[tuple] = set()
+    recs: list[dict] = []
+    for path in sorted(glob.glob(os.path.join(folder, "**", "*.jsonl"), recursive=True)):
+        pid = os.path.basename(path)
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                try:
+                    rec = json.loads(line)
+                except ValueError:
+                    continue
+                if rec.get("kind") not in ("call", "prompt", "cli_init"):
+                    continue
+                key = (rec.get("session"), rec.get("t"), rec.get("kind"), rec.get("path"))
+                if key in seen or (rec.get("t") or 0) < since:
+                    continue
+                seen.add(key)
+                rec["_file"] = pid
+                recs.append(rec)
+    return sorted(recs, key=lambda r: r.get("t") or 0)
+
+
+def is_main_call(rec: dict) -> bool:
+    req = rec.get("request")
+    return (rec.get("kind") == "call" and isinstance(req, dict) and bool(req.get("messages"))
+            and bool(req.get("tools")))
+
+
+def usage_of(rec: dict) -> dict[str, int]:
+    usage = (rec.get("response") or {}).get("usage") or {}
+    read = int(usage.get("cache_read_input_tokens") or 0)
+    write = int(usage.get("cache_creation_input_tokens") or 0)
+    split = usage.get("cache_creation") or {}
+    w1h = int(split.get("ephemeral_1h_input_tokens") or 0)
+    plain = int(usage.get("input_tokens") or 0)
+    return {"input": plain, "read": read, "write": write, "w1h": w1h, "w5m": write - w1h,
+            "total": plain + read + write, "output": int(usage.get("output_tokens") or 0)}
+
+
+def ttls(req: dict) -> list[str]:
+    """The ``cache_control`` TTLs a request asks for (``5m`` when none is named)."""
+    found: list[str] = []
+
+    def walk(node: Any) -> None:
+        if isinstance(node, dict):
+            cc = node.get("cache_control")
+            if isinstance(cc, dict):
+                found.append(str(cc.get("ttl") or "5m"))
+            for value in node.values():
+                if isinstance(value, (dict, list)):
+                    walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+
+    walk({k: req.get(k) for k in ("system", "tools", "messages")})
+    return found
+
+
+def prefix_hash(req: dict) -> str:
+    blob = json.dumps([req.get("tools"), req.get("system")], sort_keys=True)
+    return hashlib.sha256(blob.encode()).hexdigest()[:10]
+
+
+#: The role a traced call serves, from its system prompt (trace session keys are not session ids).
+ROLE_MARKERS = (
+    ("helper", "You are a worker Helper"),
+    ("studio", "You are the chat of one file"),
+    ("notes", "You keep the person's notes"),
+    ("conversation", "You are superchat"),
+)
+
+
+def role_of(req: dict) -> str:
+    system = req.get("system")
+    text = system if isinstance(system, str) else "".join(
+        b.get("text", "") for b in system or [] if isinstance(b, dict))
+    return next((role for role, marker in ROLE_MARKERS if marker in text), "other")
+
+
+GAP_BUCKETS = [(0, 60), (60, 240), (240, 300), (300, 360), (360, 600), (600, 1800),
+               (1800, 3540), (3540, 3600), (3600, 4200), (4200, 10**9)]
+
+
+def cmd_numbers(args: argparse.Namespace) -> int:
+    recs = load_traces(args.trace_dir, args.since)
+    by_session: dict[str, list[dict]] = collections.defaultdict(list)
+    for rec in recs:
+        by_session[str(rec.get("session"))].append(rec)
+    harness = {
+        s: "claude-sdk" if any(r.get("kind") == "cli_init" or (r.get("request") or {})
+                               .get("metadata") for r in rs) else "pi"
+        for s, rs in by_session.items()
+    }
+    role = {s: next((role_of(r["request"]) for r in rs if is_main_call(r)), "other")
+            for s, rs in by_session.items()}
+    calls = sum(is_main_call(r) for r in recs)
+    side = sum(r.get("kind") == "call" for r in recs) - calls
+    span = [datetime.datetime.fromtimestamp(r["t"], datetime.UTC) for r in recs if r.get("t")]
+    say(f"{calls} main model calls (+{side} side calls without tools) in {len(by_session)} "
+        f"sessions, {span[0]:%Y-%m-%d %H:%M} to {span[-1]:%Y-%m-%d %H:%M} UTC" if span
+        else "no records")
+    stats: dict[str, dict[str, Any]] = collections.defaultdict(lambda: collections.defaultdict(
+        list))
+    per_day: dict[tuple[str, str], list[int]] = collections.defaultdict(lambda: [0, 0])
+    for sid, rs in by_session.items():
+        g = f"{harness[sid]}/{role[sid]}"
+        st = stats[g]
+        round_tokens = 0
+        prev: dict | None = None
+        prev_hash = None
+        for rec in rs:
+            if rec.get("kind") == "prompt":
+                if round_tokens:
+                    st["round"].append(round_tokens)
+                round_tokens = 0
+                continue
+            if not is_main_call(rec):
+                continue
+            req, u = rec["request"], usage_of(rec)
+            round_tokens += u["total"]
+            for key in ("input", "read", "w5m", "w1h", "total"):
+                st["sum_" + key].append(u[key])
+            st["ttl"].extend(ttls(req))
+            day = datetime.datetime.fromtimestamp(rec["t"], datetime.UTC).strftime("%Y-%m-%d")
+            per_day[(g, day)][0] += u["read"]
+            per_day[(g, day)][1] += u["total"]
+            n_msgs = len(req.get("messages") or [])
+            h = prefix_hash(req)
+            cold = (prev is None or rec["_file"] != prev["_file"]
+                    or n_msgs < len(prev["request"].get("messages") or []))
+            if cold:
+                st["cold"].append(u["total"])
+                st["cold_read"].append(u["read"])
+                if prev is not None:
+                    gap = rec["t"] - prev["t"]
+                    st["restart"].append((gap, u["read"] > 0, h == prev_hash))
+            elif prev is not None:
+                gap = rec["t"] - prev["t"]  # start to start: the cache TTL's own clock
+                hit = u["read"] >= 0.5 * usage_of(prev)["total"]
+                st["gap"].append((gap, hit))
+            prev, prev_hash = rec, h
+        if round_tokens:
+            st["round"].append(round_tokens)
+    for g in sorted(stats):
+        st = stats[g]
+        total = sum(st["sum_total"]) or 1
+        read, w5, w1, plain = (sum(st["sum_read"]), sum(st["sum_w5m"]), sum(st["sum_w1h"]),
+                               sum(st["sum_input"]))
+        dollars = plain * PRICE["input"] + w5 * PRICE["w5m"] + w1 * PRICE["w1h"] \
+            + read * PRICE["read"]
+        write_d = w5 * PRICE["w5m"] + w1 * PRICE["w1h"]
+        say(f"\n== {g}: {len(st['sum_total'])} calls, {total:,} input tokens")
+        if st["round"]:
+            say(f"  tokens per Round (input incl. cache): p50 {pct(st['round'], .5):,.0f}  "
+                f"p90 {pct(st['round'], .9):,.0f}  max {max(st['round']):,}  "
+                f"(n={len(st['round'])})")
+        say(f"  cache-read share of input tokens: {read / total:.1%}   uncached "
+            f"{plain / total:.1%}   written {(w5 + w1) / total:.1%} (1h: {w1:,} tokens)")
+        say(f"  cache-write share of input $: {write_d / (dollars or 1):.1%}  "
+            f"(reads {read * PRICE['read'] / (dollars or 1):.1%}, uncached "
+            f"{plain / (dollars or 1):.1%})")
+        say(f"  cache_control TTLs asked: {dict(collections.Counter(st['ttl']))}")
+        if st["cold"]:
+            say(f"  first call after a cold start: n={len(st['cold'])}  p50 "
+                f"{pct(st['cold'], .5):,.0f}  max {max(st['cold']):,}  read>0 in "
+                f"{sum(x > 0 for x in st['cold_read'])}/{len(st['cold'])}")
+        if st["restart"]:
+            same = sum(r[2] for r in st["restart"])
+            hit = sum(r[1] for r in st["restart"])
+            say(f"  across a restart: tools+system hash equal {same}/{len(st['restart'])}, "
+                f"cache read on the first call {hit}/{len(st['restart'])}")
+        if st["gap"]:
+            cells = []
+            for lo, hi in GAP_BUCKETS:
+                inb = [hit for gap, hit in st["gap"] if lo <= gap < hi]
+                if inb:
+                    label = f"{lo // 60}-{hi // 60}m" if hi < 10**9 else f">{lo // 60}m"
+                    cells.append(f"{label}: {sum(inb)}/{len(inb)}")
+            hits = [gap for gap, hit in st["gap"] if hit]
+            misses = [gap for gap, hit in st["gap"] if not hit]
+            say("  warm calls, hits by gap since the previous request's start: "
+                + "  ".join(cells))
+            say(f"  longest gap with a hit: {f'{max(hits) / 60:.1f} min' if hits else 'none'}; "
+                f"shortest gap with a miss: {f'{min(misses) / 60:.1f} min' if misses else 'none'}")
+    if per_day:
+        say("\ncache-read share per day:")
+        for (g, day), (r, t) in sorted(per_day.items()):
+            say(f"  {day} {g}: {r / (t or 1):.1%} of {t:,}")
+    return 0
+
+
+# ── cli ───────────────────────────────────────────────────────────────────────
+
+
+def main(argv: list[str]) -> int:
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--engine", default=ENGINE)
+    ap.add_argument("--db-container", default=DB_CONTAINER)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    run = sub.add_parser("run", help="replay, hand off, probe")
+    run.add_argument("--harness", choices=list(BUNDLE), required=True)
+    run.add_argument("--cases", type=int, default=1, help="source Conversations")
+    run.add_argument("--source", help="one source session id instead of the largest")
+    run.add_argument("--max-turns", type=int, help="replay at most this many person turns")
+    run.add_argument("--arms", default=",".join(
+        [f"warm@{c}" for c in CUTS] + [f"single@{c}" for c in CUTS] + ["chain"]))
+    run.add_argument("--repeats", type=int, default=3)
+    run.add_argument("--probes", default=",".join(PROBES))
+    run.add_argument("--skip", default=SKIP_DEFAULT, help="regex of source messages to skip")
+    run.add_argument("--handoff-cmd", help="run this instead of a switch there and back")
+    run.add_argument("--handoff-settle", type=float, default=8.0)
+    run.add_argument("--turn-timeout", type=float, default=900.0)
+    run.add_argument("--quiet", type=float, default=6.0, help="settled seconds ending a turn")
+    run.add_argument("--judge-cmd")
+    run.add_argument("--trace-dir")
+    run.add_argument("--engine-log")
+    run.add_argument("--out", default="probe-out")
+    run.add_argument("--dry-run", action="store_true")
+    run.set_defaults(fn=cmd_run)
+
+    rep = sub.add_parser("report", help="paired comparison of a finished run")
+    rep.add_argument("out_dir")
+    rep.add_argument("--trace-dir")
+    rep.add_argument("--engine-log")
+    rep.set_defaults(fn=cmd_report)
+
+    jud = sub.add_parser("judge", help="score unjudged rows, then report")
+    jud.add_argument("out_dir")
+    jud.add_argument("--judge-cmd", required=True)
+    jud.add_argument("--trace-dir")
+    jud.add_argument("--engine-log")
+    jud.set_defaults(fn=cmd_judge)
+
+    cln = sub.add_parser("cleanup", help="delete the sessions this probe created")
+    cln.add_argument("out_dir")
+    cln.add_argument("--dry-run", action="store_true")
+    cln.set_defaults(fn=cmd_cleanup)
+
+    num = sub.add_parser("numbers", help="today's baseline from model-call traces")
+    num.add_argument("trace_dir")
+    num.add_argument("--since", type=float, default=0, help="epoch seconds")
+    num.set_defaults(fn=cmd_numbers)
+
+    args = ap.parse_args(argv)
+    return int(args.fn(args) or 0)
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
