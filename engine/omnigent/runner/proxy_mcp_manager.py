@@ -404,6 +404,7 @@ class ProxyMcpManager:
 
         payload = _initial_payload()
         approval_retries = 0
+        retried_fresh = False
 
         while True:
             request_generation = pending_approvals.current_server_generation()
@@ -425,7 +426,11 @@ class ProxyMcpManager:
                 resp.raise_for_status()
                 data = _response_json_object(resp)
             except httpx.TransportError as exc:
-                await _wait_to_reattach(request_generation, exc)
+                # A pooled connection the server just closed fails the same way as a lost
+                # server, so try once more on a fresh connection before waiting for a new one.
+                if retried_fresh:
+                    await _wait_to_reattach(request_generation, exc)
+                retried_fresh = not retried_fresh
                 # Reattach the new server generation to the same runner-owned
                 # operation. A fresh JSON-RPC id distinguishes this transport
                 # attempt; the operation id prevents external work from replaying.
