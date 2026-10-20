@@ -17,6 +17,7 @@ import {
   Minimize2,
   MousePointer2,
   Redo2,
+  SlidersHorizontal,
   Undo2,
   X,
 } from "lucide-react";
@@ -215,6 +216,9 @@ function KindEditor({ kind, ...props }: LoadedProps & { kind: ArtifactEditorKind
   const [editing, setEditing] = useState(() => !!props.studio || !!props.startEditing);
   const [askClicks, setAskClicks] = useState(0);
   const focusAsk = useCallback(() => setAskClicks((n) => n + 1), []);
+  // The inspector is opened by hand (the canvas tools' Edit style); selecting never opens it.
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const closeInspector = useCallback(() => setInspectorOpen(false), []);
   const useEditor = kind.useEditor;
   const parts = useEditor({
     artifact,
@@ -223,6 +227,7 @@ function KindEditor({ kind, ...props }: LoadedProps & { kind: ArtifactEditorKind
     setEditing,
     onEdited: props.content.adoptVersion,
     focusAsk,
+    closeInspector,
     locked: !!props.studio?.turn.running,
   } satisfies ArtifactEditorArgs);
   return (
@@ -231,6 +236,8 @@ function KindEditor({ kind, ...props }: LoadedProps & { kind: ArtifactEditorKind
       parts={parts}
       editing={editing && parts.editable}
       setEditing={setEditing}
+      inspectorOpen={inspectorOpen}
+      setInspectorOpen={setInspectorOpen}
       askClicks={askClicks}
       focusAsk={focusAsk}
     />
@@ -277,6 +284,8 @@ function FileEditor(props: LoadedProps) {
       parts={parts}
       editing={false}
       setEditing={() => {}}
+      inspectorOpen={false}
+      setInspectorOpen={() => {}}
       askClicks={askClicks}
       focusAsk={focusAsk}
     />
@@ -291,12 +300,16 @@ function LoadedEditor({
   parts,
   editing,
   setEditing,
+  inspectorOpen,
+  setInspectorOpen,
   askClicks,
   ...props
 }: LoadedProps & {
   parts: ArtifactEditorParts;
   editing: boolean;
   setEditing: (on: boolean) => void;
+  inspectorOpen: boolean;
+  setInspectorOpen: (open: boolean) => void;
   askClicks: number;
   focusAsk: () => void;
 }) {
@@ -491,6 +504,21 @@ function LoadedEditor({
         >
           <MousePointer2 />
         </Button>
+        {editing && parts.inspector ? (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-pressed={inspectorOpen}
+            aria-label={t`Edit style`}
+            title={t`Edit style`}
+            data-testid="editor-inspector-toggle"
+            disabled={locked}
+            className="rounded-full aria-pressed:bg-selection-strong aria-pressed:text-tint-ink"
+            onClick={() => setInspectorOpen(!inspectorOpen)}
+          >
+            <SlidersHorizontal />
+          </Button>
+        ) : null}
         {editing && history ? (
           <>
             <span aria-hidden="true" className="mx-0.5 h-4 w-px bg-separator" />
@@ -545,16 +573,29 @@ function LoadedEditor({
       note={studio?.waiting}
     />
   ) : null;
-  const showInspector = editing && !!parts.inspector && !locked;
+  const showInspector = editing && !!parts.inspector && !locked && inspectorOpen;
+  // Escape closes the open inspector before anything else (the selection, the studio): capture
+  // phase, so it runs ahead of the studio's own Escape.
+  useEffect(() => {
+    if (!showInspector) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (isTypingTarget(target) || target?.closest('[role="menu"],[role="dialog"]')) return;
+      event.preventDefault();
+      setInspectorOpen(false);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [showInspector, setInspectorOpen]);
   const inspector = !showInspector ? null : phone ? (
-    // A phone's inspector is a sheet over the bottom of the canvas while something is selected;
-    // the canvas stays live under it, and closing it ends the selection.
+    // A phone's inspector is a sheet over the bottom of the canvas; the canvas stays live under it.
     <Sheet
-      open={selected}
+      open
       modal={false}
       disablePointerDismissal
       onOpenChange={(open) => {
-        if (!open) clearSelection();
+        if (!open) setInspectorOpen(false);
       }}
     >
       <SheetContent
@@ -568,17 +609,15 @@ function LoadedEditor({
       </SheetContent>
     </Sheet>
   ) : (
-    // From about 900px wide the inspector column is reserved for the whole edit session (empty
-    // state, then the selection's controls), so the stage never reflows and nothing is ever
-    // covered. Narrower, the stage keeps its width and the controls are a sheet over the
-    // bottom edge, shown only while something is selected.
+    // From about 900px wide the open inspector is a column beside the stage, so nothing is
+    // covered. Narrower, the stage keeps its width and the controls are a sheet over the bottom
+    // edge.
     <div
       data-testid="editor-inspector"
       data-slot="editor-inspector"
       className={cn(
         "absolute inset-x-2 bottom-2 z-20 flex max-h-[60%] justify-end",
         "@[900px]:static @[900px]:inset-auto @[900px]:block @[900px]:max-h-none @[900px]:w-[300px] @[900px]:shrink-0 @[900px]:overflow-hidden",
-        selected ? "" : "@max-[899px]:hidden",
       )}
     >
       <div className="flex h-full max-h-full w-[288px] @[900px]:w-[300px] @[900px]:py-3 @[900px]:pe-3">

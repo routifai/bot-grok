@@ -64,7 +64,7 @@ export const isAppHtml = (html: string): boolean => /<script\b/i.test(html);
 /**
  * An HTML page or mini app in the artifact editor. Run (or Preview) shows it live and
  * interactive; Edit puts the same edit bridge decks use on it: click any element to select it
- * (a chip in the ask box, the inspector), double-click text to type, style it, and every change
+ * (a chip in the ask box), double-click text to type, style it (Edit style), and every change
  * is a patch the engine saves as a new version. An element with no `data-superchat-id` can be
  * selected and asked about, not changed by hand. The preview keeps its sandbox and CSP in both.
  */
@@ -75,6 +75,7 @@ function usePageEditor({
   setEditing,
   onEdited,
   focusAsk,
+  closeInspector,
   locked,
 }: ArtifactEditorArgs): ArtifactEditorParts {
   const { t } = useLingui();
@@ -232,7 +233,7 @@ function usePageEditor({
         onStyle={(changes, mode) => editor.applyStyle(changes, mode)}
         onAttributes={editor.setAttributes}
         onCommit={() => void editor.history.finish?.()}
-        onClose={() => editor.select([])}
+        onClose={closeInspector}
         onRemove={editor.remove}
         onDuplicate={editor.duplicate}
         onAsk={artifact.botId ? focusAsk : undefined}

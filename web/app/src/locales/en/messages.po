@@ -407,6 +407,9 @@ msgstr "Click an element to edit it."
 msgid "Close"
 msgstr "Close"
 
+msgid "Close (Esc)"
+msgstr "Close (Esc)"
+
 msgid "Close and go back to Super Chat"
 msgstr "Close and go back to Super Chat"
 
@@ -735,6 +738,9 @@ msgstr "Edit first"
 
 msgid "Edit memory"
 msgstr "Edit memory"
+
+msgid "Edit style"
+msgstr "Edit style"
 
 msgid "Edited by you"
 msgstr "Edited by you"
@@ -1736,9 +1742,6 @@ msgstr "Showing the first {0} rows"
 
 msgid "Sign-in for {host}"
 msgstr "Sign-in for {host}"
-
-msgid "Since you were here"
-msgstr "Since you were here"
 
 msgid "Size"
 msgstr "Size"
