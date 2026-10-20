@@ -25,6 +25,7 @@ The tools block is 14.3k tokens of every Conversation call and the largest fixed
 
 A live check on pi and on Claude, no unit tests:
 - the tools block's size in the model-call trace, and its hash stable across a session and across a handoff;
+- the tools hash equal across harness restarts within the 1-hour cache lifetime (0031 step 0b), shown by `cache_read_input_tokens ≥ tools + system` on the first call after a restart. This makes step 0b a regression guard;
 - a scenario per merged tool (schedule a task, toggle a live artifact, read history `around` an item) where the model calls the new name once and never an old one;
 - an old conversation still shows its old tool calls with the right presentation in Activity.
 
