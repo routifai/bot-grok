@@ -67,6 +67,7 @@ from ._subprocess_lifecycle import close_anyio_subprocess_transport
 from .async_utils import run_sync_on_thread
 from .datamodel import OSEnvSandboxSpec, OSEnvSpec
 from .executor import (
+    ContextFill,
     Executor,
     ExecutorConfig,
     ExecutorError,
@@ -3274,6 +3275,16 @@ class ClaudeSDKExecutor(Executor):
                                 call_usage = msg_obj.get("usage")
                                 if isinstance(call_usage, dict) and call_usage:
                                     last_call_usage = call_usage
+                                    yield ContextFill(
+                                        tokens=sum(
+                                            int(call_usage.get(key) or 0)
+                                            for key in (
+                                                "input_tokens",
+                                                "cache_creation_input_tokens",
+                                                "cache_read_input_tokens",
+                                            )
+                                        )
+                                    )
                             continue
 
                         if evt_type == "content_block_start":

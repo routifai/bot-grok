@@ -27,3 +27,7 @@ One person keeps one Conversation open for a year or more, on `claude-sdk` or `p
 - Repairs per compaction is the health number to watch.
 - Every journal line of one window carries that window's references, not its own; filtering one object's history by reference is coarse until lines are attributed individually.
 - The newest turn is always kept whole, so one very large message can leave the next turn close to the threshold.
+
+## Amendments
+
+**Amended 2026-10-19 (fix wave).** A cold start is a reader like the idle return: when the runner reloads the record (a restart, a dropped warm client) and the turns since the checkpoint no longer fit the kept tail, the checkpoint is written before the turn, with the same summarizer, journal and recall indexing, and the turn replays it plus its tail. Before this, the load kept only the tail and the older turns were in no summary and not in recall until the next size rollover. Rollover still acts only between turns, so one Helper turn is bounded inside the turn: past 300,000 tokens of context (`OMNIGENT_HELPER_TURN_CONTEXT_CEILING`) Omnigent steers one message asking the job to save its work and end the turn with what is done and what is left, and stops the turn at 1.25 times the ceiling. The harness's own compaction stays off ([ADR 0006](0006-omnigent-owns-everything.md)); the Conversation keeps its between-turn rule.

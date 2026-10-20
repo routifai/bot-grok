@@ -73,6 +73,7 @@ from .executor import (
     ENDS_TURN_TOOLS,
     Executor,
     ExecutorConfig,
+    ContextFill,
     ExecutorError,
     ExecutorEvent,
     Message,
@@ -2946,6 +2947,15 @@ class PiExecutor(Executor):
                     captured = _extract_pi_turn_usage(msg, model)
                     if captured is not None:
                         message_usages.append(captured)
+                        yield ContextFill(
+                            tokens=captured["total_tokens"]
+                            or (
+                                captured["input_tokens"]
+                                + captured["output_tokens"]
+                                + captured["cache_read_input_tokens"]
+                                + captured["cache_creation_input_tokens"]
+                            )
+                        )
                     raw_stop = msg.get("stopReason")
                     stop: str | None = raw_stop if isinstance(raw_stop, str) else None
                     if stop == "aborted":

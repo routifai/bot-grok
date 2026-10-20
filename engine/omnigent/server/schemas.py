@@ -1061,6 +1061,9 @@ class CreateResponseRequest(BaseModel):
         e.g. ``[{"type": "compaction", ...}]``.
     :param context_mode: The session's ``omnigent.context.mode`` label
         value, e.g. ``"superside-chat"``. ``None`` for a plain session.
+    :param turn_context_ceiling: Context tokens a single turn may reach
+        before it is asked to wrap up, e.g. ``300000``. ``None`` for no
+        in-turn bound.
     :param temperature: Ignored — agent controls this. Silently
         dropped.
     :param top_p: Ignored — agent controls this. Silently
@@ -1121,6 +1124,10 @@ class CreateResponseRequest(BaseModel):
     # inner executor can tell which Omnigent-owned context mode (if any) a
     # turn runs under. ``None`` for a plain session.
     context_mode: str | None = None
+    # Tokens one turn's context may reach before the executor adapter asks the model to wrap
+    # up (and, well past it, stops the turn). Set by the runner for background jobs only,
+    # e.g. ``300_000``; ``None`` leaves the turn unbounded below the model's window.
+    turn_context_ceiling: int | None = None
     # Ignored fields — agent controls these; silently dropped.
     # Typed loosely because we only need to accept and discard them.
     temperature: float | None = None
