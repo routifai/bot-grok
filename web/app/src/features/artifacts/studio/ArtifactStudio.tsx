@@ -20,7 +20,6 @@ import type { StudioRow } from "./thread";
 import { studioThread, versionOrigin } from "./thread";
 import { useOriginLabel } from "./useOriginLabel";
 import { usePhoneLayout } from "./usePhoneLayout";
-import { useSeenVersion } from "./useSeenVersion";
 import type { StudioChat } from "./useStudioChat";
 import { useStudioChat } from "./useStudioChat";
 
@@ -132,13 +131,9 @@ export function StudioView({
   const versionLabel = (version: ArtifactVersion) =>
     originLabel(versionOrigin(version, chat.sessionId));
 
-  const seen = useSeenVersion(
-    ready?.artifact.groupId ?? null,
-    content.versions[0]?.version ?? null,
-  );
   const rows = useMemo(
-    () => studioThread(chat.messages, content.versions, chat.sessionId, seen, chat.prelude),
-    [chat.messages, content.versions, chat.sessionId, seen, chat.prelude],
+    () => studioThread(chat.messages, content.versions, chat.sessionId, chat.prelude),
+    [chat.messages, content.versions, chat.sessionId, chat.prelude],
   );
   // The thread paints once, whole: its transcript, its prelude and the versions together.
   const threadReady = chat.loaded && (ready !== null || content.status === "error");
@@ -425,16 +420,6 @@ function ThreadRow({ row, highlighted }: { row: StudioRow; highlighted: boolean 
               ? t`You changed ${row.element} · ${row.count} edits · v${row.from} → v${row.to}`
               : row.what}
           </span>
-        </div>
-      );
-    case "since":
-      return (
-        <div
-          data-testid="studio-since"
-          className="flex items-center gap-2 text-[11px] font-medium text-foreground"
-        >
-          <span>{t`Since you were here`}</span>
-          <span aria-hidden="true" className="h-px flex-1 bg-border" />
         </div>
       );
     case "version":

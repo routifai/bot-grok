@@ -110,6 +110,8 @@ export interface ArtifactEditorArgs {
   onEdited?: (artifactId: string) => void;
   /** Puts the keyboard in the ask box (an "Ask superchat instead"). */
   focusAsk: () => void;
+  /** Closes the inspector (it opens only from the canvas tools, never on a selection). */
+  closeInspector: () => void;
   /** A studio turn is changing the file (ADR 0024): no hand edit is saved until it ends. */
   locked: boolean;
 }
@@ -120,7 +122,8 @@ export interface ArtifactEditorParts {
   stage: ReactNode;
   /** The left column (a deck's slides, a page's layers); collapsible. */
   navigator?: ReactNode;
-  /** The right column, shown in edit mode. */
+  /** The right column, shown in edit mode while the person has it open (the canvas tools'
+   * Edit style); a selection alone never opens it. */
   inspector?: ReactNode;
   /** Header buttons (a deck: Theme, Present, Download; a page: Run). */
   actions?: ReactNode;
@@ -132,7 +135,7 @@ export interface ArtifactEditorParts {
   footer?: ReactNode;
   /** Over the ask box (a save that failed). */
   notice?: ReactNode;
-  /** The file can be edited: the shell shows the canvas tools and the inspector. */
+  /** The file can be edited: the shell shows the canvas tools (and the inspector on demand). */
   editable: boolean;
   /** The file's one undo: the toolbar, ⌘Z and the ask box's "Updated · Undo" all use it. */
   history?: ArtifactEditorHistory;

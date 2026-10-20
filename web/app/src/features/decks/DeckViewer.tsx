@@ -60,6 +60,7 @@ function useDeckEditor({
   editing,
   onEdited,
   focusAsk,
+  closeInspector,
   locked,
 }: ArtifactEditorArgs): ArtifactEditorParts {
   const { t } = useLingui();
@@ -344,7 +345,7 @@ function useDeckEditor({
           editor.finishText();
           void editor.flush();
         }}
-        onClose={() => editor.select([])}
+        onClose={closeInspector}
         onRemove={editor.remove}
         onDuplicate={editor.duplicate}
         onAsk={focusAsk}
@@ -426,6 +427,7 @@ export function DeckPreview({ html, title }: { html: string; title: string }) {
     setEditing: noop,
     locked: false,
     focusAsk: noop,
+    closeInspector: noop,
   });
   return (
     <div className="flex h-full min-h-0 bg-background">

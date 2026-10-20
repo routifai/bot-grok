@@ -33,9 +33,14 @@ _logger = logging.getLogger(__name__)
 
 
 async def run_helper(
-    fmt: str, html: Path, out: Path | None = None, ctx: HandlerCtx | None = None
+    fmt: str,
+    html: Path,
+    out: Path | None = None,
+    ctx: HandlerCtx | None = None,
+    before: Path | None = None,
 ) -> dict[str, Any] | str:
-    """Run the helper (``pptx``/``pdf`` write ``out``, ``lint`` measures): JSON, or a sentence.
+    """Run the helper (``pptx``/``pdf`` write ``out``, ``lint`` measures a deck, ``look`` a page
+    against the version ``before``): JSON, or a sentence.
 
     Logs ``deck tool <name> <s>s warm=<bool>`` with the calling session.
     """
@@ -49,6 +54,7 @@ async def run_helper(
             "--html",
             str(html),
             *(["--out", str(out)] if out is not None else []),
+            *(["--before", str(before)] if before is not None else []),
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,

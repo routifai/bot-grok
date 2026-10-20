@@ -62,8 +62,6 @@ export type StudioRow =
       createdAt: string;
       at: number;
     }
-  /** Above the first version saved since the person was last here. */
-  | { kind: "since"; id: string; at: number }
   /** A version made in Super Chat: the person's ask there and the Assistant's hand-back. */
   | {
       kind: "prelude";
@@ -106,14 +104,12 @@ const noticeOf = (message: ThreadMessage): Notice | null =>
  * The studio thread, oldest first. A version saved by this chat sits after the reply of the turn
  * that saved it (the turn's request is its `itemId`); every other version at the time it was
  * saved, its hand edit just before it, and its prelude (made in Super Chat) just before that.
- * Consecutive hand edits to one element read as one row. `seenVersion` is the newest version the
- * person saw last time: a "since you were here" row goes above the first one newer than it.
+ * Consecutive hand edits to one element read as one row.
  */
 export function studioThread(
   messages: readonly ThreadMessage[],
   versions: readonly ArtifactVersion[],
   studioId: string | null,
-  seenVersion: number | null = null,
   prelude: readonly StudioPrelude[] = [],
 ): StudioRow[] {
   const rows: StudioRow[] = [];
@@ -201,7 +197,7 @@ export function studioThread(
     .map((row, index) => ({ row, index }))
     .sort((a, b) => a.row.at - b.row.at || a.index - b.index)
     .map(({ row }) => row);
-  return markSince(collapseHandEdits(sorted), seenVersion);
+  return collapseHandEdits(sorted);
 }
 
 /** Folds `hand, marker, hand, marker` on one element into one hand row and its last marker. */
@@ -226,17 +222,4 @@ function collapseHandEdits(rows: StudioRow[]): StudioRow[] {
     out.push(row);
   }
   return out;
-}
-
-function markSince(rows: StudioRow[], seen: number | null): StudioRow[] {
-  if (seen === null) return rows;
-  let first = rows.findIndex(
-    (row) =>
-      (row.kind === "version" && row.version > seen) || (row.kind === "hand" && row.to > seen),
-  );
-  if (first < 0) return rows;
-  // Above the version's prelude too: it is part of what is new.
-  if (first > 0 && rows[first - 1]?.kind === "prelude") first -= 1;
-  const at = rows[first]?.at ?? 0;
-  return [...rows.slice(0, first), { kind: "since", id: "since", at }, ...rows.slice(first)];
 }

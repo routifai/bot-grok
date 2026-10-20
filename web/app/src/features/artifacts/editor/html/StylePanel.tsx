@@ -35,7 +35,7 @@ export type StylePanelProps = {
   onStyle: (changes: StyleChanges, mode: ChangeMode) => void;
   onAttributes: (attributes: { href?: string | null; alt?: string | null }) => void;
   onCommit: () => void;
-  /** Clears the selection, which closes the inspector. */
+  /** Closes the inspector; the selection stays. */
   onClose: () => void;
   onRemove: () => void;
   onDuplicate: () => void;
@@ -66,7 +66,7 @@ export function StylePanel(props: StylePanelProps) {
   };
   const isSlide = targets.length > 0 && targets.every((target) => target.kind === "slide");
   const hasText = targets.some((target) => target.kind === "text" || target.kind === "link");
-  if (!primary) return <EmptyInspector theme={props.theme} />;
+  if (!primary) return <EmptyInspector theme={props.theme} onClose={props.onClose} />;
   const title =
     targets.length > 1
       ? t`${targets.length} elements`
@@ -91,17 +91,7 @@ export function StylePanel(props: StylePanelProps) {
             </div>
           ) : null}
         </div>
-        {/* Only the narrow layout's sheet needs its own close; the column clears by clicking away. */}
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="text-muted-foreground @[900px]:hidden"
-          aria-label={t`Close`}
-          title={t`Close`}
-          onClick={props.onClose}
-        >
-          <X />
-        </Button>
+        <CloseInspector onClose={props.onClose} />
       </header>
       {unstable ? (
         <div data-testid="style-panel-unstable" className="flex flex-col gap-2.5 px-4 pb-4">
@@ -153,9 +143,24 @@ function StyleControls(
   );
 }
 
-/** The inspector with nothing selected: what to do, and the file's palette to see. The column is
- * reserved for the whole edit session, so a selection never moves the stage. */
-function EmptyInspector({ theme }: { theme: DeckEditTheme | null }) {
+function CloseInspector({ onClose }: { onClose: () => void }) {
+  const { t } = useLingui();
+  return (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      className="text-muted-foreground"
+      aria-label={t`Close`}
+      title={t`Close (Esc)`}
+      onClick={onClose}
+    >
+      <X />
+    </Button>
+  );
+}
+
+/** The inspector opened with nothing selected: what to do, and the file's palette to see. */
+function EmptyInspector({ theme, onClose }: { theme: DeckEditTheme | null; onClose: () => void }) {
   const { t } = useLingui();
   const swatches = COLOR_SWATCHES(theme);
   return (
@@ -164,7 +169,12 @@ function EmptyInspector({ theme }: { theme: DeckEditTheme | null }) {
       aria-label={t`Style`}
       className="flex max-h-full w-[288px] flex-col gap-4 overflow-y-auto rounded-2xl bg-popover px-4 py-4 text-popover-foreground ring-1 ring-border"
     >
-      <p className="text-[12px] text-muted-foreground">{t`Click an element to edit it.`}</p>
+      <div className="-me-2 -mt-1 flex items-center gap-1">
+        <p className="min-w-0 flex-1 text-[12px] text-muted-foreground">
+          {t`Click an element to edit it.`}
+        </p>
+        <CloseInspector onClose={onClose} />
+      </div>
       {swatches.length ? (
         <div>
           <div className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
