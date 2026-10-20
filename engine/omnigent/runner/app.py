@@ -3075,6 +3075,9 @@ def create_runner_app(
     # once done: one per session per runner start); a turn that comes meanwhile waits on it (see
     # _start_superside_chat_catch_up).
     _superside_chat_catch_ups: dict[str, asyncio.Task[None]] = {}
+    # conv_id -> the view start this runner last wrote (VIEW_START_LABEL): the label is written,
+    # and the turns before it indexed, only when it moves (see _assembled_history).
+    _view_starts: dict[str, str] = {}
     # conv_id -> what the session's current warm client was last sent of the Memory Profile,
     # Projects and file handle blocks (hashes or lines, plus the prompt and subprocess it was
     # sent under); and what the turn in flight carries, kept once the turn completes (see
@@ -4447,6 +4450,7 @@ def create_runner_app(
         _history_process.pop(session_id, None)
         _superside_chat_cold_overflow.discard(session_id)
         _superside_chat_catch_ups.pop(session_id, None)
+        _view_starts.pop(session_id, None)
         _forget_superside_chat_prefix(session_id)
         _last_server_item_id.pop(session_id, None)
         _session_event_queues.pop(session_id, None)
@@ -4500,9 +4504,13 @@ def create_runner_app(
         summary, never silently out of the model's view. *tail_tokens_out*
         receives the token count of the items after the checkpoint, before the
         trim (the idle-return size check).
+
+        With ``OMNIGENT_CONTEXT_ASSEMBLE`` on (ADR 0031) a superside-chat session gets one
+        assembled block instead of the replay (``_assembled_history``), and nothing is marked
+        for a rollover: a restart bridges and never summarizes.
         """
         from omnigent.context.labels import is_superside_chat
-        from omnigent.context.rollover import resolve_keep_tokens
+        from omnigent.context.rollover import assemble_on, resolve_keep_tokens
         from omnigent.superchat.rollover import (
             ItemsPageFetchError,
             iter_items_from_checkpoint,
@@ -4510,6 +4518,9 @@ def create_runner_app(
 
         rollover_labels = await _rollover_labels_for_session(session_id)
         superside = is_superside_chat(rollover_labels)
+        # A Super Chat session starts from the assembled block (ADR 0031): no cold-start mark,
+        # no rollover before its turn; the hard-limit budget only trims the tail it shows.
+        assemble = superside and assemble_on()
         # The hard-limit caller passes its own budget and schedules its own rollover.
         default_trim = superside and keep_tokens is None
         if default_trim:
@@ -4543,10 +4554,13 @@ def create_runner_app(
                 count_tokens(split_at_latest_compaction(all_items)[0], ROLLOVER_TOKEN_COUNT_MODEL)
             )
         dropped: list[int] = []
-        converted = _convert_raw_items_to_input(
-            all_items, keep_tokens=keep_tokens, dropped_out=dropped
-        )
-        if default_trim and dropped and dropped[0] > 0:
+        if assemble:
+            converted = await _assembled_history(session_id, all_items, cast(int, keep_tokens))
+        else:
+            converted = _convert_raw_items_to_input(
+                all_items, keep_tokens=keep_tokens, dropped_out=dropped
+            )
+        if default_trim and not assemble and dropped and dropped[0] > 0:
             _superside_chat_cold_overflow.add(session_id)
         else:
             _superside_chat_cold_overflow.discard(session_id)
@@ -4562,6 +4576,120 @@ def create_runner_app(
                     server_client=server_client,
                 )
         return converted
+
+    async def _assembled_history(
+        session_id: str, items: list[_JsonObject], keep_tokens: int
+    ) -> list[_JsonObject]:
+        """A new session's input: one assembled block, then the newest messages as they are.
+
+        The block (``assemble_block``) holds the checkpoint's working list once and the tail
+        itself in the second person. From the
+        tail's last answer on, the items stay raw, so the history still ends where the record
+        does (the message this turn answers, an interrupted call) and the recovery check and the
+        harness prompt builders read it as before. Code only: no model call, nothing awaited.
+        Writes the view start and schedules indexing of the turns before it.
+        """
+        from omnigent.context.rollover import (
+            assemble_block,
+            clip_notices,
+            is_reset_item,
+            select_recent,
+            split_at_latest_compaction,
+            strip_checkpoint_header,
+        )
+        from omnigent.models.model_fallbacks import ROLLOVER_TOKEN_COUNT_MODEL
+
+        remaining, c = split_at_latest_compaction(items)
+        kept = (
+            select_recent(remaining, keep_tokens=keep_tokens, model=ROLLOVER_TOKEN_COUNT_MODEL)
+            or remaining
+        )
+        retired = remaining[: len(remaining) - len(kept)]
+        # The tail's last answer and what follows it stay raw items; before it is the block's.
+        cut = next(
+            (
+                i
+                for i in range(len(kept) - 1, -1, -1)
+                if kept[i].get("type") == "message" and kept[i].get("role") == "assistant"
+            ),
+            0,
+        )
+        shown, raw = clip_notices(kept)[:cut], kept[cut:]
+        _note_view_start(session_id, retired, c)
+        summary = c.get("summary") if c is not None and not is_reset_item(c) else None
+        since = next((it.get("created_at") for it in remaining if it.get("created_at")), None)
+        block = assemble_block(
+            working_list=strip_checkpoint_header(summary) if isinstance(summary, str) else None,
+            retired=retired,
+            shown=shown,
+            since=since,
+        )
+        converted = _convert_raw_items_to_input(raw)
+        if block is None:
+            return converted
+        _logger.info(
+            "assembled history for %s: %d chars, %d items retired, %d raw items",
+            session_id,
+            len(block),
+            len(retired),
+            len(converted),
+            extra={"session_id": session_id},
+        )
+        opening: _JsonObject = {
+            "type": "message",
+            "role": "user",
+            "content": [{"type": "input_text", "text": block}],
+        }
+        return [opening, *converted]
+
+    def _note_view_start(
+        session_id: str, retired: list[_JsonObject], checkpoint: _JsonObject | None
+    ) -> None:
+        """Write where this session's view starts (``VIEW_START_LABEL``: the last item before
+        it) and index the turns before it for recall, both in the background and only when the
+        view start moved. recall then finds a turn a restart or a handoff left out."""
+        from omnigent.context.rollover import VIEW_START_LABEL
+
+        after = str(
+            (retired[-1].get("id") if retired else (checkpoint or {}).get("last_item_id")) or ""
+        )
+        if _view_starts.get(session_id) == after:
+            return
+        _view_starts[session_id] = after
+
+        async def note() -> None:
+            from omnigent.runner.memory.sync import index_retired_turns
+            from omnigent.superchat.projects.card import project_slug_from_workspace
+
+            try:
+                await server_client.patch(
+                    f"/v1/sessions/{urllib.parse.quote(session_id, safe='')}",
+                    json={"labels": {VIEW_START_LABEL: after}},
+                    timeout=10.0,
+                )
+            except httpx.HTTPError:
+                _logger.warning(
+                    "view start not written for %s",
+                    session_id,
+                    exc_info=True,
+                    extra={"session_id": session_id},
+                )
+            if not retired:
+                return
+            labels = await _rollover_labels_for_session(session_id)
+            lineage = await _memory_labels(session_id, labels)
+            workspace = await _session_workspace_value(session_id)
+            await index_retired_turns(
+                server_client,
+                session_id,
+                lineage,
+                retired,
+                project=project_slug_from_workspace(workspace) or "",
+            )
+
+        task = asyncio.create_task(note(), name=f"view-start-{session_id}")
+        task.add_done_callback(_background_tasks.discard)
+        _background_tasks.add(task)
 
     def _user_turns(items: list[_JsonObject]) -> int:
         return sum(1 for it in items if it.get("type") == "message" and it.get("role") == "user")

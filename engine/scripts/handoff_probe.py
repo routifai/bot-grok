@@ -679,6 +679,12 @@ _ENTRY = re.compile(r"^(user|assistant|tool): ", re.M)
 #: A checkpoint's summary pair opens the history before the kept tail (outside its budget).
 SUMMARY_OPENS = ("[This is an automatically generated summary", "[Context checkpoint inserted")
 NOTICE_OPENS = ("[System", "[helper ")
+#: The assembled block a new session starts from (ADR 0031 step 3), and its parts' headings.
+BLOCK_OPENS = "[What came before, assembled when this session started."
+BLOCK_PARTS = {"working_list": "Working list:\n", "turn_lines": "Earlier turns, one line each:\n",
+               "words": "In their words (verbatim):\n", "recent": "Recent turns:\n"}
+VIEW_START_LABEL = "omnigent.context.view_start"
+_RECENT = re.compile(r"\n(?=(?:They said|You said|You called|Notice): )")
 #: The wake turn's reminder and the boilerplate older notices stored (ADR 0031 step 1): never
 #: in a stored item, never in a replayed history.
 BOILERPLATE = ("The notice below is the Result of work you started",
@@ -700,15 +706,41 @@ def history_shape(req: dict) -> dict | None:
     notice body after its outcome line; ``boilerplate`` how many entries carry the reminder or
     old boilerplate. The trailing user entries (the turn's own message, which pi lists inside
     the block with its prefix) are left out of the notice and boilerplate checks.
+
+    With the assembled block (ADR 0031 step 3) the history opens with it: ``block_count`` how
+    often it appears in the request (must be 1), ``block_chars``/``block_tok_est`` its size,
+    ``parts`` each part's chars; its "They said" lines count as Rounds and its recent turns as
+    tail, its notices ("Notice: ") are checked like replayed ones.
     """
+    whole = json.dumps(req.get("messages") or [])
     text = next((t for m in req.get("messages") or [] if m.get("role") == "user"
                  for t in [_texts(m.get("content"))] if HISTORY_OPEN in t), "")
     if not text:
         return None
     block = text.split(HISTORY_OPEN, 1)[1].split(HISTORY_CLOSE, 1)[0]
+    assembled = ""
+    if BLOCK_OPENS in block:
+        # The block is the history's first entry; the raw entries after it start at its end.
+        head, _, rest = block.partition(BLOCK_OPENS)
+        cut = _ENTRY.search(rest, rest.find("on the newest message.") + 1)
+        assembled = BLOCK_OPENS + (rest[:cut.start()] if cut else rest)
+        block = head.removesuffix("user: ") + (rest[cut.start():] if cut else "")
     marks = list(_ENTRY.finditer(block))
     entries = [(m.group(1), block[m.end():marks[i + 1].start() if i + 1 < len(marks)
                                   else len(block)].strip()) for i, m in enumerate(marks)]
+    parts: dict[str, int] = {}
+    recent = ""
+    if assembled:
+        starts = sorted((assembled.find(h), k, h) for k, h in BLOCK_PARTS.items()
+                        if h in assembled)
+        for i, (at, key, heading) in enumerate(starts):
+            end = starts[i + 1][0] if i + 1 < len(starts) else len(assembled)
+            body = assembled[at + len(heading):end]
+            if i + 1 == len(starts):  # the last part runs up to the block's closing line
+                body = body.rsplit("\n\n", 1)[0]
+            parts[key] = len(body)
+            if key == "recent":
+                recent = body
     summary = 0
     if entries and entries[0][0] == "user" and entries[0][1].startswith(SUMMARY_OPENS):
         summary = sum(len(body) for _, body in entries[:2])
@@ -719,13 +751,18 @@ def history_shape(req: dict) -> dict | None:
     older = entries[:end]
     notices = [body.partition("\n")[2] for role, body in older
                if role == "user" and body.startswith(NOTICE_OPENS)]
-    chars = sum(len(role) + 2 + len(body) for role, body in entries)
+    notices += [line.partition("\n")[2] for line in re.split(_RECENT, recent)
+                if line.startswith("Notice: ")]
+    chars = sum(len(role) + 2 + len(body) for role, body in entries) + len(recent)
     return {
         "rounds": sum(role == "user" and not body.startswith(NOTICE_OPENS)
-                      for role, body in older),
+                      for role, body in older) + len(re.findall(r"^They said: ", recent, re.M)),
         "tail_chars": chars, "tail_tok_est": chars // 4, "summary_chars": summary,
         "notices": len(notices), "notice_max": max((len(n) for n in notices), default=0),
-        "boilerplate": sum(any(b in body for b in BOILERPLATE) for _, body in older),
+        "boilerplate": sum(any(b in body for b in BOILERPLATE) for _, body in older)
+        + sum(b in recent for b in BOILERPLATE),
+        "block_count": whole.count(json.dumps(BLOCK_OPENS)[1:-1]),
+        "block_chars": len(assembled), "block_tok_est": len(assembled) // 4, "parts": parts,
     }
 
 
@@ -733,8 +770,12 @@ def stored_boilerplate(engine: Engine, sid: str) -> dict[str, int]:
     """Stored notices of *sid*, and how many stored items carry the reminder or boilerplate."""
     items = [] if engine.dry else engine.items(sid)
     texts = [item_text(i) for i in items if i.get("type") == "message"]
+    labels = {} if engine.dry else (engine.call("GET", f"/v1/sessions/{sid}/labels") or {})
+    view = (labels.get("labels") or {}).get(VIEW_START_LABEL)
     return {"notices": sum(t.lstrip().startswith(NOTICE_OPENS) for t in texts),
-            "boilerplate": sum(any(b in t for b in BOILERPLATE) for t in texts)}
+            "boilerplate": sum(any(b in t for b in BOILERPLATE) for t in texts),
+            # The history load's view start (ADR 0031 step 3): set once a handoff assembled.
+            "view_start": view if isinstance(view, str) else None}
 
 
 def trace_cold_starts(records: list[dict], ref: str) -> list[dict]:
@@ -836,10 +877,16 @@ def report(out: Path, trace_dir: str | None, engine_log: str | None) -> int:
                         f"{h['summary_chars']:,} chars, {h['notices']} notices (longest body "
                         f"{h['notice_max']}, limit {NOTICE_LIMIT} + cut note), boilerplate "
                         f"{h['boilerplate']} (must be 0)")
+                    if h.get("block_chars"):  # ADR 0031 step 3: the assembled block
+                        say(f"      block x{h['block_count']} (must be 1), ~{h['block_tok_est']:,}"
+                            f" tok; parts (chars) {h['parts']}")
         stored = [r["stored"] for r in mine if r.get("stored")]
         if stored:
             say(f"  stored notices {sum(s['notices'] for s in stored)}; stored items with the "
                 f"reminder or boilerplate {sum(s['boilerplate'] for s in stored)} (must be 0)")
+            views = [s.get("view_start") for s in stored]
+            say(f"  view start label set on {sum(v is not None for v in views)}/{len(views)} rows"
+                + ("" if arm.startswith("warm@") else " (must be all after a handoff)"))
     fails = [r for r in rows if r["hard_fail"]]
     for r in fails[:5]:
         say(f"  HARD FAIL {r['arm']} {r['kind']}: {r['reply'][:160]!r}")
