@@ -3091,6 +3091,10 @@ def create_runner_app(
     app.state.superside_chat_pending_refresh = _superside_chat_pending_refresh
     app.state.superside_chat_rollover_tasks = _superside_chat_rollover_tasks
     _last_server_item_id: dict[str, str] = {}
+    # conv_id -> the harness subprocess that took the session's last completed turn. The runner's
+    # history is that subprocess's context; once it is gone (crash, relaunch, reconnect) the next
+    # turn assembles the history from the record instead (ADR 0031: only the load starts one).
+    _history_process: dict[str, str | None] = {}
     _session_event_queues = _session_event_queues_ref
     app.state.session_event_queues = _session_event_queues
     _session_inboxes = _session_inboxes_ref
@@ -4439,6 +4443,7 @@ def create_runner_app(
         _instruction_delivery_warned.pop(session_id, None)
         _session_sub_agent_resolved.pop(session_id, None)
         _session_histories.pop(session_id, None)
+        _history_process.pop(session_id, None)
         _superside_chat_cold_overflow.discard(session_id)
         _superside_chat_catch_ups.pop(session_id, None)
         _forget_superside_chat_prefix(session_id)
@@ -7424,6 +7429,12 @@ def create_runner_app(
             else None
         )
         _history_started = time.monotonic()
+        if conv in _session_histories and _history_process.get(
+            conv, _warm_client_serial(conv)
+        ) != _warm_client_serial(conv):
+            # The subprocess that held this history is gone: the new one starts cold, from the
+            # record (clipped, whole Rounds), never from the runner's raw copy of the old one.
+            _session_histories.pop(conv, None)
         if conv not in _session_histories:
             _session_histories[conv] = await _load_history_as_input(
                 conv, keep_tokens=_trim_keep_tokens
@@ -8256,6 +8267,7 @@ def create_runner_app(
                                         )
                                         _text_acc.clear()
                                     _commit_superside_chat_prefix(conv_id)
+                                    _history_process[conv_id] = _warm_client_serial(conv_id)
                                     notify_turn_end(conv_id)  # Feature.on_turn_end
                                     _schedule_superside_chat_threshold_rollover(
                                         conv_id, event.get("response") or {}
@@ -8271,10 +8283,36 @@ def create_runner_app(
                                     )
                                 elif _evt_type == "response.output_item.done":
                                     _item = event.get("item")
-                                    if isinstance(_item, dict):
-                                        _it = _item.get("type")
+                                    _it = _item.get("type") if isinstance(_item, dict) else None
+                                    if _it in ("function_call", "function_call_output") and any(
+                                        h.get("type") == _it
+                                        and h.get("call_id") == _item.get("call_id")
+                                        for h in (_session_histories.get(conv_id) or [])[-50:]
+                                    ):
+                                        # A call is announced more than once (in progress, then
+                                        # completed); the history keeps it once.
+                                        _it = None
+                                    if _it in ("function_call", "function_call_output"):
+                                        _hist = _session_histories.setdefault(conv_id, [])
                                         if _it == "function_call":
-                                            _session_histories.setdefault(conv_id, []).append(
+                                            if _text_acc:
+                                                # The words before a call are their own message, so
+                                                # the turn's last message (a Helper's Result) is
+                                                # only what it said after its last call.
+                                                _hist.append(
+                                                    {
+                                                        "type": "message",
+                                                        "role": "assistant",
+                                                        "content": [
+                                                            {
+                                                                "type": "output_text",
+                                                                "text": "".join(_text_acc),
+                                                            }
+                                                        ],
+                                                    }
+                                                )
+                                                _text_acc.clear()
+                                            _hist.append(
                                                 {
                                                     "type": "function_call",
                                                     "call_id": _item["call_id"],
@@ -8283,7 +8321,7 @@ def create_runner_app(
                                                 }
                                             )
                                         elif _it == "function_call_output":
-                                            _session_histories.setdefault(conv_id, []).append(
+                                            _hist.append(
                                                 {
                                                     "type": "function_call_output",
                                                     "call_id": _item["call_id"],
@@ -11149,14 +11187,15 @@ def create_runner_app(
                         break
                 if not all_new:
                     continue
-                new_items = _convert_raw_items_to_input(all_new)
-                _session_histories.setdefault(session_id, []).extend(
-                    new_items,
-                )
+                # The cursor is only as new as the last load, so these items can repeat what the
+                # history already holds: the next turn assembles it from the record instead.
+                if session_id not in _active_turns:
+                    _session_histories.pop(session_id, None)
+                _last = all_new[-1]
                 if (
                     session_id not in _active_turns
-                    and new_items
-                    and new_items[-1].get("role") == "user"
+                    and _last.get("type") == "message"
+                    and _last.get("role") == "user"
                 ):
                     _begin_turn_slot(session_id)
                     _publish_turn_status(session_id, "running")

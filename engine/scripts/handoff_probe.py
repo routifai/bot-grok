@@ -89,6 +89,8 @@ DB_CONTAINER = "superchat-train-postgres-1"
 BUNDLE = {"pi": "superchat-pi", "claude-sdk": "superchat-claude"}
 OTHER = {"pi": "claude-sdk", "claude-sdk": "pi"}
 CUTS = (25, 50, 75)
+#: How often, and how far apart, a refused call is retried while the stack says "unavailable".
+SEND_RETRIES, SEND_RETRY_S = 10, 30.0
 CHAIN_HANDOFFS = 5
 PROBE_PREFIX = "probe:"
 #: Host owner key of each probe session's own host (container and home volume).
@@ -255,14 +257,22 @@ class Engine:
         data = json.dumps(body).encode() if body is not None else None
         req = urllib.request.Request(self.base + path, data=data, method=method)
         req.add_header("Content-Type", "application/json")
-        for attempt in range(2):
+        for attempt in range(SEND_RETRIES + 1):
             try:
                 # A first message waits for its new host to launch (a cold container).
                 with urllib.request.urlopen(req, timeout=60 if method == "GET" else 300) as resp:
                     raw = resp.read()
                 return json.loads(raw) if raw else {}
-            except urllib.error.HTTPError:
-                raise
+            except urllib.error.HTTPError as exc:
+                detail = exc.read().decode("utf-8", "replace")[:600]
+                say(f"    HTTP {exc.code} on {method} {path}: {detail}")
+                # 503 (runner or provider unreachable) and 429 pass; an older engine answered an
+                # unreachable model provider with 400 "Model discovery is unavailable".
+                busy = exc.code in (429, 503) or (
+                    exc.code == 400 and "unavailable" in detail.lower())
+                if not busy or attempt == SEND_RETRIES:
+                    raise
+                time.sleep(SEND_RETRY_S)
             except OSError:
                 if method != "GET" or attempt:
                     raise

@@ -69,7 +69,11 @@ def selected_catalog_model(
     if catalog.get("status") != "ready":
         raise OmnigentError(
             catalog.get("error") or "No available models match this harness's configuration",
-            code=ErrorCode.INVALID_INPUT,
+            # Discovery that could not reach the provider is an outage to retry (503); an empty,
+            # misconfigured or unconfigured list is the request's to fix.
+            code=ErrorCode.RUNNER_UNAVAILABLE
+            if catalog.get("retryable")
+            else ErrorCode.INVALID_INPUT,
         )
     if model is None and preferred in {row["id"] for row in catalog["models"]}:
         model = preferred

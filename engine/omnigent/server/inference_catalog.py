@@ -404,8 +404,9 @@ class SandboxInferenceService:
         )
         listing = model_catalog._listing_for_provider(descriptor, transport=self._transport)
         if not listing.verified:
-            raise _invalid(
-                "Model discovery is unavailable. Check the gateway and discovery credential."
+            raise OmnigentError(
+                "Model discovery is unavailable. Check the gateway and discovery credential.",
+                code=ErrorCode.RUNNER_UNAVAILABLE,
             )
         return listing.models
 
@@ -551,8 +552,11 @@ class SandboxInferenceService:
             result.update(status="ready", models=rows, default_model=default)
         except OmnigentError as exc:
             result["error"] = exc.message
+            # Discovery that could not reach the provider: an outage to retry, not bad input.
+            result["retryable"] = exc.code == ErrorCode.RUNNER_UNAVAILABLE
         except Exception:  # noqa: BLE001 - discovery failures expose no credential or upstream body
             result["error"] = (
                 "Model discovery is unavailable. Check the provider connection and catalog access."
             )
+            result["retryable"] = True
         return result
