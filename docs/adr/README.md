@@ -34,5 +34,6 @@ One file per decision, numbered in order. A superseded record keeps its file wit
 | 0028 | Progress is an Omnigent capability | Never merged; superseded by 0029 (branch `wave4`) |
 | [0029](0029-a-round-is-recorded-and-the-harness-owns-the-words.md) | A Round is recorded and the harness owns the words | Accepted 2026-10-18; Rounds recorded and folded, words from the harness, context pulled, Helpers as Omnigent sessions, Stop per Round, one vocabulary; supersedes 0028, amends 0007, 0022, 0023, 0027; amended 2026-10-19 (fix wave): Round settlement (Sweep lookback, failed-before-runner, steered results read on idle), `delivered_at`, card `message` and bounded `say_first`, pi ends on `agent_settled`, Claude tool ids, Setup line, switch binds the built-in |
 | [0030](0030-a-file-opens-in-one-studio.md) | A file opens in one studio | Accepted 2026-10-19; supersedes 0024's panel-then-studio flow, version reloads and the empty studio chat |
+| [0031](0031-a-new-session-is-assembled-from-state.md) | A new session is assembled from state, never replayed | Accepted 2026-10-20; in build (probe baseline first) |
 
 The pages that explain the current system are listed in [../README.md](../README.md).
