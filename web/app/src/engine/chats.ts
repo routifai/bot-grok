@@ -238,7 +238,15 @@ export async function* watchFamily(
         yield { type: "artifactsChanged", groupId: frame.group_id };
       } else if (frame.type === "round.updated") {
         yield { type: "roundUpdated", ...roundSummary(frame) };
-      } else yield { type: "heartbeat" };
+      } else if (frame.type === "chat.status") {
+        yield {
+          type: "chatStatus",
+          chatId: frame.chat_id,
+          status: frame.status,
+          blockedOn: frame.blocked_on || null,
+        };
+      } else if (frame.type === "asks.changed") yield { type: "asksChanged" };
+      else yield { type: "heartbeat" };
     }
   } catch (error) {
     // A closed tab aborts the fetch; that is the normal end of a watch, not a failure.

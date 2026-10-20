@@ -2,7 +2,7 @@ import type { ReplyEvent, ThreadMessage } from "@superchat/contracts";
 import type { RefObject } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TurnStatus } from "../../../features/activity";
-import { watchFamily } from "../../../lib/family-stream";
+import { useFamilyLive, watchFamily } from "../../../lib/family-stream";
 import {
   mergeNewestTranscriptPage,
   optimisticMessage,
@@ -19,8 +19,9 @@ const REFRESH_THROTTLE_MS = 150;
 const MAX_REVEAL_PAGES = 40;
 /** A reply the engine never starts to write must not leave the working row up forever. */
 const REPLY_WAIT_MAX_MS = 3 * 60 * 1000;
-/** While a reply is expected the stream is the signal; this reads anyway, for a stream that is
- * down (a Muse's first message opens its Conversation, which the stream could not join before). */
+/** While a reply is expected the family stream is the signal; this reads only while that stream
+ * is down (a Muse's first message opens its Conversation, which the stream could not join
+ * before). */
 const REPLY_POLL_MS = 5_000;
 
 /** How soon a dropped reply stream reconnects while the turn runs, first and at most. */
@@ -188,11 +189,22 @@ export function useMuseTranscript(
   }, [read]);
 
   const awaiting = waiting || Boolean(loaded?.running);
+  const familyLive = useFamilyLive(botId);
   useEffect(() => {
-    if (!awaiting) return;
+    if (!awaiting || familyLive) return;
     const timer = window.setInterval(refresh, REPLY_POLL_MS);
     return () => window.clearInterval(timer);
-  }, [awaiting, refresh]);
+  }, [awaiting, familyLive, refresh]);
+
+  // A hidden tab shows no words being written: its reply stream closes (a browser holds six
+  // connections per origin, shared by every tab) and reopens on return, where the engine replays
+  // the reply so far.
+  const [visible, setVisible] = useState(() => document.visibilityState !== "hidden");
+  useEffect(() => {
+    const onChange = () => setVisible(document.visibilityState !== "hidden");
+    document.addEventListener("visibilitychange", onChange);
+    return () => document.removeEventListener("visibilitychange", onChange);
+  }, []);
 
   // Looking at the Conversation reads it: on opening, when a reply lands while it is in view,
   // and when the person comes back to the window.
@@ -268,11 +280,12 @@ export function useMuseTranscript(
     };
   }, [botId, commit, read, refresh]);
 
-  // While a reply is expected, its words as they are written (the Conversation's own stream);
-  // reconnects shortly after a drop, and stops when the turn ends.
+  // While a reply is expected and the tab is in view, its words as they are written (the
+  // Conversation's own stream, the page's only one besides the family stream); reconnects shortly
+  // after a drop, and closes when the turn ends or the tab is hidden.
   const streamChat = loaded?.botId === botId ? loaded?.threadId : undefined;
   useEffect(() => {
-    if (!botId || !streamChat || !awaiting) return;
+    if (!botId || !streamChat || !awaiting || !visible) return;
     const abort = new AbortController();
     void (async () => {
       let retryMs = REPLY_RETRY_MIN_MS;
@@ -300,7 +313,7 @@ export function useMuseTranscript(
       }
     })();
     return () => abort.abort();
-  }, [botId, streamChat, awaiting]);
+  }, [botId, streamChat, awaiting, visible]);
 
   useEffect(() => {
     if (!waiting) return;

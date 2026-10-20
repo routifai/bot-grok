@@ -1,4 +1,5 @@
 import type { ActivityChanged, FamilyEvent } from "@superchat/contracts";
+import { useEffect, useState } from "react";
 import { rpc } from "./rpc";
 
 /** Opens the Muse's family stream (`chats.watch`). A seam so tests and fixtures can supply
@@ -14,6 +15,7 @@ const RETRY_MIN_MS = 1_000;
 const RETRY_MAX_MS = 15_000;
 
 type Listener = (event: FamilyEvent) => void;
+type LiveListener = (live: boolean) => void;
 
 /**
  * One live stream per Muse for the Conversation and its Helpers (ADR 0009). Events
@@ -23,7 +25,10 @@ type Listener = (event: FamilyEvent) => void;
  */
 class FamilyStream {
   private readonly listeners = new Set<Listener>();
+  private readonly liveListeners = new Set<LiveListener>();
   private abort: AbortController | undefined;
+  /** Connected right now: listeners hear every change as it happens. */
+  live = false;
 
   constructor(
     private readonly botId: string,
@@ -39,12 +44,27 @@ class FamilyStream {
       if (this.listeners.size === 0) {
         this.abort?.abort();
         this.abort = undefined;
+        this.setLive(false);
         this.onIdle();
       }
     };
   }
 
+  /** Hears whether the stream is connected (only while also subscribed). */
+  watchLive(listener: LiveListener): () => void {
+    this.liveListeners.add(listener);
+    listener(this.live);
+    return () => this.liveListeners.delete(listener);
+  }
+
+  private setLive(live: boolean): void {
+    if (this.live === live) return;
+    this.live = live;
+    for (const listener of [...this.liveListeners]) listener(live);
+  }
+
   private emit(event: FamilyEvent): void {
+    if (event.type === "open") this.setLive(true);
     for (const listener of [...this.listeners]) listener(event);
   }
 
@@ -64,6 +84,7 @@ class FamilyStream {
         } catch {
           if (abort.signal.aborted) return;
         }
+        this.setLive(false);
         await new Promise((resolve) => setTimeout(resolve, retryMs));
         retryMs = Math.min(retryMs * 2, RETRY_MAX_MS);
       }
@@ -88,6 +109,27 @@ export function watchFamily(
     stream = created;
   }
   return stream.subscribe(listener);
+}
+
+/**
+ * Whether the Muse's family stream is connected (and keeps it open while mounted). While it is,
+ * every change reaches the page as it happens, so a poll that only catches missed changes can
+ * rest; on each reconnect listeners hear `open` and read again.
+ */
+export function useFamilyLive(botId: string | null | undefined): boolean {
+  const [live, setLive] = useState(false);
+  useEffect(() => {
+    if (!botId) return;
+    const stop = watchFamily(botId, () => undefined);
+    const stream = streams.get(botId);
+    const unwatch = stream?.watchLive(setLive);
+    return () => {
+      unwatch?.();
+      stop();
+      setLive(false);
+    };
+  }, [botId]);
+  return live;
 }
 
 /**

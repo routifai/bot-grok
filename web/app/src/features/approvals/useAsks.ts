@@ -1,9 +1,11 @@
 import type { Ask } from "@superchat/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useFamilyLive, watchFamily } from "../../lib/family-stream";
 import { rpc } from "../../lib/rpc";
 
-// Asks change rarely and every answer refreshes them at once (notifyAsksChanged), so the
-// poll only catches Asks posted in the background; focus and visibility also refresh.
+// An approval asked or answered in any family chat arrives on the family stream, and every answer
+// here refreshes at once (notifyAsksChanged), so the poll only catches the rest (a Goal's blocked
+// task); focus and visibility also refresh.
 const POLL_INTERVAL_MS = 30_000;
 /** Several surfaces read Asks at once (badge, context panel, sheet): they share one request. */
 const inFlight = new Map<string, Promise<Ask[]>>();
@@ -47,7 +49,11 @@ function newestFirst(asks: Ask[]): Ask[] {
  * every surface without a second round of state to keep in sync.
  */
 export function useAsks(botId: string, options: { pollMs?: number } = {}): UseAsksResult {
-  const pollMs = options.pollMs ?? POLL_INTERVAL_MS;
+  // A faster poll asked for only stands in for the family stream while it is down.
+  const familyLive = useFamilyLive(botId);
+  const pollMs = familyLive
+    ? Math.max(options.pollMs ?? POLL_INTERVAL_MS, POLL_INTERVAL_MS)
+    : (options.pollMs ?? POLL_INTERVAL_MS);
   const [asks, setAsks] = useState<Ask[]>([]);
   const [loading, setLoading] = useState(true);
   const requestId = useRef(0);
@@ -81,6 +87,17 @@ export function useAsks(botId: string, options: { pollMs?: number } = {}): UseAs
     };
     window.addEventListener("focus", onVisible);
     window.addEventListener(ASKS_CHANGED_EVENT, onChanged);
+    // A reconnect re-reads too: an ask may have come or gone while the stream was down.
+    let connected = false;
+    const stopFamily = botId
+      ? watchFamily(botId, (event) => {
+          if (event.type === "asksChanged") void refresh();
+          else if (event.type === "open") {
+            if (connected) void refresh();
+            connected = true;
+          }
+        })
+      : undefined;
     document.addEventListener("visibilitychange", onVisible);
     const poll = window.setInterval(() => {
       if (document.visibilityState === "visible") void refresh();
@@ -90,6 +107,7 @@ export function useAsks(botId: string, options: { pollMs?: number } = {}): UseAs
       window.removeEventListener(ASKS_CHANGED_EVENT, onChanged);
       document.removeEventListener("visibilitychange", onVisible);
       window.clearInterval(poll);
+      stopFamily?.();
     };
   }, [botId, refresh, pollMs]);
 

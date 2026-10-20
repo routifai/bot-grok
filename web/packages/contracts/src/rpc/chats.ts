@@ -107,6 +107,18 @@ export const FamilyEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("artifactsChanged"), groupId: z.string() }),
   /** A Round's record grew: its summary; `chats.round` reads it in full. */
   RoundSummarySchema.extend({ type: z.literal("roundUpdated") }),
+  /** A chat of the family (a file's studio, a Helper) changed status: `running`, `waiting`,
+   * `idle` or `failed`; `blockedOn` is the engine's words while its running turn waits for a slot
+   * ("Finishing another file first", ADR 0024). Every family chat's, so no page needs a chat's
+   * own stream to follow its status. */
+  z.object({
+    type: z.literal("chatStatus"),
+    chatId: z.string(),
+    status: z.string(),
+    blockedOn: z.string().nullable(),
+  }),
+  /** A decision waiting on the person was asked or answered: `asks.list` reads them. */
+  z.object({ type: z.literal("asksChanged") }),
   z.object({ type: z.literal("heartbeat") }),
 ]);
 export type FamilyEvent = z.infer<typeof FamilyEventSchema>;

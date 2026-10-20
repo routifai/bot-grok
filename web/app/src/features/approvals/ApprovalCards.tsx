@@ -4,8 +4,8 @@ import { useState } from "react";
 import { AskItem } from "./AskItem";
 import { useAsks } from "./useAsks";
 
-/** A waiting approval is the one thing worth noticing quickly, so these cards poll faster than
- * the Waiting-on-you list does. */
+/** A waiting approval is the one thing worth noticing quickly: it arrives on the family stream,
+ * and while that stream is down these cards poll faster than the Waiting-on-you list does. */
 const APPROVAL_POLL_MS = 4_000;
 
 /**
