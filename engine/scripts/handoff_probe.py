@@ -684,7 +684,7 @@ BLOCK_OPENS = "[What came before, assembled when this session started."
 BLOCK_PARTS = {"working_list": "Working list:\n", "turn_lines": "Earlier turns, one line each:\n",
                "words": "In their words (verbatim):\n", "recent": "Recent turns:\n"}
 VIEW_START_LABEL = "omnigent.context.view_start"
-_RECENT = re.compile(r"\n(?=(?:They said|You said|You called|Notice): )")
+_RECENT = re.compile(r"\n(?=They said: |You said: |You called |Notice: )")
 #: The wake turn's reminder and the boilerplate older notices stored (ADR 0031 step 1): never
 #: in a stored item, never in a replayed history.
 BOILERPLATE = ("The notice below is the Result of work you started",
