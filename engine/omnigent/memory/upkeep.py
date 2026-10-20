@@ -631,6 +631,14 @@ def _looks_like_secret(text: str) -> bool:
     return any(pattern.search(text) for pattern in _SECRET_PATTERNS)
 
 
+def redact_secrets(text: str) -> str:
+    """*text* with every match of the secret guard withheld: the person's words a new session
+    is given verbatim (ADR 0031 part 6) pass the same filter memory does."""
+    for pattern in _SECRET_PATTERNS:
+        text = pattern.sub("[withheld]", text)
+    return text
+
+
 def _looks_like_one_time(text: str) -> bool:
     lowered = text.lower()
     return any(marker in lowered for marker in _ONE_TIME_MARKERS)

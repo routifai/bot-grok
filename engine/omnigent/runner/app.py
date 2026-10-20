@@ -4582,12 +4582,13 @@ def create_runner_app(
     ) -> list[_JsonObject]:
         """A new session's input: one assembled block, then the newest messages as they are.
 
-        The block (``assemble_block``) holds the checkpoint's working list once and the tail
-        itself in the second person. From the
+        The block (``assemble_block``) holds the checkpoint's working list once, a line per
+        settled turn left out of the tail (Rounds, hidden ones included, else the transcript),
+        the person's words from those turns and the tail itself in the second person. From the
         tail's last answer on, the items stay raw, so the history still ends where the record
         does (the message this turn answers, an interrupted call) and the recovery check and the
-        harness prompt builders read it as before. Code only: no model call, nothing awaited.
-        Writes the view start and schedules indexing of the turns before it.
+        harness prompt builders read it as before. Code only: no model call, nothing awaited but
+        the Round read. Writes the view start and schedules indexing of the turns before it.
         """
         from omnigent.context.rollover import (
             assemble_block,
@@ -4596,6 +4597,7 @@ def create_runner_app(
             select_recent,
             split_at_latest_compaction,
             strip_checkpoint_header,
+            transcript_turn_lines,
         )
         from omnigent.models.model_fallbacks import ROLLOVER_TOKEN_COUNT_MODEL
 
@@ -4616,22 +4618,34 @@ def create_runner_app(
         )
         shown, raw = clip_notices(kept)[:cut], kept[cut:]
         _note_view_start(session_id, retired, c)
+        lines = transcript_turn_lines(retired)
+        covered = {line.key for line in lines}
+        rounds = await _round_turn_lines(session_id, remaining, retired)
+        if rounds is not None:
+            # A Round's line stands for its turn; a turn no Round read covers keeps its own.
+            round_lines, round_ids = rounds
+            lines = [*round_lines, *(line for line in lines if line.key not in round_ids)]
+            covered |= round_ids
         summary = c.get("summary") if c is not None and not is_reset_item(c) else None
         since = next((it.get("created_at") for it in remaining if it.get("created_at")), None)
         block = assemble_block(
             working_list=strip_checkpoint_header(summary) if isinstance(summary, str) else None,
+            turn_lines=lines,
             retired=retired,
             shown=shown,
+            covered=covered,
             since=since,
+            model=ROLLOVER_TOKEN_COUNT_MODEL,
         )
         converted = _convert_raw_items_to_input(raw)
         if block is None:
             return converted
         _logger.info(
-            "assembled history for %s: %d chars, %d items retired, %d raw items",
+            "assembled history for %s: %d chars, %d items retired, %d turn lines, %d raw items",
             session_id,
             len(block),
             len(retired),
+            len(lines),
             len(converted),
             extra={"session_id": session_id},
         )
@@ -4641,6 +4655,78 @@ def create_runner_app(
             "content": [{"type": "input_text", "text": block}],
         }
         return [opening, *converted]
+
+    async def _round_turn_lines(
+        session_id: str, since_anchor: list[_JsonObject], retired: list[_JsonObject]
+    ) -> tuple[list[Any], set[str]] | None:
+        """The Conversation's settled Rounds a new session does not see in full, as turn lines:
+        the Rounds of *retired* turns, and the hidden Rounds (scheduled and system runs) since
+        the checkpoint. ``(lines, ids of the person's messages they stand for)``; ``None`` for a
+        Helper or the studio (no Rounds of their own) or when the Rounds cannot be read."""
+        from omnigent.context.rollover import TurnLine, turn_line
+        from omnigent.superchat.rounds.record import journal_entry
+
+        snapshot = await _session_snapshot(session_id)
+        if not snapshot.ok or snapshot.parent_session_id:
+            return None
+        base = f"/v1/sessions/{urllib.parse.quote(session_id, safe='')}/rounds"
+        try:
+            resp = await server_client.get(base, params={"limit": "50"}, timeout=10.0)
+            rows = resp.json().get("data") if resp.status_code == 200 else None
+        except (httpx.HTTPError, ValueError):
+            rows = None
+        if not isinstance(rows, list):
+            return None
+        known = {str(it.get("id")) for it in since_anchor if it.get("id")}
+        mine = {str(it.get("id")) for it in retired if it.get("id")}
+        since = next((it.get("created_at") for it in since_anchor if it.get("created_at")), 0)
+        wanted = [
+            str(row["round_id"])
+            for row in rows
+            if isinstance(row, dict)
+            and row.get("round_id")
+            and row.get("settled_at") is not None
+            and (
+                str(row["round_id"]) in mine
+                or (str(row["round_id"]) not in known and (row.get("started_at") or 0) >= since)
+            )
+        ]
+
+        async def view(round_id: str) -> dict[str, Any] | None:
+            try:
+                got = await server_client.get(
+                    f"{base}/{urllib.parse.quote(round_id, safe='')}", timeout=10.0
+                )
+                body = got.json() if got.status_code == 200 else None
+            except (httpx.HTTPError, ValueError):
+                return None
+            return body if isinstance(body, dict) else None
+
+        lines: list[Any] = []
+        ids: set[str] = set()
+        for round_id, body in zip(wanted, await asyncio.gather(*map(view, wanted)), strict=True):
+            if body is None:
+                continue
+            hidden = bool(body.get("hidden"))
+            try:
+                entry = journal_entry(round_id, {**body, "hidden": False})
+            except (KeyError, TypeError, ValueError):
+                entry = None
+            if entry is None:
+                continue
+            at = body.get("started_at") or body.get("settled_at") or 0
+            text = turn_line(
+                at,
+                entry["ask"],
+                entry["outcome"],
+                files=entry["files"],
+                stopped=entry["stopped"],
+                scheduled=hidden,
+            )
+            lines.append(TurnLine(float(at), round_id, text))
+            if not hidden:
+                ids.add(round_id)
+        return lines, ids
 
     def _note_view_start(
         session_id: str, retired: list[_JsonObject], checkpoint: _JsonObject | None
