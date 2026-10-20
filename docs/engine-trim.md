@@ -16,25 +16,26 @@ don't use, so it can be removed before production.
 
 ## Needed
 
+Paths are relative to `engine/`. Checked against the code 2026-10-19: the flatten moved `inner/` to `harnesses/`, the host rename replaced the Computer pieces, and side chats are gone (ADR 0021).
+
 | Part | Path | Needed by |
 |---|---|---|
 | Server, runner, host daemon | `omnigent/server`, `omnigent/runner`, `omnigent/host` | Everything |
-| superside-chat | `omnigent/superchat`, `omnigent/context`, `rollover/` (docs) | Conversation, side chats, Helpers, Activity |
-| Claude SDK engine | `omnigent/inner/claude_sdk_*`, `claude_gateway_shim.py` | Every turn (default harness) |
-| Pi engine | `omnigent/inner/pi_executor.py`, `pi_harness.py`, `pi_settings.py` | `SUPERCHAT_MUSE_HARNESS=pi` (bundle `superchat-pi`) |
-| Memory | `omnigent/memory`, `omnigent/server/memory_upkeep.py`, `session_memory.py` | Memory Profile, Upkeep |
+| superside-chat | `omnigent/superchat`, `omnigent/context` (rollover: `context/rollover.py`; docs in `docs/context.md`) | Conversation, Helpers, Rounds, Activity |
+| Claude SDK harness | `omnigent/harnesses/claude_sdk_executor.py`, `claude_sdk_harness.py` | Bundle `superchat-claude` (the default) |
+| Pi harness | `omnigent/harnesses/pi_executor.py`, `pi_harness.py`, `pi_settings.py`, `pi_credentials.py` | Bundle `superchat-pi` (`SUPERCHAT_DEFAULT_AGENT` / `OMNIGENT_SUPERCHAT_DEFAULT_AGENT`, or a switch in Settings) |
+| Memory | `omnigent/memory`, `omnigent/superchat/memory`, `omnigent/server/memory_upkeep.py`, `omnigent/server/routes/session_memory.py` | Memory Profile, Upkeep |
 | LLM client: Anthropic | `omnigent/llms/adapters/anthropic.py` | Rollover summaries, Upkeep |
 | LLM client: OpenAI | `omnigent/llms/adapters/openai.py` | Memory search embeddings (`text-embedding-3-small`) |
 | Stores, DB, migrations | `omnigent/stores`, `omnigent/db` | Everything |
-| Header auth with shared secret | `omnigent/server/auth.py` | Superchat API → engine identity |
-| Computer runner location | `omnigent/onboarding/sandboxes/{computer,base,registry,agent_sandbox,agent_sandbox_warm_pool}.py`, `server/managed_hosts.py` | Muse runner in its computer |
-| Computer status | `omnigent/superchat/computer/routes.py` | Ready and launch status |
-| Local browser backend | `omnigent/tools/browser_backend.py` | `browser_*` on the Computer's own screen |
-| OS tools | `omnigent/inner/os_env.py` (`sys_os_*`) | The Muse acting on its Computer |
-| Browser prompt instruction | `omnigent/runtime/prompt.py` | Steers the Muse to `browser_*` |
-| Agent spec / bundles | `omnigent/spec` | `deployment/engine/agents/superchat-claude` |
-| Built-in tools in use | `omnigent/tools` (`session_history`, `memory_*`, `side_chat_open`, `sys_session_*`) | The Muse and Helpers |
-| Example bundle | `examples/super-chat` | Reference for `deployment/engine/agents/superchat-claude` |
+| Header auth with shared secret | `omnigent/server/auth.py` | Sign-in broker → engine identity |
+| Host provider | `omnigent/hosts/` (`docker.py`), `omnigent/server/hosts.py`, `omnigent/server/host_keepalive.py`, `omnigent/server/host_registry.py` | The Assistant's runner in the person's host |
+| Host status | `omnigent/superchat/host_status/routes.py` | Ready and launch status (`GET /v1/sessions/{id}/host`) |
+| Local browser backend | `omnigent/tools/browser_backend.py` | `browser_*` on the host's own screen |
+| OS tools | `omnigent/harnesses/os_env.py`, `omnigent/tools/builtins/os_env.py` (`sys_os_*`) | The Assistant and Helpers acting in the host |
+| Browser prompt instruction | `omnigent/runtime/prompt.py` | Steers the Assistant to `browser_*` |
+| Agent spec / bundles | `omnigent/spec`, `agents/templates` rendered into `agents/bundles/superchat-{claude,pi}` | Every session |
+| Built-in tools in use | `omnigent/tools` (`session_history`, `browser_*`, scheduled tasks) and the Superchat tools under `omnigent/superchat` (`memory_*`, `start_helper`, cards, artifacts, decks) | The Assistant and Helpers |
 
 ## Candidates
 
