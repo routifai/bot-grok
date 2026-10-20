@@ -397,7 +397,7 @@ export function ShellPage() {
       <span className="min-w-0 flex-1" />
       <div className="app-no-drag flex shrink-0 items-center gap-2">
         {/* Running work shows here too, for when its strip is scrolled away (ADR 0023). */}
-        <WorkingPill work={workState} />
+        <WorkingPill work={workState} botId={active?.id} />
         {running || lastTurn ? (
           <SessionPanelToggle
             open={sessionPanel.open}

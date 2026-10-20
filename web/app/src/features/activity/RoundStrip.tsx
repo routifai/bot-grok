@@ -8,7 +8,7 @@ import { useMemo, useState, useSyncExternalStore } from "react";
 import { Shimmer } from "../../components/ai/primitives";
 import { useNow } from "../../components/chrome/useNow";
 import { useConversationFiles } from "./conversationFiles";
-import { useRoundView } from "./rounds";
+import { useConversationWaiting, useRoundView } from "./rounds";
 import { serverNow } from "./superchatWork";
 import { activityFeedFor } from "./useActivities";
 import { useHelperPause } from "./useHelperPause";
@@ -199,6 +199,7 @@ function useRoundPause(botId: string, view: RoundView | null) {
 export function RoundStrip({ botId, roundId }: { botId: string; roundId: string }) {
   const { t } = useLingui();
   const view = useRoundView(botId, roundId);
+  const waiting = useConversationWaiting(botId);
   const live = view?.status === "running" && view.deliveredAt === null;
   const now = useNow(live);
   const drafts = useRoundDrafts(botId, view);
@@ -267,7 +268,7 @@ export function RoundStrip({ botId, roundId }: { botId: string; roundId: string 
               data-testid="round-strip-now"
               className="sc-work-in min-w-0 truncate font-[560]"
             >
-              {own ? <ToolWords tool={own} /> : t`Working`}
+              {own ? <ToolWords tool={own} /> : (waiting ?? t`Working`)}
             </span>
             {clock}
             {pause ? <PauseControl pause={pause} /> : null}

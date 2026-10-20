@@ -21,6 +21,7 @@ type Store<T> = {
 const NO_ROUNDS: readonly RoundSummary[] = [];
 const lists = new Map<string, Store<readonly RoundSummary[]>>();
 const views = new Map<string, Store<RoundView | null>>();
+const waits = new Map<string, Store<string | null>>();
 
 function storeIn<T>(stores: Map<string, Store<T>>, key: string, empty: T): Store<T> {
   let store = stores.get(key);
@@ -182,6 +183,37 @@ export function useRoundView(botId: string, roundId: string): RoundView | null {
   return useSyncExternalStore(subscribe, () => storeIn<RoundView | null>(views, key, null).value);
 }
 
+/** The engine's words while the Conversation's running turn waits before its work starts
+ * ("Catching up on our conversation…" while a checkpoint is written), from its `chatStatus`
+ * `blockedOn`; null otherwise. The Conversation's chat is the Muse's own (`botId`). */
+export function useConversationWaiting(botId: string | undefined): string | null {
+  const subscribe = useCallback(
+    (listener: () => void) => {
+      if (!botId) return () => undefined;
+      const store = storeIn<string | null>(waits, botId, null);
+      // Nothing to read: a (re)connect forgets a wait whose end it may have missed.
+      const load = () => Promise.resolve(null);
+      return listen(
+        store,
+        botId,
+        load,
+        (event) => {
+          if (event.type === "chatStatus" && event.chatId === botId) {
+            publish(store, event.status === "running" ? event.blockedOn : null);
+          } else if (event.type === "turnDone" && event.chatId === botId) {
+            publish(store, null);
+          }
+        },
+        listener,
+      );
+    },
+    [botId],
+  );
+  return useSyncExternalStore(subscribe, () =>
+    botId ? storeIn<string | null>(waits, botId, null).value : null,
+  );
+}
+
 /** The transcript with each message that opened a Round carrying its id (the Round's id is the
  * message's own). Unchanged when no message did. */
 export function withRounds(messages: ThreadMessage[], ids: ReadonlySet<string>): ThreadMessage[] {
@@ -195,7 +227,8 @@ export function withRounds(messages: ThreadMessage[], ids: ReadonlySet<string>):
 
 /** Forget every reader (tests). */
 export function resetRounds(): void {
-  for (const store of [...lists.values(), ...views.values()]) store.stop?.();
+  for (const store of [...lists.values(), ...views.values(), ...waits.values()]) store.stop?.();
   lists.clear();
   views.clear();
+  waits.clear();
 }

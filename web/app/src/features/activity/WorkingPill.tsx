@@ -1,6 +1,7 @@
 import { useLingui } from "@lingui/react/macro";
 import { SuperchatOrb } from "../../components/ai/orb";
 import { useNow } from "../../components/chrome/useNow";
+import { useConversationWaiting } from "./rounds";
 import { serverNow } from "./superchatWork";
 import type { WorkState } from "./workState";
 import { formatClock } from "./workStripState";
@@ -9,15 +10,20 @@ import { formatClock } from "./workStripState";
  * The lit state in the conversation header (ADR 0023): while the Conversation's work runs, the orb
  * and "Working · 0:12" in a pill whose edge carries a turning glow, so running work shows even
  * when the strip under its reply is scrolled away; "Paused" while Pause holds every running
- * Helper. Nothing while everything has settled.
+ * Helper, and the engine's words while the turn waits before its work starts ("Catching up on our
+ * conversation…"). Nothing while everything has settled.
  */
 export function WorkingPill({
   work,
+  botId,
 }: {
   work: Pick<WorkState, "running" | "since"> & { paused?: boolean };
+  /** The Muse whose Conversation it shows (its waits), once one is open. */
+  botId?: string;
 }) {
   const { t } = useLingui();
   const now = useNow(work.running && !work.paused);
+  const working = useConversationWaiting(botId) ?? t`Working`;
   if (!work.running) return null;
   return (
     <span
@@ -31,8 +37,8 @@ export function WorkingPill({
         {work.paused
           ? t`Paused`
           : work.since === null
-            ? t`Working`
-            : `${t`Working`} · ${formatClock(serverNow(now) - work.since)}`}
+            ? working
+            : `${working} · ${formatClock(serverNow(now) - work.since)}`}
       </span>
     </span>
   );
