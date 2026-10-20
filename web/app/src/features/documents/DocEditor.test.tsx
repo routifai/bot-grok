@@ -25,11 +25,7 @@ vi.mock("@lingui/react/macro", () => ({
 }));
 
 import { ArtifactEditorView } from "../artifacts/editor/ArtifactEditor";
-import {
-  artifactKey,
-  resetEditorState,
-  setArtifactEditing,
-} from "../artifacts/editor/editor-state";
+import { resetEditorState } from "../artifacts/editor/editor-state";
 import { resetNavigatorFrame } from "../artifacts/editor/NavigatorFrame";
 import { docEditorKind } from "./DocEditor";
 
@@ -106,7 +102,8 @@ async function mount() {
 const blocks = () => [...document.querySelectorAll<HTMLElement>('[data-testid="doc-block"]')];
 const chips = () =>
   [...document.querySelectorAll('[data-testid="ask-chip"]')].map((chip) => chip.textContent);
-const edit = () => act(async () => setArtifactEditing(artifactKey(doc(1)), true));
+// The editor opens selectable (no Edit step, ADR 0030).
+const edit = () => act(async () => {});
 
 it("outlines the headings, nested by level, and reads every block on the page", async () => {
   await mount();

@@ -13,7 +13,6 @@ import {
   interruptOmnigentSession,
   listOmnigentRounds,
   mapReplyFrame,
-  mapSessionStatusFrame,
   mapTranscriptMessage,
   mapTranscriptPage,
   markOmnigentRead,
@@ -347,22 +346,6 @@ export const chatsRouter = {
         throw error;
       }
       return { ok: true as const };
-    }),
-    watchStatus: os.chats.watchStatus.handler(async function* ({ input, signal }) {
-      await requireOwnChat(input.botId, input.chatId);
-      try {
-        for await (const frame of streamOmnigentSession(
-          engineClient(),
-          NO_EMAIL,
-          input.chatId,
-          signal,
-        )) {
-          const status = mapSessionStatusFrame(frame);
-          if (status) yield status;
-        }
-      } catch (error) {
-        if (!signal?.aborted) throw error;
-      }
     }),
     watchReply: os.chats.watchReply.handler(async function* ({ input, signal }) {
       await requireOwnChat(input.botId, input.chatId);

@@ -123,18 +123,6 @@ export const FamilyEventSchema = z.discriminatedUnion("type", [
 ]);
 export type FamilyEvent = z.infer<typeof FamilyEventSchema>;
 
-/** One chat's status: `blockedOn` is the engine's words while its running turn waits for a slot
- * ("Finishing another file first", ADR 0024), null otherwise. */
-export const ChatStatusSchema = z.object({
-  status: z.string(),
-  blockedOn: z.string().nullable(),
-  /** A Helper held by Pause (ADR 0027), as the engine flags it. */
-  paused: z.boolean().optional(),
-  /** While a turn runs: its Activity (`activities.get`), before any reply names it. */
-  activityId: z.string().optional(),
-});
-export type ChatStatus = z.infer<typeof ChatStatusSchema>;
-
 /** The reply a chat's running turn is writing, as it streams: `text` appends to it (after a
  * (re)connect, the first `text` is everything written so far), `textReset` says it was stored
  * as a message or the turn ended. Display only; whether the turn runs is the transcript's. */
@@ -172,10 +160,6 @@ export const chatsContract = {
     reset: oc.input(z.object({ botId: Id })).output(z.object({ ok: z.literal(true) })),
     /** The Muse's live family stream: ids only, refetch what changed. */
     watch: oc.input(z.object({ botId: Id })).output(eventIterator(FamilyEventSchema)),
-    /** The Conversation's or one of the Muse's chats' status as it changes. */
-    watchStatus: oc
-      .input(z.object({ botId: Id, chatId: Id }))
-      .output(eventIterator(ChatStatusSchema)),
     /** The reply being written in the Conversation (`chatId` is its id) or one of the Muse's
      * chats, as it streams. */
     watchReply: oc
