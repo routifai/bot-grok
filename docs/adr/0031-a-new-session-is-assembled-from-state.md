@@ -120,14 +120,25 @@ Each step ships alone, with a live check on pi, then on Claude, and aims at ≤ 
 | 5. Handoff at T, on expiry (request-start clock), on a Claude model switch | `resolve_rollover_threshold`, the idle check, the model-switch path before `set_model` | the 200k cap; the newest-item idle clock | `expiry_handoff` (off until the chain arm passes) |
 | 6. Prompt paragraph; STATE.md and journal pointers removed | bundle templates, `ROLLOVER_CONTEXT_INSTRUCTION` | the pointers | none |
 
-**As built (steps 4 and 5, 2026-10-20).** Two deviations from the text above. The fold writes no
-"Where we left off": the block shows the newest turns raw after the anchor (the fold folds only the
-turns before the kept tail), so the position is read from them. Recall's backfill follows the
-anchor: a fold moves the anchor without a history load, so the turns it folds are indexed by the
-existing per-turn backfill step up to the new anchor, beside the history load. Also: T keeps the old
-floor (100k, or 80% of a small window) and an explicit `rollover_at_tokens` label skips it; the
-"assembled estimate" of the 2x rule is the budget sum (24k plus the kept tail), not a count; the
-request-start clock is the runner's own (turn dispatch and each tool result), not the trace proxy.
+**As built (steps 4 and 5, 2026-10-20).** Deviations from the text above:
+- The fold writes no "Where we left off": it folds only the turns before the kept tail, so the
+  newest turns stay raw after the anchor and the block shows the position from them.
+- Recall's backfill follows the anchor: a fold moves the anchor without a history load, so the
+  turns it folds are indexed (with their Project) by the existing per-turn backfill step, beside
+  the history load.
+- Privacy is enforced by routing, not a policy check: the fold runs on the owner's Light model
+  for the session's own harness, over the session's own provider connection (its inference
+  snapshot); the fallback is the session's model over that same connection.
+- T = `min(120k, 0.6 × window)` with no floor; an explicit `rollover_at_tokens` label sets it.
+  The 12-hour return is 0017's rule, now on the request-start clock.
+- The 2x rule's "assembled estimate" is the budget sum (24k plus the kept tail), not a count;
+  the request-start clock is the runner's own (turn dispatch and each tool result).
+- A fold whose reply has no tagged entries is accepted (the working list stays, the anchor
+  moves); between `fold_at` and T a fold may run after each turn.
+
+Known and deferred: a scheduled run is folded into the person's turn before it; `/compact`
+folds at most 16k characters per call; the hard limit (95%) is a second drop point beside the
+handoff decision.
 
 ## Owner decisions (2026-10-19)
 

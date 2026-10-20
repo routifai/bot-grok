@@ -21,7 +21,10 @@ _logger = logging.getLogger(__name__)
 
 #: ``(model string for the LLM client, connection params or None)``.
 BackgroundLLM = tuple[str, dict[str, str] | None]
-BackgroundResolver = Callable[..., Awaitable[BackgroundLLM | None]]
+BackgroundResolver = Callable[[str | None], Awaitable[BackgroundLLM | None]]
+#: ``(owner, the session's inference snapshot, model or None) -> route``: a model over the
+#: session's own provider connection.
+SessionResolver = Callable[[str | None, Any, str | None], Awaitable[BackgroundLLM | None]]
 
 _resolver: BackgroundResolver | None = None
 
@@ -29,25 +32,19 @@ _resolver: BackgroundResolver | None = None
 def register_background_llm(resolver: BackgroundResolver | None) -> None:
     """Register the deployment's background-model resolver (``None`` unregisters).
 
-    The resolver takes the owner the work is for (``None`` for the organization) and an
-    optional ``model`` keyword (another model of the owner's to call over the same connection)
-    and returns the model and connection, or ``None`` when no model can be called yet.
+    The resolver takes the owner the work is for (``None`` for the organization) and returns
+    the model and connection, or ``None`` when no model can be called yet.
     """
     global _resolver
     _resolver = resolver
 
 
-async def resolve_background_llm(
-    owner_id: str | None = None, *, model: str | None = None
-) -> BackgroundLLM | None:
+async def resolve_background_llm(owner_id: str | None = None) -> BackgroundLLM | None:
     """The model and connection background work for *owner_id* runs on, or ``None``.
 
     The server config's static ``llm:`` block wins when present; otherwise the registered
     resolver answers. A resolver failure is logged and reads as ``None`` (the work is skipped,
     never failed).
-
-    :param model: Call this model id instead of the owner's background (Light) one, over the
-        same connection: the fold's fallback to the session's own model.
     """
     from omnigent.runtime import get_caps
 
@@ -60,9 +57,45 @@ async def resolve_background_llm(
     if resolver is None:
         return None
     try:
-        return await (resolver(owner_id, model=model) if model else resolver(owner_id))
+        return await resolver(owner_id)
     except Exception:
         _logger.warning("background model could not be resolved", exc_info=True)
+        return None
+
+
+_session_resolver: SessionResolver | None = None
+
+
+def register_session_llm(resolver: SessionResolver | None) -> None:
+    """Register how a model is called over a session's own connection (``None`` unregisters)."""
+    global _session_resolver
+    _session_resolver = resolver
+
+
+async def resolve_session_llm(
+    owner_id: str | None, snapshot: Any, model: str | None = None
+) -> BackgroundLLM | None:
+    """The owner's Light model for the session's own harness, or *model*, over the session's own
+    provider connection (*snapshot*, its inference snapshot), or ``None``.
+
+    Background work that carries a Conversation's words (the fold) uses this, so they never go
+    to another provider, tenant or region than the Conversation's own. The server config's static
+    ``llm:`` block, the operator's choice for all background work, wins when present.
+    """
+    from omnigent.runtime import get_caps
+
+    server_llm = get_caps().llm
+    if server_llm is not None:
+        from omnigent.runtime.policies.builder import _resolve_server_llm_connection
+
+        return server_llm.model, _resolve_server_llm_connection(server_llm)
+    resolver = _session_resolver
+    if resolver is None:
+        return None
+    try:
+        return await resolver(owner_id, snapshot, model)
+    except Exception:
+        _logger.warning("session model could not be resolved", exc_info=True)
         return None
 
 

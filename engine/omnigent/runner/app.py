@@ -37,7 +37,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeAlias, cast, overload
 
 if TYPE_CHECKING:
-    from omnigent.entities import CompactionData
     from omnigent.llms.client import Client as LLMClient
     from omnigent.runner.mcp_manager import RunnerMcpManager
     from omnigent.runner.policy import PolicyVerdict
@@ -158,6 +157,10 @@ from omnigent.superchat.prompt_prefix import (
 
 #: How a harness is named to the model when it says which setup it runs on.
 _HARNESS_LABELS = {"pi": "pi", "claude-sdk": "Claude Agent SDK"}
+#: A turn's end events; each may carry the turn's usage (``response.usage.context_tokens``).
+_TURN_END_EVENTS = frozenset(
+    {"response.completed", "response.failed", "response.incomplete", "response.cancelled"}
+)
 from omnigent.superchat.subagents import (
     STUDIO_QUEUED_NOTE,
     STUDIO_WARM_SECONDS,
@@ -5434,32 +5437,16 @@ def create_runner_app(
             lineage[SUBAGENT_LABEL_KEY] = "1"
         return lineage
 
-    def _journal_checkpoint(
-        conv_id: str, labels: Mapping[str, str] | None
-    ) -> Callable[[CompactionData, list[dict[str, Any]]], Awaitable[None]]:
-        """The ``on_stored`` hook for ``roll_over_session``: copy the checkpoint to ``memory/``.
-
-        The turns it retired are indexed by the history load that follows the drop (ADR 0031:
-        one indexing trigger)."""
-        from omnigent.runner.memory.sync import record_checkpoint
-
-        async def _record(item: CompactionData, _window: list[dict[str, Any]]) -> None:
-            # Stored labels never mark a Helper or a studio: the parent does (one rule for tools
-            # and memory), so neither writes the Conversation's STATE.md, journal or turns.
-            lineage = await _memory_labels(conv_id, labels)
-            await record_checkpoint(conv_id, lineage, item)
-
-        return _record
-
     _memory_rebuilds: set[str] = set()
 
     def _schedule_memory_sync(conv_id: str, labels: Mapping[str, str] | None) -> None:
         """Heal ``memory/`` in the background: missing folder, new owner, a reset not yet seen.
 
-        Then a bounded step of indexing the Conversation's turns from before they were indexed
-        at compaction (the ``conversation`` source).
+        Then a bounded step of indexing the Conversation's turns up to its checkpoint's anchor
+        (the ``conversation`` source), with the Project the chat runs in.
         """
         from omnigent.runner.memory.sync import backfill_turns, reconcile
+        from omnigent.superchat.projects.card import project_slug_from_workspace
 
         if _memory_rebuilds:
             return
@@ -5467,10 +5454,17 @@ def create_runner_app(
 
         async def _run() -> None:
             try:
-                # The parent marks a Helper or a studio (see ``_journal_checkpoint``).
+                # Stored labels never mark a Helper or a studio: the parent does (one rule for
+                # tools and memory), so neither writes the Conversation's STATE.md or journal.
                 lineage = await _memory_labels(conv_id, labels)
                 await reconcile(server_client, conv_id, lineage)
-                await backfill_turns(server_client, conv_id, lineage)
+                workspace = await _session_workspace_value(conv_id)
+                await backfill_turns(
+                    server_client,
+                    conv_id,
+                    lineage,
+                    project=project_slug_from_workspace(workspace) or "",
+                )
             finally:
                 _memory_rebuilds.discard(conv_id)
 
@@ -5483,11 +5477,11 @@ def create_runner_app(
 
         The Claude SDK's ``/compact`` stores a placeholder summary, not a
         checkpoint (and auto-compaction is off in this mode). The same
-        :func:`~omnigent.superchat.rollover.roll_over_session` the threshold
-        and idle triggers run builds a real one instead. It runs in the
-        background (the summarizer outlives the server's forward timeout) and
-        publishes the in-progress / completed events the client expects;
-        returning 200 makes the server skip its own compaction.
+        :func:`~omnigent.superchat.rollover.roll_over_session` the engine's fold runs builds a
+        real one here, over the runner's route to the session's model, then drops the warm
+        client. It runs in the background (the summarizer outlives the server's forward
+        timeout) and publishes the in-progress / completed events the client expects; returning
+        200 makes the server skip its own compaction. The next turn's memory sync journals it.
         """
         from omnigent.superchat.rollover import roll_over_session
 
@@ -5518,7 +5512,6 @@ def create_runner_app(
                     connection=connection,
                     wire=wire,
                     on_rolled_over=lambda: _drop_superside_chat_warm_client(conv_id),
-                    on_stored=_journal_checkpoint(conv_id, labels),
                     cause="manual",
                 )
             except Exception:
@@ -6615,13 +6608,13 @@ def create_runner_app(
         )
 
     async def _drop_superside_chat_warm_client(
-        conv_id: str, *, defer_if_active: bool = True, reason: str = "a rollover"
+        conv_id: str, *, defer_if_active: bool = True, reason: str = "a /compact"
     ) -> None:
-        """Drop the warm claude-sdk client so the next turn cold-starts.
+        """Drop the warm harness client so the next turn starts from the assembled block.
 
         Invalidates this runner's cached history so the next dispatch
-        reloads it from the server (picking up the compaction item just
-        posted — see ``_load_history_as_input``), then releases the harness
+        reloads it from the server (the latest checkpoint and the record after its anchor,
+        see ``_load_history_as_input``), then releases the harness
         subprocess: its shutdown runs ``ClaudeSDKExecutor.close_session``
         (``ExecutorAdapter.on_shutdown``), which is the only way this
         process reaches that method on another process's executor.
@@ -6632,8 +6625,8 @@ def create_runner_app(
         default), a live ``_active_turns`` entry defers the drop instead:
         it's recorded in ``_superside_chat_pending_refresh`` and applied at
         the start of the session's next turn
-        (``_consume_superside_chat_pending_refresh``). The idle-refresh
-        caller passes ``defer_if_active=False``: it runs synchronously at
+        (``_consume_superside_chat_pending_refresh``). The handoff decision and the hard
+        limit pass ``defer_if_active=False``: it runs synchronously at
         the start of ITS OWN turn, before that turn has dispatched
         anything, so ``_active_turns`` already holds its own slot and
         deferring would be wrong — the whole point is to release now, so
@@ -6645,6 +6638,9 @@ def create_runner_app(
         _forget_superside_chat_prefix(conv_id)
         _session_histories.pop(conv_id, None)
         _last_request_start.pop(conv_id, None)
+        # The next session's size is unknown until its first turn ends: never hand it off on the
+        # old one (0 also keeps the label's stale reading out).
+        _superside_chat_last_context_tokens[conv_id] = 0
         if process_manager is not None:
             _logger.info(
                 "dropping the warm Claude CLI for %s: %s",
@@ -6744,6 +6740,24 @@ def create_runner_app(
         model = body.get("model_override") or body.get("llm_model")
         return model if isinstance(model, str) and model else None
 
+    async def _superside_chat_record_gap(conv_id: str) -> float | None:
+        """Seconds since the item before this turn's message, from the record; ``None`` on a
+        miss. Only for the gap line of a session this runner holds no history for."""
+        try:
+            resp = await server_client.get(
+                f"/v1/sessions/{conv_id}/items",
+                params={"limit": "2", "order": "desc"},
+                timeout=10.0,
+            )
+            page_items = resp.json().get("data", []) if resp.status_code == 200 else []
+        except (httpx.HTTPError, ValueError):
+            return None
+        newest = page_items[0] if page_items else {}
+        if newest.get("type") == "message" and newest.get("role") == "user":
+            page_items = page_items[1:]
+        created_at = page_items[0].get("created_at") if page_items else None
+        return time.time() - created_at if isinstance(created_at, int) else None
+
     async def _superside_chat_handoff(
         conv_id: str,
         *,
@@ -6764,17 +6778,22 @@ def create_runner_app(
             ``None``.
         """
         from omnigent.context.rollover import reported_context_tokens
-        from omnigent.superchat.rollover import handoff_reason
+        from omnigent.superchat.rollover import handoff_reason, resolve_idle_refresh_seconds
 
         prior = _last_turn_model.get(conv_id)
         if harness and model:
             _last_turn_model[conv_id] = (harness, model)
         if conv_id not in _session_histories:
-            return None
+            # Nothing warm to hand off; the load assembles. A return after a restart still gets
+            # its gap line, from the record.
+            gap = await _superside_chat_record_gap(conv_id)
+            return gap if gap is not None and gap >= resolve_idle_refresh_seconds() else None
         started = _last_request_start.get(conv_id)
         since = time.time() - started if started is not None else None
-        tokens = _superside_chat_last_context_tokens.get(conv_id) or reported_context_tokens(
-            labels
+        tokens = (
+            _superside_chat_last_context_tokens[conv_id]
+            if conv_id in _superside_chat_last_context_tokens
+            else reported_context_tokens(labels)
         )
         switch = (
             prior is not None
@@ -7995,6 +8014,18 @@ def create_runner_app(
                                     # up-front spinner; drop the executor's own duplicate
                                     # so the web renders a single compaction spinner.
                                     continue
+                                if _evt_type in _TURN_END_EVENTS:
+                                    # The fill the turn reported, on any end (a stopped or failed
+                                    # turn too): the size handoff and the hard limit read it. The
+                                    # fold runs in the engine (ADR 0031), not here.
+                                    _usage = (event.get("response") or {}).get("usage")
+                                    _reported = (
+                                        _usage.get("context_tokens")
+                                        if isinstance(_usage, dict)
+                                        else None
+                                    )
+                                    if isinstance(_reported, int) and _reported > 0:
+                                        _superside_chat_last_context_tokens[conv_id] = _reported
                                 if _evt_type == "injection.offered":
                                     # Offered for the turn's next step; its outcome follows.
                                     _answer_offer(event.get("injection_id"), taken=True)
@@ -8057,16 +8088,6 @@ def create_runner_app(
                                     _commit_superside_chat_prefix(conv_id)
                                     _history_process[conv_id] = _warm_client_serial(conv_id)
                                     notify_turn_end(conv_id)  # Feature.on_turn_end
-                                    # The fill this turn reported, for the hard-limit check.
-                                    # The fold runs in the engine (ADR 0031), not here.
-                                    _usage = (event.get("response") or {}).get("usage")
-                                    _reported = (
-                                        _usage.get("context_tokens")
-                                        if isinstance(_usage, dict)
-                                        else None
-                                    )
-                                    if isinstance(_reported, int):
-                                        _superside_chat_last_context_tokens[conv_id] = _reported
                                 elif _evt_type == "response.failed":
                                     _err = event.get("error") or (event.get("response") or {}).get(
                                         "error"

@@ -118,11 +118,11 @@ scheduled after each superside-chat turn beside memory upkeep (`server/memory_up
 | | |
 |---|---|
 | Trigger | the settled-turn lines a new session would list pass 2,000 tokens (`OMNIGENT_FOLD_TURN_LINES_TOKENS`), or the warm context reaches `fold_at = T − min(32k, T/4)`; at most one fold per session at a time, between turns |
-| Model | the owner's Light model (Settings, Models) over the owner's connection, through `resolve_background_llm`; keys never reach the host. With `OMNIGENT_FOLD_ON_LIGHT=0`, no Light model, or after two failed folds on Light, the session's own model over the same connection |
+| Model | the owner's Light model (Settings, Models) for the session's harness, over the session's own provider connection (its inference snapshot, `resolve_session_llm`), so a Conversation's words never reach another provider; keys never reach the host. With `OMNIGENT_FOLD_ON_LIGHT=0`, no Light model, or after two failed Light calls in a row, the session's own model over that connection |
 | Window | the turns since the anchor before the kept tail, oldest first, at most 16,000 characters of rendered turns; the anchor lands after the last one folded, so the newest turns stay raw after it and the block's turn lines shrink |
 | Input | the previous checkpoint, then per turn: the person's words, its turn line, one line per failed tool call (tool name and the error's first line), and the final answer clipped to 600 characters. No tool results, HTML or notices. Secrets are withheld as in the block. The instruction is fixed text (the date rides the input), so it is byte-identical across folds |
 | Output | an anchored merge of the working list (only entries the turns touch change; an approach that failed is a `d-` entry starting "tried and failed:"), and 3 to 10 dated journal lines. No "where we left off" paragraph: the block shows the newest turns instead |
-| Accepted | only on a clean stop whose text parses as tagged entries and a `<journal>`; a stale anchor is refused. On any failure or timeout the previous checkpoint stays and a later turn tries again |
+| Accepted | unless the reply was cut off, called a tool or was filtered; a reply with no tagged entries leaves the working list as it was and still moves the anchor; a stale anchor is refused. On any failure or timeout the previous checkpoint stays and a later turn tries again |
 
 Code then reconciles the rewrite against the previous list (`context/state_file.py`, `reconcile`):
 it applies pending `state_close` calls, puts back word for word any entry the rewrite lost (counted
@@ -138,8 +138,8 @@ decision point (`superchat/rollover.py`, `handoff_reason`; `runner/app.py`,
 
 | Handoff | Rule |
 |---|---|
-| Size | the reported context reaches T = `min(120k, 0.6 × window)`; 100,000 when the window is unknown; the default never below 100,000 unless 80% of a known window is lower; an explicit `omnigent.context.rollover_at_tokens` label is taken as it is (`resolve_rollover_threshold`) |
-| Return | the last request started 12 hours ago (`OMNIGENT_ROLLOVER_IDLE_REFRESH_SECONDS`); the turn gets a gap line |
+| Size | the context the last turn reported (completed, stopped or failed) reaches T = `min(120k, 0.6 × window)`; 100,000 when the window is unknown; an explicit `omnigent.context.rollover_at_tokens` label sets it (`resolve_rollover_threshold`). Right after a handoff the old reading is ignored |
+| Return | the last request started 12 hours ago (`OMNIGENT_ROLLOVER_IDLE_REFRESH_SECONDS`); the turn gets a gap line (after a runner restart, from the record) |
 | Cache expiry (flag `OMNIGENT_EXPIRY_HANDOFF`, off until the probe's chain arm passes) | the last request started longer ago than the cache lifetime minus 30 s (3,600 s with the 1-hour cache, else 300 s; `OMNIGENT_PROMPT_CACHE_LIFETIME_SECONDS` overrides it), and the warm context is more than twice what a new session costs at most (`assembled_estimate`: 24,000 tokens plus the kept tail) |
 | Claude model switch | the same twice rule; otherwise the switch keeps the warm client (`set_model`). pi respawns on a switch anyway |
 | Hard limit | the last known fill is 95% of the window or more: the turn starts from the checkpoint plus the newest whole turns that fit |
@@ -154,8 +154,10 @@ load assembles anyway.
 | Reset | `POST /v1/sessions/{id}/reset`: a checkpoint with no summary |
 
 After a checkpoint is stored, memory upkeep is scheduled for the owner. The runner copies its
-working list and journal lines into the host (below) at the next turn's memory sync, once per
-checkpoint, and recall's backfill indexes the turns up to the new anchor.
+working list and journal lines into the host (below) at the next turn's memory sync, every
+checkpoint stored since the last one it wrote, and recall's backfill indexes the turns up to the
+new anchor with their Project. The context brief's earlier work leaves out the turns after the
+view start, as `recall` does.
 
 ## Memory and upkeep
 

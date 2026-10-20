@@ -45,10 +45,9 @@ _MAX_PAGES = 200
 _BACKFILL_PAGE = "1000"
 _BACKFILL_PAGES = 5
 _BACKFILL_TURNS = 300
-#: Index meta keys: the last item a chat's backfill read, and a main Conversation it finished.
+#: Index meta key: the last item a chat's backfill read.
 #: Versioned: bumped when what a passage holds changes, so the backfill writes it once again.
 CURSOR_KEY = "turns_cursor.v3:"
-BACKFILLED_KEY = "turns_backfilled.v3:"
 
 
 async def _snapshot(server_client: Any, chat_id: str) -> dict[str, Any]:
@@ -75,29 +74,44 @@ async def record_checkpoint(
     labels: dict[str, str] | None,
     item: CompactionData,
     *,
+    item_id: str | None = None,
+    date: str | None = None,
+    write_state: bool = True,
     workspace: Path | None = None,
-) -> None:
+) -> bool:
     """Journal a stored checkpoint of the Conversation and write its ``STATE.md``.
 
-    A Helper writes nothing. Never raises.
+    A line already in a day file is not added again. With *item_id* the checkpoint is marked
+    written (``.last_checkpoint``), so the memory sync never writes it twice. A Helper writes
+    nothing. Never raises.
+
+    :param date: The day its lines fall on when they name none (default today).
+    :param write_state: ``False`` for a checkpoint a newer one replaces in ``STATE.md``.
+    :returns: ``True`` unless a write failed.
     """
     try:
         if is_helper(labels):
-            return
+            return True
         root = workspace or default_workspace()
         origin = files.Origin("main", chat_id)
         entries = files.checkpoint_lines(
             origin,
             item.journal_lines,
             item.evicted_entries,
-            default_date=files.today(),
+            default_date=date or files.today(),
             refs=item.journal_refs,
         )
-        await asyncio.to_thread(files.append_lines, root, entries)
-        await asyncio.to_thread(files.write_state, root, files.state_text_of(item.summary))
+        ok = await asyncio.to_thread(files.append_lines, root, entries, skip_present=True)
+        if write_state:
+            state = files.state_text_of(item.summary)
+            ok = ok and await asyncio.to_thread(files.write_state, root, state)
         await asyncio.to_thread(files.write_owner, root, chat_id, keep_existing=True)
+        if ok and item_id is not None:
+            await asyncio.to_thread(files.write_last_checkpoint, root, item_id)
+        return bool(ok)
     except Exception:  # a copy must never fail the turn
         _logger.warning("memory: could not record the checkpoint of %s", chat_id, exc_info=True)
+        return False
 
 
 def _strings(raw: Any) -> list[str]:
@@ -240,7 +254,9 @@ async def rebuild(server_client: Any, chat_id: str, *, workspace: Path | None = 
         entries: list[tuple[str, str]] = []
         state: str | None = None
         reset_id: str | None = None
+        last_id: Any = None
         for item in await _compaction_items(server_client, main_id):
+            last_id = item.get("id")
             entries += files.checkpoint_lines(
                 origin,
                 item.get("journal_lines"),
@@ -263,6 +279,9 @@ async def rebuild(server_client: Any, chat_id: str, *, workspace: Path | None = 
             await record_daily_note(note, workspace=root)
         if isinstance(reset_id, str):
             await asyncio.to_thread(files.write_last_reset, root, reset_id)
+        if isinstance(last_id, str):
+            # The memory sync writes only checkpoints stored after this one.
+            await asyncio.to_thread(files.write_last_checkpoint, root, last_id)
         await asyncio.to_thread(files.write_owner, root, main_id)
     except Exception:  # a copy must never fail the turn
         _logger.warning("memory: could not rebuild from %s", chat_id, exc_info=True)
@@ -278,43 +297,66 @@ async def _daily_notes(server_client: Any) -> list[dict[str, Any]]:
     return [row for row in rows if isinstance(row, dict)]
 
 
+#: Most compaction items one memory sync reads back to the last one written.
+_LATEST_PAGES = 5
+
+
 async def _apply_latest(server_client: Any, main_id: str, root: Path) -> None:
-    """Write the latest checkpoint to the files once: a reset (a journal line, then an empty
-    working list), or a checkpoint the engine's fold stored (its journal lines and ``STATE.md``;
-    ADR 0031). A line already in a day file is not added again."""
-    params = {"limit": "1", "order": "desc", "type": "compaction"}
-    page = await _get_items_page(server_client, main_id, params)
-    latest = next(iter(page.get("data", [])), None)
-    if not isinstance(latest, dict):
-        return
-    item_id = latest.get("id")
-    if not isinstance(item_id, str):
-        return
-    if not is_reset_item(latest):
-        if not _is_checkpoint(latest) or files.last_checkpoint_of(root) == item_id:
-            return
-        entries = files.checkpoint_lines(
-            files.Origin("main", main_id),
-            latest.get("journal_lines"),
-            latest.get("evicted_entries"),
-            default_date=_item_date(latest),
-            refs=latest.get("journal_refs"),
-        )
-        ok = await asyncio.to_thread(files.append_lines, root, entries, skip_present=True)
-        state = files.state_text_of(latest.get("summary"))
-        ok = ok and await asyncio.to_thread(files.write_state, root, state)
-        if ok:
+    """Write the checkpoints stored since the last one written to the files, oldest first: a
+    reset (a journal line, then an empty working list), or a checkpoint (its journal lines;
+    ``STATE.md`` from the newest). The engine's fold stores them without this host, and two can
+    land between syncs (ADR 0031). With no mark yet, only the newest is written (``rebuild``
+    wrote the rest)."""
+    marker = files.last_checkpoint_of(root)
+    params = {"limit": "20", "order": "desc", "type": "compaction"}
+    newer: list[dict[str, Any]] = []
+    for _ in range(_LATEST_PAGES):
+        page = await _get_items_page(server_client, main_id, params)
+        data = [it for it in page.get("data", []) if isinstance(it, dict)]
+        for item in data:
+            if item.get("id") == marker:
+                break
+            newer.append(item)
+            if marker is None:
+                break
+        else:
+            if data and page.get("has_more", False):
+                params = {**params, "after": str(data[-1].get("id"))}
+                continue
+        break
+    for index, item in enumerate(reversed(newer)):
+        item_id = item.get("id")
+        if not isinstance(item_id, str):
+            continue
+        newest = index == len(newer) - 1
+        if is_reset_item(item):
+            if files.last_reset_of(root) != item_id:
+                ok = await asyncio.to_thread(
+                    files.append_lines, root, [_reset_entry(item, main_id)], skip_present=True
+                )
+                if newest:
+                    state = files.reset_state_text(_item_date(item))
+                    ok = ok and await asyncio.to_thread(files.write_state, root, state)
+                if not ok:
+                    return
+                await asyncio.to_thread(files.write_last_reset, root, item_id)
             await asyncio.to_thread(files.write_last_checkpoint, root, item_id)
-        return
-    if files.last_reset_of(root) == item_id:
-        return
-    ok = await asyncio.to_thread(
-        files.append_lines, root, [_reset_entry(latest, main_id)], skip_present=True
-    )
-    state = files.reset_state_text(_item_date(latest))
-    ok = ok and await asyncio.to_thread(files.write_state, root, state)
-    if ok:
-        await asyncio.to_thread(files.write_last_reset, root, item_id)
+        elif _is_checkpoint(item) and not is_placeholder_summary(item.get("summary")):
+            data = CompactionData.model_validate(
+                {k: item.get(k) for k in CompactionData.model_fields if item.get(k) is not None}
+            )
+            if not await record_checkpoint(
+                main_id,
+                None,
+                data,
+                item_id=item_id,
+                date=_item_date(item),
+                write_state=newest,
+                workspace=root,
+            ):
+                return
+        else:
+            await asyncio.to_thread(files.write_last_checkpoint, root, item_id)
 
 
 async def reconcile(
@@ -468,6 +510,7 @@ async def _backfill_chat(
     origin: files.Origin,
     main_id: str,
     budget: dict[str, int],
+    project: str = "",
 ) -> bool:
     """Index a chat's retired turns (up to its latest checkpoint's anchor) from its saved cursor
     while *budget* lasts. ``True`` once none is left; a chat never compacted has none."""
@@ -495,7 +538,7 @@ async def _backfill_chat(
         more = bool(items) and bool(page.get("has_more", False))
         turns, moved, ended = _backfill_step(items, more, budget["turns"], ends)
         budget["turns"] -= len(turns)
-        passages = _passages(turns, origin, main_id)
+        passages = _passages(turns, origin, main_id, project)
         await asyncio.to_thread(
             found.indexer.index_turns, passages, cursor=(key, moved) if moved else None
         )
@@ -509,6 +552,7 @@ async def backfill_turns(
     chat_id: str,
     labels: dict[str, str] | None,
     *,
+    project: str = "",
     runtime: KnowledgeRuntime | None = None,
 ) -> None:
     """Index the turns of a Conversation up to its latest checkpoint's anchor. Never raises.
@@ -527,7 +571,7 @@ async def backfill_turns(
             return
         budget = {"pages": _BACKFILL_PAGES, "turns": _BACKFILL_TURNS}
         origin = files.Origin("main", main_id)
-        await _backfill_chat(server_client, found, origin, main_id, budget)
+        await _backfill_chat(server_client, found, origin, main_id, budget, project)
     except Exception:  # indexing must never fail the turn
         _logger.warning("recall: could not backfill the turns of %s", chat_id, exc_info=True)
 
@@ -542,7 +586,6 @@ async def _forget_conversation(
             return
         chats = [main_id, *await asyncio.to_thread(found.indexer.db.chats_of, main_id)]
         keys = [
-            f"{BACKFILLED_KEY}{main_id}",
             *(f"{CURSOR_KEY}{chat}" for chat in chats),
         ]
         await asyncio.to_thread(found.indexer.delete_chats, chats, meta_keys=keys)

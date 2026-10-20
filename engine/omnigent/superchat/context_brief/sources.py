@@ -49,9 +49,11 @@ class RunnerSources:
     async def recall(self, session_id: str, plan: TurnPlan) -> list[Any]:
         if not plan.queries:
             return []
-        # The current epoch is in context, so it is left out.
-        anchor = plan.checkpoint.get("last_item_id") if plan.checkpoint else None
-        hits = await search(plan.queries, {session_id: anchor or ""})
+        from omnigent.superchat.knowledge.handlers import current_epoch
+
+        # The current epoch is in context (from the view start on), so it is left out.
+        epoch = await current_epoch(self._client, session_id, plan.checkpoint or {})
+        hits = await search(plan.queries, epoch)
         if not hits or (_field(hits[0], "score") or 0) < SCORE_FLOOR:
             return []
         return hits[: MAX_EARLIER + MAX_SOURCES]

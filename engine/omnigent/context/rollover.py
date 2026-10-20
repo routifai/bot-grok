@@ -53,11 +53,6 @@ _MID_TURN_LIVE_STATUSES = ("running", "waiting")
 # well under the smallest context window Omnigent routes to today.
 DEFAULT_ROLLOVER_THRESHOLD_TOKENS = 100_000
 
-# Claude Code starts at ~60k tokens and Codex keeps ~20k of user messages, so
-# a lower threshold leaves the CLI over it right after compacting: a loop.
-MIN_ROLLOVER_THRESHOLD_TOKENS = 100_000
-_MIN_THRESHOLD_WINDOW_FRACTION = 0.8
-
 # Fraction of the session's context window used as the default threshold,
 # leaving headroom for a heavy tool turn before the CLI hits its own limit.
 _DEFAULT_THRESHOLD_WINDOW_FRACTION = 0.6
@@ -295,9 +290,8 @@ def resolve_rollover_threshold(
 
     Priority: the :data:`~omnigent.context.labels.ROLLOVER_AT_TOKENS_LABEL`
     label (an explicit positive int) > ``min(120k, 0.6 × window)`` (the last-reported window
-    label, else *model_window*) > :data:`DEFAULT_ROLLOVER_THRESHOLD_TOKENS`. An explicit label
-    is taken as it is; the default is never below :data:`MIN_ROLLOVER_THRESHOLD_TOKENS` (that
-    floor itself capped at 80% of a known window).
+    label, else *model_window*) > :data:`DEFAULT_ROLLOVER_THRESHOLD_TOKENS`. A new session
+    assembles at about 22k tokens, so no floor is needed above that.
 
     :param labels: The session's labels, or ``None``.
     :param model_window: The session's model's context window, used when no
@@ -314,15 +308,9 @@ def resolve_rollover_threshold(
     if explicit is not None:
         # The operator's own number (also how a test sees a handoff on a short chat).
         return explicit
-    threshold = (
-        min(int(window * _DEFAULT_THRESHOLD_WINDOW_FRACTION), HANDOFF_THRESHOLD_TOKENS)
-        if window is not None
-        else DEFAULT_ROLLOVER_THRESHOLD_TOKENS
-    )
-    floor = MIN_ROLLOVER_THRESHOLD_TOKENS
-    if window is not None:
-        floor = min(floor, int(window * _MIN_THRESHOLD_WINDOW_FRACTION))
-    return max(threshold, floor)
+    if window is None:
+        return DEFAULT_ROLLOVER_THRESHOLD_TOKENS
+    return min(int(window * _DEFAULT_THRESHOLD_WINDOW_FRACTION), HANDOFF_THRESHOLD_TOKENS)
 
 
 def split_at_latest_compaction(
@@ -360,7 +348,8 @@ def split_at_latest_compaction(
 
 
 def resolve_keep_tokens(labels: Mapping[str, str] | None) -> int:
-    """Resolve ``omnigent.context.rollover_keep_tokens``, default 16,000."""
+    """Resolve ``omnigent.context.rollover_keep_tokens`` (the kept tail, as rendered), default
+    :data:`~omnigent.context.labels.DEFAULT_KEEP_TOKENS` (8,000)."""
     labels = labels or {}
     value = _parse_positive_int(labels.get(ROLLOVER_KEEP_TOKENS_LABEL))
     return value if value is not None else DEFAULT_KEEP_TOKENS
@@ -803,6 +792,9 @@ def _turn_refs_line(turn: list[dict[str, Any]]) -> list[str]:
     return [f"REFS: {text}"] if text else []
 
 
+#: Stop reasons a fold is refused on; any other (``stop``, ``end_turn``, ``stop_sequence``,
+#: ``eos``, none reported) is a clean end.
+_UNCLEAN_STOPS = frozenset({"length", "max_tokens", "tool_calls", "tool_use", "content_filter"})
 #: Longest final answer of one turn the fold reads (ADR 0031, "When the past is folded").
 FOLD_ANSWER_MAX_CHARS = 600
 #: Longest first line of a failed call's error the fold reads.
@@ -878,7 +870,7 @@ def _fold_turn(turn: list[dict[str, Any]]) -> str:
         if len(answer) > FOLD_ANSWER_MAX_CHARS:
             answer = answer[:FOLD_ANSWER_MAX_CHARS].rstrip() + " …"
         lines.append("You said: " + answer.replace("\n", "\n  "))
-    return "\n".join([*lines, *_turn_refs_line(turn)])
+    return "\n".join([*lines, *(redact_secrets(ref) for ref in _turn_refs_line(turn))])
 
 
 def fold_turns(items: list[dict[str, Any]]) -> list[tuple[int, str]]:
@@ -977,8 +969,9 @@ async def build_rollover_item(
     An anchored merge of *previous_summary* with the turns of the window, read as
     :func:`fold_input` renders them (the person's words, turn lines, failed calls, final
     answers clipped; no tool results or notices), under the fixed
-    ``state_file_summarizer_instruction``. Accepted only on a clean stop whose text parses as
-    tagged entries and a ``<journal>``; ``reconcile`` then repairs what the rewrite lost. The
+    ``state_file_summarizer_instruction``. Accepted only on a clean stop; a reply with no tagged
+    entries leaves the working list as it was (the anchor still moves); ``reconcile`` then
+    repairs what the rewrite lost. The
     fixed, code-authored :data:`CHECKPOINT_HEADER` is never written by the LLM. The anchor
     (``last_item_id``) is the window's last item, and ``compacted_messages`` holds only the
     summary pair: a new session assembles from the checkpoint and the record after it.
@@ -1006,8 +999,7 @@ async def build_rollover_item(
         ``compaction`` item. Besides the summary it carries the journal lines the summarizer
         wrote, the refs of the whole window (code-written, put on every journal line), the
         entries evicted for the size budget, the closes applied and the repairs made.
-    :raises ValueError: If *items_since_previous_compaction* is empty, or the reply is cut off
-        or does not parse.
+    :raises ValueError: If *items_since_previous_compaction* is empty, or the reply is cut off.
     """
     if not items_since_previous_compaction:
         raise ValueError("build_rollover_item requires at least one item to summarize")
@@ -1043,16 +1035,16 @@ async def build_rollover_item(
         "yes" if previous_summary else "no",
         stop,
     )
-    if stop not in (None, "stop"):
-        # A cut-off or tool-calling reply is not a checkpoint: the previous one stays.
+    if stop in _UNCLEAN_STOPS:
+        # A cut-off, tool-calling or filtered reply is not a checkpoint: the previous one stays.
         raise ValueError(f"rollover summarizer did not stop cleanly ({stop})")
     state_text, journal_lines = split_journal(
         summary["text"] if isinstance(summary.get("text"), str) else ""
     )
-    if not entries(parse(state_text)) or not journal_lines:
-        # Never persist a checkpoint that does not parse as tagged entries and a journal: the
-        # caller keeps the previous one and retries on a later turn.
-        raise ValueError("rollover summarizer returned no tagged entries or no journal")
+    if not entries(parse(state_text)):
+        # Nothing the turns changed (a chatty stretch): the working list stays as it was and the
+        # anchor still moves, so the next turn does not fold the same turns again.
+        state_text = strip_checkpoint_header(previous_summary) if previous_summary else ""
     today = f"{now:%Y-%m-%d}"
     reconciled = reconcile(
         strip_checkpoint_header(previous_summary) if previous_summary else None,

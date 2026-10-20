@@ -189,10 +189,9 @@ def test_threshold_uses_model_window_when_no_window_label() -> None:
 
 
 def test_threshold_window_label_wins_over_model_window() -> None:
-    # 60% of the labeled 100,000 window is below the floor, so the 80%-of-window
-    # floor applies (80,000) — proof the much larger model_window is ignored.
+    # 60% of the labeled 100,000 window: proof the much larger model_window is ignored.
     labels = {_LAST_CONTEXT_WINDOW_LABEL_KEY: "100000"}
-    assert resolve_rollover_threshold(labels, model_window=1_000_000) == 80_000
+    assert resolve_rollover_threshold(labels, model_window=1_000_000) == 60_000
 
 
 def test_threshold_ignores_non_positive_model_window() -> None:
@@ -207,10 +206,10 @@ def test_threshold_explicit_label_wins_over_window() -> None:
     assert resolve_rollover_threshold(labels) == 150_000
 
 
-def test_threshold_default_has_a_floor_but_an_explicit_label_does_not() -> None:
+def test_threshold_has_no_floor() -> None:
     assert resolve_rollover_threshold({"omnigent.context.rollover_at_tokens": "12345"}) == 12_345
-    # A small window caps the derived default's floor at 80% of the window.
-    assert resolve_rollover_threshold({_LAST_CONTEXT_WINDOW_LABEL_KEY: "100000"}) == 80_000
+    # A small window gives 60% of it: a new session assembles far below that.
+    assert resolve_rollover_threshold({_LAST_CONTEXT_WINDOW_LABEL_KEY: "100000"}) == 60_000
     labels = {
         "omnigent.context.rollover_at_tokens": "5000",
         _LAST_CONTEXT_WINDOW_LABEL_KEY: "100000",

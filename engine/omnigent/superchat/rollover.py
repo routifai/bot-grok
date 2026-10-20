@@ -19,6 +19,7 @@ import os
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from typing import Any, Literal, Protocol
 
+import cachetools
 import httpx
 
 from omnigent.context.labels import is_superside_chat
@@ -89,9 +90,9 @@ def resolve_helper_turn_context_ceiling() -> int:
     return value if value > 0 else DEFAULT_HELPER_TURN_CONTEXT_CEILING
 
 
-#: Fraction of the model's context window at which another turn would overflow
-#: it. At or past this fill the next turn waits (bounded) for an in-flight
-#: rollover; below it, turns never wait on the summarizer.
+#: Fraction of the model's context window at which another turn would overflow it. At or past
+#: this fill the warm client is dropped and the turn starts from the checkpoint plus the newest
+#: whole turns that fit; nothing waits on a fold.
 HARD_CONTEXT_WINDOW_FRACTION = 0.95
 
 
@@ -204,10 +205,9 @@ def handoff_reason(
 # Build + persist the next rollover item
 # ---------------------------------------------------------------------------
 
-# Sessions with a rollover build+post currently in flight. Module-level,
-# process-lifetime: a second trigger for the same session (the threshold
-# check and the idle-refresh check can both fire around the same turn) is a
-# no-op rather than racing the first — see :func:`roll_over_session`.
+# Sessions with a fold being built and stored in this process. A second call for the same session
+# (the engine's fold after another turn, or a /compact) is a no-op rather than racing the first;
+# across processes the stale-anchor guard refuses the loser. See :func:`roll_over_session`.
 _in_flight: set[str] = set()
 
 
@@ -661,6 +661,7 @@ async def roll_over_session(
     wire: str | None = None,
     cause: CheckpointCause = "size",
     on_stored: Callable[[CompactionData, list[dict[str, Any]]], Awaitable[None]] | None = None,
+    on_failed: Callable[[Exception], None] | None = None,
 ) -> bool:
     """Fold the turns since the latest checkpoint, up to the newest ones, into the next one.
 
@@ -681,7 +682,8 @@ async def roll_over_session(
 
     *connection* and *wire* say how the summarizer is called (see :func:`summarizer_model`).
     *cause* names the reason in the checkpoint's header. *on_stored* gets the stored item and
-    the window it folded once it is persisted, before *on_rolled_over*.
+    the window it folded once it is persisted, before *on_rolled_over*. *on_failed* gets the
+    error when building the checkpoint failed (the summarizer call, or a refused reply).
 
     :returns: ``True`` iff a new compaction item was stored.
     """
@@ -734,12 +736,14 @@ async def roll_over_session(
                 pending_closes=closes,
                 pending_entries=adds,
             )
-        except Exception:  # a rollover failure must never fail the turn
+        except Exception as exc:  # a rollover failure must never fail the turn
             logger.warning(
                 "superside-chat rollover: failed to build the rollover item for %s",
                 conversation_id,
                 exc_info=True,
             )
+            if on_failed is not None:
+                on_failed(exc)
             return False
         body = _compaction_event_body(
             compaction, expected_previous_compaction_id=previous_compaction_id
@@ -791,7 +795,9 @@ DEFAULT_FOLD_TURN_LINES_TOKENS = 2_000
 OMNIGENT_FOLD_ON_LIGHT_ENV = "OMNIGENT_FOLD_ON_LIGHT"
 #: Failed folds on Light after which a session folds on its own model.
 _LIGHT_FAILURES_BEFORE_FALLBACK = 2
-_light_failures: dict[str, int] = {}
+#: Failed Light calls in a row per session; cleared by a fold that lands. Bounded and
+#: forgotten after six hours, so a gone session leaves nothing and an outage is retried on Light.
+_light_failures: cachetools.TTLCache[str, int] = cachetools.TTLCache(maxsize=1024, ttl=6 * 3600)
 
 
 def resolve_fold_turn_lines_tokens() -> int:
@@ -864,11 +870,12 @@ async def fold_session(
     """Fold a superside-chat session's past in the engine, if it is due (one session at a time).
 
     Runs in the background after a turn, never in it: it reads the record from the store,
-    checks :func:`fold_due` and calls :func:`roll_over_session` on the owner's Light model
-    (``resolve_background_llm``, the route memory upkeep uses; keys never reach the host), with
-    ``on_rolled_over`` unset, so the warm client is never dropped. With ``fold_on_light`` off,
-    no Light model, or after two failed folds on Light, it folds on *session_model* over the
-    same connection. Turns are indexed for recall by the history load, not here.
+    checks :func:`fold_due` and calls :func:`roll_over_session` on the owner's Light model for
+    the session's harness, over the session's own provider connection (``resolve_session_llm``;
+    keys never reach the host), with ``on_rolled_over`` unset, so the warm client is never
+    dropped. With ``fold_on_light`` off, no Light model, or after two failed Light calls in a
+    row, it folds on *session_model* over that same connection. The folded turns reach recall
+    through the runner's backfill, which follows the anchor.
 
     :returns: ``True`` iff a checkpoint was stored.
     """
@@ -876,7 +883,7 @@ async def fold_session(
     import functools
 
     from omnigent.context.labels import is_superside_chat
-    from omnigent.llms.background import resolve_background_llm
+    from omnigent.llms.background import resolve_session_llm
     from omnigent.llms.client import Client
     from omnigent.llms.context_window import find_model_context_window
 
@@ -910,13 +917,16 @@ async def fold_session(
     if reason is None:
         return False
     owner = await asyncio.to_thread(conversation_store.get_session_owner, conversation_id)
+    snapshot = conv.inference_snapshot
     light = fold_on_light() and (
         _light_failures.get(conversation_id, 0) < _LIGHT_FAILURES_BEFORE_FALLBACK
     )
-    route = await resolve_background_llm(owner) if light else None
+    # Both over the session's own connection: its words never reach another provider, tenant
+    # or region than the Conversation's own (ADR 0031, "Privacy").
+    route = await resolve_session_llm(owner, snapshot) if light else None
     on_light = route is not None
     if route is None and session_model:
-        route = await resolve_background_llm(owner, model=session_model)
+        route = await resolve_session_llm(owner, snapshot, session_model)
     if route is None:
         logger.info("fold: no model to fold %s on; skipped", conversation_id)
         return False
@@ -928,6 +938,7 @@ async def fold_session(
         "Light" if on_light else "the session's model",
         reason,
     )
+    errors: list[Exception] = []
     stored = await roll_over_session(
         conversation_id,
         labels=conv.labels,
@@ -935,9 +946,13 @@ async def fold_session(
         record=record,
         llm_client=Client(),
         connection=connection,
+        on_failed=errors.append,
     )
     if on_light:
-        _light_failures[conversation_id] = (
-            0 if stored else _light_failures.get(conversation_id, 0) + 1
-        )
+        # Only a failed Light call counts (not a refused reply, a lost race or an empty
+        # window); a fold that lands clears the count.
+        if stored:
+            _light_failures.pop(conversation_id, None)
+        elif any(not isinstance(error, ValueError) for error in errors):
+            _light_failures[conversation_id] = _light_failures.get(conversation_id, 0) + 1
     return stored

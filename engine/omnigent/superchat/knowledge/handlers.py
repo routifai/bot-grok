@@ -294,30 +294,37 @@ async def _recall(runtime: KnowledgeRuntime, ctx: HandlerCtx, args: dict[str, An
 
 
 async def _current_epoch(ctx: HandlerCtx) -> dict[str, str] | None:
-    """The calling chat's current epoch, which the model already has: its turns after the view
-    start the history load wrote (ADR 0031), else after the latest checkpoint's anchor, or all of
-    them with no checkpoint (as the hint leaves them out)."""
+    """The calling chat's current epoch (:func:`current_epoch`), ``None`` outside a chat."""
     if ctx.server_client is None or not ctx.conversation_id:
         return None
+    return await current_epoch(ctx.server_client, ctx.conversation_id)
+
+
+async def current_epoch(
+    server_client: Any, conversation_id: str, checkpoint: dict[str, Any] | None = None
+) -> dict[str, str]:
+    """A chat's current epoch, which the model already has, as recall's exclusion map: its turns
+    after the view start the history load wrote (ADR 0031; a fold moves the anchor but not what
+    a warm session holds), else after the latest checkpoint's anchor (*checkpoint* when already
+    read), or all of them with no checkpoint."""
     from omnigent.context.rollover import VIEW_START_LABEL
     from omnigent.superchat.rollover import fetch_latest_checkpoint
 
     try:
-        resp = await ctx.server_client.get(
-            f"/v1/sessions/{ctx.conversation_id}/labels", timeout=10.0
-        )
+        resp = await server_client.get(f"/v1/sessions/{conversation_id}/labels", timeout=10.0)
         labels = resp.json().get("labels") if resp.status_code == 200 else None
     except Exception:  # noqa: BLE001 - an unread label falls back to the checkpoint
         labels = None
     if isinstance(labels, dict) and isinstance(labels.get(VIEW_START_LABEL), str):
-        return {ctx.conversation_id: labels[VIEW_START_LABEL]}
-    try:
-        checkpoint = await fetch_latest_checkpoint(
-            ctx.server_client, ctx.conversation_id, skip_placeholders=True
-        )
-    except Exception:  # noqa: BLE001 - no checkpoint known is "the whole chat is this epoch"
-        checkpoint = None
-    return {ctx.conversation_id: (checkpoint or {}).get("last_item_id") or ""}
+        return {conversation_id: labels[VIEW_START_LABEL]}
+    if checkpoint is None:
+        try:
+            checkpoint = await fetch_latest_checkpoint(
+                server_client, conversation_id, skip_placeholders=True
+            )
+        except Exception:  # noqa: BLE001 - no checkpoint known is "the whole chat is this epoch"
+            checkpoint = None
+    return {conversation_id: (checkpoint or {}).get("last_item_id") or ""}
 
 
 def _hit_view(hit: RecallHit) -> dict[str, Any]:

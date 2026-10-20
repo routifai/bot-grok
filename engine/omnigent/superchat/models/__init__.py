@@ -15,7 +15,7 @@ through :func:`omnigent.superchat.models.store.resolve_model_connection`.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from omnigent.superchat.feature import Feature, InstallDeps, ToolManagerCtx
 from omnigent.superchat.models import budget
@@ -103,11 +103,16 @@ def _install(app: FastAPI, deps: InstallDeps) -> None:
     from omnigent.superchat.models.rerank import ModelRerank
 
     app.state.model_rerank = ModelRerank(store, app.state.model_embeddings)
-    from omnigent.llms.background import register_background_llm
+    from omnigent.llms.background import register_background_llm, register_session_llm
     from omnigent.superchat.models.background import BackgroundModels
 
     app.state.model_background = BackgroundModels(app.state)
     register_background_llm(app.state.model_background.resolve)
+
+    async def _session_llm(owner: str | None, snapshot: Any, model: str | None) -> Any:
+        return await app.state.model_background.for_session(owner, snapshot, model=model)
+
+    register_session_llm(_session_llm)
     app.include_router(
         create_model_connection_router(
             store,

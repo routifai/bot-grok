@@ -65,20 +65,31 @@ class BackgroundModels:
         target = deployment.for_provider(None) if deployment is not None else None
         return (target.host_config or None) if target is not None else None
 
-    async def resolve(
-        self, owner_id: str | None, *, model: str | None = None
-    ) -> BackgroundLLM | None:
-        """``(model string, connection)`` for *owner_id*'s background work, or ``None``.
+    async def resolve(self, owner_id: str | None) -> BackgroundLLM | None:
+        """``(model string, connection)`` for *owner_id*'s background work, or ``None``."""
+        owner = owner_id or RESERVED_USER_WORKSPACE
+        if owner in self._cache:
+            return self._cache[owner]
+        resolved = await self._resolve(owner)
+        self._cache[owner] = resolved
+        return resolved
 
-        :param model: Route this model id instead of the owner's Light one (same connection).
+    async def for_session(
+        self, owner_id: str | None, snapshot: dict[str, Any] | None, *, model: str | None = None
+    ) -> BackgroundLLM | None:
+        """*owner_id*'s Light model for the session's own harness, or *model*, called over the
+        session's own provider connection (its inference *snapshot*): the fold never sends a
+        Conversation's words to another provider, tenant or region than the session's.
+
+        ``None`` when the snapshot names no bound harness or nothing can be called.
         """
         owner = owner_id or RESERVED_USER_WORKSPACE
-        key = f"{owner}\0{model or ''}"
-        if key in self._cache:
-            return self._cache[key]
-        resolved = await self._resolve(owner, model)
-        self._cache[key] = resolved
-        return resolved
+        harness = (snapshot or {}).get("harness")
+        raw = (snapshot or {}).get("runtime_config")
+        if not isinstance(harness, str) or not isinstance(raw, dict):
+            return None
+        chosen = model or (await person_models(self._state, owner, harness)).light
+        return await self._route(owner, raw, harness, chosen) if chosen else None
 
     async def light_model(self, owner_id: str | None) -> str | None:
         """The model id *owner_id*'s background work runs on (their Light), or ``None``."""
@@ -99,15 +110,21 @@ class BackgroundModels:
         picks = await asyncio.to_thread(store.read, owner) if store is not None else ModelPicks()
         return background_harness(bindings, picks)
 
-    async def _resolve(self, owner: str, chosen: str | None = None) -> BackgroundLLM | None:
+    async def _resolve(self, owner: str) -> BackgroundLLM | None:
         harness = await self._harness(owner)
         if harness is None:
             return None
-        model = chosen or (await person_models(self._state, owner, harness)).light
+        model = (await person_models(self._state, owner, harness)).light
         if not model:
             return None
         raw = self._host_config()
         assert raw is not None
+        return await self._route(owner, raw, harness, model)
+
+    async def _route(
+        self, owner: str, raw: dict[str, Any], harness: str, model: str
+    ) -> BackgroundLLM | None:
+        """How to call *model* over *harness*'s binding in the inference config *raw*."""
         binding = binding_for_harness(raw, harness)
         if binding is None:
             return None
