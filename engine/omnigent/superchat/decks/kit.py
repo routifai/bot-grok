@@ -488,6 +488,31 @@ def _refresh(
     return document[: found.start()] + new_region + document[found.end() :]
 
 
+def theme_source(document: str) -> str | None:
+    """What ``artifact_outline(element="theme")`` reads: the deck's theme (id, name, light or
+    dark), the kit's theme tokens, and the deck's own CSS after the theme (where an override
+    goes); ``None`` for a document with no theme markers. Never the theme's long CSS."""
+    tokens = _TOKENS_RE.search(document)
+    css = _CSS_RE.search(document)
+    marked = css if css is not None else tokens
+    if marked is None:
+        return None
+    theme_id = marked.group(1)
+    template = templates().get(theme_id)
+    name = f"{template.name}, {template.mode} mode" if template is not None else "unknown"
+    own = document[css.end() :].split("</style>", 1)[0].strip() if css is not None else ""
+    return "\n".join(
+        [
+            f"Theme {theme_id} ({name}). Another look is deck_theme_set; a token override goes "
+            "in the deck's own CSS, after the theme marker.",
+            "Theme tokens (the kit's; never edit between the markers):",
+            tokens.group(0) if tokens is not None else "(none)",
+            "The deck's own CSS after the theme:",
+            own or "(none)",
+        ]
+    )
+
+
 def restyle_deck(document: str, template_id: str) -> str:
     """The deck with its theme swapped; the kit's regions and fonts change, all else stays.
 

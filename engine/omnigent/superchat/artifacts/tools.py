@@ -119,7 +119,10 @@ class ArtifactOutlineTool(ArtifactTool):
         },
         "element": {
             "type": "string",
-            "description": "A data-superchat-id: that element's source, up to 4,000 characters.",
+            "description": (
+                "A data-superchat-id: that element's source (a chart's with its data), up to "
+                "4,000 characters. 'theme' in a deck: its theme tokens and its own CSS."
+            ),
         },
         "range": {
             "type": "string",

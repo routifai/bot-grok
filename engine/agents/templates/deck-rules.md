@@ -28,6 +28,10 @@
   bold; never make a personal or everyday request loud (`editorial-tri-tone` is not a safe
   pick). Name the choice in one short line in your result (for example: "Corporate Clean;
   a bolder or darker look is one word away.").
+- Darker, lighter or another look for an existing deck is `deck_theme_set` to a theme of that
+  mode (`deck_themes` gives each theme's mode), then `deck_check` and `artifact_save`; only a
+  small change (one color) is a token override. Read the theme with
+  `artifact_outline(element="theme")` and a chart (with its data) by its element, never the file.
 - Per-deck CSS (a custom rule, a custom token, an override such as `:root { --accent: #c00; }`)
   goes in the second `<style>` block, AFTER the closing `/* /superchat:theme */` comment. The theme's
   own tokens and CSS sit between the `superchat:theme` comments: never edit between them. A theme

@@ -13,6 +13,7 @@ slides, cut from the file as written, so an edit reads what it changes and never
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
@@ -152,6 +153,10 @@ MAX_ELEMENT_CHARS = 4000
 MAX_RANGE_CHARS = 8000
 
 
+_CHART = "data-superchat-chart"
+_CANVAS_ID_RE = re.compile(r"<canvas\b[^>]*\bid=\"([^\"]+)\"")
+
+
 class _SpanParser(HTMLParser):
     """Where each outermost element a start-tag test accepts starts and ends in the source."""
 
@@ -216,11 +221,21 @@ def clip_source(source: str, limit: int) -> str:
 def element_source(source: str | bytes, element_id: str) -> str | None:
     """The source of the element whose ``data-superchat-id`` is *element_id*, or ``None``.
 
-    Cut to :data:`MAX_ELEMENT_CHARS` with a note.
+    A chart element (one holding a ``<canvas>``) comes with the chart script that draws it, so
+    its data is read with it. Cut to :data:`MAX_ELEMENT_CHARS` with a note.
     """
     text = source.decode("utf-8", "replace") if isinstance(source, bytes) else source
     found = _spans(text, lambda _tag, attrs: attrs.get("data-superchat-id") == element_id)
-    return clip_source(found[0], MAX_ELEMENT_CHARS) if found else None
+    if not found:
+        return None
+    # A chart's data is in its slide's chart script, beside the canvas: read with the chart.
+    canvases = _CANVAS_ID_RE.findall(found[0])
+    scripts = [
+        script
+        for script in _spans(text, lambda tag, attrs: tag == "script" and _CHART in attrs)
+        if any(f"'{c}'" in script or f'"{c}"' in script for c in canvases)
+    ]
+    return clip_source("\n".join([found[0], *scripts]), MAX_ELEMENT_CHARS)
 
 
 def slide_sources(source: str | bytes) -> list[str]:

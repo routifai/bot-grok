@@ -21,7 +21,9 @@ from omnigent.superchat.artifact_kinds import (
     kind_for_name,
 )
 from omnigent.superchat.artifacts.look import is_page, saved_look
+from omnigent.superchat.decks.kit import theme_source
 from omnigent.superchat.decks.outline import (
+    MAX_ELEMENT_CHARS,
     MAX_RANGE_CHARS,
     clip_source,
     deck_outline,
@@ -374,6 +376,10 @@ def outline_text(name: str, kind: str, data: bytes) -> str:
     return f"{name} is a {kind} file; it has no text outline."
 
 
+#: The ``element`` that reads a deck's theme tokens and its own CSS instead of an element.
+THEME_ELEMENT = "theme"
+
+
 def _range(raw: object) -> tuple[int, int] | None:
     """``"3"`` or ``"2-4"`` as 1-based first and last, or ``None`` when it is not one."""
     first, _, last = str(raw).strip().partition("-")
@@ -390,6 +396,11 @@ def read_part(
     """One element's source, or a run of slides (a deck) or lines (a text file); an error
     sentence when there is no such part. Never the whole file.
     """
+    if element == THEME_ELEMENT and kind == "html" and is_deck_name(name):
+        theme = theme_source(data.decode("utf-8", "replace"))
+        if theme is None:
+            return f"{name} has no theme markers."
+        return {"element": element, "source": clip_source(theme, MAX_ELEMENT_CHARS)}
     if element:
         found = element_source(data, str(element)) if kind == "html" else None
         if found is None:
