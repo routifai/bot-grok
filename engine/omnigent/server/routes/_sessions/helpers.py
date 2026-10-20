@@ -3141,6 +3141,9 @@ def _publish_status(
     if activity_id is None:
         payload.pop("activity_id", None)
     session_stream.publish(session_id, payload)
+    from omnigent.superchat.family.signals import notify_chat_status
+
+    notify_chat_status(session_id, status, blocked_on)
 
 
 def reconcile_orphaned_running_status(

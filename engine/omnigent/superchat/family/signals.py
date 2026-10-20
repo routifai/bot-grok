@@ -12,6 +12,7 @@ import threading
 from collections.abc import Callable, Sequence
 from typing import Any
 
+from omnigent.server import session_live_state
 from omnigent.stores.conversation_store import ConversationStore
 from omnigent.superchat.family.tree import resolve_super_chat_id
 
@@ -79,6 +80,39 @@ def notify_item_updated(chat_id: str, item_id: str) -> None:
     Sent as ``message.delivery``: the frame the web already refetches the chat's transcript on.
     """
     _notify(f"msg:{chat_id}", {"type": "message.delivery", "chat_id": chat_id, "item_id": item_id})
+
+
+def notify_chat_status(chat_id: str, status: str, blocked_on: str | None) -> None:
+    """*chat_id* published a status edge (``session.status``: ``running``, ``waiting``, ``idle``,
+    ``failed``; *blocked_on* the engine's words while a running turn waits for a slot).
+
+    Sent as ``chat.status`` on its family's stream, so a page follows any family chat's status
+    (a file's studio, a Helper) on the one stream it already holds instead of opening that
+    chat's own stream. Resolving the family reads the store, so it runs on the ordered
+    live-state worker (edges keep their order) and only while some family stream is open.
+    """
+    with _lock:
+        if not any(key.startswith("chats:") and targets for key, targets in _listeners.items()):
+            return
+    store = session_live_state.conversation_store()
+    if store is None:
+        return
+
+    def fan_out() -> None:
+        # The family is the tree's root: a Helper's or a studio's root is its Super Chat.
+        conversation = store.get_conversation(chat_id)
+        if conversation is not None:
+            _notify(
+                f"chats:{conversation.root_conversation_id or conversation.id}",
+                {
+                    "type": "chat.status",
+                    "chat_id": chat_id,
+                    "status": status,
+                    "blocked_on": blocked_on,
+                },
+            )
+
+    session_live_state.submit("family_chat_status", fan_out)
 
 
 def notify_artifacts_changed(

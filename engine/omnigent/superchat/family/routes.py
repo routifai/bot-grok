@@ -37,7 +37,7 @@ def register_family_routes(
         :param session_id: The Super Chat.
         :returns: SSE frames: ``message.done``, ``message.delivery``, ``turn.done``,
             ``chat.reset``, ``chats.changed``, ``activities.changed``, ``artifacts.changed``,
-            ``round.updated``, ``session.heartbeat``.
+            ``round.updated``, ``chat.status``, ``asks.changed``, ``session.heartbeat``.
             Ids only; the client refetches.
         :raises OmnigentError: 403 without READ on ``session_id``; 404 if it is not a
             Super Chat family.

@@ -19,6 +19,11 @@ Events carry ids only; the client refetches what changed:
 * ``round.updated {root_id, round_id, status, started_at, settled_at, delivered_at, live, helpers,
   files, steps}``: a Round's record grew (at most four a second per Round); its view is
   ``GET .../rounds/{id}``;
+* ``chat.status {chat_id, status, blocked_on}``: a family chat's status edge (``running``,
+  ``waiting``, ``idle``, ``failed``; ``blocked_on`` while a running turn waits for a slot), for
+  every family chat whether or not this stream follows it (published where the status is);
+* ``asks.changed {root_id}``: a followed chat asked the person for a decision, or the ask was
+  answered; ``GET /v1/me/asks`` reads them;
 * ``session.heartbeat``: sent after ~15s of quiet.
 
 It reuses the Activity Feed watcher (``family/changes.py``) for *which* sessions to follow
@@ -44,6 +49,8 @@ from omnigent.superchat.family.tree import list_chat_roots
 
 #: Session events that mean the chat list changed: a rename, a Helper or part being started.
 _CHATS_EVENT_TYPES = frozenset({"session.title", "session.created"})
+#: Session events that open or close a decision waiting on the person (an approval).
+_ASKS_EVENT_TYPES = frozenset({"response.elicitation_request", "response.elicitation_resolved"})
 #: Terminal response events: the turn ended, however it ended.
 _TURN_END_STATUS = {
     "response.completed": "completed",
@@ -64,6 +71,8 @@ def _derive(chat_id: str, root_id: str, event: dict[str, Any]) -> dict[str, Any]
             "chat_id": chat_id,
             "item_id": data.get("item_id"),
         }
+    if kind in _ASKS_EVENT_TYPES:
+        return {"type": "asks.changed", "root_id": root_id}
     if isinstance(kind, str) and kind in _TURN_END_STATUS:
         return {"type": "turn.done", "chat_id": chat_id, "status": _TURN_END_STATUS[kind]}
     return None
