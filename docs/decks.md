@@ -36,7 +36,10 @@ The assistant writes only slides. Its tools (`decks/tools.py`) are:
   `data-superchat-id`.
 - `deck_check` measures the laid-out deck in the host's Chromium, the same render the export reads:
   content past the slide or in the footer band, clipped text, missing ids, unembedded fonts,
-  charts with no PowerPoint equivalent. The assistant fixes the HTML and checks again.
+  charts with no PowerPoint equivalent. The assistant fixes the HTML and checks again. Every
+  `artifact_save` or `artifact_patch` of a deck runs the same check on the saved bytes and
+  returns it as `layout` (`{"ok": …, "errors": […]}`, or `{"checked": false, "why": …}`), so a
+  file's studio reports fit from the save itself.
 - `deck_themes` and `deck_theme_set` list and swap themes; `deck_theme_set` does not check the
   layout, so `deck_check` follows it.
 

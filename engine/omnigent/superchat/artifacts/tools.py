@@ -69,7 +69,8 @@ class ArtifactSaveTool(ArtifactTool):
         "file card automatically; do not render one yourself. In an HTML page or app, give "
         "each section and each element the person may want to change by hand (headings, "
         "buttons, labels, key text) a unique data-superchat-id (lower-case words joined by "
-        'hyphens, e.g. data-superchat-id="add-button") so they can edit it in place.'
+        'hyphens, e.g. data-superchat-id="add-button") so they can edit it in place. A '
+        "deck's result carries layout: the saved deck checked as deck_check would."
     )
     _PROPERTIES = {
         "path": {
@@ -145,7 +146,8 @@ class ArtifactPatchTool(ArtifactTool):
         "null}}; set-attributes {id, attributes: {href|alt: value or null}}; remove-element "
         "{id}; duplicate-element {id}; set-theme {theme} (a deck only); set-full-source "
         "{source, summary} (a whole Markdown or text document). Refused as stale when "
-        "base_version is no longer the newest: read the file again and redo the change."
+        "base_version is no longer the newest: read the file again and redo the change. A "
+        "deck's result carries layout: the saved deck checked as deck_check would."
     )
     _PROPERTIES = {
         "artifact_id": {
