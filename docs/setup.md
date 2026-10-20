@@ -1,6 +1,6 @@
 # Setup
 
-How to run Superchat on one Docker host, as of 2026-10-17. Everything below lives in
+How to run Superchat on one Docker host, as of 2026-10-19. Everything below lives in
 [`deployment/`](../deployment); the commands are the ones its scripts run.
 
 ## What runs
@@ -71,9 +71,17 @@ host.
 | `OMNIGENT_LOCAL_SINGLE_USER` | `1` | set `0` behind a sign-in broker |
 | `IMAGE_REGISTRY`, `IMAGE_TAG` | `superchat`, `local` | which images Compose builds and runs |
 
-No model is named in configuration. The engine lists what the connection serves, and an admin picks
-the default, fast and strong models in **Settings > Models**. How the engine picks a config
-template from these keys is in [architecture.md](architecture.md#models-and-keys).
+No model is named in configuration. The engine lists what the connection serves, and each person's
+Foundation, Builder and Light picks are chosen by price until they pick in **Settings > Models**.
+The config templates do set the `anthropic` family's limits (`context_window: 1000000`,
+`max_output_tokens: 32000`), which pi is told; without them pi assumes 128k and 16k. How the
+engine picks a config template from these keys is in
+[architecture.md](architecture.md#models-and-keys).
+
+One engine serves a deployment, and it treats its own host connections as the only proof that a
+host is up. Several engine replicas on one database need `OMNIGENT_MULTI_REPLICA=1` in the engine's
+environment, which turns the cross-replica checks back on
+([ADR 0004](adr/0004-engine-owns-the-host.md)).
 
 On native Linux, `host.docker.internal` may not reach the engine from a host: set
 `ENGINE_PUBLIC_URL` to the Docker bridge address (for example `http://172.17.0.1:8012`) and
@@ -108,7 +116,7 @@ IMAGE_REGISTRY=registry.example/superchat IMAGE_TAG=v1.0.0 \
 It passes each of these that is set: `NODE_IMAGE`, `PYTHON_IMAGE`, `UBUNTU_IMAGE`,
 `CHROMIUM_IMAGE` (base images, for registry mirrors), `PYPI_INDEX_URL`, `NPM_CONFIG_REGISTRY`,
 `TORCH_INDEX_URL` (package mirrors), `CLAUDE_CODE_VERSION`, `PI_VERSION` (the two CLIs in the host
-image), and `CA_BUNDLE=/path/to/ca.pem`, a company CA passed as the `ca_bundle` build secret and
+image, pinned by default to 2.1.302 and 0.87.1, the versions the bundles are verified with), and `CA_BUNDLE=/path/to/ca.pem`, a company CA passed as the `ca_bundle` build secret and
 added to each image's trust store. The mirror keys also work in `.env` for `setup.sh`. With
 Compose, keep the CA in a Compose file of your own, outside the repo, that declares the
 `ca_bundle` secret and adds it to both services' `build.secrets`; pass it last with a second `-f`.

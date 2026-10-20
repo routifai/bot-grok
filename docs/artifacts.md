@@ -1,7 +1,7 @@
 # Artifacts
 
 Files the assistant makes for the person, how they are versioned, edited, published and kept up
-to date, as of 2026-10-17. Engine code is under `engine/omnigent/superchat/` (`artifacts/`,
+to date, as of 2026-10-19. Engine code is under `engine/omnigent/superchat/` (`artifacts/`,
 `apps/`, `live/`, `sheets/`); the web side is `web/app/src/features/artifacts/`. How a message links
 to an artifact (the chip) is in [conversation.md](conversation.md).
 
@@ -22,7 +22,11 @@ helper saved are named in its result. The person's Library lists every artifact.
 ## Versions and origins
 
 Versions of one file share `(owner, conversation, name)`: saving the same name again in the same
-conversation adds a version instead of a new file. Every version records its origin:
+conversation adds a version instead of a new file. A save whose bytes equal the newest version's
+adds nothing: the route answers that version with `unchanged: true`, and `artifact_save` and
+`artifact_patch` return the error `artifact_unchanged` saying nothing was saved
+(`artifacts/routes.py`, `artifacts/handlers.py`). A save or patch of a deck also returns `layout`,
+the deck check of the saved bytes ([decks.md](decks.md#authoring)). Every version records its origin:
 
 | Origin | Made by |
 |---|---|
@@ -80,7 +84,10 @@ opens and while it stays open), then is released; the next request cold-starts i
 signal reaches only a runner that is already up and never wakes the host.
 
 In the activity feed each studio turn is one activity (`kind: "turn"`, `source: "studio"`) with
-`artifact: {group_id, name}`; the studio session itself is never a row or a Helper.
+`artifact: {group_id, name, round_id?}`, `round_id` being the Round that created the file (its
+first version's); the panel hangs the file and its edits under that request's row. The studio
+session itself is never a row or a Helper. The studio chat header counts as edits the versions
+saved after the first, not the requests sent.
 
 ## Write-back
 
