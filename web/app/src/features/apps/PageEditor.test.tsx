@@ -166,13 +166,14 @@ it("runs the app live, and Edit puts the page-mode bridge on it", async () => {
   expect(host.querySelector('[data-testid="deck-edit-frame"]')).toBeNull();
 });
 
-it("select the Add button: inspector and chip; typing a new label saves a manual patch", async () => {
+it("select the Add button: a chip, no inspector; typing a new label saves a manual patch", async () => {
   await mount();
   await act(async () => button("Edit")?.click());
   const frame = editFrame();
   await ready(frame);
   await fromFrame(frame, { type: "superchat:edit-selection", targets: [target({})] });
-  expect(host.querySelector('[data-testid="deck-style-panel"]')?.textContent).toContain("button");
+  // Selecting only outlines and names the element; the inspector opens on "Edit style".
+  expect(host.querySelector('[data-testid="deck-style-panel"]')).toBeNull();
   const chips = [...host.querySelectorAll('[data-testid="ask-chip"]')].map((c) => c.textContent);
   expect(chips).toEqual(["button · add-button"]);
 

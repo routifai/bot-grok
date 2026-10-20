@@ -87,6 +87,7 @@ function KindActions({ kind, artifact }: { kind: ArtifactEditorKind; artifact: A
     editing: false,
     setEditing: () => {},
     focusAsk: () => {},
+    closeInspector: () => {},
     locked: false,
   });
   return (
