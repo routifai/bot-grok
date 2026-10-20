@@ -3063,6 +3063,12 @@ def create_runner_app(
     _superside_chat_pending_refresh: set[str] = set()
     # conv_id -> context fill the session's latest turn reported (hard-limit check).
     _superside_chat_last_context_tokens: dict[str, int] = {}
+    # conv_id -> wall time the last model request on its warm harness session started: a turn's
+    # dispatch (a person's turn, a wake, a scheduled run), then each tool result (the next request
+    # starts on it). The prompt cache's clock: every read refreshes it (ADR 0031).
+    _last_request_start: dict[str, float] = {}
+    # conv_id -> (harness, model) its last turn ran on, for the model-switch handoff.
+    _last_turn_model: dict[str, tuple[str, str]] = {}
     # conv_id -> the view start this runner last wrote (VIEW_START_LABEL): the label is written,
     # and the turns before it indexed, only when it moves (see _assembled_history).
     _view_starts: dict[str, str] = {}
@@ -6638,6 +6644,7 @@ def create_runner_app(
             return
         _forget_superside_chat_prefix(conv_id)
         _session_histories.pop(conv_id, None)
+        _last_request_start.pop(conv_id, None)
         if process_manager is not None:
             _logger.info(
                 "dropping the warm Claude CLI for %s: %s",
@@ -6727,27 +6734,6 @@ def create_runner_app(
             )
         return keep_tokens
 
-    async def _superside_chat_idle_seconds(conv_id: str) -> float | None:
-        """Seconds since *conv_id*'s last recorded item, or ``None`` on a lookup miss."""
-        try:
-            resp = await server_client.get(
-                f"/v1/sessions/{conv_id}/items",
-                params={"limit": "2", "order": "desc"},
-                timeout=10.0,
-            )
-            page_items = resp.json().get("data", []) if resp.status_code == 200 else []
-        except (httpx.HTTPError, ValueError):
-            return None
-        # The newest item is usually the message that started this turn;
-        # idle time is measured from the item before it.
-        newest = page_items[0] if page_items else {}
-        if newest.get("type") == "message" and newest.get("role") == "user":
-            page_items = page_items[1:]
-        if not page_items:
-            return None
-        created_at = page_items[0].get("created_at")
-        return time.time() - created_at if isinstance(created_at, int) else None
-
     async def _superside_chat_session_model(conv_id: str) -> str | None:
         """The model *conv_id*'s turns run on (the summarizer uses it), or ``None``."""
         try:
@@ -6758,52 +6744,63 @@ def create_runner_app(
         model = body.get("model_override") or body.get("llm_model")
         return model if isinstance(model, str) and model else None
 
-    async def _maybe_superside_chat_idle_rollover(
+    async def _superside_chat_handoff(
         conv_id: str,
         *,
-        labels: Mapping[str, str] | None = None,
-        idle_seconds: float | None = None,
+        labels: Mapping[str, str] | None,
+        harness: str | None,
+        model: str | None,
     ) -> float | None:
-        """Handle a superside-chat session's first message back from idle.
+        """Keep this superside-chat session's warm client for the turn, or drop it first.
 
-        Called every turn, at the top of ``_run_turn_bg_setup_and_stream``
-        (before any history is loaded) — it decides for itself whether this
-        is actually "the first message after idle" via
-        :func:`~omnigent.superchat.rollover.should_roll_over_for_idle`'s own
-        idle-seconds check, not from its call site. A no-op for a
-        non-superside-chat session (checked before the idle lookup, so
-        those pay no extra round trip).
+        The one decision before a turn (``handoff_reason``, ADR 0031): at the handoff threshold
+        T, on a return after the idle period, on a cache expiry (behind ``expiry_handoff``) or
+        a Claude model switch when the warm context is over twice what a new session costs. The
+        clock is the start of the last model request on this harness session, never the newest
+        stored item. A drop makes no model call and never waits: the turn's own history load
+        assembles. A session this runner holds no history for starts from the record anyway.
 
-        A return is not context pressure, so it makes no summarizer call and never waits: the
-        warm client is dropped and the turn's own history load assembles (ADR 0031).
-
-        :param labels: The session's labels, read once for the turn (fetched when ``None``).
-        :param idle_seconds: Seconds since the last item, read with the labels (fetched when
-            ``None``).
-        :returns: Seconds idle when this is a return, for the turn's gap line; else ``None``.
+        :returns: Seconds since the last request on a return, for the turn's gap line; else
+            ``None``.
         """
-        from omnigent.context.labels import is_superside_chat
-        from omnigent.superchat.rollover import should_roll_over_for_idle
+        from omnigent.context.rollover import reported_context_tokens
+        from omnigent.superchat.rollover import handoff_reason
 
-        if labels is None:
-            labels = await _session_labels_for_runner_spawn(
-                server_client=server_client, session_id=conv_id
-            )
-        if not is_superside_chat(labels):
+        prior = _last_turn_model.get(conv_id)
+        if harness and model:
+            _last_turn_model[conv_id] = (harness, model)
+        if conv_id not in _session_histories:
             return None
-        if idle_seconds is None:
-            idle_seconds = await _superside_chat_idle_seconds(conv_id)
-        if not should_roll_over_for_idle(labels, idle_seconds=idle_seconds):
-            return None
-        _logger.info("superside-chat return from idle: %s idle %.0fs", conv_id, idle_seconds)
-        # defer_if_active=False: this runs synchronously at the start of
-        # THIS turn, which already holds its own _active_turns slot (claimed
-        # by the caller before this turn's task was even created) — the
-        # default deferral check would otherwise always (wrongly) defer.
-        await _drop_superside_chat_warm_client(
-            conv_id, defer_if_active=False, reason="the person returned from idle"
+        started = _last_request_start.get(conv_id)
+        since = time.time() - started if started is not None else None
+        tokens = _superside_chat_last_context_tokens.get(conv_id) or reported_context_tokens(
+            labels
         )
-        return idle_seconds
+        switch = (
+            prior is not None
+            and prior[0] == harness == "claude-sdk"
+            and bool(model)
+            and prior[1] != model
+        )
+        reason = handoff_reason(
+            labels, context_tokens=tokens, since_request_start=since, model_switch=switch
+        )
+        if reason is None:
+            return None
+        _logger.info(
+            "superside-chat handoff for %s: %s (context %s tokens, last request %s s ago)",
+            conv_id,
+            reason,
+            tokens,
+            f"{since:.0f}" if since is not None else "?",
+            extra={"session_id": conv_id},
+        )
+        # defer_if_active=False: this runs at the start of THIS turn, which already holds its
+        # own _active_turns slot, so the default deferral would always (wrongly) defer.
+        await _drop_superside_chat_warm_client(
+            conv_id, defer_if_active=False, reason=f"handoff ({reason})"
+        )
+        return since if reason == "return" else None
 
     def _warm_client_serial(conv_id: str) -> str | None:
         """The number of *conv_id*'s live harness subprocess, or ``None`` when unknown."""
@@ -7087,27 +7084,26 @@ def create_runner_app(
 
     async def _superside_chat_turn_reads(
         conv: str,
-    ) -> tuple[bool, dict[str, str] | None, float | None]:
-        """Whether *conv* is a Super Chat, and if so its labels and idle seconds, read together.
+    ) -> tuple[bool, dict[str, str] | None]:
+        """Whether *conv* is a Super Chat, and if so its labels.
 
-        One labels read per turn, shared by the hard-limit check, the idle return and the memory
-        sync; the idle lookup runs beside it. A plain session pays no round trip.
+        One labels read per turn, shared by the hard-limit check, the handoff decision and the
+        memory sync. A plain session pays no round trip.
         """
         mode = (await _rollover_labels_for_session(conv)).get(CONTEXT_MODE_LABEL)
         if mode != SUPERSIDE_CHAT_MODE_VALUE:
-            return False, None, None
-        labels, idle_seconds = await asyncio.gather(
-            _session_labels_for_runner_spawn(server_client=server_client, session_id=conv),
-            _superside_chat_idle_seconds(conv),
+            return False, None
+        labels = await _session_labels_for_runner_spawn(
+            server_client=server_client, session_id=conv
         )
-        return True, labels, idle_seconds
+        return True, labels
 
     async def _run_turn_bg_setup_and_stream(
         msg_body: _JsonObject,
         conv: str,
     ) -> None:
         _setup_started = time.monotonic()
-        _superside, _turn_labels, _idle_seconds = await _superside_chat_turn_reads(conv)
+        _superside, _turn_labels = await _superside_chat_turn_reads(conv)
         _setup_reads = time.monotonic() - _setup_started
         # Cheap no-op for a session with no pending superside-chat rollover;
         # otherwise applies a deferred warm-client drop before anything below
@@ -7209,13 +7205,14 @@ def create_runner_app(
             )
             harness_name = canonicalize_harness(raw_harness) or raw_harness
 
-        # Refresh on return: checked every turn (a live chat keeps its history
-        # cached); a rollover drops the cache so the load below starts from it.
+        # Keep the warm client or hand off: checked every turn (a live chat keeps its history
+        # cached); a drop clears the cache so the load below assembles.
         _idle_gap = (
-            await _maybe_superside_chat_idle_rollover(
+            await _superside_chat_handoff(
                 conv,
                 labels=_turn_labels,
-                idle_seconds=_idle_seconds,
+                harness=harness_name,
+                model=cast(str | None, msg_body.get("model_override")),
             )
             if _superside
             else None
@@ -7657,6 +7654,7 @@ def create_runner_app(
         dispatch: TurnDispatch | None = None,
     ) -> Response:
         await _await_harness_prelaunch(conv_id)
+        _last_request_start[conv_id] = time.time()
         manager = cast(HarnessProcessManager, process_manager)
         harness_name = dispatch.harness if dispatch else cast(str | None, body.get("harness"))
         spawn_env = (
@@ -8081,6 +8079,9 @@ def create_runner_app(
                                 elif _evt_type == "response.output_item.done":
                                     _item = event.get("item")
                                     _it = _item.get("type") if isinstance(_item, dict) else None
+                                    if _it == "function_call_output":
+                                        # The next model request starts on a tool's result.
+                                        _last_request_start[conv_id] = time.time()
                                     if _it in ("function_call", "function_call_output") and any(
                                         h.get("type") == _it
                                         and h.get("call_id") == _item.get("call_id")

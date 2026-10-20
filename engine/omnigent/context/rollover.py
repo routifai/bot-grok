@@ -62,11 +62,10 @@ _MIN_THRESHOLD_WINDOW_FRACTION = 0.8
 # leaving headroom for a heavy tool turn before the CLI hits its own limit.
 _DEFAULT_THRESHOLD_WINDOW_FRACTION = 0.6
 
-# Ceiling on the *default* (window-derived) threshold only — an explicit
-# ROLLOVER_AT_TOKENS_LABEL is never capped. Keeps a huge-window model (e.g.
-# claude-sonnet-5's 1M) from deferring compaction so long the summary itself
-# gets unwieldy.
-MAX_DEFAULT_ROLLOVER_THRESHOLD_TOKENS = 200_000
+# The handoff threshold T (ADR 0031, owner decision): a warm context this large is dropped
+# before the next turn, which starts from the assembled block. Caps the window-derived default
+# only; an explicit ROLLOVER_AT_TOKENS_LABEL is never capped.
+HANDOFF_THRESHOLD_TOKENS = 120_000
 
 # Marks the synthetic request/summary exchange prepended to a rollover's
 # ``compacted_messages`` (and detected by build_summarization_prompt's
@@ -291,15 +290,14 @@ def resolve_rollover_threshold(
     labels: Mapping[str, str] | None, *, model_window: int | None = None
 ) -> int:
     """
-    Resolve the token count at which a rollover session rolls over.
+    Resolve the handoff threshold T: the warm context at which a session starts over from
+    its assembled block (ADR 0031).
 
     Priority: the :data:`~omnigent.context.labels.ROLLOVER_AT_TOKENS_LABEL`
-    label (an explicit positive int) > 60% of the session's context window
-    (the last-reported window label, else *model_window*) >
-    :data:`DEFAULT_ROLLOVER_THRESHOLD_TOKENS`. The window-derived default is
-    capped at :data:`MAX_DEFAULT_ROLLOVER_THRESHOLD_TOKENS`; an explicit label
-    is not. Never below :data:`MIN_ROLLOVER_THRESHOLD_TOKENS` (that floor
-    itself capped at 80% of a known window).
+    label (an explicit positive int) > ``min(120k, 0.6 × window)`` (the last-reported window
+    label, else *model_window*) > :data:`DEFAULT_ROLLOVER_THRESHOLD_TOKENS`. An explicit label
+    is taken as it is; the default is never below :data:`MIN_ROLLOVER_THRESHOLD_TOKENS` (that
+    floor itself capped at 80% of a known window).
 
     :param labels: The session's labels, or ``None``.
     :param model_window: The session's model's context window, used when no
@@ -312,16 +310,15 @@ def resolve_rollover_threshold(
     window = _parse_positive_int(labels.get(_LAST_CONTEXT_WINDOW_LABEL_KEY))
     if window is None:
         window = model_window if model_window and model_window > 0 else None
-    threshold = _parse_positive_int(labels.get(ROLLOVER_AT_TOKENS_LABEL))
-    if threshold is None:
-        threshold = (
-            min(
-                int(window * _DEFAULT_THRESHOLD_WINDOW_FRACTION),
-                MAX_DEFAULT_ROLLOVER_THRESHOLD_TOKENS,
-            )
-            if window is not None
-            else DEFAULT_ROLLOVER_THRESHOLD_TOKENS
-        )
+    explicit = _parse_positive_int(labels.get(ROLLOVER_AT_TOKENS_LABEL))
+    if explicit is not None:
+        # The operator's own number (also how a test sees a handoff on a short chat).
+        return explicit
+    threshold = (
+        min(int(window * _DEFAULT_THRESHOLD_WINDOW_FRACTION), HANDOFF_THRESHOLD_TOKENS)
+        if window is not None
+        else DEFAULT_ROLLOVER_THRESHOLD_TOKENS
+    )
     floor = MIN_ROLLOVER_THRESHOLD_TOKENS
     if window is not None:
         floor = min(floor, int(window * _MIN_THRESHOLD_WINDOW_FRACTION))

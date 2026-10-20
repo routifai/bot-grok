@@ -7,7 +7,9 @@ new session would list pass 2k tokens or the warm context reaches :func:`fold_at
 owner's Light model. It only writes the checkpoint: it never drops a warm client, and a turn
 never waits on it. The manual ``/compact`` (``runner/app.py``) runs the same function and then
 drops the warm client. A new session is assembled from the checkpoint and the record after its
-anchor (``_load_history_as_input``); a restart or a return from idle never summarizes.
+anchor (``_load_history_as_input``); a restart or a return from idle never summarizes. Whether a
+warm client is handed off before a turn (size, return, cache expiry, a Claude model switch) is
+decided in one place, :func:`handoff_reason`.
 """
 
 from __future__ import annotations
@@ -15,7 +17,7 @@ from __future__ import annotations
 import logging
 import os
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 import httpx
 
@@ -108,24 +110,94 @@ def exceeds_hard_context_limit(
     return context_tokens >= int(window * HARD_CONTEXT_WINDOW_FRACTION)
 
 
-def should_roll_over_for_idle(
+#: ``expiry_handoff``: ``1`` drops a warm client whose prompt cache has expired (off until the
+#: probe's chain arm passes on both harnesses; ADR 0031).
+OMNIGENT_EXPIRY_HANDOFF_ENV = "OMNIGENT_EXPIRY_HANDOFF"
+#: The prompt cache lifetime in seconds, overriding the one the cache switch implies (1 hour
+#: with ``OMNIGENT_PROMPT_CACHE_1H``, else 5 minutes). Lower it (e.g. 60) to see an expiry
+#: handoff without waiting an hour.
+OMNIGENT_PROMPT_CACHE_LIFETIME_SECONDS_ENV = "OMNIGENT_PROMPT_CACHE_LIFETIME_SECONDS"
+#: A request this close to the lifetime's end may already miss the cache.
+_CACHE_EXPIRY_MARGIN_SECONDS = 30
+#: What a new session costs at most, in tokens: system prompt and tools (4k + 9k), the working
+#: list, turn lines, the person's words and the kept tail at their budgets (ADR 0031).
+_ASSEMBLED_FIXED_TOKENS = 13_000 + 4_000 + 4_000 + 3_000
+
+HandoffReason = Literal["size", "expiry", "model switch", "return"]
+
+
+def expiry_handoff() -> bool:
+    """The ``expiry_handoff`` flag (default off)."""
+    return os.environ.get(OMNIGENT_EXPIRY_HANDOFF_ENV, "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def resolve_cache_lifetime_seconds() -> int:
+    """The prompt cache lifetime both harnesses run with: the override, else 3600 s with the
+    1-hour cache on, else 300 s."""
+    from omnigent.harnesses.agent_env import prompt_cache_1h
+
+    raw = os.environ.get(OMNIGENT_PROMPT_CACHE_LIFETIME_SECONDS_ENV)
+    try:
+        value = int(raw) if raw is not None else 0
+    except ValueError:
+        value = 0
+    if value > 0:
+        return value
+    return 3_600 if prompt_cache_1h() else 300
+
+
+def assembled_estimate(labels: Mapping[str, str] | None) -> int:
+    """The most a new session's first call carries, in tokens (the 2x rule's yardstick)."""
+    return _ASSEMBLED_FIXED_TOKENS + resolve_keep_tokens(labels)
+
+
+def handoff_reason(
     labels: Mapping[str, str] | None,
     *,
-    idle_seconds: float | None,
-) -> bool:
-    """Whether a superside-chat session has been idle long enough to refresh on return.
+    context_tokens: int | None,
+    since_request_start: float | None,
+    model_switch: bool = False,
+) -> HandoffReason | None:
+    """Why a warm client should be dropped before this turn, or ``None`` to keep it.
 
-    ``False`` for a non-superside-chat session or when *idle_seconds* is
-    ``None`` (no prior activity to compare against — e.g. the session's
-    first ever turn).
+    The one decision point (ADR 0031, "Handoff by size and on cache expiry"); the turn's own
+    history load then assembles. In order:
 
-    :param labels: The session's labels.
-    :param idle_seconds: Seconds since the session's last recorded activity,
-        or ``None``.
+    * ``size``: the warm context reached the handoff threshold T.
+    * ``return``: the last model request started :func:`resolve_idle_refresh_seconds` ago.
+    * ``expiry`` (behind ``expiry_handoff``): it started longer ago than the cache lifetime
+      minus 30 s, so the next call rewrites the whole context, and that context is more than
+      twice what a new session costs.
+    * ``model switch``: a Claude model switch (the cache is per model) under the same 2x rule;
+      otherwise the switch keeps the warm client (``set_model``).
+
+    :param context_tokens: The warm context the last turn reported, or ``None``.
+    :param since_request_start: Seconds since the start of the last model request on this
+        harness session (a person's turn, a wake, a scheduled run, a step in a turn), or
+        ``None`` when this runner has not seen one.
     """
-    if not is_superside_chat(labels) or idle_seconds is None:
-        return False
-    return idle_seconds >= resolve_idle_refresh_seconds()
+    if not is_superside_chat(labels):
+        return None
+    if context_tokens is not None and context_tokens >= resolve_rollover_threshold(labels):
+        return "size"
+    if since_request_start is not None and since_request_start >= resolve_idle_refresh_seconds():
+        return "return"
+    heavy = context_tokens is not None and context_tokens > 2 * assembled_estimate(labels)
+    if (
+        heavy
+        and expiry_handoff()
+        and since_request_start is not None
+        and since_request_start > resolve_cache_lifetime_seconds() - _CACHE_EXPIRY_MARGIN_SECONDS
+    ):
+        return "expiry"
+    if heavy and model_switch:
+        return "model switch"
+    return None
 
 
 # ---------------------------------------------------------------------------

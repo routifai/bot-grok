@@ -1,7 +1,7 @@
 # Context and memory
 
 What the assistant sees on each turn, how a year-long conversation stays inside the model's window,
-and what it remembers, as of 2026-10-19. The code paths are the "Memory and recall" row of
+and what it remembers, as of 2026-10-20. The code paths are the "Memory and recall" row of
 [`engine/README.md`](../engine/README.md); paths below are relative to `engine/omnigent/`. The
 decisions are [ADR 0006](adr/0006-omnigent-owns-everything.md) (the engine owns context, the harness
 only runs the loop), [ADR 0016](adr/0016-recall-is-a-bounded-hint-and-a-deep-pull-over-one-index.md)
@@ -19,9 +19,11 @@ In the order the model reads it:
    prefix), so a model change keeps a warm Claude client (`set_model`) and the pre-launched harness
    matches the first turn.
 2. **Tool definitions.** What the bundle's `tools.allow` list leaves.
-3. **History.** Either the harness's warm session, or a replay of the stored items from the latest
-   checkpoint on: the checkpoint header, the working list, the kept tail, then the items since,
-   with each tool call replayed as one digest line (`context/tool_digest.py`).
+3. **History.** Either the harness's warm session, or, in a new session, one assembled block
+   followed by the newest messages as stored (ADR 0031, "Rollover" below): the checkpoint's working
+   list once, a line per settled turn since the checkpoint that is not in the tail, the person's
+   words from those turns, and the newest whole turns in the second person, with each tool call
+   one "→ outcome" line (`context/tool_digest.py`). Code only, no model call.
 4. **The per-turn prefix.** Built fresh by `superchat/prompt_prefix.py` (`turn_prefix_blocks`) and
    put in front of the person's latest message, for the model only; never stored, so it never
    reaches the transcript, a summary, search or memory upkeep. Read top to bottom:
@@ -92,36 +94,68 @@ numbers` prints the TTLs asked and hits by gap).
 
 ## Rollover
 
-When the conversation grows, the engine replaces older turns with a **checkpoint** and keeps recent
-turns word for word. The full history stays stored: the person sees every message and the
-assistant can read any of it with `session_history`. The harness's own compaction is switched off
+The engine folds older turns into a **checkpoint** (the tagged working list and journal lines) and
+a new harness session starts from that checkpoint plus the record after it, never from a replay.
+The full history stays stored: the person sees every message and the assistant can read any of it
+with `session_history` or `recall`. The harness's own compaction is switched off
 (`DISABLE_AUTO_COMPACT` on `claude-sdk`, `compaction.enabled=false` on `pi`) so two compactors never
-fight.
+fight. Decisions: [ADR 0031](adr/0031-a-new-session-is-assembled-from-state.md).
 
-| Trigger | Rule | Blocks the turn? |
-|---|---|---|
-| Size | after a turn, the reported context reaches 60% of the window, capped at 200,000 tokens; 100,000 when the window is unknown; never below 100,000 unless 80% of a known window is lower (`context/rollover.py`, `resolve_rollover_threshold`) | no, runs in the background |
-| Hard limit | the last known fill is 95% of the window or more | no wait: the turn cold-starts from the previous checkpoint plus the newest whole turns that fit, and a rollover is scheduled |
-| Idle return | first message after 12 hours (`OMNIGENT_ROLLOVER_IDLE_REFRESH_SECONDS`, default 43200) | no: the warm client is dropped and the turn starts from the assembled block (below) with a gap line; never a summary |
-| Cold start | the runner reloads the record (a runner or host restart, a harness switch, a dropped warm client) | no: a restart bridges and never summarizes; the history load renders one assembled block (ADR 0031): the checkpoint's working list once, a line per settled turn left out of the tail (hidden Rounds marked "(scheduled)"), the person's words from those turns, the newest whole turns in the second person, then the newest messages as stored. It writes the view start label (`omnigent.context.view_start`) that recall's current epoch reads, and indexes the turns before it in the background |
-| Helper turn ceiling | inside one Helper turn (not the Conversation, not a studio), a model call's context reaches 300,000 tokens (`OMNIGENT_HELPER_TURN_CONTEXT_CEILING`) | no: the job is told once to save its work and end the turn with what is done and left; at 1.25 times the ceiling the turn is stopped (`runtime/harnesses/_executor_adapter.py`); the size rollover then runs after it |
-| Manual | `/compact` | no |
-| Reset | `POST /v1/sessions/{id}/reset` | a checkpoint with no summary |
+**A new session is assembled.** Every new session (a runner or host restart, a harness switch, a
+dropped warm client, a handoff) goes through the history load (`runner/app.py`,
+`_load_history_as_input`), which renders one block (`context/rollover.py`, `assemble_block`): the
+checkpoint's working list once, a line per settled turn since the anchor that is not in the tail
+(hidden Rounds marked "(scheduled)"; a Helper or studio gets the same line from its transcript), the
+person's words from those turns (3,000 tokens), the newest whole turns in the second person (8,000
+tokens as rendered), then the newest messages as stored. It writes the view start label
+(`omnigent.context.view_start`) that recall's current epoch reads, and indexes the turns before it
+in the background. A restart bridges and never summarizes.
 
-One rollover runs per session at a time; across processes a stale write is refused with 409. The
-summarizer reads the window as one quoted transcript (tool results clipped), rewrites the previous
-working list rather than appending, and returns 3 to 10 dated journal lines. Code then reconciles
-the rewrite against the previous list (`context/state_file.py`, `reconcile`): it applies pending
-`state_close` calls, puts back word for word any entry the rewrite lost (counted as a repair, never
-a rejection), carries missing dates forward, cuts entries over 400 characters, fits the list into
-4,000 tokens by evicting closed and merged entries first and open preferences last (evicted lines
-go to the journal), and marks stale entries. The checkpoint keeps the most recent whole turns that
-fit 16,000 tokens (the last turn always). A turn that ran while the summary was being written is not
-lost: the checkpoint covers the record only up to its anchor. A failed rollover is logged and
-retried by a later turn; it never fails the turn that triggered it.
+**The fold** (`superchat/rollover.py`, `fold_session` and `roll_over_session`) runs in the engine,
+scheduled after each superside-chat turn beside memory upkeep (`server/memory_upkeep.py`,
+`SessionFolds`), in the background: nothing ever waits on it, and it never drops a warm client.
 
-After a checkpoint is stored, memory upkeep is scheduled for the owner, and the runner copies the
-working list and journal lines into the host (below).
+| | |
+|---|---|
+| Trigger | the settled-turn lines a new session would list pass 2,000 tokens (`OMNIGENT_FOLD_TURN_LINES_TOKENS`), or the warm context reaches `fold_at = T − min(32k, T/4)`; at most one fold per session at a time, between turns |
+| Model | the owner's Light model (Settings, Models) over the owner's connection, through `resolve_background_llm`; keys never reach the host. With `OMNIGENT_FOLD_ON_LIGHT=0`, no Light model, or after two failed folds on Light, the session's own model over the same connection |
+| Window | the turns since the anchor before the kept tail, oldest first, at most 16,000 characters of rendered turns; the anchor lands after the last one folded, so the newest turns stay raw after it and the block's turn lines shrink |
+| Input | the previous checkpoint, then per turn: the person's words, its turn line, one line per failed tool call (tool name and the error's first line), and the final answer clipped to 600 characters. No tool results, HTML or notices. Secrets are withheld as in the block. The instruction is fixed text (the date rides the input), so it is byte-identical across folds |
+| Output | an anchored merge of the working list (only entries the turns touch change; an approach that failed is a `d-` entry starting "tried and failed:"), and 3 to 10 dated journal lines. No "where we left off" paragraph: the block shows the newest turns instead |
+| Accepted | only on a clean stop whose text parses as tagged entries and a `<journal>`; a stale anchor is refused. On any failure or timeout the previous checkpoint stays and a later turn tries again |
+
+Code then reconciles the rewrite against the previous list (`context/state_file.py`, `reconcile`):
+it applies pending `state_close` calls, puts back word for word any entry the rewrite lost (counted
+as a repair, never a rejection), carries missing dates forward, cuts entries over 400 characters,
+fits the list into 4,000 tokens by evicting closed and merged entries first and open preferences
+last (evicted lines go to the journal), and marks stale entries. A turn that ran while the fold was
+written is not lost: the checkpoint covers the record only up to its anchor.
+
+**Handoff.** A warm client is dropped before a turn, so that turn's history load assembles, at one
+decision point (`superchat/rollover.py`, `handoff_reason`; `runner/app.py`,
+`_superside_chat_handoff`). Its clock is the start of the last model request on that harness session
+(the turn's dispatch, then each tool result), never the newest stored item.
+
+| Handoff | Rule |
+|---|---|
+| Size | the reported context reaches T = `min(120k, 0.6 × window)`; 100,000 when the window is unknown; the default never below 100,000 unless 80% of a known window is lower; an explicit `omnigent.context.rollover_at_tokens` label is taken as it is (`resolve_rollover_threshold`) |
+| Return | the last request started 12 hours ago (`OMNIGENT_ROLLOVER_IDLE_REFRESH_SECONDS`); the turn gets a gap line |
+| Cache expiry (flag `OMNIGENT_EXPIRY_HANDOFF`, off until the probe's chain arm passes) | the last request started longer ago than the cache lifetime minus 30 s (3,600 s with the 1-hour cache, else 300 s; `OMNIGENT_PROMPT_CACHE_LIFETIME_SECONDS` overrides it), and the warm context is more than twice what a new session costs at most (`assembled_estimate`: 24,000 tokens plus the kept tail) |
+| Claude model switch | the same twice rule; otherwise the switch keeps the warm client (`set_model`). pi respawns on a switch anyway |
+| Hard limit | the last known fill is 95% of the window or more: the turn starts from the checkpoint plus the newest whole turns that fit |
+
+A runner that holds no warm history for a session (after a restart) has nothing to hand off: the
+load assembles anyway.
+
+| Other | Rule |
+|---|---|
+| Helper turn ceiling | inside one Helper turn (not the Conversation, not a studio), a model call's context reaches 300,000 tokens (`OMNIGENT_HELPER_TURN_CONTEXT_CEILING`): the job is told once to save its work and end the turn with what is done and left; at 1.25 times the ceiling the turn is stopped (`runtime/harnesses/_executor_adapter.py`) |
+| Manual | `/compact` in the runner runs the same fold, then drops the warm client |
+| Reset | `POST /v1/sessions/{id}/reset`: a checkpoint with no summary |
+
+After a checkpoint is stored, memory upkeep is scheduled for the owner. The runner copies its
+working list and journal lines into the host (below) at the next turn's memory sync, once per
+checkpoint, and recall's backfill indexes the turns up to the new anchor.
 
 ## Memory and upkeep
 
@@ -148,7 +182,7 @@ Claims are written two ways:
   `memory_get` and `memory_explain` read. The rules for what is worth saving are in the system
   prompt.
 - **By upkeep, in the background** (`memory/upkeep.py`, scheduled by `server/memory_upkeep.py`):
-  after each rollover of a conversation, and on an hourly sweep of recently active owners, at most
+  after each fold of a conversation, and on an hourly sweep of recently active owners, at most
   4 owners at a time and one run per person. Only the person's own words since the last successful
   run are evidence; helper sessions, scheduled runs and system notices never are. Fewer than 3
   substantive new messages skips the run. What is worth keeping is one policy (`MEMORY_POLICY`,
@@ -200,7 +234,8 @@ The person's files and their index live in the host
 sqlite-vec on the home volume at `~/.superchat/knowledge`, kept by one background thread
 (`superchat/knowledge/indexer.py`, `runtime.py`). It covers `~/workspace/your_files/`,
 `~/workspace/memory/` and each `goals/<goal>/files/` folder, plus the `conversation` source: one
-passage per turn, written when a checkpoint retires the turn (`runner/memory/sync.py`), with only
+passage per turn, written when a new session leaves it out of its view or a checkpoint's anchor
+passes it (`runner/memory/sync.py`), with only
 the person's own words and the assistant's reply, never the prefix blocks.
 
 A file is keyword-searchable as soon as it is parsed into passages, then embedded through the
@@ -222,7 +257,8 @@ long becomes a one-line manifest pointing at `files_query` and `files_get`.
   identity and the date when it was last touched. An open entry other than a preference untouched
   for 30 days renders ` · stale?`, a rendering, never stored. The assistant closes a wrong entry
   with `state_close`, applied at the next checkpoint.
-- **The journal and `STATE.md`.** After each checkpoint the runner appends the journal lines and the
+- **The journal and `STATE.md`.** After each checkpoint (at the next turn, for one the engine's fold
+  stored) the runner appends the journal lines and the
   evicted entries to `~/workspace/memory/journal/YYYY-MM-DD.md` and writes the working list to
   `~/workspace/memory/STATE.md` (`runner/memory/files.py`, `sync.py`). Each settled Round adds
   one entry (ask, outcome, files, Helpers, folder, duration) and a delivered hand edit a line.
