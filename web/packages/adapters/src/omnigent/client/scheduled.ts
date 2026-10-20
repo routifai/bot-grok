@@ -167,6 +167,8 @@ export interface OmnigentSystemJob {
   description: string;
   schedule: string;
   last_run_at: number | null;
+  last_outcome?: string | null;
+  last_failed?: boolean;
   next_run_at: number | null;
   enabled: boolean;
 }

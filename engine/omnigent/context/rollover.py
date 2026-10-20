@@ -211,8 +211,9 @@ def state_file_summarizer_instruction(*, today: str | None = None, journal: bool
     instruction = (
         f"Write the summary as a state file, not a narrative. Start with "
         f"'## Context checkpoint — {resolved_today}'. Organize by topic: the user's "
-        "identity, preferences and constraints (including corrections and "
-        '"do not" rules) first; each active task with its exact identifiers '
+        "identity and standing preferences (including corrections and "
+        '"do not" rules meant beyond one task) first; each active task with its '
+        "constraints and exact identifiers "
         "(ids, paths, URLs, numbers), a time-zoned timestamp, its status, "
         "and its next step; keep look-alike items in separate sections; "
         'state negative facts explicitly (e.g. "no message was sent"); '
@@ -232,7 +233,12 @@ def state_file_summarizer_instruction(*, today: str | None = None, journal: bool
         "tag, '- [t-short-name · YYYY-MM-DD] text' (t- topic, d- decision, o- open loop, "
         "p- preference: how the person wants things done, a standing rule). Only these four "
         "kinds. One entry per preference; never write the same rule as both a decision and a "
-        "preference. "
+        "preference. A p- entry is only a rule the user stated in their own message and meant "
+        "beyond the task at hand; an instruction for one task (a slide count, 'stop "
+        "researching', where to save a file), a brief's constraints and anything the assistant "
+        "or a helper chose (a theme, a headline rule, a sourcing rule) belong in that task's "
+        "t- entry, never in a p- entry; mark an existing p- entry that is not such a rule "
+        "'closed: not a standing rule'. "
         "Keep every existing tag exactly. Give each new entry a new short unique tag. "
         "Keep an entry short. Set the date to today on an entry you change or that came up "
         "since the prior checkpoint, and leave the others. Never delete an entry: "

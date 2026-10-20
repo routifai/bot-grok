@@ -52,6 +52,12 @@ WINDOW_ITEM_MAX_CHARS = 2_000
 WINDOW_ITEMS_PAGE_SIZE = 50
 WINDOW_MAX_ITEMS_PER_SESSION = 500
 
+#: Earlier messages of the person shown beside the new ones, so a pattern across runs (the same
+#: topic, audience or way of working) is visible to the extractor. Context only, never cited.
+LOOKBACK_SECONDS = 14 * 24 * 3600
+LOOKBACK_MAX_CHARS = 16_000
+LOOKBACK_ITEM_MAX_CHARS = 400
+
 #: A claim candidate longer than this is rejected as malformed.
 MAX_CLAIM_TEXT_CHARS = 500
 
@@ -115,71 +121,80 @@ def resolve_upkeep_max_concurrency() -> int:
 # ── extraction / classification prompts (module constants, per plan) ────
 # Portions modified from getnao/nao
 # apps/backend/src/components/ai/memory-system-prompt.tsx@5bde830, Apache-2.0; changes: only the
-# rules are merged (default to extracting nothing, instructions without a permanence signal are
-# kept only as inferred evidence while profile facts need none, a changed fact or replaced
-# instruction supersedes the old claim, a withdrawal is never stored); Superchat's kinds,
-# verbatim-quote check and evidence scoring are unchanged.
+# rules are merged (one-off task instructions are left out, instructions without a permanence
+# signal are kept only as inferred evidence while profile facts need none, a changed fact or
+# replaced instruction supersedes the old claim, a withdrawal is never stored); Superchat's kinds,
+# repeated-behaviour evidence, verbatim-quote check and evidence scoring are its own.
 
-MEMORY_UPKEEP_EXTRACTION_PROMPT = """\
+#: What a lasting memory about the person is, shared by every writer that saves one from the
+#: person's words (this upkeep and the daily note's quiet pass).
+MEMORY_POLICY = """\
+Keep a useful picture of the person, built only from their own words and repeated behaviour:
+- Who they are: role, organisation, field, the clients, teams and people they mention.
+- What they work on: recurring topics, kinds of work and audiences, ongoing projects.
+- How they like work done: a way of working they ask for again and again, or state as a rule \
+("always", "never", "from now on", "I prefer", "in general").
+A topic, audience or way of working that comes up in several of their messages is a pattern: \
+keep it as "inferred" (e.g. "The user often asks for short slide decks on places and history in \
+Peru."). Said once, it is not a pattern.
+Leave out:
+- One-off task instructions: a slide count, a deadline, "stop researching", "just build it with \
+what you have", "make it shorter". They belong to that task, unless the person asks for the same \
+way of working again or says it is a rule.
+- Anything the assistant, a worker or a tool chose or wrote (a theme, a layout, a headline rule, \
+a brief's constraints, a result's report), even when the person accepted it. A short answer to \
+the assistant's question or a tapped option ("Corporate Clean", "yes") is a choice for that \
+request, never a preference.
+- Questions about the assistant itself and test pings ("which model are you", "reply with one \
+word"), small talk, and anything you doubt.
+- Secrets and credentials (passwords, tokens, keys, account or card numbers) and private details \
+about other people that the person did not ask you to keep."""
+
+MEMORY_UPKEEP_EXTRACTION_PROMPT = (
+    """\
 You are extracting durable long-term memory claims about one user from a \
-transcript of their own messages. Assistant replies are shown only for \
-conversational context — never extract a claim from them.
+transcript of their own messages.
 
-Only extract durable things: stated preferences, standing instructions, the \
-user's role, recurring people, teams or clients they mention, ongoing \
-projects, decisions they made, and working-style signals visible in a \
-correction. Never extract one-time requests (e.g. "send this to Bob \
-today"), small talk, or secrets (passwords, tokens, API keys, account \
-numbers) — leave those out entirely.
+"""
+    + MEMORY_POLICY
+    + """
 
-Two bars, kept apart. Profile facts (every kind except "instruction": role, \
-team, location, background, projects, people, decisions, how the user likes to \
-work) need no special wording: extract them whenever the user states them. A \
-standing instruction ("kind": "instruction", how the user wants the assistant to \
-behave from now on) is "stated" only when the user's own words carry a permanence \
-signal — "always", "never", "from now on", "every time", "in general", "don't \
-ever", "remember that I". An instruction without one applies to that \
-conversation only (so "use Python" is a one-off, "always use Python" is \
-standing): still extract it, but mark it "inferred", so repeating it later \
-builds the evidence. Extract nothing for one-off requests, small talk or doubt \
-about what the user said; most transcripts hold only a few claims.
+The transcript has two parts. EARLIER messages are the user's older messages, \
+shown so you can see what repeats; never cite one as the main evidence. NEW \
+messages are what arrived since the last run; every claim's "item_id" and \
+"quote" come from a NEW user message. Assistant lines and "[System: ...]" \
+reports are context only — never a source of a claim.
 
-A choice is not a preference. A short message that merely answers the \
-assistant's question or picks one of its options (a tapped card option such as \
-"Corporate Clean", "the second one", "yes") applies to that one request only: \
-never extract a preference, instruction or working-style claim from it, and \
-never generalise it ("prefers X for presentations"). A preference needs a \
-permanence signal in the user's own words ("always", "from now on", "I prefer", \
-"I like", "by default"). The same pick repeated across conversations may at most \
-be extracted as "inferred", never "stated".
+A pattern claim ("explicitness": "inferred") may list in "repeats" the other \
+user messages (EARLIER or NEW) that show the same thing, each with its \
+"item_id" and an exact "quote"; list only real repeats.
+
+A standing instruction ("kind": "instruction", how the user wants the \
+assistant to behave from now on) is "stated" only when the user's own words \
+carry a permanence signal ("always", "never", "from now on", "every time", \
+"in general", "don't ever", "remember that I"); a repeated one without it is \
+"inferred". Profile facts the user states directly ("I'm the head of sales", \
+"I work at X", "call me...") are "stated" and need no special wording.
 
 A withdrawal is not a claim: when the user only takes something back ("I no \
-longer want French", "forget that", "stop doing that"), extract nothing for it \
-and never write a negation such as "The user no longer wants French." Forgetting \
-is handled in the live conversation, not here. A replacement that states the \
-new thing ("reply in German from now on") is still extracted as the new claim.
+longer want French", "forget that"), extract nothing for it and never write a \
+negation. A replacement that states the new thing ("reply in German from now \
+on") is extracted as the new claim.
 
-Each candidate's "claim_text" must be one self-contained sentence, written \
-so it makes sense with no other context. Refer to the user as "The user"; \
-never give them a name the user didn't state as their own. Write an instruction \
-in the third person too ("The user wants replies in French."), never as an \
-order to the assistant. Each candidate's "quote" must be \
-the exact words the user wrote, copied verbatim from the cited item — do \
-not paraphrase, fix spelling, or add punctuation the user didn't use.
-
-Mark "explicitness" as "stated" when the user said it directly (e.g. "I \
-prefer...", "I'm the head of sales", "call me...") — for an instruction, only \
-with the permanence signal above, or an explicit "remember". Mark it "inferred" \
-when you are deducing it from behavior or a correction rather than a direct \
-statement, and for every instruction that carries no such signal.
+Each "claim_text" is one self-contained third-person sentence ("The user \
+..."); never give the user a name they didn't state as their own. Each \
+"quote" is the user's exact words copied from the cited item — do not \
+paraphrase, fix spelling or add punctuation.
 
 Respond with a JSON object of this exact shape and nothing else:
 {"candidates": [{"kind": "preference"|"instruction"|"fact"|"decision"|
 "person"|"project"|"working_style", "claim_text": "...", "quote": "...",
 "item_id": "...", "explicitness": "stated"|"inferred",
+"repeats": [{"item_id": "...", "quote": "..."}],
 "valid_until": "<ISO date or null>"}]}
-Return {"candidates": []} when nothing durable is present in the transcript.
+Return {"candidates": []} when nothing durable is present.
 Output JSON only — no markdown, no commentary."""
+)
 
 MEMORY_UPKEEP_CLASSIFY_PROMPT = """\
 Decide how a new memory candidate about a user relates to their existing \
@@ -251,6 +266,8 @@ class VerifiedCandidate:
     session_id: str
     explicitness: str
     valid_until: int | None
+    #: Other messages of the person showing the same pattern: ``(session_id, item_id)``.
+    repeats: tuple[tuple[str, str], ...] = ()
 
 
 class UpkeepLLMCaller(Protocol):
@@ -470,6 +487,10 @@ def gate(
 # ── 3. extract ────────────────────────────────────────────────────────────
 
 
+class UnreadableExtraction(ValueError):
+    """The extraction model's reply was not the JSON object asked for."""
+
+
 _CODE_FENCE_PATTERN = re.compile(r"```(?:json)?\s*\n?(.*?)```", re.DOTALL)
 
 
@@ -536,8 +557,32 @@ def _strip_code_fence(text: str) -> str:
     return stripped
 
 
-def _format_window_for_extraction(window_items: list[WindowItem]) -> str:
+def bound_earlier(earlier_items: list[WindowItem]) -> list[WindowItem]:
+    """The person's newest earlier messages within :data:`LOOKBACK_MAX_CHARS`, each clipped to
+    :data:`LOOKBACK_ITEM_MAX_CHARS`, in chronological order (assistant turns dropped)."""
+    kept: list[WindowItem] = []
+    total = 0
+    for item in reversed(earlier_items):
+        if item.role != "user" or len(item.text.strip()) < 2:
+            continue
+        clipped = replace(item, text=item.text[:LOOKBACK_ITEM_MAX_CHARS])
+        total += len(clipped.text)
+        if total > LOOKBACK_MAX_CHARS:
+            break
+        kept.append(clipped)
+    kept.reverse()
+    return kept
+
+
+def _format_window_for_extraction(
+    window_items: list[WindowItem], earlier_items: list[WindowItem] | None = None
+) -> str:
     lines: list[str] = []
+    if earlier_items:
+        lines.append("EARLIER messages (to see what repeats; cite only in \"repeats\"):")
+        lines.extend(f'[item_id="{i.item_id}"] USER: {i.text}' for i in earlier_items)
+        lines.append("")
+    lines.append("NEW messages:")
     for item in window_items:
         if item.role == "user":
             lines.append(f'[item_id="{item.item_id}"] USER: {item.text}')
@@ -547,27 +592,34 @@ def _format_window_for_extraction(window_items: list[WindowItem]) -> str:
 
 
 async def extract_candidates(
-    llm_caller: UpkeepLLMCaller, window_items: list[WindowItem]
+    llm_caller: UpkeepLLMCaller,
+    window_items: list[WindowItem],
+    earlier_items: list[WindowItem] | None = None,
 ) -> list[dict[str, Any]]:
-    """Call the extraction model; return raw candidate dicts (unverified)."""
+    """Call the extraction model; return raw candidate dicts (unverified).
+
+    A timeout or a reply that is not JSON raises (:class:`UnreadableExtraction`): the run is
+    then recorded as failed with the reason and its window is read again next time, instead of
+    passing as "nothing to remember".
+    """
     try:
         raw_text = await asyncio.wait_for(
             llm_caller(
                 instructions=MEMORY_UPKEEP_EXTRACTION_PROMPT,
-                input_text=_format_window_for_extraction(window_items),
+                input_text=_format_window_for_extraction(window_items, earlier_items),
             ),
             timeout=UPKEEP_LLM_CALL_TIMEOUT_S,
         )
     except TimeoutError:
         _logger.warning("memory upkeep extraction timed out after %ss", UPKEEP_LLM_CALL_TIMEOUT_S)
-        return []
+        raise
     try:
         parsed = json.loads(_strip_code_fence(raw_text))
     except (TypeError, ValueError):
         _logger.warning("memory upkeep extraction returned non-JSON output")
-        return []
+        raise UnreadableExtraction from None
     if not isinstance(parsed, dict):
-        return []
+        raise UnreadableExtraction
     candidates = parsed.get("candidates")
     return candidates if isinstance(candidates, list) else []
 
@@ -623,11 +675,42 @@ def _is_choice_answer(text: str) -> bool:
     return len(text.split()) <= _CHOICE_MAX_WORDS and not _PERMANENCE_RE.search(text)
 
 
+def _verified_repeats(
+    raw: Any, main_item_id: str, repeat_items_by_id: dict[str, WindowItem]
+) -> tuple[tuple[str, str], ...]:
+    """The ``repeats`` whose item is one of the person's messages and whose quote is verbatim.
+
+    A repeat that fails is dropped, not the claim: it only adds evidence."""
+    if not isinstance(raw, list):
+        return ()
+    seen: set[str] = {main_item_id}
+    verified: list[tuple[str, str]] = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            continue
+        item = repeat_items_by_id.get(str(entry.get("item_id") or ""))
+        quote = entry.get("quote")
+        if item is None or item.item_id in seen or not isinstance(quote, str) or not quote.strip():
+            continue
+        if _looks_like_secret(quote) or not _quote_is_verbatim(quote, item.text):
+            continue
+        seen.add(item.item_id)
+        verified.append((item.session_id, item.item_id))
+    return tuple(verified)
+
+
 def verify_candidate(
-    raw: Any, items_by_id: dict[str, WindowItem]
+    raw: Any,
+    items_by_id: dict[str, WindowItem],
+    repeat_items_by_id: dict[str, WindowItem] | None = None,
 ) -> tuple[VerifiedCandidate | None, str | None]:
     """Deterministic checks (section 4). ``(candidate, None)`` on success,
-    else ``(None, reason)``."""
+    else ``(None, reason)``.
+
+    :param items_by_id: The new user items: the only ones a claim may cite.
+    :param repeat_items_by_id: Every user item shown (earlier and new), which an inferred
+        claim's ``repeats`` may name as more evidence of the same pattern.
+    """
     if not isinstance(raw, dict):
         return None, "malformed"
     kind = raw.get("kind")
@@ -673,6 +756,9 @@ def verify_candidate(
             session_id=item.session_id,
             explicitness=explicitness,
             valid_until=_parse_valid_until(raw.get("valid_until")),
+            repeats=_verified_repeats(raw.get("repeats"), item_id, repeat_items_by_id or {})
+            if explicitness == "inferred"
+            else (),
         ),
         None,
     )
@@ -681,8 +767,13 @@ def verify_candidate(
 # ── 5. apply ──────────────────────────────────────────────────────────────
 
 
-def _starting_confidence(explicitness: str) -> float:
-    return STATED_CONFIDENCE if explicitness == "stated" else INFERRED_CONFIDENCE
+def _starting_confidence(candidate: VerifiedCandidate) -> float:
+    """Stated starts high; inferred starts low and each verified repeat counts as one
+    reinforcement, so a pattern seen three times starts where a twice-reinforced one would."""
+    if candidate.explicitness == "stated":
+        return STATED_CONFIDENCE
+    raised = INFERRED_CONFIDENCE + REINFORCE_INCREMENT_INFERRED * len(candidate.repeats)
+    return min(raised, STATED_CONFIDENCE)
 
 
 async def classify_relation(
@@ -739,7 +830,8 @@ async def apply_candidate(
     same treatment :func:`gather_window` already gets.
     """
     evidence = [MemoryEvidenceLink(session_id=candidate.session_id, item_id=candidate.item_id)]
-    confidence = _starting_confidence(candidate.explicitness)
+    evidence += [MemoryEvidenceLink(session_id=s, item_id=i) for s, i in candidate.repeats]
+    confidence = _starting_confidence(candidate)
     matches = await asyncio.to_thread(
         memory.search, user_id, candidate.claim_text, limit=APPLY_SEARCH_LIMIT
     )
@@ -868,9 +960,13 @@ async def run_upkeep_once(
 
     counts = _new_counts()
     try:
-        window_items = bound_window(
-            await asyncio.to_thread(gather_window, conversation_store, user_id, since)
+        # One scan reaches back past the watermark: the new items are the window, the person's
+        # older messages are shown beside them so a repeat across runs is visible.
+        scanned = await asyncio.to_thread(
+            gather_window, conversation_store, user_id, max(0, since - LOOKBACK_SECONDS)
         )
+        window_items = bound_window([i for i in scanned if i.created_at > since])
+        earlier_items = bound_earlier([i for i in scanned if i.created_at <= since])
         counts["seen"] = sum(1 for i in window_items if i.role == "user")
 
         if not gate(window_items, min_user_messages=min_user_messages):
@@ -882,12 +978,13 @@ async def run_upkeep_once(
                 run_id, state="skipped", counts=counts, disposition="no_llm_configured"
             )
 
-        raw_candidates = await extract_candidates(llm_caller, window_items)
+        raw_candidates = await extract_candidates(llm_caller, window_items, earlier_items)
         counts["candidates"] = len(raw_candidates)
         items_by_id = {i.item_id: i for i in window_items if i.role == "user"}
+        repeat_items_by_id = {**{i.item_id: i for i in earlier_items}, **items_by_id}
 
         for raw in raw_candidates:
-            candidate, reason = verify_candidate(raw, items_by_id)
+            candidate, reason = verify_candidate(raw, items_by_id, repeat_items_by_id)
             if candidate is None:
                 _reject(counts, reason or "malformed")
                 continue
@@ -911,9 +1008,51 @@ async def run_upkeep_once(
             disposition="ok",
             window_until=window_until,
         )
-    except Exception:
+    except Exception as exc:
+        # The class name only: an exception message may carry a provider's request details.
+        counts["error"] = type(exc).__name__
         upkeep_store.finish_run(run_id, state="failed", counts=counts, disposition="error")
         raise
+
+
+_FAILURE_WORDS = {
+    "TimeoutError": "the model took too long to answer",
+    "UnreadableExtraction": "the model's answer could not be read",
+}
+
+
+def describe_upkeep_run(run: MemoryUpkeepRun) -> str:
+    """One run's outcome in plain words, from its stored state and counts.
+
+    e.g. ``"Read 4 messages · nothing new to remember"`` or ``"Read 6 messages · saved 2 things
+    about you"``. Shown on the Automations row and returned to the Assistant by memory_search.
+    """
+    counts = run.counts or {}
+    seen = int(counts.get("seen") or 0)
+    read = f"Read {seen} message{'' if seen == 1 else 's'}"
+    if run.state == "running":
+        return "Reading your new messages now"
+    if run.state == "failed":
+        reason = _FAILURE_WORDS.get(str(counts.get("error") or ""), "something went wrong")
+        return f"Failed · {reason}; it tries again on the next run"
+    if run.state == "skipped":
+        if run.disposition == "no_llm_configured":
+            return "Skipped · no model is set up for background work"
+        return (
+            f"Only {seen} new message{'' if seen == 1 else 's'} · "
+            f"waits for {GATE_MIN_USER_MESSAGES} before reading"
+        )
+    changes = [
+        (word, int(counts[key]))
+        for key, word in (("inserted", "saved"), ("reinforced", "confirmed"), ("superseded", "updated"))
+        if counts.get(key)
+    ]
+    if not changes:
+        return f"{read} · nothing new to remember"
+    # "saved 2 things about you, confirmed 1"
+    (word, n), rest = changes[0], changes[1:]
+    parts = [f"{word} {n} thing{'' if n == 1 else 's'} about you", *(f"{w} {k}" for w, k in rest)]
+    return f"{read} · {', '.join(parts)}"
 
 
 def build_upkeep_llm_caller() -> UpkeepLLMCaller | None:

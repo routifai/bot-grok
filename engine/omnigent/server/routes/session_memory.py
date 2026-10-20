@@ -16,6 +16,7 @@ through it, even to a collaborator with EDIT on the session itself.
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Query, Request
@@ -143,12 +144,29 @@ def create_session_memory_router(
         kind: str | None = Query(default=None),
         limit: int = Query(default=_SEARCH_DEFAULT_LIMIT, ge=1, le=_SEARCH_MAX_LIMIT),
     ) -> dict[str, Any]:
-        """Hybrid search over the session owner's active claims."""
+        """Hybrid search over the session owner's active claims, with how memory is kept.
+
+        ``memory_upkeep`` carries the upkeep job's cadence, next run and last runs in plain
+        words, so the Assistant can say what its memory actually did instead of guessing.
+        """
         owner = await _resolve_user(request, session_id)
         results = await asyncio.to_thread(
             memory_service.search, owner, query, kind=kind, limit=limit
         )
-        return {"results": results}
+        from omnigent.server.memory_upkeep import MEMORY_HOW_IT_WORKS, upkeep_status
+
+        status = await asyncio.to_thread(upkeep_status, request.app.state, owner, runs=3)
+        if status is None:
+            return {"results": results}
+        def iso(epoch: int | None) -> str | None:
+            return None if not epoch else datetime.fromtimestamp(epoch, UTC).isoformat()
+
+        upkeep = {
+            "how_it_works": MEMORY_HOW_IT_WORKS,
+            "next_run_at": iso(status["next_run_at"]),
+            "last_runs": [{**run, "at": iso(run["at"])} for run in status["runs"]],
+        }
+        return {"results": results, "memory_upkeep": upkeep}
 
     @router.get("/sessions/{session_id}/memory/claims")
     async def list_claims(

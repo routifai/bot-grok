@@ -179,7 +179,10 @@ class MemorySearchTool(Tool):
             "work, decisions, dates, people, or preferences, and before "
             "recommending anything. Returns claims ranked by relevance and "
             "confidence, each with when it was last confirmed and where it "
-            "came from."
+            "came from, and memory_upkeep: how standing memory is kept and what "
+            "its last runs did. When the person asks how your memory works or "
+            "why something was or was not remembered, search and answer from "
+            "memory_upkeep, never from guesses."
         )
 
     def get_schema(self) -> dict[str, Any]:
