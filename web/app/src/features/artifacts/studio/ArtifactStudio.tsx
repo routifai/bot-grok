@@ -34,7 +34,7 @@ const HIGHLIGHT_MS = 2200;
 
 type StudioProps = {
   title?: string;
-  /** Typed in the panel's ask box before the studio opened. */
+  /** Sent from the panel's ask box: the studio opens and sends it. */
   draft?: AskDraft;
   onClose: () => void;
   /** Where focus goes when the studio closes (the file card that opened the panel); the control
@@ -87,8 +87,12 @@ export function StudioView({
   // On a phone the chat is a sheet over the canvas; what is typed there outlives its closing.
   const [chatOpen, setChatOpen] = useState(!!draft);
   const typed = useRef<AskDraft | undefined>(draft);
+  // The panel's request is sent once, by the first ask box to open; any change to the words after
+  // that (the send clears them) is the person's own draft.
+  const sendDraft = useRef(!!draft);
   const onDraftChange = useCallback((next: AskDraft) => {
     typed.current = next;
+    sendDraft.current = false;
   }, []);
   // Escape leaves the studio only while nothing on the canvas is selected.
   const selected = useRef(false);
@@ -172,6 +176,7 @@ export function StudioView({
           onSelectedChange,
           versionOrigin: versionLabel,
           draft: typed.current,
+          sendDraft: sendDraft.current,
           onDraftChange,
           waiting: chat.blockedOn,
           aside: (askBox) =>

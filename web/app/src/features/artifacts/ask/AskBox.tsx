@@ -26,8 +26,9 @@ export function AskBox({
   onUndo,
   canUndo,
   className,
-  onStartTyping,
+  onHandOff,
   initialDraft,
+  sendInitialDraft,
   onDraftChange,
   note,
 }: {
@@ -42,10 +43,13 @@ export function AskBox({
   onUndo?: () => void;
   canUndo?: boolean;
   className?: string;
-  /** The words go somewhere else from the first keystroke (the file's studio opens with them). */
-  onStartTyping?: (draft: AskDraft) => void;
+  /** Sending hands the words to another box instead (the file's studio opens and sends them).
+   * Typing stays here, so nothing typed is lost while the other box opens. */
+  onHandOff?: (draft: AskDraft) => void;
   /** Words typed before this box opened: kept, focused, with the caret where it was. */
   initialDraft?: AskDraft;
+  /** The words handed over were already sent by the person: send them as soon as this opens. */
+  sendInitialDraft?: boolean;
   /** Every change to the words, so a box that closes can hand them to the next one. */
   onDraftChange?: (draft: AskDraft) => void;
   /** Why the request waits ("Finishing another file first"): the status line while it does. */
@@ -55,13 +59,7 @@ export function AskBox({
   const [draft, setDraft] = useState(initialDraft?.text ?? "");
   const textarea = useRef<HTMLTextAreaElement>(null);
   const handedOver = useRef(initialDraft);
-  useEffect(() => {
-    const given = handedOver.current;
-    const box = textarea.current;
-    if (!given || !box) return;
-    box.focus();
-    box.setSelectionRange(given.caret, given.caret);
-  }, []);
+  const sendOnOpen = useRef(sendInitialDraft);
   const handled = useRef(focusRequest);
   useEffect(() => {
     if (focusRequest === handled.current) return;
@@ -69,18 +67,15 @@ export function AskBox({
     textarea.current?.focus();
   }, [focusRequest]);
 
-  // An input method composing a character (Japanese, Chinese, Korean) is not typing yet: the
-  // words are handed off only once the composition ends, so it is never cut in half.
-  const composing = useRef(false);
-  const handOff = (box: HTMLTextAreaElement) => {
-    onStartTyping?.({ text: box.value, caret: box.selectionStart ?? box.value.length });
-    setDraft("");
-  };
-
   const working = status.kind === "sending" || status.kind === "editing";
   const send = async () => {
     const text = draft.trim();
     if (!text || working) return;
+    if (onHandOff) {
+      onHandOff({ text: draft, caret: draft.length });
+      setDraft("");
+      return;
+    }
     setDraft("");
     onDraftChange?.({ text: "", caret: 0 });
     if (!(await onSend(text))) {
@@ -88,6 +83,17 @@ export function AskBox({
       onDraftChange?.({ text, caret: text.length });
     }
   };
+  // Words handed over: focused with the caret where it was, and sent when the person sent them.
+  useEffect(() => {
+    const given = handedOver.current;
+    const box = textarea.current;
+    if (!given || !box) return;
+    box.focus();
+    box.setSelectionRange(given.caret, given.caret);
+    if (!sendOnOpen.current) return;
+    sendOnOpen.current = false;
+    void send();
+  }, []);
 
   return (
     <div className={cn("flex w-full flex-col gap-2", className)} data-testid="ask-box">
@@ -129,16 +135,8 @@ export function AskBox({
               value={draft}
               onChange={(event) => {
                 const { value, selectionStart } = event.target;
-                if (onStartTyping && !composing.current) return handOff(event.target);
                 setDraft(value);
                 onDraftChange?.({ text: value, caret: selectionStart ?? value.length });
-              }}
-              onCompositionStart={() => {
-                composing.current = true;
-              }}
-              onCompositionEnd={(event) => {
-                composing.current = false;
-                if (onStartTyping) handOff(event.currentTarget);
               }}
               onKeyDown={(event) => {
                 const composing = event.nativeEvent.isComposing || event.keyCode === 229;

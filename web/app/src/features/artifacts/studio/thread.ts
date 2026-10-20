@@ -207,24 +207,23 @@ function markSince(rows: StudioRow[], seen: number | null): StudioRow[] {
   return [...rows.slice(0, first), { kind: "since", id: "since", at }, ...rows.slice(first)];
 }
 
-/** "3 edits · v1 to v4": the person's requests and hand edits, and the versions they span. */
+/** "3 edits · v1 to v4": the changes the thread spans, one per version saved after the first. A
+ * request that changed nothing, or a save that made no version, is not an edit. */
 export function threadSummary(rows: readonly StudioRow[]): {
   edits: number;
   first: number;
   last: number;
 } | null {
-  let edits = 0;
   let first = Number.POSITIVE_INFINITY;
   let last = 0;
   for (const row of rows) {
-    if (row.kind === "me") edits += 1;
-    else if (row.kind === "hand") edits += row.count;
-    else if (row.kind === "version") {
+    if (row.kind === "version") {
       first = Math.min(first, row.version);
       last = Math.max(last, row.version);
     }
   }
-  return edits > 0 && last > 0 ? { edits, first, last } : null;
+  const edits = last - first;
+  return edits > 0 ? { edits, first, last } : null;
 }
 
 /** The slide the newest request is about, when it named one deck slide; null otherwise. */

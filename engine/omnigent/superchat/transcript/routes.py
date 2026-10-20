@@ -42,8 +42,10 @@ from omnigent.superchat.transcript.reset import latest_reset_item
 _LOOKAHEAD_ITEMS = 100
 
 
-#: How long a transcript read waits on the runner for its live queue before showing none.
-_RUNNER_QUEUE_READ_TIMEOUT_S = 2.0
+#: How long a transcript read waits on the runner for its live queue before showing none: one
+#: deadline for the whole lookup (finding the runner, connecting, reading), since every page of
+#: a live Conversation waits on it, the first one the person sees included.
+_RUNNER_QUEUE_READ_TIMEOUT_S = 0.5
 
 
 async def _waiting_item_ids(request: Request, session_id: str) -> set[str]:
@@ -53,16 +55,17 @@ async def _waiting_item_ids(request: Request, session_id: str) -> set[str]:
     """
     from omnigent.server.routes._sessions.helpers import _get_runner_client
 
-    try:
+    async def read() -> Any:
         client = await _get_runner_client(
             session_id, getattr(request.app.state, "runner_router", None)
         )
         if client is None:
-            return set()
-        resp = await client.get(
-            f"/v1/sessions/{session_id}/buffered", timeout=_RUNNER_QUEUE_READ_TIMEOUT_S
-        )
-        ids = resp.json().get("item_ids") if resp.status_code == 200 else None
+            return None
+        resp = await client.get(f"/v1/sessions/{session_id}/buffered")
+        return resp.json().get("item_ids") if resp.status_code == 200 else None
+
+    try:
+        ids = await asyncio.wait_for(read(), _RUNNER_QUEUE_READ_TIMEOUT_S)
     except Exception:  # noqa: BLE001 -- the note is optional; the transcript is not
         return set()
     return {i for i in ids if isinstance(i, str)} if isinstance(ids, list) else set()

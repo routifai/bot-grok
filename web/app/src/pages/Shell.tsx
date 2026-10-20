@@ -465,6 +465,7 @@ export function ShellPage() {
                 onScrollRequestHandled={clearScrollRequest}
                 artifactTarget={transcriptArtifactTarget}
                 messages={transcriptMessages}
+                loading={museTranscript.messages === null}
                 olderCursor={museTranscript.olderCursor}
                 loadingOlder={museTranscript.loadingOlder}
                 work={work}
