@@ -2909,6 +2909,8 @@ class ClaudeSDKExecutor(Executor):
             "disallowed_tools": [
                 *_CLI_TASK_TOOLS,
                 *(_SDK_BUILTIN_SUBAGENT_TOOLS if is_superside_chat else ()),
+                # The CLI offers Skill even when ``tools`` leaves it out, like the Task tools.
+                *(() if self._native_skills else ("Skill",)),
             ],
         }
         # Only forward ``setting_sources`` when explicitly set.
