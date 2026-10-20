@@ -36,6 +36,8 @@ const round = (status: string, startedAt: number | null, roundId = "r1"): RoundS
   roundId,
   status,
   startedAt,
+  settledAt: null,
+  deliveredAt: null,
   live: null,
   helpers: 0,
   files: 0,

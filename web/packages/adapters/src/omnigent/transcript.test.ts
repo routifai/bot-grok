@@ -1,12 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { versionMessageId } from "./artifacts.js";
 import type { OmnigentTranscriptPage } from "./client/transcript.js";
-import {
-  mapReplyFrame,
-  mapSessionStatusFrame,
-  mapTranscriptMessage,
-  mapTranscriptPage,
-} from "./transcript.js";
+import { mapReplyFrame, mapTranscriptMessage, mapTranscriptPage } from "./transcript.js";
 
 const page = (data: OmnigentTranscriptPage["data"], hasMore = false): OmnigentTranscriptPage => ({
   data,
@@ -276,67 +271,6 @@ describe("a file's studio chat (ADR 0024)", () => {
         what: "You made the title larger",
       },
     ]);
-  });
-
-  it("reads a session.status frame's wait reason, flat or wrapped, and nothing from others", () => {
-    expect(
-      mapSessionStatusFrame({
-        type: "session.status",
-        conversation_id: "studio-1",
-        status: "running",
-        blocked_on: "Finishing another file first",
-      }),
-    ).toEqual({ status: "running", blockedOn: "Finishing another file first" });
-    expect(mapSessionStatusFrame({ type: "session.status", data: { status: "running" } })).toEqual({
-      status: "running",
-      blockedOn: null,
-    });
-    expect(
-      mapSessionStatusFrame({ type: "session.status", status: "idle", blocked_on: "" }),
-    ).toEqual({ status: "idle", blockedOn: null });
-    expect(mapSessionStatusFrame({ type: "response.completed" })).toBeNull();
-  });
-
-  it("reads a paused Helper from the engine's flag, else its label (ADR 0027)", () => {
-    expect(
-      mapSessionStatusFrame({ type: "session.status", data: { status: "running", paused: true } }),
-    ).toEqual({ status: "running", blockedOn: null, paused: true });
-    expect(
-      mapSessionStatusFrame({
-        type: "session.status",
-        status: "running",
-        labels: { "superchat.paused": "1760000000" },
-      }),
-    ).toEqual({ status: "running", blockedOn: null, paused: true });
-    expect(
-      mapSessionStatusFrame({
-        type: "session.status",
-        status: "running",
-        blocked_on: "Paused",
-        labels: { "superchat.paused": "" },
-      }),
-    ).toEqual({ status: "running", blockedOn: "Paused" });
-  });
-});
-
-describe("the running turn's Activity on the status (ADR 0027)", () => {
-  it("reads it flat or wrapped, in either spelling, and nothing when absent or empty", () => {
-    expect(
-      mapSessionStatusFrame({
-        type: "session.status",
-        status: "running",
-        activity_id: "turn:conv:resp_1",
-      }),
-    ).toEqual({ status: "running", blockedOn: null, activityId: "turn:conv:resp_1" });
-    expect(
-      mapSessionStatusFrame({
-        type: "session.status",
-        data: { status: "running", activityId: "turn:conv:resp_2" },
-      })?.activityId,
-    ).toBe("turn:conv:resp_2");
-    expect(
-      mapSessionStatusFrame({ type: "session.status", status: "idle", activity_id: "" }),
-    ).toEqual({ status: "idle", blockedOn: null });
   });
 });
 

@@ -33,7 +33,6 @@ vi.mock("../../lib/family-stream", () => ({
   },
 }));
 
-import { artifactKey, setArtifactEditing } from "../artifacts/editor/editor-state";
 import { COMMIT_DEBOUNCE_MS } from "../artifacts/editor/html/committer";
 import { splitElementAsk } from "../artifacts/editor/html-ask";
 import { DeckViewer } from "./DeckViewer";
@@ -43,7 +42,6 @@ import { resetDeckUi } from "./deck-ui-state";
 i18n.loadAndActivate({ locale: "en", messages: {} });
 
 const NAME = "launch.deck.html";
-const KEY = artifactKey({ botId: "bot-1", name: NAME });
 const THEME = {
   colors: [
     { name: "--accent", value: "#1e2bfa" },
@@ -165,31 +163,8 @@ function press(el: HTMLElement, key: string, init: KeyboardEventInit = {}) {
 const control = (label: string) =>
   host.querySelector(`[aria-label="${label}"]`) as HTMLInputElement & HTMLButtonElement;
 
-it("shows the bridge and panel only in edit mode; view mode is unchanged", async () => {
-  await mount();
-  expect(host.querySelector('[data-testid="deck-style-panel"]')).toBeNull();
-  const frames = host.querySelectorAll("iframe");
-  expect(frames[frames.length - 1]?.getAttribute("srcdoc")).not.toContain("superchat-edit-bridge");
-
-  await act(async () => setArtifactEditing(KEY, true));
-  // The inspector is there only while something is selected.
-  expect(host.querySelector('[data-testid="deck-style-panel"]')).toBeNull();
-  expect(host.querySelector('[data-testid="editor-toolbar"]')).not.toBeNull();
-  expect(editFrame().el.getAttribute("srcdoc")).toContain("superchat-edit-bridge");
-  const frame = editFrame();
-  await ready(frame);
-  await select(frame);
-  expect(host.querySelector('[data-testid="deck-style-panel"]')).not.toBeNull();
-  await fromFrame(frame, { type: "superchat:edit-selection", targets: [] });
-  expect(host.querySelector('[data-testid="deck-style-panel"]')).toBeNull();
-
-  await act(async () => setArtifactEditing(KEY, false));
-  expect(host.querySelector('[data-testid="deck-style-panel"]')).toBeNull();
-});
-
 it("only trusts messages from its frame that carry its nonce and fit the protocol", async () => {
   await mount();
-  await act(async () => setArtifactEditing(KEY, true));
   const frame = editFrame();
   await ready(frame);
   const panel = () => host.querySelector('[data-testid="deck-style-panel"]')?.textContent ?? "";
@@ -218,7 +193,6 @@ it("only trusts messages from its frame that carry its nonce and fit the protoco
 
 it("select, then a style control previews at once and saves one version after a pause", async () => {
   await mount();
-  await act(async () => setArtifactEditing(KEY, true));
   const frame = editFrame();
   await ready(frame);
   await select(frame);
@@ -256,7 +230,6 @@ it("select, then a style control previews at once and saves one version after a 
 
 it("picks theme colours and fonts as tokens, never raw values", async () => {
   await mount();
-  await act(async () => setArtifactEditing(KEY, true));
   const frame = editFrame();
   await ready(frame);
   await select(frame);
@@ -276,7 +249,6 @@ it("picks theme colours and fonts as tokens, never raw values", async () => {
 
 it("commits an inline text edit as a set-text patch", async () => {
   await mount();
-  await act(async () => setArtifactEditing(KEY, true));
   const frame = editFrame();
   await ready(frame);
   await select(frame);
@@ -294,7 +266,6 @@ it("commits an inline text edit as a set-text patch", async () => {
 
 it("undo and redo save the earlier source back as new versions", async () => {
   const view = await mount();
-  await act(async () => setArtifactEditing(KEY, true));
   const frame = editFrame();
   await ready(frame);
   await select(frame);
@@ -332,7 +303,6 @@ it("undo and redo save the earlier source back as new versions", async () => {
 
 it("a change by someone else ends the history instead of undoing over it", async () => {
   const view = await mount();
-  await act(async () => setArtifactEditing(KEY, true));
   const frame = editFrame();
   await ready(frame);
   await select(frame);
@@ -370,7 +340,6 @@ it("a patch the engine won't apply exactly says so and offers superchat", async 
       </I18nProvider>,
     ),
   );
-  await act(async () => setArtifactEditing(KEY, true));
   const frame = editFrame();
   await ready(frame);
   await select(frame);
@@ -394,7 +363,6 @@ it("a patch the engine won't apply exactly says so and offers superchat", async 
 
 it("a new version keeps the selection by selecting the same ids in the new frame", async () => {
   const view = await mount();
-  await act(async () => setArtifactEditing(KEY, true));
   const frame = editFrame();
   await ready(frame);
   await select(frame);
@@ -420,24 +388,8 @@ it("a new version keeps the selection by selecting the same ids in the new frame
   expect(host.querySelector('[data-testid="deck-edit-frame-next"]')).toBeNull();
 });
 
-it("the floating toolbar has undo, redo and Done (the ask box is always there); Done leaves edit mode", async () => {
-  await mount();
-  await act(async () => setArtifactEditing(KEY, true));
-  const toolbar = host.querySelector('[data-testid="editor-toolbar"]') as HTMLElement;
-  expect(toolbar.getAttribute("role")).toBe("toolbar");
-  const labels = [...toolbar.querySelectorAll("button")].map(
-    (b) => b.getAttribute("aria-label") ?? b.textContent,
-  );
-  expect(labels).toEqual(["Undo", "Redo", "Done"]);
-  expect(askInput()).toBeTruthy();
-
-  await act(async () => [...toolbar.querySelectorAll("button")].at(-1)?.click());
-  expect(host.querySelector('[data-testid="editor-toolbar"]')).toBeNull();
-});
-
 it("sends the hard-scope element request and the person's words to the Muse's Conversation", async () => {
   await mount();
-  await act(async () => setArtifactEditing(KEY, true));
   const frame = editFrame();
   await ready(frame);
   await select(frame);
@@ -464,7 +416,6 @@ it("sends the hard-scope element request and the person's words to the Muse's Co
 
 it("Shift+Enter is a new line, not a send", async () => {
   await mount();
-  await act(async () => setArtifactEditing(KEY, true));
   await act(async () => typeInto(askInput(), "first line"));
   await act(async () => press(askInput(), "Enter", { shiftKey: true }));
   expect(chats.send).not.toHaveBeenCalled();
@@ -472,7 +423,6 @@ it("Shift+Enter is a new line, not a send", async () => {
 
 it("with nothing selected it asks about the slide on screen", async () => {
   await mount();
-  await act(async () => setArtifactEditing(KEY, true));
   expect(host.querySelector('[data-testid="ask-chip"]')).toBeNull();
   expect(askInput().placeholder).toBe("Ask superchat to change this slide…");
   await act(async () => typeInto(askInput(), "warmer colours"));
@@ -484,7 +434,6 @@ it("with nothing selected it asks about the slide on screen", async () => {
 
 it("shows editing, then Updated when superchat's version lands, and Undo steps back over it", async () => {
   const view = await mount();
-  await act(async () => setArtifactEditing(KEY, true));
   const frame = editFrame();
   await ready(frame);
   await select(frame);
@@ -514,7 +463,6 @@ it("shows editing, then Updated when superchat's version lands, and Undo steps b
 
 it("a turn that ends without a new version shows superchat's reply", async () => {
   await mount();
-  await act(async () => setArtifactEditing(KEY, true));
   artifactsApi.listVersions.mockResolvedValueOnce([{ version: 1 }]);
   chats.transcript.mockResolvedValueOnce({
     messages: [
@@ -538,7 +486,6 @@ it("a turn that ends without a new version shows superchat's reply", async () =>
 
 it("an ask answered without a version does not adopt a later unrelated version into undo", async () => {
   const view = await mount();
-  await act(async () => setArtifactEditing(KEY, true));
   artifactsApi.listVersions.mockResolvedValueOnce([{ version: 1 }]);
   chats.transcript.mockResolvedValueOnce({
     messages: [{ role: "bot", blocks: [{ kind: "text", text: "Nothing to change." }] }],
@@ -562,7 +509,6 @@ it("an ask answered without a version does not adopt a later unrelated version i
 
 it("Stop interrupts the Muse", async () => {
   await mount();
-  await act(async () => setArtifactEditing(KEY, true));
   await act(async () => typeInto(askInput(), "shorter"));
   await act(async () => press(askInput(), "Enter"));
   const stop = [...host.querySelectorAll('[data-testid="ask-status"] button')].find(
@@ -575,6 +521,5 @@ it("Stop interrupts the Muse", async () => {
 
 it("without a Muse to ask there is no ask box", async () => {
   await mount({ botId: null });
-  await act(async () => setArtifactEditing(artifactKey({ botId: null, name: NAME }), true));
   expect(host.querySelector('[data-testid="ask-box"]')).toBeNull();
 });

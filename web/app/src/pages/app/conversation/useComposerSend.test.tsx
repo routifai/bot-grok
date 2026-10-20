@@ -56,7 +56,6 @@ vi.mock("../../../lib/browser-notifications", () => ({
 }));
 vi.mock("../intro", () => ({ markFirstRunSeen: vi.fn() }));
 
-import { registerAttachmentParser } from "../../../lib/composer-attachments";
 import { useComposerSend } from "./useComposerSend";
 
 const BOT = "b".repeat(32);
@@ -72,7 +71,6 @@ const transcript = {
 };
 let shown: ThreadMessage[] = [];
 const activeId = BOT;
-let openArtifact: { artifactId: string; name: string; version: number } | null = null;
 
 function Harness() {
   latest = useComposerSend({
@@ -81,7 +79,6 @@ function Harness() {
     userId: "u1",
     messages: shown,
     transcript,
-    openArtifact,
     botsRef: { current: [] },
     flushPendingBrowserNotifications: () => undefined,
   });
@@ -97,7 +94,6 @@ async function pickFiles(...files: [string, string, string][]) {
 
 beforeEach(() => {
   shown = [];
-  openArtifact = null;
   hostBus.reset();
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   vi.stubGlobal(
@@ -414,38 +410,6 @@ it("shows the message at once as the engine will record it, sends it, and reads 
   });
   expect(transcript.refresh).toHaveBeenCalled();
   expect(transcript.failSend).not.toHaveBeenCalled();
-});
-
-it("sends the artifact open beside the chat, and shows its chip on the message at once", async () => {
-  openArtifact = { artifactId: "art_1", name: "Q3 Review.html", version: 3 };
-  await mount();
-  expect(await act(async () => latest.sendMessage("bigger title"))).toBe(true);
-  expect(transcript.beginSend).toHaveBeenCalledWith("bigger title", {
-    artifactId: "art_1",
-    name: "Q3 Review.html",
-    version: null,
-    how: "open",
-  });
-  expect(api.chats.send).toHaveBeenCalledWith({
-    botId: BOT,
-    text: "bigger title",
-    attachments: undefined,
-    folders: undefined,
-    context: { openArtifact: { artifactId: "art_1", version: 3 } },
-  });
-});
-
-it("leaves the open artifact out when the message carries an element ask", async () => {
-  registerAttachmentParser("element", (text) =>
-    text.startsWith("<ask>") ? { label: "Slide 1", rest: text.slice(5).trimStart() } : null,
-  );
-  openArtifact = { artifactId: "art_1", name: "Q3 Review.html", version: 3 };
-  await mount();
-  expect(await act(async () => latest.sendMessage("<ask>\n\nbigger"))).toBe(true);
-  expect(transcript.beginSend).toHaveBeenCalledWith("<ask>\n\nbigger");
-  expect(api.chats.send).toHaveBeenCalledWith(
-    expect.not.objectContaining({ context: expect.anything() }),
-  );
 });
 
 it("sends a quote as text and workspace folders as pointers", async () => {

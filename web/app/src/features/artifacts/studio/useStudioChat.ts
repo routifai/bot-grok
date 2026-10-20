@@ -1,16 +1,14 @@
 import type { StudioPrelude, ThreadMessage } from "@superchat/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { watchFamily } from "../../../lib/family-stream";
+import { useFamilyLive, watchFamily } from "../../../lib/family-stream";
 import { rpc } from "../../../lib/rpc";
 import { useVisiblePoll } from "../../../lib/use-visible-poll";
 import { notifyArtifactsChanged } from "../artifactChanges";
 
-/** How often the chat is re-read while a turn runs and the session's stream is down. */
+/** How often the chat is re-read while a turn runs and the family stream is down. */
 const CHAT_POLL_MS = 3000;
 /** How often an open studio tells the engine it is still open (its runner stays warm). */
 export const OPEN_SIGNAL_MS = 5 * 60_000;
-/** Before the status watch reconnects after it drops. */
-const STATUS_RETRY_MS = 3000;
 
 export type StudioChat = {
   /** The file's studio session, once found or made. */
@@ -35,8 +33,9 @@ export type StudioChat = {
 
 /**
  * The file's studio chat (ADR 0024): finds or makes its session (`artifacts.chat`, which never
- * wakes the host), reads its transcript, follows the session's status (running, waiting) and the
- * Muse's family stream for that session's messages and for saves of the file (`onSaved`).
+ * wakes the host), reads its transcript, and follows the Muse's family stream (no stream of its
+ * own) for that session's status (running, waiting), its messages and saves of the file
+ * (`onSaved`).
  */
 export function useStudioChat({
   artifactId,
@@ -57,8 +56,8 @@ export function useStudioChat({
   const [loaded, setLoaded] = useState(false);
   const [running, setRunning] = useState(false);
   const [blockedOn, setBlockedOn] = useState<string | null>(null);
-  // The session's status stream is connected; while it is not, a running turn is polled.
-  const [streamUp, setStreamUp] = useState(false);
+  // The family stream carries the session's status; while it is down, a running turn is polled.
+  const live = useFamilyLive(botId);
   const onSavedRef = useRef(onSaved);
   onSavedRef.current = onSaved;
 
@@ -99,43 +98,10 @@ export function useStudioChat({
     setRunning(page.running === true);
   }, [botId, sessionId]);
 
-  // The session's status: running or not, and `blockedOn` while a turn waits behind the host's
-  // studio cap.
-  useEffect(() => {
-    if (!botId || !sessionId) return;
-    const abort = new AbortController();
-    void (async () => {
-      while (!abort.signal.aborted) {
-        try {
-          const frames = await rpc.chats.watchStatus(
-            { botId, chatId: sessionId },
-            { signal: abort.signal },
-          );
-          setStreamUp(true);
-          for await (const frame of frames) {
-            if (abort.signal.aborted) return;
-            const busy = frame.status === "running";
-            setRunning(busy);
-            setBlockedOn(busy ? frame.blockedOn : null);
-          }
-        } catch {
-          // Dropped: try again shortly.
-        }
-        if (abort.signal.aborted) return;
-        setStreamUp(false);
-        await new Promise((resolve) => setTimeout(resolve, STATUS_RETRY_MS));
-      }
-    })();
-    return () => {
-      abort.abort();
-      setStreamUp(false);
-    };
-  }, [botId, sessionId]);
-
   useEffect(() => {
     void read();
   }, [read]);
-  useVisiblePoll(read, CHAT_POLL_MS, !!botId && !!sessionId && running && !streamUp);
+  useVisiblePoll(read, CHAT_POLL_MS, !!botId && !!sessionId && running && !live);
 
   useEffect(() => {
     if (!botId || !sessionId) return;
@@ -151,6 +117,11 @@ export function useStudioChat({
           setBlockedOn(null);
         }
         void read();
+      } else if (event.type === "chatStatus" && event.chatId === sessionId) {
+        // Running or not, and `blockedOn` while a turn waits behind the host's studio cap.
+        const busy = event.status === "running";
+        setRunning(busy);
+        setBlockedOn(busy ? event.blockedOn : null);
       } else if (event.type === "artifactsChanged" && event.groupId === groupId) {
         onSavedRef.current?.();
         // The card and the Library under the studio follow the new version too.

@@ -185,43 +185,6 @@ export function mapTranscriptMessage(
   };
 }
 
-/** A chat's status as its `session.status` frame says it (`/v1/sessions/{id}/stream`):
- * `blockedOn` is the engine's words while a running turn waits ("Finishing another file first"
- * for a studio turn queued behind the studio cap, ADR 0024). Null for any other frame. */
-export function mapSessionStatusFrame(
-  frame: OmnigentStreamEvent,
-): { status: string; blockedOn: string | null; paused?: boolean; activityId?: string } | null {
-  if (frame.type !== "session.status") return null;
-  const body = (typeof frame.data === "object" && frame.data !== null ? frame.data : frame) as {
-    status?: unknown;
-    blocked_on?: unknown;
-    paused?: unknown;
-    labels?: unknown;
-    activity_id?: unknown;
-    activityId?: unknown;
-  };
-  if (typeof body.status !== "string") return null;
-  const blockedOn = typeof body.blocked_on === "string" && body.blocked_on ? body.blocked_on : null;
-  // A Helper held by Pause (ADR 0027): the engine's `paused` flag, else its `superchat.paused`
-  // label (set while it is paused).
-  const labels = (
-    typeof body.labels === "object" && body.labels !== null ? body.labels : {}
-  ) as Record<string, unknown>;
-  const paused = body.paused === true || Boolean(labels[PAUSED_LABEL]);
-  // The running turn's Activity (ADR 0027), however the engine spells it.
-  const activity = body.activity_id ?? body.activityId;
-  const activityId = typeof activity === "string" && activity ? activity : undefined;
-  return {
-    status: body.status,
-    blockedOn,
-    ...(paused ? { paused } : {}),
-    ...(activityId ? { activityId } : {}),
-  };
-}
-
-/** The label the engine keeps on a paused Helper (`omnigent.context.labels.PAUSED_LABEL_KEY`). */
-const PAUSED_LABEL = "superchat.paused";
-
 /** The turn-ending `response.*` frames: the turn's text is stored or dropped. */
 const TERMINAL_RESPONSE_FRAMES = new Set([
   "response.completed",

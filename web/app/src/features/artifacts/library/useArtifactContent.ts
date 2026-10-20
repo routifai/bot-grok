@@ -40,7 +40,6 @@ export function useArtifactContent(artifactId: string | null): Loaded {
   const [state, setState] = useState<ContentState>({ status: "loading" });
   const [versions, setVersions] = useState<ArtifactVersion[]>([]);
   const [picked, setPicked] = useState<string | null>(null);
-  const silent = useRef(false);
   // The person chose a version from the menu: stay on it instead of following the newest.
   const pinned = useRef(false);
   const [arrived, setArrived] = useState<ArtifactVersion | null>(null);
@@ -49,7 +48,6 @@ export function useArtifactContent(artifactId: string | null): Loaded {
 
   const adoptVersion = useCallback(
     (versionId: string) => {
-      silent.current = true;
       pinned.current = false;
       setPicked(versionId);
       if (artifactId) {
@@ -86,9 +84,10 @@ export function useArtifactContent(artifactId: string | null): Loaded {
 
   useEffect(() => {
     if (!picked) return;
+    // Only the first load shows "loading" (set when the file changes): a newer version or one
+    // picked from the menu replaces the one on screen once its bytes are here, so the editor and
+    // the studio's conversation stay mounted (ADR 0030).
     let cancelled = false;
-    if (silent.current) silent.current = false;
-    else setState({ status: "loading" });
     void rpc.artifacts
       .getById({ artifactId: picked })
       .then((artifact) => {
@@ -123,7 +122,6 @@ export function useArtifactContent(artifactId: string | null): Loaded {
     if (!top || top.id === versionsRef.current[0]?.id) return;
     setVersions(list);
     if (pinned.current || pickedRef.current === top.id) return;
-    silent.current = true;
     setArrived(top);
     setPicked(top.id);
   }, [artifactId]);
