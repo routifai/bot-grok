@@ -84,6 +84,14 @@ function SystemJobRow({ job }: { job: SystemJob }) {
         <span>
           {job.lastRunAt ? `${t`Ran`} ${formatRelativeTime(job.lastRunAt)}` : t`Not run yet`}
         </span>
+        {job.lastOutcome ? (
+          <span
+            data-testid="system-job-outcome"
+            className={job.lastFailed ? "text-destructive" : undefined}
+          >
+            {job.lastOutcome}
+          </span>
+        ) : null}
       </div>
     </li>
   );

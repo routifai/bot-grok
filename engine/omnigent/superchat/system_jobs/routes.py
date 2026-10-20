@@ -1,7 +1,8 @@
 """``GET /v1/me/system-jobs``: the engine's own recurring background jobs, for the caller.
 
 Read-only. Each job reports what it does in plain words, how often it runs, when it last ran for
-this person and when it runs next, when the engine knows. Unknown times are ``null``.
+this person, what that run did (``last_outcome``, plain words) and when it runs next, when the
+engine knows. Unknown values are ``null``.
 """
 
 from __future__ import annotations
@@ -26,36 +27,30 @@ def _every(seconds: float) -> str:
     return f"Every {int(seconds)} seconds"
 
 
-def _next(last: int | None, interval: float) -> int | None:
-    return None if last is None else int(last + interval)
-
-
-def _last_upkeep_run(coordinator: Any, owner: str) -> int | None:
-    runs = coordinator.upkeep_store.list_runs(owner, limit=1)
-    if not runs:
-        return None
-    run = runs[0]
-    return run.finished_at or run.started_at
-
-
 def collect_jobs(app: FastAPI, owner: str) -> list[dict[str, Any]]:
     """Build the caller's job rows from what the server is running."""
     jobs: list[dict[str, Any]] = []
 
+    from omnigent.server.memory_upkeep import upkeep_status
+
     coordinator = getattr(app.state, "memory_upkeep_coordinator", None)
     scheduler = getattr(app.state, "memory_upkeep_scheduler", None)
     interval = float(scheduler.sweep_interval_s) if scheduler is not None else 3600.0
+    status = upkeep_status(app.state, owner)
+    last = status["runs"][0] if status and status["runs"] else None
     jobs.append(
         {
             "id": "memory_upkeep",
             "name": "Memory upkeep",
             "description": (
-                "Reads your recent conversations and keeps what is worth remembering about you "
-                "up to date: new facts, changed facts, and things you asked it to remember."
+                "Reads your new messages and keeps lasting facts about you: who you are, what "
+                "you work on, and how you like things done, each with your words as evidence."
             ),
             "schedule": _every(interval) + ", and after a conversation is condensed",
-            "last_run_at": _last_upkeep_run(coordinator, owner) if coordinator else None,
-            "next_run_at": _next(getattr(scheduler, "last_sweep_at", None), interval),
+            "last_run_at": last["at"] if last else None,
+            "last_outcome": last["outcome"] if last else None,
+            "last_failed": bool(last and last["state"] == "failed"),
+            "next_run_at": status["next_run_at"] if status else None,
             "enabled": coordinator is not None and scheduler is not None,
         }
     )
@@ -99,6 +94,8 @@ def _note_jobs(app: FastAPI, owner: str) -> list[dict[str, Any]]:
                 f"{qm.MAX_PASSES_PER_DAY} times a day), and a final pass at {evening}"
             ),
             "last_run_at": last_note,
+            "last_outcome": None,
+            "last_failed": False,
             "next_run_at": None,
             "enabled": enabled,
         },
@@ -111,6 +108,8 @@ def _note_jobs(app: FastAPI, owner: str) -> list[dict[str, Any]]:
             ),
             "schedule": f"Nightly, {nightly}",
             "last_run_at": latest("dreamed_at"),
+            "last_outcome": None,
+            "last_failed": False,
             "next_run_at": None,
             "enabled": enabled,
         },
@@ -123,6 +122,8 @@ def _note_jobs(app: FastAPI, owner: str) -> list[dict[str, Any]]:
             ),
             "schedule": f"Nightly, {nightly}",
             "last_run_at": latest("people_at"),
+            "last_outcome": None,
+            "last_failed": False,
             "next_run_at": None,
             "enabled": enabled,
         },

@@ -58,6 +58,8 @@ export const DEV_SYSTEM_JOBS: SystemJob[] = [
       "Reads your recent conversations and keeps what is worth remembering about you up to date.",
     schedule: "Every hour, and after a conversation is condensed",
     lastRunAt: new Date(now - 40 * 60_000).toISOString(),
+    lastOutcome: "Read 6 messages · saved 2 things about you",
+    lastFailed: false,
     nextRunAt: new Date(now + 20 * 60_000).toISOString(),
     enabled: true,
   },

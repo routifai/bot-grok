@@ -45,6 +45,9 @@ export const SystemJobSchema = z.object({
   schedule: z.string(),
   /** ISO timestamps; `null` when the engine does not know. */
   lastRunAt: z.string().nullable(),
+  /** What the last run did, in plain words ("Read 4 messages · nothing new to remember"). */
+  lastOutcome: z.string().nullable(),
+  lastFailed: z.boolean(),
   nextRunAt: z.string().nullable(),
   enabled: z.boolean(),
 });

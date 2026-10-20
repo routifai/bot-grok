@@ -109,6 +109,8 @@ export const automationsRouter = {
         description: job.description,
         schedule: job.schedule,
         lastRunAt: iso(job.last_run_at),
+        lastOutcome: job.last_outcome ?? null,
+        lastFailed: job.last_failed ?? false,
         nextRunAt: iso(job.next_run_at),
         enabled: job.enabled,
       })),

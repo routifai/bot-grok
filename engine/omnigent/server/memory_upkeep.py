@@ -23,10 +23,13 @@ import logging
 import time
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
+from typing import Any
 
 from omnigent.memory.service import MemoryService
 from omnigent.memory.upkeep import (
+    GATE_MIN_USER_MESSAGES,
     UpkeepLLMCaller,
+    describe_upkeep_run,
     resolve_upkeep_max_concurrency,
     resolve_upkeep_sweep_interval_seconds,
     run_upkeep_once,
@@ -35,6 +38,52 @@ from omnigent.stores.conversation_store import ConversationStore
 from omnigent.stores.memory_upkeep_store import MemoryUpkeepStore
 
 _logger = logging.getLogger(__name__)
+
+
+#: How standing memory is kept, returned with ``memory_search`` so the Assistant explains its
+#: memory from the code's rules, not from guesses. Keep in step with ``MEMORY_POLICY``.
+MEMORY_HOW_IT_WORKS = (
+    "Standing memory is kept by memory upkeep. Every hour, and after a conversation is "
+    "condensed, it reads the person's new messages (not your replies, background work or tool "
+    f"output; with fewer than {GATE_MIN_USER_MESSAGES} new messages it waits for the next run), "
+    "shows the person's messages from the last two weeks beside them, and keeps lasting facts "
+    "about the person: who they are, what they work on, recurring topics and audiences, and how "
+    "they like work done. Each memory carries the person's exact words and where they said them. "
+    "Something said directly is kept at once; a pattern is kept as noticed (inferred) and joins "
+    "standing memory once it has shown up about three times. One-off instructions for a single "
+    "task, choices you made, questions about you, and secrets are never kept. "
+    "Separately, you save what the person states during a turn (memory_remember), the daily "
+    "note records each day (its quiet pass may save lasting facts by the same rules), and the conversation's working list tracks open work. The person "
+    "can ask you to remember or forget something, and can see, edit or forget each memory, with "
+    "its source quote, in the Memory tab of the side panel."
+)
+
+
+def upkeep_status(app_state: Any, owner: str, *, runs: int = 1) -> dict[str, Any] | None:
+    """The upkeep job as this person sees it: cadence, next run and the last runs' outcomes.
+
+    Read by the Automations System row and returned with ``memory_search`` so the Assistant
+    can say what its memory upkeep actually did. ``None`` when upkeep is not running here.
+    """
+    coordinator = getattr(app_state, "memory_upkeep_coordinator", None)
+    if coordinator is None:
+        return None
+    scheduler = getattr(app_state, "memory_upkeep_scheduler", None)
+    interval = int(scheduler.sweep_interval_s) if scheduler is not None else None
+    last_sweep = getattr(scheduler, "last_sweep_at", None)
+    recent = coordinator.upkeep_store.list_runs(owner, limit=runs)
+    return {
+        "interval_seconds": interval,
+        "next_run_at": int(last_sweep + interval) if last_sweep and interval else None,
+        "runs": [
+            {
+                "at": run.finished_at or run.started_at,
+                "state": run.state,
+                "outcome": describe_upkeep_run(run),
+            }
+            for run in recent
+        ],
+    }
 
 
 class MemoryUpkeepCoordinator:

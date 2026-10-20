@@ -118,10 +118,20 @@ Claims are written two ways:
   after each rollover of a conversation, and on an hourly sweep of recently active owners, at most
   4 owners at a time and one run per person. Only the person's own words since the last successful
   run are evidence; helper sessions, scheduled runs and system notices never are. Fewer than 3
-  substantive new messages skips the run. Each candidate must quote the cited message verbatim,
-  stay under 500 characters, and not look like a secret or a one-off request. A similar existing
-  claim is reinforced (+0.05 stated, +0.2 inferred), kept beside, or superseded only when the model
-  names which claim. Upkeep runs on the owner's Light model.
+  substantive new messages skips the run. What is worth keeping is one policy (`MEMORY_POLICY`,
+  shared with the daily note's pass): who the person is, what they work on (recurring topics,
+  audiences, projects) and how they like work done; never a one-off task instruction, a choice the
+  assistant or a helper made, a question about the assistant, or a secret. The person's messages
+  from the 14 days before the window are shown beside it, so a pattern across runs is visible; a
+  claim cites a new message, and an inferred pattern may list verified `repeats` (more evidence
+  links), each counting as one +0.2 reinforcement, so a pattern seen three times enters the profile
+  at once. Each candidate must quote the cited message verbatim, stay under 500 characters, and not
+  look like a secret or a one-off request. A similar existing claim is reinforced (+0.05 stated,
+  +0.2 inferred), kept beside, or superseded only when the model names which claim. An extraction
+  that times out or is not JSON fails the run (the window is read again next time). Upkeep runs on
+  the owner's Light model. Each run's outcome in plain words (`describe_upkeep_run`) is shown on
+  the Automations System row and returned with `memory_search` (`memory_upkeep`), so the assistant
+  explains its memory from the runs, not from guesses.
 
 The **memory profile** (`MemoryService.profile`) is what goes in front of every turn and every new
 helper brief: active claims of every kind except `person`, with confidence 0.75 or more (a single
