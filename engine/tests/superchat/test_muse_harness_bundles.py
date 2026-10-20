@@ -161,9 +161,11 @@ def test_prompts_point_at_the_memory_folder(bundle: Path) -> None:
     muse = (bundle / "AGENTS.md").read_text()
     assert "use `recall` before you answer" in muse and "`recall_get`" in muse
     assert "`state_close`" in muse
-    assert "Never edit it or the journal" in muse
+    # The working list arrives in the assembled block (ADR 0031): no prompt points at STATE.md
+    # or the journal for current state, only forbids writing there.
+    assert "Never edit `memory/STATE.md` or the journal" in muse
     worker = (bundle / "agents/worker/config.yaml").read_text()
-    assert "`memory/STATE.md` holds" in worker and "Never write there" in worker
+    assert "Never write in `memory/STATE.md` or" in worker and "`memory/STATE.md` holds" not in worker
 
 
 THREE_RULES = (
@@ -217,7 +219,7 @@ def test_the_conversation_prompt_states_three_rules_once_and_stays_small(bundle:
     for term in RETIRED:
         assert term not in prompt, term
     # Context is pulled; delegation is judgement, stated once where the work is (ADR 0029).
-    look_up = prompt.split("## What you can look up", 1)[1].split("\n## ", 1)[0]
+    look_up = prompt.split("## What is in front of you", 1)[1].split("\n## ", 1)[0]
     for term in ("Standing memory", "journal", "`recall`", "`context_brief`"):
         assert term in look_up, term
     work = prompt.split("## How you work", 1)[1].split("\n## ", 1)[0]

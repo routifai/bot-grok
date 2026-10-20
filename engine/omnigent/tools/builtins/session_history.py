@@ -73,8 +73,8 @@ class SessionHistoryTool(Tool):
         return (
             "Call this before answering any question about earlier messages "
             "(first message, exact wording, what was decided). "
-            "Recall the exact record of THIS session — the summary shown in "
-            "context is a pointer, not the truth, and may omit details. "
+            "Recall the exact record of THIS session — what you see of "
+            "earlier turns may be shortened and may omit details. "
             "action='read': read earlier turns of this conversation to "
             "ground yourself before answering. Returns turns (a user "
             "message plus everything that answered it; tool calls and "
