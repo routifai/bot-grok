@@ -63,8 +63,10 @@ The harnesses, as configured today:
 - **Turn end on pi.** A pi turn ends at `agent_settled`, after pi's own retries, overflow recovery
   and queued steers. Its retry settings cap the backoff with `retry.maxAgentDelayMs` and set no
   `retry.provider.timeoutMs`, so pi's 300 s `httpIdleTimeoutMs` bounds a request.
-- **Setup line.** A Conversation turn's instructions end with the model and harness it runs on, and
-  the turn after a change of either gets one line saying what changed ([context.md](context.md)).
+- **Setup line.** A per-turn prefix line names the model and harness a Conversation runs on, sent
+  once to each warm harness session, and the turn after a change of either gets one line saying
+  what changed ([context.md](context.md)). It is not in the instructions, so a model change keeps
+  a warm Claude client.
 
 ## Sessions and helpers
 

@@ -14,11 +14,10 @@ In the order the model reads it:
 
 1. **System prompt.** The bundle's `AGENTS.md` (see [architecture.md](architecture.md#where-the-system-prompt-lives)),
    framework instructions (the web-search line only for an agent that declares a `web_search` or
-   `web_fetch` tool, `runtime/prompt.py`), and on `claude-sdk` a tool-naming note. A Conversation
-   turn's instructions end with the Setup line: `Setup: you run on the model <model> through the
-   <pi | Claude Agent SDK> harness. Earlier messages may describe another setup: go by this one.`
-   (`runner/app.py`). Fixed for the life of a warm harness session; a change of model or harness
-   changes the prompt, so both harnesses relaunch.
+   `web_fetch` tool, `runtime/prompt.py`), and on `claude-sdk` a tool-naming note. Fixed for the
+   life of a warm harness session. The model and harness are not in it (they go in the per-turn
+   prefix), so a model change keeps a warm Claude client (`set_model`) and the pre-launched harness
+   matches the first turn.
 2. **Tool definitions.** What the bundle's `tools.allow` list leaves.
 3. **History.** Either the harness's warm session, or a replay of the stored items from the latest
    checkpoint on: the checkpoint header, the working list, the kept tail, then the items since,
@@ -31,6 +30,10 @@ In the order the model reads it:
      ([ADR 0025](adr/0025-act-by-default-tasks-have-state.md));
    - the person's local time (from the timezone in `GET /v1/me/proactivity`, UTC if unknown), and
      one gap line on the first message back from an idle break;
+   - the Setup line: `[Setup: you run on the model <model> through the <pi | Claude Agent SDK>
+     harness. Earlier messages may describe another setup: go by this one.]`, sent once to each
+     warm harness session (again after a cold start, a model change or a change of instructions or
+     tools), like the memory profile (`prompt_prefix.setup_line`);
    - after a change of model or harness, one line: `[Since the last message the setup changed:
      was pi with <model>, now Claude Agent SDK with <model>. Earlier messages may describe the old
      setup; go by the current one.]` (the runner remembers the last setup per Conversation in
