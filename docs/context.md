@@ -131,17 +131,17 @@ fits the list into 4,000 tokens by evicting closed and merged entries first and 
 last (evicted lines go to the journal), and marks stale entries. A turn that ran while the fold was
 written is not lost: the checkpoint covers the record only up to its anchor.
 
-**Handoff.** A warm client is dropped before a turn, so that turn's history load assembles, at one
+**Handoff.** A warm session is replaced only when it needs compacting (ADR 0031, owner decision
+4): the warm client is dropped before a turn, so that turn's history load assembles, at one
 decision point (`superchat/rollover.py`, `handoff_reason`; `runner/app.py`,
-`_superside_chat_handoff`). Its clock is the start of the last model request on that harness session
-(the turn's dispatch, then each tool result), never the newest stored item.
+`_superside_chat_handoff`). A return after a break, an expired prompt cache and a model switch keep
+the warm session (Claude switches with `set_model`; pi respawns on a switch anyway). The first
+message after 12 hours away (`OMNIGENT_ROLLOVER_IDLE_REFRESH_SECONDS`, from the newest stored item)
+gets a gap line; it is not a handoff.
 
 | Handoff | Rule |
 |---|---|
-| Size | the context the last turn reported (completed, stopped or failed) reaches T = `min(120k, 0.6 × window)`; 100,000 when the window is unknown; an explicit `omnigent.context.rollover_at_tokens` label sets it (`resolve_rollover_threshold`); and the context is over twice what a new session costs (`assembled_estimate`), so a small window never hands off every turn (logged once; the hard limit applies). Right after a handoff the old reading is ignored |
-| Return | the last request started 12 hours ago (`OMNIGENT_ROLLOVER_IDLE_REFRESH_SECONDS`); the turn gets a gap line (after a runner restart, from the record) |
-| Cache expiry (flag `OMNIGENT_EXPIRY_HANDOFF`, off until the probe's chain arm passes) | the last request started longer ago than the cache lifetime minus 30 s (3,600 s with the 1-hour cache, else 300 s; `OMNIGENT_PROMPT_CACHE_LIFETIME_SECONDS` overrides it), and the warm context is more than twice what a new session costs at most (`assembled_estimate`: 24,000 tokens plus the kept tail) |
-| Claude model switch | the same twice rule; otherwise the switch keeps the warm client (`set_model`). pi respawns on a switch anyway |
+| Size | the context the last turn reported (completed, stopped or failed) reaches T = `min(120k, 0.6 × window)`; 100,000 when the window is unknown; an explicit `omnigent.context.rollover_at_tokens` label sets it (`resolve_rollover_threshold`); and the context is over twice what a new session costs (`assembled_estimate`: 24,000 tokens plus the kept tail), so a small window never hands off every turn (logged once; the hard limit applies). Right after a handoff the old reading is ignored |
 | Hard limit | the last known fill is 95% of the window or more: the turn starts from the checkpoint plus the newest whole turns that fit |
 
 A runner that holds no warm history for a session (after a restart) has nothing to hand off: the

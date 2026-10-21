@@ -1,6 +1,6 @@
 # 0031: A new session is assembled from state, never replayed
 
-> **Status:** Accepted 2026-10-19 by the owner (fold on Light; handoff at 120k and on cache expiry; the summarizer's journal lines kept); revised the same day after two independent reviews (the second moved the 1-hour cache first, put the idle clock on the request start and added the chain probe). Amends [0017](0017-the-working-list-is-tagged-and-the-journal-lives-in-the-host.md) (cold start, idle return), [0016](0016-recall-is-a-bounded-hint-and-a-deep-pull-over-one-index.md) (recall's cut-off and when turns are indexed) and [0024](0024-the-artifact-studio.md)/[0030](0030-a-file-opens-in-one-studio.md) (what the studio sends). [0006](0006-omnigent-owns-everything.md) stands: harness compaction stays off. The tool merge is its own record, [0032](0032-fewer-shorter-tools.md). Requires the fx13 context hotfix (`f661ed251`): Helpers no longer write STATE.md, the answer after a restart is kept, `session_history` (order, 12k cap) and shell output (16k per field) are capped, the checkpoint names its cause. Built and verified 2026-10-20: see [0033](0033-the-context-wave-as-built.md).
+> **Status:** Accepted 2026-10-19 by the owner (fold on Light; handoff at 120k, size only since 2026-10-20; the summarizer's journal lines kept); revised the same day after two independent reviews (the second moved the 1-hour cache first, put the idle clock on the request start and added the chain probe). Amends [0017](0017-the-working-list-is-tagged-and-the-journal-lives-in-the-host.md) (cold start, idle return), [0016](0016-recall-is-a-bounded-hint-and-a-deep-pull-over-one-index.md) (recall's cut-off and when turns are indexed) and [0024](0024-the-artifact-studio.md)/[0030](0030-a-file-opens-in-one-studio.md) (what the studio sends). [0006](0006-omnigent-owns-everything.md) stands: harness compaction stays off. The tool merge is its own record, [0032](0032-fewer-shorter-tools.md). Requires the fx13 context hotfix (`f661ed251`): Helpers no longer write STATE.md, the answer after a restart is kept, `session_history` (order, 12k cap) and shell output (16k per field) are capped, the checkpoint names its cause. Built and verified 2026-10-20: see [0033](0033-the-context-wave-as-built.md).
 
 A new harness session starts often, and size is rarely the reason. On the train host, 17 of 20 Conversation cold starts came from restarts or harness switches. The only Conversation rollover was a restart at 138k tokens. It ran an Opus summarizer in line for 38 s while the person waited, over input that was 42% result notices, 34% tool digests and 2% the person's words. The new session then got the working list four times and the Artifacts list on every turn. The kept tail was counted on raw items but shown as digests, so two thirds of its budget was never seen. Cold first calls were 60% of the Conversation's input spend, and cache misses after an idle gap another 17%. Tools plus system were about $2.1 of the $3.51 spent on cold first calls, and both harnesses ran on the 5-minute cache. Bulk also entered warm contexts and was re-read on every call: deck HTML through the shell and the deck kit on every kit call.
 
@@ -49,10 +49,10 @@ Parts 2, 4 and 8 stay in the per-turn prefix, so there is one path for "what the
 
 **View start, for recall.** The view start is the first item of the assembled tail: the first item this harness session saw in full. The history load writes it as a session label. `_current_epoch` in the recall handler reads it instead of the checkpoint anchor, so a turn retired by a bridge or a handoff is found by `recall`. The same load schedules `index_retired_turns` for the items before it without awaiting it (idempotent on `turn_item_id`), so embedding time never sits on session start. This amends 0016: there is one indexing trigger, the history load, not "a fold or a bridge".
 
-**Handoff by size and on cache expiry.** Both are a drop of the warm client before the turn, so the next turn's history load assembles.
+**Handoff by size only** (owner decision 4, revised 2026-10-20). A warm session is replaced only when it needs compacting: a drop of the warm client before the turn, so the next turn's history load assembles. The expiry and model-switch handoffs below were built and then removed by that decision; they stay here as the record of what was weighed.
 - **Size:** at `T = min(120k, 0.6 × window)`; the hard limit stays at 95%. The 200k cap goes.
-- **Cache expiry:** when the time since the *start* of the last model request on this harness session (person turn, wake or scheduled run) exceeds the cache lifetime minus 30 s, and the warm context is more than twice the assembled estimate. The cache lifetime runs from the start of the request that read the prefix, and every read refreshes it, so the newest stored item is the wrong clock: a long answer makes it late, a wake refreshes the cache without moving it, and a notice stored without a model call moves it without refreshing the cache. The runner sees each request start through the trace proxy and its own turn start. The lifetime is a config value per harness and provider, calibrated after step 0b from traces (`cache_read_input_tokens == 0` on the first call after a gap). The owner's target is ON; it ships behind its flag, off until the probe's chain arm passes.
-- **Model switch on Claude:** today it keeps the warm CLI (`set_model`), and the first call rewrites the whole context at the new model's price, because the cache is per model. The same rule as cache expiry applies: above twice the assembled estimate, drop the warm client before the switch; otherwise `set_model` stays. pi already respawns on a model switch.
+- **Cache expiry (removed by decision):** when the time since the *start* of the last model request on this harness session (person turn, wake or scheduled run) exceeds the cache lifetime minus 30 s, and the warm context is more than twice the assembled estimate. The cache lifetime runs from the start of the request that read the prefix, and every read refreshes it, so the newest stored item is the wrong clock: a long answer makes it late, a wake refreshes the cache without moving it, and a notice stored without a model call moves it without refreshing the cache. The runner sees each request start through the trace proxy and its own turn start. The lifetime is a config value per harness and provider, calibrated after step 0b from traces (`cache_read_input_tokens == 0` on the first call after a gap). The owner's target is ON; it ships behind its flag, off until the probe's chain arm passes.
+- **Model switch on Claude (removed by decision):** today it keeps the warm CLI (`set_model`), and the first call rewrites the whole context at the new model's price, because the cache is per model. The same rule as cache expiry applies: above twice the assembled estimate, drop the warm client before the switch; otherwise `set_model` stays. pi already respawns on a model switch.
 
 **Bulk stops where it enters.** Claude Code does not let Omnigent edit its live transcript; pi does (`context_edit`), but one path for both is kept, so the equivalent of tool-result clearing is limits at entry plus the handoffs above.
 - `artifact_outline` gains `element` (one element's HTML, ≤ 4k characters) and `range`. Prompts forbid `cat`/`grep` on artifact files.
@@ -117,7 +117,7 @@ Each step ships alone, with a live check on pi, then on Claude, and aims at ≤ 
 | 3b. Restarts bridge | runner start and idle paths in `runner/app.py` | `_superside_chat_catching_up`, `_await_superside_chat_catch_up`, `_maybe_superside_chat_cold_rollover`, the blocking idle summary | same `assemble` flag |
 | 3c. Turn lines (hidden Rounds included) and the person's words | the block renderer from 3a, upkeep's secret filter | open items in the block | same `assemble` flag |
 | 4. Fold in the engine on Light, anchored | `roll_over_session` (input selection, failed-call lines, `on_rolled_over` unset), `summarize_history` call, `server/memory_upkeep.py` scheduling | the runner's threshold rollover and its warm-client drop; the fold on runner start; the free-text position | `fold_on_light`; off = session model |
-| 5. Handoff at T, on expiry (request-start clock), on a Claude model switch | `resolve_rollover_threshold`, the idle check, the model-switch path before `set_model` | the 200k cap; the newest-item idle clock | `expiry_handoff` (off until the chain arm passes) |
+| 5. Handoff at T (size only, owner decision 4) | `resolve_rollover_threshold`, the turn's handoff check | the 200k cap; the 12-hour return drop | none |
 | 6. Prompt paragraph; STATE.md and journal pointers removed | bundle templates, `ROLLOVER_CONTEXT_INSTRUCTION` | the pointers | none |
 
 **As built (steps 4 and 5, 2026-10-20).** Deviations from the text above:
@@ -130,9 +130,11 @@ Each step ships alone, with a live check on pi, then on Claude, and aims at ≤ 
   for the session's own harness, over the session's own provider connection (its inference
   snapshot); the fallback is the session's model over that same connection.
 - T = `min(120k, 0.6 × window)` with no floor; an explicit `rollover_at_tokens` label sets it.
-  The 12-hour return is 0017's rule, now on the request-start clock.
-- The 2x rule's "assembled estimate" is the budget sum (24k plus the kept tail), not a count;
-  the request-start clock is the runner's own (turn dispatch and each tool result).
+  A size handoff also needs the warm context over twice the "assembled estimate" (the budget
+  sum: 24k plus the kept tail), so a small window never hands off every turn.
+- Size only (owner, 2026-10-20): the 12-hour return, cache-expiry and Claude model-switch
+  handoffs, their flag, the cache-lifetime knob and the request-start clock are deleted. A
+  return keeps the warm session and only gets its gap line (from the newest stored item).
 - A fold whose reply has no tagged entries is accepted (the working list stays, the anchor
   moves); between `fold_at` and T a fold may run after each turn.
 
@@ -145,7 +147,7 @@ handoff decision.
 1. The fold runs on **Light**, in the engine; the session's model is only the fallback.
 2. Handoff threshold **120k**, capped at 0.6 of the window.
 3. Budgets: recent turns 8k; the person's words 3k; settled-turn lines 2k (4k stretch).
-4. The cache-expiry handoff is **on** as the target, behind its flag until the chain arm passes.
+4. ~~The cache-expiry handoff is **on** as the target, behind its flag until the chain arm passes.~~ Revised 2026-10-20: a warm session is replaced only when it needs compacting (size). No expiry, return or model-switch handoff.
 5. Worker Helpers keep `start_helper` (0032).
 6. The summarizer's journal lines are **kept** (0017 unchanged there).
 7. The 1-hour cache is **step 0b**, first. The idle clock is the time since the start of the last model request on that harness session.

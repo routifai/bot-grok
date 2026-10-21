@@ -3066,12 +3066,6 @@ def create_runner_app(
     _superside_chat_pending_refresh: set[str] = set()
     # conv_id -> context fill the session's latest turn reported (hard-limit check).
     _superside_chat_last_context_tokens: dict[str, int] = {}
-    # conv_id -> wall time the last model request on its warm harness session started: a turn's
-    # dispatch (a person's turn, a wake, a scheduled run), then each tool result (the next request
-    # starts on it). The prompt cache's clock: every read refreshes it (ADR 0031).
-    _last_request_start: dict[str, float] = {}
-    # conv_id -> (harness, model) its last turn ran on, for the model-switch handoff.
-    _last_turn_model: dict[str, tuple[str, str]] = {}
     # conv_id -> the view start this runner last wrote (VIEW_START_LABEL): the label is written,
     # and the turns before it indexed, only when it moves (see _assembled_history).
     _view_starts: dict[str, str] = {}
@@ -6637,7 +6631,6 @@ def create_runner_app(
             return
         _forget_superside_chat_prefix(conv_id)
         _session_histories.pop(conv_id, None)
-        _last_request_start.pop(conv_id, None)
         # The next session's size is unknown until its first turn ends: never hand it off on the
         # old one (0 also keeps the label's stale reading out).
         _superside_chat_last_context_tokens[conv_id] = 0
@@ -6741,9 +6734,9 @@ def create_runner_app(
         model = body.get("model_override") or body.get("llm_model")
         return model if isinstance(model, str) and model else None
 
-    async def _superside_chat_record_gap(conv_id: str) -> float | None:
+    async def _superside_chat_idle_gap(conv_id: str) -> float | None:
         """Seconds since the item before this turn's message, from the record; ``None`` on a
-        miss. Only for the gap line of a session this runner holds no history for."""
+        miss. For the turn's gap line only: a return never replaces the session."""
         try:
             resp = await server_client.get(
                 f"/v1/sessions/{conv_id}/items",
@@ -6760,71 +6753,44 @@ def create_runner_app(
         return time.time() - created_at if isinstance(created_at, int) else None
 
     async def _superside_chat_handoff(
-        conv_id: str,
-        *,
-        labels: Mapping[str, str] | None,
-        harness: str | None,
-        model: str | None,
+        conv_id: str, *, labels: Mapping[str, str] | None
     ) -> float | None:
         """Keep this superside-chat session's warm client for the turn, or drop it first.
 
-        The one decision before a turn (``handoff_reason``, ADR 0031): at the handoff threshold
-        T, on a return after the idle period, on a cache expiry (behind ``expiry_handoff``) or
-        a Claude model switch when the warm context is over twice what a new session costs. The
-        clock is the start of the last model request on this harness session, never the newest
-        stored item. A drop makes no model call and never waits: the turn's own history load
-        assembles. A session this runner holds no history for starts from the record anyway.
+        A warm session is replaced only when it needs compacting (``handoff_reason``, ADR 0031,
+        owner decision 4): its context reached T and is over twice what a new session costs. A
+        drop makes no model call and never waits: the turn's own history load assembles. A
+        return, a cache expiry or a model switch keeps it (``set_model`` on Claude).
 
-        :returns: Seconds since the last request on a return, for the turn's gap line; else
-            ``None``.
+        :returns: Seconds away on the first message after the idle period, for the turn's gap
+            line; else ``None``.
         """
         from omnigent.context.rollover import reported_context_tokens
         from omnigent.superchat.rollover import handoff_reason, resolve_idle_refresh_seconds
 
-        prior = _last_turn_model.get(conv_id)
-        if harness and model:
-            _last_turn_model[conv_id] = (harness, model)
+        gap = await _superside_chat_idle_gap(conv_id)
+        gap = gap if gap is not None and gap >= resolve_idle_refresh_seconds() else None
         if conv_id not in _session_histories:
-            # Nothing warm to hand off; the load assembles. A return after a restart still gets
-            # its gap line, from the record.
-            gap = await _superside_chat_record_gap(conv_id)
-            return gap if gap is not None and gap >= resolve_idle_refresh_seconds() else None
-        started = _last_request_start.get(conv_id)
-        since = time.time() - started if started is not None else None
+            return gap  # nothing warm to hand off; the load assembles
         tokens = (
             _superside_chat_last_context_tokens[conv_id]
             if conv_id in _superside_chat_last_context_tokens
             else reported_context_tokens(labels)
         )
-        switch = (
-            prior is not None
-            and prior[0] == harness == "claude-sdk"
-            and bool(model)
-            and prior[1] != model
-        )
-        reason = handoff_reason(
-            labels,
-            context_tokens=tokens,
-            since_request_start=since,
-            model_switch=switch,
-            conversation_id=conv_id,
-        )
-        if reason is None:
-            return None
+        if handoff_reason(labels, context_tokens=tokens, conversation_id=conv_id) is None:
+            return gap
         _logger.info(
-            "superside-chat handoff for %s: %s (context %s tokens, last request %s s ago)",
+            "superside-chat handoff for %s: size (context %s tokens)",
             conv_id,
-            reason,
             tokens,
-            f"{since:.0f}" if since is not None else "?",
             extra={"session_id": conv_id},
         )
         # defer_if_active=False: this runs at the start of THIS turn, which already holds its
         # own _active_turns slot, so the default deferral would always (wrongly) defer.
         await _drop_superside_chat_warm_client(
-            conv_id, defer_if_active=False, reason=f"handoff ({reason})"
+            conv_id, defer_if_active=False, reason="handoff (size)"
         )
-        return since if reason == "return" else None
+        return gap
 
     def _warm_client_serial(conv_id: str) -> str | None:
         """The number of *conv_id*'s live harness subprocess, or ``None`` when unknown."""
@@ -7232,14 +7198,7 @@ def create_runner_app(
         # Keep the warm client or hand off: checked every turn (a live chat keeps its history
         # cached); a drop clears the cache so the load below assembles.
         _idle_gap = (
-            await _superside_chat_handoff(
-                conv,
-                labels=_turn_labels,
-                harness=harness_name,
-                model=cast(str | None, msg_body.get("model_override")),
-            )
-            if _superside
-            else None
+            await _superside_chat_handoff(conv, labels=_turn_labels) if _superside else None
         )
         _history_started = time.monotonic()
         if conv in _session_histories and _history_process.get(
@@ -7678,7 +7637,6 @@ def create_runner_app(
         dispatch: TurnDispatch | None = None,
     ) -> Response:
         await _await_harness_prelaunch(conv_id)
-        _last_request_start[conv_id] = time.time()
         manager = cast(HarnessProcessManager, process_manager)
         harness_name = dispatch.harness if dispatch else cast(str | None, body.get("harness"))
         spawn_env = (
@@ -8105,9 +8063,6 @@ def create_runner_app(
                                 elif _evt_type == "response.output_item.done":
                                     _item = event.get("item")
                                     _it = _item.get("type") if isinstance(_item, dict) else None
-                                    if _it == "function_call_output":
-                                        # The next model request starts on a tool's result.
-                                        _last_request_start[conv_id] = time.time()
                                     if _it in ("function_call", "function_call_output") and any(
                                         h.get("type") == _it
                                         and h.get("call_id") == _item.get("call_id")

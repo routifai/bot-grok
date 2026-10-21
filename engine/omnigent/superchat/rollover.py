@@ -7,9 +7,8 @@ new session would list pass 2k tokens or the warm context reaches :func:`fold_at
 owner's Light model. It only writes the checkpoint: it never drops a warm client, and a turn
 never waits on it. The manual ``/compact`` (``runner/app.py``) runs the same function and then
 drops the warm client. A new session is assembled from the checkpoint and the record after its
-anchor (``_load_history_as_input``); a restart or a return from idle never summarizes. Whether a
-warm client is handed off before a turn (size, return, cache expiry, a Claude model switch) is
-decided in one place, :func:`handoff_reason`.
+anchor (``_load_history_as_input``); a restart or a return from idle never summarizes. A warm
+client is replaced only when it needs compacting (size), decided in :func:`handoff_reason`.
 """
 
 from __future__ import annotations
@@ -42,8 +41,8 @@ from omnigent.entities import CompactionData
 
 logger = logging.getLogger(__name__)
 
-#: Idle period before a superside-chat session refreshes on return. Lower it
-#: (e.g. a few seconds) for testing.
+#: Idle period after which the first message back carries a gap line ("away for N hours"); a
+#: return keeps the warm session. Lower it (e.g. a few seconds) for testing.
 OMNIGENT_ROLLOVER_IDLE_REFRESH_SECONDS_ENV = "OMNIGENT_ROLLOVER_IDLE_REFRESH_SECONDS"
 
 #: 12 hours.
@@ -51,7 +50,7 @@ DEFAULT_IDLE_REFRESH_SECONDS = 43_200
 
 
 def resolve_idle_refresh_seconds() -> int:
-    """Resolve the idle period before a superside-chat session refreshes on return.
+    """Resolve the idle period after which a superside-chat turn carries the gap line.
 
     Reads :data:`OMNIGENT_ROLLOVER_IDLE_REFRESH_SECONDS_ENV`, default
     :data:`DEFAULT_IDLE_REFRESH_SECONDS` (12 hours). A missing, non-integer,
@@ -111,47 +110,13 @@ def exceeds_hard_context_limit(
     return context_tokens >= int(window * HARD_CONTEXT_WINDOW_FRACTION)
 
 
-#: ``expiry_handoff``: ``1`` drops a warm client whose prompt cache has expired (off until the
-#: probe's chain arm passes on both harnesses; ADR 0031).
-OMNIGENT_EXPIRY_HANDOFF_ENV = "OMNIGENT_EXPIRY_HANDOFF"
-#: The prompt cache lifetime in seconds, overriding the one the cache switch implies (1 hour
-#: with ``OMNIGENT_PROMPT_CACHE_1H``, else 5 minutes). Lower it (e.g. 60) to see an expiry
-#: handoff without waiting an hour.
-OMNIGENT_PROMPT_CACHE_LIFETIME_SECONDS_ENV = "OMNIGENT_PROMPT_CACHE_LIFETIME_SECONDS"
-#: A request this close to the lifetime's end may already miss the cache.
-_CACHE_EXPIRY_MARGIN_SECONDS = 30
 #: What a new session costs at most, in tokens: system prompt and tools (4k + 9k), the working
 #: list, turn lines, the person's words and the kept tail at their budgets (ADR 0031).
 _ASSEMBLED_FIXED_TOKENS = 13_000 + 4_000 + 4_000 + 3_000
 
-HandoffReason = Literal["size", "expiry", "model switch", "return"]
+HandoffReason = Literal["size"]
 #: Sessions already warned that their window is too small for a size handoff to help.
 _small_window_warned: set[str] = set()
-
-
-def expiry_handoff() -> bool:
-    """The ``expiry_handoff`` flag (default off)."""
-    return os.environ.get(OMNIGENT_EXPIRY_HANDOFF_ENV, "").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-        "on",
-    )
-
-
-def resolve_cache_lifetime_seconds() -> int:
-    """The prompt cache lifetime both harnesses run with: the override, else 3600 s with the
-    1-hour cache on, else 300 s."""
-    from omnigent.harnesses.agent_env import prompt_cache_1h
-
-    raw = os.environ.get(OMNIGENT_PROMPT_CACHE_LIFETIME_SECONDS_ENV)
-    try:
-        value = int(raw) if raw is not None else 0
-    except ValueError:
-        value = 0
-    if value > 0:
-        return value
-    return 3_600 if prompt_cache_1h() else 300
 
 
 def assembled_estimate(labels: Mapping[str, str] | None) -> int:
@@ -163,59 +128,34 @@ def handoff_reason(
     labels: Mapping[str, str] | None,
     *,
     context_tokens: int | None,
-    since_request_start: float | None,
-    model_switch: bool = False,
     conversation_id: str | None = None,
 ) -> HandoffReason | None:
-    """Why a warm client should be dropped before this turn, or ``None`` to keep it.
+    """Whether a warm client should be dropped before this turn (``"size"``), or ``None``.
 
-    The one decision point (ADR 0031, "Handoff by size and on cache expiry"); the turn's own
-    history load then assembles. In order:
-
-    * ``size``: the warm context reached the handoff threshold T and is over twice what a new
-      session costs (else a small window would hand off every turn; it is logged once and the
-      hard limit applies).
-    * ``return``: the last model request started :func:`resolve_idle_refresh_seconds` ago.
-    * ``expiry`` (behind ``expiry_handoff``): it started longer ago than the cache lifetime
-      minus 30 s, so the next call rewrites the whole context, and that context is more than
-      twice what a new session costs.
-    * ``model switch``: a Claude model switch (the cache is per model) under the same 2x rule;
-      otherwise the switch keeps the warm client (``set_model``).
+    A warm session is replaced only when it needs compacting (ADR 0031, owner decision 4): its
+    context reached the handoff threshold T and is over twice what a new session costs (else a
+    small window would hand off every turn; that is logged once and the hard limit applies).
+    A return after a break, a cache expiry and a model switch keep the warm session. The turn's
+    own history load then assembles.
 
     :param context_tokens: The warm context the last turn reported, or ``None``.
-    :param since_request_start: Seconds since the start of the last model request on this
-        harness session (a person's turn, a wake, a scheduled run, a step in a turn), or
-        ``None`` when this runner has not seen one.
     """
-    if not is_superside_chat(labels):
+    if not is_superside_chat(labels) or context_tokens is None:
         return None
-    # A handoff pays only when the warm context is over twice what a new session costs: below
-    # that, a new session is about as large and every turn would hand off again.
-    heavy = context_tokens is not None and context_tokens > 2 * assembled_estimate(labels)
     threshold = resolve_rollover_threshold(labels)
-    if context_tokens is not None and context_tokens >= threshold:
-        if heavy:
-            return "size"
-        if conversation_id and conversation_id not in _small_window_warned:
-            _small_window_warned.add(conversation_id)
-            logger.warning(
-                "superside-chat %s: the handoff threshold (%d tokens) is below twice a new "
-                "session's size (%d), so a size handoff would not help; the hard limit applies",
-                conversation_id,
-                threshold,
-                2 * assembled_estimate(labels),
-            )
-    if since_request_start is not None and since_request_start >= resolve_idle_refresh_seconds():
-        return "return"
-    if (
-        heavy
-        and expiry_handoff()
-        and since_request_start is not None
-        and since_request_start > resolve_cache_lifetime_seconds() - _CACHE_EXPIRY_MARGIN_SECONDS
-    ):
-        return "expiry"
-    if heavy and model_switch:
-        return "model switch"
+    if context_tokens < threshold:
+        return None
+    if context_tokens > 2 * assembled_estimate(labels):
+        return "size"
+    if conversation_id and conversation_id not in _small_window_warned:
+        _small_window_warned.add(conversation_id)
+        logger.warning(
+            "superside-chat %s: the handoff threshold (%d tokens) is below twice a new "
+            "session's size (%d), so a size handoff would not help; the hard limit applies",
+            conversation_id,
+            threshold,
+            2 * assembled_estimate(labels),
+        )
     return None
 
 

@@ -852,7 +852,7 @@ def _last_user_text(body: dict[str, Any]) -> str:
 
 
 @pytest.mark.asyncio
-async def test_return_after_idle_makes_no_summarizer_call_and_names_the_gap(
+async def test_return_after_idle_keeps_the_warm_session_and_names_the_gap(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("OMNIGENT_ROLLOVER_IDLE_REFRESH_SECONDS", _IDLE_SECONDS)
@@ -871,7 +871,7 @@ async def test_return_after_idle_makes_no_summarizer_call_and_names_the_gap(
 
     assert llm_client.call_count == 0
     assert server_client.posted_compactions == []
-    assert pm.released == [conv_id]  # the warm client was dropped: a cold start
+    assert pm.released == []  # a return keeps the warm session (size is the only handoff)
     assert _GAP_LINE in text
     # The line is not persisted: it rides this turn's message only.
     assert _GAP_LINE not in str(server_client._items)
@@ -894,7 +894,7 @@ async def test_a_turn_that_is_not_a_return_has_no_gap_line() -> None:
 async def test_return_after_idle_with_more_than_the_tail_budget_never_summarizes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A return bridges (ADR 0031): the turn assembles, no summary is written or waited on."""
+    """A return never summarizes (ADR 0031): no summary is written or waited on."""
     monkeypatch.setenv("OMNIGENT_ROLLOVER_IDLE_REFRESH_SECONDS", _IDLE_SECONDS)
     llm_client = _GatedLLMClient(asyncio.Event(), text="STATE")
     llm_client._gate.set()
@@ -1068,7 +1068,7 @@ def _failed_frames() -> list[str]:
 
 
 @pytest.mark.asyncio
-async def test_a_return_from_idle_and_the_hard_limit_drop_the_remembered_profile(
+async def test_the_hard_limit_drops_the_remembered_profile_and_a_return_keeps_it(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("OMNIGENT_ROLLOVER_IDLE_REFRESH_SECONDS", _IDLE_SECONDS)
@@ -1084,7 +1084,8 @@ async def test_a_return_from_idle_and_the_hard_limit_drop_the_remembered_profile
 
         await asyncio.sleep(_PAST_IDLE)
         back = await _turn(app, client, harness_client, conv_id)
-        assert _PROFILE in back and _GAP_LINE in back
+        # A return keeps the warm session, so the profile it already has is one line.
+        assert _PROFILE_LINE in back and _GAP_LINE in back
         assert _PROFILE_LINE in await _turn(app, client, harness_client, conv_id)
 
         # Past the hard limit the turn cold-starts from the record.

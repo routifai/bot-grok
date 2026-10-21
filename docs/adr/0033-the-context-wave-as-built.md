@@ -37,7 +37,7 @@ The aim was a new session that feels continuous and costs what it needs: state c
 | 3 | Deleted: the catch-up at runner start, the blocking cold rollover, the blocking idle-return summary, the full replay, the `OMNIGENT_CONTEXT_ASSEMBLE` switch (−404 lines) | A restart bridges; it never summarizes | Runner logs show no catch-up and no checkpoint at start |
 | 4 | The fold: a background summary on the owner's Light model, over the session's own provider connection, when the turn lines pass 2k tokens or the context nears the handoff. Input: the previous checkpoint, the person's words, turn lines, one line per failed tool call, final answers clipped to 600 characters; never tool results, HTML or notices. Stored only on a clean stop; a failure keeps the old checkpoint; never blocks a turn or drops the warm session | The old summarizer ran on the session's own model (Opus), in line, over the noisy record | Engine log: folds on `claude-haiku-5-5`, input 1.9–8.9k characters, "stop stop", anchor moved; the next block carries the new working list |
 | 4 | The runner's memory sync writes every checkpoint's journal lines once; recall's backfill follows the anchor and keeps each turn's Project; the per-turn recall hint excludes by the view start | Found in review: lost journal lines, turns indexed without their Project, "earlier" hits that were still in view | Fixed before deploy |
-| 5 | One handoff decision before each turn: size at T = min(120k, 0.6 × window), only when the context is also more than twice a fresh session; cache expiry on the request-start clock (behind `OMNIGENT_EXPIRY_HANDOFF`, off); a Claude model switch above the same 2× rule; the 12-hour return. A handoff drops the warm session so the next turn assembles. Deleted: the 200k cap and the newest-item idle clock | Size and cache expiry are the only reasons a rewrite pays; the 2× rule keeps a rewrite from costing as much as what it replaces | Size handoff at a forced 20k: runner log "handoff … size", next call assembles, answers 5/5. The 2× guard was added after this test showed endless handoffs when T is below a fresh session's size (a small-window model) |
+| 5 | One handoff decision before each turn, size only: T = min(120k, 0.6 × window), and only when the context is also more than twice a fresh session. A handoff drops the warm session so the next turn assembles; a return, an expired cache or a model switch keeps it (owner, 2026-10-20). Deleted: the 200k cap and the 12-hour return drop; the expiry and model-switch handoffs, built first, were removed by that decision | A warm session is replaced only when it needs compacting; the 2× rule keeps a rewrite from costing as much as what it replaces | Size handoff at a forced 20k: runner log "handoff … size", next call assembles, answers 5/5. The 2× guard was added after this test showed endless handoffs when T is below a fresh session's size (a small-window model) |
 | 6 | The prompt says what is in front of the model ("What is in front of you": the record at a session start, the current lines, the way back); the pointers to STATE.md and the journal for current state are gone | The working list now arrives in the block; the pointers sent the model to read files it already had | Checked in the final run (below) |
 
 ## The hint-free memory test
@@ -48,14 +48,14 @@ A scripted conversation (`engine/scripts/probe_cases/offsite.json`) plants facts
 |---|---|---|
 | No handoff | 7 of 7 right; one chose exact days inside the right week | 7 of 7 |
 | Five handoffs, 2k kept tail, folds every few turns | 7 of 7 | 7 of 7 in substance; asked which venue was "second" when the page and its table disagreed |
-| 75 s pause (expiry test) | 7 of 7 | 7 of 7 |
+| 75 s pause (the expiry handoff, since removed) | 7 of 7 | 7 of 7 |
 
 No run gave a stale value as current, and no run invented the city in the trap. The emails asked everyone privately for accessibility and dietary needs instead of naming Priya or the vegans.
 
 ## Owner decisions this wave followed
 
 - The fold runs on **Light**, in the engine; the session's model is only the fallback.
-- Handoff at **120k**, capped at 0.6 of the window. The cache-expiry handoff is the target, behind its flag.
+- Handoff at **120k**, capped at 0.6 of the window, by size only: a warm session is replaced only when it needs compacting (2026-10-20; this replaced "the cache-expiry handoff is the target, behind its flag").
 - Budgets: recent turns 8k; the person's words 3k; turn lines 2k.
 - The summarizer's journal lines are kept ([0017](0017-the-working-list-is-tagged-and-the-journal-lives-in-the-host.md)).
 - The 1-hour cache came first.
@@ -67,10 +67,11 @@ No run gave a stale value as current, and no run invented the city in the trap. 
 - Privacy is enforced by routing: Light runs over the session's own provider connection. A server-wide `llm:` block for background work, when an operator sets one, wins.
 - The size handoff needs the context to be over twice a fresh session as well as over T.
 - The "assembled estimate" is the budget sum (24k plus the kept tail), not a count.
+- No expiry, return or model-switch handoff (owner decision); the 12-hour return only adds the gap line.
 
 ## Known and deferred
 
-- **Expiry handoff, firing branch.** The skip branch is proven live (47–48k after the pause, under twice a fresh session, kept warm). The firing branch needs a context above about 64k after a break and has not run live; it uses the same drop-and-assemble path the size handoff proved. Turn `OMNIGENT_EXPIRY_HANDOFF` on after one live run past 64k.
+- ~~Expiry handoff, firing branch.~~ Removed by owner decision (2026-10-20): a warm session is replaced only when it needs compacting.
 - A scheduled run is folded into the person's turn before it; `/compact` folds at most 16k characters; the hard limit (95%) is a second drop point beside the handoff decision.
 - pi jobs building a new deck still run a few small shell reads of its CSS (cut to 120–200 characters).
 - The Conversation prompt is at 14,965 of the 15,000 characters its bundle test allows.
@@ -81,4 +82,4 @@ No run gave a stale value as current, and no run invented the city in the trap. 
 
 - `handoff_probe.py`: `run` (replay or `--script`, `--label`, arms), `cleanup` (keeps traces and runner logs, removes the throwaway host and its home), `report` (reads traces: cold starts, cache, block shape, notices, view start, scripted pass/fail).
 - `scenarios.py --studio <deck id>`: the studio check on a copy of a deck.
-- Deploy knobs for live tests, unset by default: `FOLD_TURN_LINES_TOKENS`, `EXPIRY_HANDOFF`, `PROMPT_CACHE_LIFETIME_SECONDS`, and the session labels `omnigent.context.rollover_keep_tokens` and `omnigent.context.rollover_at_tokens`.
+- Deploy knobs for live tests, unset by default: `FOLD_TURN_LINES_TOKENS`, and the session labels `omnigent.context.rollover_keep_tokens` and `omnigent.context.rollover_at_tokens`.
