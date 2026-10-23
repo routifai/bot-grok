@@ -10,6 +10,9 @@ const LINE_ALPHA = 0.05;
 const LINE_GAP = 30;
 /** A peak eases toward its height by this share per frame (a new one rises from the ground). */
 const EASE = 0.09;
+/** The drift's frame interval (about 20 fps), and how long after the pointer stops it ends. */
+const DRIFT_FRAME_MS = 50;
+const STILL_MS = 2_000;
 
 /** `#rrggbb` / `rgb()` as its three channels (any CSS colour, via the canvas's own parser). */
 function channels(ctx: CanvasRenderingContext2D, color: string, fallback: string): string {
@@ -27,9 +30,11 @@ function channels(ctx: CanvasRenderingContext2D, color: string, fallback: string
  * The ground's faint contour lines, behind everything. Where the container holds elements
  * marked `data-peak` (Home's topic cards), the lines lift into a peak under each one, higher for
  * a larger `data-peak-heat` (0 to 1) and highest, in the tint, under the one hovered or focused.
- * New peaks rise from the ground and the lines drift slowly while there are peaks; with reduced
- * motion they stand still and peaks appear at their height. Without peaks it draws once and
- * stays idle.
+ * New peaks rise from the ground at full frame rate; afterwards the lines drift at about 20 fps
+ * while the pointer moves over the container, and the loop stops once the peaks have settled and
+ * the pointer is still (or the page is hidden). Colours and the peaks' places are read only when
+ * they can change (theme, resize, scroll, cards coming and going), never per frame. With reduced
+ * motion the lines stand still and peaks appear at their height.
  */
 export function ContourGround() {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -44,10 +49,34 @@ export function ContourGround() {
     let width = 0;
     let height = 0;
     let frame = 0;
+    let lastDrawn = 0;
+    let settling = true;
+    let peakCount = 0;
+    let movedAt = Number.NEGATIVE_INFINITY;
     let hot: string | null = null;
     let pointer: { x: number; y: number } | null = null;
-    let peakCount = 0;
+    let base = { left: 0, top: 0 };
+    let ink = "29,29,31";
+    let tint = "0,113,227";
+    let marks: { key: string; heat: number; rect: DOMRect }[] = [];
 
+    const readColours = () => {
+      ink = channels(ctx, getComputedStyle(canvas).color, "#1d1d1f");
+      tint = channels(
+        ctx,
+        getComputedStyle(document.documentElement).getPropertyValue("--tint").trim(),
+        "#0071e3",
+      );
+    };
+    const measure = () => {
+      const rect = canvas.getBoundingClientRect();
+      base = { left: rect.left, top: rect.top };
+      marks = [...host.querySelectorAll<HTMLElement>("[data-peak]")].map((el) => ({
+        key: el.dataset.peak ?? "",
+        heat: Number(el.dataset.peakHeat ?? 0.5) || 0.5,
+        rect: el.getBoundingClientRect(),
+      }));
+    };
     const size = () => {
       const rect = canvas.getBoundingClientRect();
       const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -59,14 +88,10 @@ export function ContourGround() {
     };
 
     const peaks = (): { list: Peak[]; settling: boolean } => {
-      const base = canvas.getBoundingClientRect();
       const still = reduce.matches;
       let settling = false;
       const list: Peak[] = [];
-      for (const el of host.querySelectorAll<HTMLElement>("[data-peak]")) {
-        const key = el.dataset.peak ?? "";
-        const r = el.getBoundingClientRect();
-        const heat = Number(el.dataset.peakHeat ?? 0.5) || 0.5;
+      for (const { key, heat, rect: r } of marks) {
         const target = hot === key ? 1.9 : heat;
         const current = heights.get(key) ?? 0;
         const next = still ? target : current + (target - current) * EASE;
@@ -92,15 +117,9 @@ export function ContourGround() {
       return { list, settling };
     };
 
-    /** Draws one frame; true while something still moves. */
-    const draw = (now: number): boolean => {
-      if (!width || !height) return false;
-      const ink = channels(ctx, getComputedStyle(canvas).color, "#1d1d1f");
-      const tint = channels(
-        ctx,
-        getComputedStyle(document.documentElement).getPropertyValue("--tint").trim(),
-        "#0071e3",
-      );
+    /** Draws one frame; whether the peaks are still easing toward their heights. */
+    const draw = (now: number): { peaks: number; settling: boolean } => {
+      if (!width || !height) return { peaks: 0, settling: false };
       ctx.clearRect(0, 0, width, height);
       const { list, settling } = peaks();
       const drift = reduce.matches || !list.length ? 0 : now * 0.00025;
@@ -151,15 +170,30 @@ export function ContourGround() {
           ctx.stroke();
         }
       }
-      return list.length > 0 && (!reduce.matches || settling);
+      return { peaks: list.length, settling };
     };
 
+    // Peaks rise at full frame rate; the drift is drawn at about 20 fps while the pointer moves.
     const tick = (now: number) => {
       frame = 0;
-      if (draw(now)) frame = requestAnimationFrame(tick);
+      if (document.visibilityState === "hidden") return;
+      if (settling || now - lastDrawn >= DRIFT_FRAME_MS) {
+        lastDrawn = now;
+        const drawn = draw(now);
+        settling = drawn.settling;
+        peakCount = drawn.peaks;
+      }
+      const drifting = peakCount > 0 && !reduce.matches && now - movedAt < STILL_MS;
+      if (settling || drifting) frame = requestAnimationFrame(tick);
     };
+    /** Draws on the next frame, and keeps going while anything moves. */
     const kick = () => {
+      settling = true;
       if (!frame) frame = requestAnimationFrame(tick);
+    };
+    const remeasure = () => {
+      measure();
+      kick();
     };
     const peakOf = (target: EventTarget | null) =>
       target instanceof Element
@@ -167,7 +201,11 @@ export function ContourGround() {
         : null;
     const onMove = (event: PointerEvent) => {
       pointer = { x: event.clientX, y: event.clientY };
-      hot = peakOf(event.target);
+      movedAt = performance.now();
+      const next = peakOf(event.target);
+      // A hovered card lifts (CSS), so its place is read again once it has.
+      if (next !== hot) window.setTimeout(measure, 320);
+      hot = next;
       kick();
     };
     const onLeave = () => {
@@ -179,34 +217,41 @@ export function ContourGround() {
       hot = peakOf(event.target);
       kick();
     };
+    const onTheme = () => {
+      readColours();
+      kick();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") kick();
+    };
 
     size();
+    readColours();
+    measure();
     kick();
     const resized = new ResizeObserver(() => {
       size();
-      kick();
+      remeasure();
     });
     resized.observe(canvas);
-    // Cards come and go (topics load, a range toggle): redraw only when the peaks changed.
-    const changed = new MutationObserver(() => {
-      const count = host.querySelectorAll("[data-peak]").length;
-      if (count === peakCount) return;
-      peakCount = count;
-      kick();
-    });
+    // Cards come and go (topics load, a range toggle) and settle after their entrance.
+    const changed = new MutationObserver(remeasure);
     changed.observe(host, { childList: true, subtree: true });
-    const theme = new MutationObserver(kick);
+    const theme = new MutationObserver(onTheme);
     theme.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ["class", "data-theme"],
+      attributeFilter: ["class", "data-theme", "style"],
     });
     const scheme = window.matchMedia("(prefers-color-scheme: dark)");
-    scheme.addEventListener("change", kick);
+    scheme.addEventListener("change", onTheme);
     host.addEventListener("pointermove", onMove);
     host.addEventListener("pointerleave", onLeave);
     host.addEventListener("focusin", onFocus);
     host.addEventListener("focusout", onLeave);
-    host.addEventListener("scroll", kick, { passive: true });
+    host.addEventListener("scroll", remeasure, { passive: true });
+    host.addEventListener("animationend", remeasure);
+    host.addEventListener("transitionend", remeasure);
+    document.addEventListener("visibilitychange", onVisibility);
     reduce.addEventListener("change", kick);
     return () => {
       cancelAnimationFrame(frame);
@@ -217,9 +262,12 @@ export function ContourGround() {
       host.removeEventListener("pointerleave", onLeave);
       host.removeEventListener("focusin", onFocus);
       host.removeEventListener("focusout", onLeave);
-      host.removeEventListener("scroll", kick);
+      host.removeEventListener("scroll", remeasure);
+      host.removeEventListener("animationend", remeasure);
+      host.removeEventListener("transitionend", remeasure);
+      document.removeEventListener("visibilitychange", onVisibility);
       reduce.removeEventListener("change", kick);
-      scheme.removeEventListener("change", kick);
+      scheme.removeEventListener("change", onTheme);
     };
   }, []);
   return (
