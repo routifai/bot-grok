@@ -277,7 +277,7 @@ def common_terms(
     """The watched terms that are common for this person, each with why (normalized keys).
 
     - ``seed:org``: the person's own organisation or email domain (*own*), or its leading words
-      (``rbc`` for "RBC Capital Markets").
+      (``northwind`` for "Northwind Capital Markets").
     - ``seed:shared``: watched by :data:`SHARED_TOPICS` or more of the open topics.
     - ``stoplist``: shorter than :data:`MIN_TERM_CHARS`, or a generic work word.
     - ``"23% of 140 items"``: in at least :data:`COMMON_SHARE` of the items seen while it was

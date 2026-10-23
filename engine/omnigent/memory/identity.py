@@ -11,8 +11,8 @@ Derivation is deliberately conservative, code only:
   capitalised words (at most four) right after the phrase; anything else is ignored.
 - **Domains** come from the person's own addresses: their owner id when it is an address (header
   and OIDC modes) and an address a fact claim gives as "the user's (work) email". Consumer mail
-  providers are skipped. The domain's name label counts as an organisation word too (``rbc``
-  from ``rbc.com``).
+  providers are skipped. The domain's name label counts as an organisation word too (``northwind``
+  from ``northwind.com``).
 """
 
 from __future__ import annotations
@@ -103,7 +103,7 @@ def org_domains(addresses: Iterable[str]) -> list[str]:
 
 
 def domain_label(domain: str) -> str:
-    """The name part of *domain*: ``rbc`` from ``rbc.com``, ``acme`` from ``mail.acme.co.uk``."""
+    """The name part of *domain*: ``northwind`` from ``northwind.com``, ``acme`` from ``mail.acme.co.uk``."""
     labels = domain.casefold().split(".")
     if len(labels) >= 3 and len(labels[-1]) == 2 and labels[-2] in _SECOND_LEVEL:
         return labels[-3]
