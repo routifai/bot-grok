@@ -3,6 +3,7 @@ export * from "./approvals.js";
 export * from "./apps.js";
 export * from "./artifacts.js";
 export * from "./base64.js";
+export * from "./brief.js";
 export * from "./cards.js";
 export * from "./chat-ownership.js";
 export * from "./client.js";
