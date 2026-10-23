@@ -105,6 +105,35 @@ export const ReplyCardData = {
       .min(1)
       .max(12),
   }),
+  /** A topic the person picked up (ADR 0035): the engine adds it to the Conversation, never the
+   * Muse. Its starters fill the composer; they are never sent on their own. */
+  topic: z.object({
+    key: Text,
+    title: Text,
+    left_off: Text,
+    covered: z
+      .array(
+        z.object({
+          date: Text,
+          kind: z.enum(["Decided", "Made", "Found", "Asked"]),
+          text: Text,
+          file: Text.optional(),
+        }),
+      )
+      .max(6),
+    open: z.array(z.object({ kind: z.enum(["Open", "Promised"]), text: Text })).max(4),
+    starters: z.array(Text).max(3),
+    sources: z
+      .object({
+        chats: z.number().optional(),
+        files: z.number().optional(),
+        emails: z.number().optional(),
+      })
+      .optional(),
+    since: Text.nullable().optional(),
+    since_at: z.number().nullable().optional(),
+    last_touched_at: z.number(),
+  }),
   progress: z.object({
     label: Text,
     value: z.number().min(0).max(100),

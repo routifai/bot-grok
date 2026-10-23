@@ -13,5 +13,6 @@ export * from "./live.js";
 export * from "./memory.js";
 export * from "./projects.js";
 export * from "./sheets.js";
+export * from "./topics.js";
 export * from "./transcript.js";
 export * from "./vault.js";

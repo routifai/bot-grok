@@ -20,5 +20,6 @@ export * from "./rpc/knowledge.js";
 export * from "./rpc/live.js";
 export * from "./rpc/models.js";
 export * from "./rpc/sheets.js";
+export * from "./rpc/topics.js";
 export * from "./rpc.js";
 export * from "./search.js";

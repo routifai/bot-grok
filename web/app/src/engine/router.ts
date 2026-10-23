@@ -17,6 +17,7 @@ import { engineModelsRouter } from "./models";
 import { museRouter } from "./muse";
 import { searchRouter } from "./search";
 import { sheetsRouter } from "./sheets";
+import { topicsRouter } from "./topics";
 import { vaultRouter } from "./vault";
 
 /** Every procedure the app calls, answered by the engine's REST API from this page. */
@@ -39,5 +40,6 @@ export const router = os.router({
   ...museRouter,
   ...searchRouter,
   ...sheetsRouter,
+  ...topicsRouter,
   ...vaultRouter,
 });

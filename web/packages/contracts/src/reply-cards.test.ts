@@ -13,6 +13,15 @@ const valid = {
   secure_entry: { requestId: "req-1", name: "Bank login", site: "bank.example" },
   passages: { items: [{ artifactId: "a".repeat(32), name: "r.pdf", page: 2, hasThumbnail: true }] },
   progress: { label: "Import", value: 40, status: "running" },
+  topic: {
+    key: "polaris",
+    title: "Polaris rollout",
+    left_off: "Deck v3 is drafted.",
+    covered: [{ date: "2026-10-21", kind: "Made", text: "Steering deck v3" }],
+    open: [{ kind: "Open", text: "Budget sign-off" }],
+    starters: ["Draft the note to the steering group"],
+    last_touched_at: 1792000000,
+  },
 } as const;
 
 describe("passages card", () => {
