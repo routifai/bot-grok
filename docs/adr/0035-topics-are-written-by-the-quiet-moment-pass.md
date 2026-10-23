@@ -58,7 +58,7 @@ Before matching, code drops noise: bulk and no-reply senders, newsletters (list 
 
 **5. Decide (code rules).** Nothing reaches the person unless `relevance ≥ 2` and `change ≠ none`.
 
-- **Message now** when the change answers an open item, blocks one, or brings a deadline inside 24 hours, and the urgency is `now`. Quiet hours hold it until they end.
+- **Message now** when the change answers an open item, blocks one, or brings a deadline inside 24 hours, and the urgency is `now`, and mark the topic (below) so its "New" line shows whether or not the message is read. Quiet hours hold the message until they end.
 - **Mark the topic** in every other kept case: the topic gets its "New" line (the green tag on Home and in the pick-up card) and the item goes into the next daily brief. No message.
 - **Limits:** one message per topic per 3 hours; per day at most 1 (low), 3 (balanced) or 6 (eager) by the proactivity level; the same thread never surfaces twice.
 

@@ -13,7 +13,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from datetime import time as dtime
 from typing import TYPE_CHECKING, Any
@@ -127,6 +128,62 @@ def report_run_outcome(conversation_store: Any, task: ScheduledTask, failure: st
     return bool(note)
 
 
+@dataclass(frozen=True)
+class EngineRunOutcome:
+    """How an engine run ended, recorded as the scheduled run's row.
+
+    :param status: ``succeeded``, ``skipped`` or ``failed``.
+    :param code: Short reason for a skipped or failed run, e.g. ``topics_unavailable``.
+    :param detail: Plain detail kept as the run's ``error`` text, if any.
+    """
+
+    status: str = "succeeded"
+    code: str | None = None
+    detail: str | None = None
+
+
+#: ``task kind -> run(task)``: kinds whose fire runs engine code instead of starting a Helper.
+_ENGINE_RUNS: dict[str, Callable[[ScheduledTask], Awaitable[EngineRunOutcome]]] = {}
+
+
+def register_engine_run(
+    kind: str, run: Callable[[ScheduledTask], Awaitable[EngineRunOutcome]]
+) -> None:
+    """Make a parent-bound task of ``kind`` run ``run(task)`` in the engine, past the same gates.
+
+    Proactivity, quiet hours and a registered deferral apply as for a Helper fire. The run starts
+    no Helper and wakes no host, so it neither waits for nor holds the owner's in-flight slot; it
+    is recorded as one finished run, and a failure is not retried (the next occurrence runs).
+    """
+    _ENGINE_RUNS[kind] = run
+
+
+async def _run_engine(
+    deps: FireDeps,
+    task: ScheduledTask,
+    run: Callable[[ScheduledTask], Awaitable[EngineRunOutcome]],
+    scheduled_at: int,
+    *,
+    attempt: int,
+) -> None:
+    """Run an engine-run kind's code and record how it ended."""
+    try:
+        outcome = await run(task)
+    except Exception as exc:
+        _logger.exception("scheduled fire: engine run of task %s failed", task.id)
+        outcome = EngineRunOutcome("failed", "engine_run_failed", type(exc).__name__)
+    await fire._record_run(
+        deps,
+        task,
+        None,
+        scheduled_at,
+        status=outcome.status,
+        error=outcome.detail,
+        error_code=outcome.code,
+        attempt=attempt,
+    )
+
+
 def _quiet_window_end(prefs: OwnerPreferences, now: float) -> float | None:
     """Epoch seconds the owner's quiet window ends, or ``None`` when ``now`` is outside it.
 
@@ -222,6 +279,8 @@ async def _run_parent_bound_fire(
     * inside the owner's quiet hours -> ``quiet_hours_deferred``; one re-fire is
       armed for the end of the window.
     * a registered per-kind hook asks to wait -> ``task_deferred``; one re-fire is armed.
+    * a kind registered with :func:`register_engine_run` then runs its engine code (no Helper,
+      no in-flight check) and records the outcome it returns.
     * another parent-bound run of the owner in flight -> ``owner_busy_deferred``
       (re-fire in 5 minutes, up to 3 times), then ``owner_busy`` (skipped). Queued kinds
       (:data:`_QUEUED_KINDS`) are never dropped: they re-fire until fewer than
@@ -292,6 +351,11 @@ async def _run_parent_bound_fire(
             deferrals=deferrals,
         )
         await skip("task_deferred", "the task asked to wait")
+        return
+
+    engine_run = _ENGINE_RUNS.get(task.kind or "")
+    if engine_run is not None:
+        await _run_engine(deps, task, engine_run, scheduled_at, attempt=attempt)
         return
 
     owner_key = (task.workspace_id, owner)
@@ -814,6 +878,42 @@ async def start_adhoc_helper(
     event = SessionEventInput(type="message", data={"role": "user", "content": content})
     await fire._make_parent_runner_dispatch(deps, event=event)(conv, task)
     return conv.id
+
+
+async def wake_conversation(
+    deps: FireDeps,
+    task: ScheduledTask,
+    content: list[dict[str, Any]],
+    *,
+    context: dict[str, Any] | None = None,
+) -> None:
+    """Post a runtime notice into the task's parent Conversation, which starts its turn.
+
+    The same path a scheduled Helper's first message takes, aimed at the parent itself: wake its
+    host, then send the message to its runner (a turn starts, or the running one reads it). For an
+    engine run (:func:`register_engine_run`) with something worth saying now; the assistant writes
+    the words, the notice is data.
+
+    :param deps: The server dependencies the fire path uses.
+    :param task: The parent-bound task the notice comes from.
+    :param content: The notice as Responses content blocks.
+    :param context: Stored with the message for the engine's own readers
+        (``ON_MESSAGE_CONTEXT``), e.g. ``{"proactive": {"kind": "topic_watch"}}``.
+    :raises RuntimeError: When the parent is gone or its host could not be brought online.
+    """
+    assert task.parent_session_id is not None
+    parent = await asyncio.to_thread(
+        deps.conversation_store.get_conversation, task.parent_session_id
+    )
+    if parent is None or parent.agent_id is None:
+        raise RuntimeError("parent session no longer exists")
+    parent = await _wake_parent_runner(deps, parent)
+    event = SessionEventInput(
+        type="message",
+        data={"role": "user", "is_system_notice": True, "content": content},
+        context=context,
+    )
+    await _make_parent_runner_dispatch(deps, event=event)(parent, task)
 
 
 # Imported last: ``fire`` imports this module for its names, so it must see them defined first.

@@ -2917,3 +2917,109 @@ class SqlVaultAudit(OmnigentBase):
         ),
         Index("ix_vault_audit_secret", "workspace_id", "secret_id", "at"),
     )
+
+
+class SqlTopicWatchCursor(OmnigentBase):
+    """
+    SQLAlchemy model for the ``topic_watch_cursors`` table: where topic watch (ADR 0035) last
+    read each source for a person, so a run reads only what changed since.
+
+    :param owner: Owner identity (``"local"`` in single-user mode).
+    :param source: The source, e.g. ``files``, ``mail``, ``calendar``, ``web``.
+    :param cursor: The source's own opaque position, e.g. epoch seconds as text.
+    :param updated_at: Epoch seconds the cursor last moved.
+    """
+
+    __tablename__ = "topic_watch_cursors"
+
+    workspace_id: Mapped[int] = mapped_column(
+        BigInteger,
+        primary_key=True,
+        nullable=False,
+        server_default="0",
+        default=current_workspace_id,
+    )
+    owner: Mapped[str] = mapped_column(String(128), primary_key=True)
+    source: Mapped[str] = mapped_column(String(32), primary_key=True)
+    cursor: Mapped[str] = mapped_column(String(512), nullable=False)
+    updated_at: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class SqlTopicWatchSeen(OmnigentBase):
+    """
+    SQLAlchemy model for the ``topic_watch_seen`` table: every item topic watch looked at for a
+    person and what became of it. It is the seen-set (an item is judged once) and the ledger the
+    limits are counted from (one message per topic per 3 hours, a daily cap, a thread once).
+
+    :param owner: Owner identity (``"local"`` in single-user mode).
+    :param item_key: ``"<source>:<id>"`` of the item.
+    :param source: The source it came from.
+    :param thread_ref: What "the same thread" is for the limits: ``"<source>:<thread>"``, or
+        the item key.
+    :param topic_key: The topic it matched, if any.
+    :param outcome: ``noise``, ``unmatched``, ``dropped``, ``invalid``, ``marked``, ``held`` or
+        ``messaged``.
+    :param line: The judge's one-line why for a kept item (what the topic's "New" line and the
+        daily brief carry), else ``None``.
+    :param payload: JSON of what a held item needs to be said later, else ``None``.
+    :param at: Epoch seconds the outcome was decided.
+    """
+
+    __tablename__ = "topic_watch_seen"
+    __table_args__ = (Index("ix_topic_watch_seen_owner_at", "workspace_id", "owner", "at"),)
+
+    workspace_id: Mapped[int] = mapped_column(
+        BigInteger,
+        primary_key=True,
+        nullable=False,
+        server_default="0",
+        default=current_workspace_id,
+    )
+    owner: Mapped[str] = mapped_column(String(128), primary_key=True)
+    item_key: Mapped[str] = mapped_column(String(255), primary_key=True)
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+    thread_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    topic_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    outcome: Mapped[str] = mapped_column(String(16), nullable=False)
+    line: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    payload: Mapped[str | None] = mapped_column(Text, nullable=True)
+    at: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class SqlTopicWatchRun(OmnigentBase):
+    """
+    SQLAlchemy model for the ``topic_watch_runs`` table: one row per topic watch run, so a quiet
+    day can be told apart from a broken watch (ADR 0035, "Every run is accountable").
+
+    :param id: Run id (bare 32-char hex).
+    :param owner: Owner identity (``"local"`` in single-user mode).
+    :param scheduled_task_id: The hidden ``topic_watch`` task that fired it.
+    :param status: ``succeeded``, ``skipped`` or ``failed``.
+    :param reason: Why it was skipped or failed (e.g. ``topics_unavailable``), else ``None``.
+    :param counts: JSON object of counts per stage, e.g. ``{"collected": 4, "matched": 1}``.
+    :param detail: JSON object: each source's status and each kept item with its reason.
+    :param started_at: Epoch seconds the run started.
+    :param finished_at: Epoch seconds the run ended.
+    """
+
+    __tablename__ = "topic_watch_runs"
+    __table_args__ = (
+        Index("ix_topic_watch_runs_owner_started", "workspace_id", "owner", "started_at"),
+    )
+
+    workspace_id: Mapped[int] = mapped_column(
+        BigInteger,
+        primary_key=True,
+        nullable=False,
+        server_default="0",
+        default=current_workspace_id,
+    )
+    id: Mapped[str] = mapped_column(Uuid16, primary_key=True)
+    owner: Mapped[str] = mapped_column(String(128), nullable=False)
+    scheduled_task_id: Mapped[str | None] = mapped_column(Uuid16, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    counts: Mapped[str] = mapped_column(Text, nullable=False)
+    detail: Mapped[str] = mapped_column(Text, nullable=False)
+    started_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    finished_at: Mapped[int] = mapped_column(Integer, nullable=False)
