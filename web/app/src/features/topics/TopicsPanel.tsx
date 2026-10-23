@@ -1,15 +1,16 @@
+import { plural } from "@lingui/core/macro";
 import { useLingui } from "@lingui/react/macro";
 import type { Topic } from "@superchat/contracts";
 import { cn } from "@superchat/ui-web";
 import { ArrowRight, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { momentsByDay } from "./topicTime";
+import { topicsByDay } from "./topicTime";
 import { useTopicWords } from "./useTopics";
 
 /**
- * The Topics panel the dock's lightbulb opens: every topic's moments, newest first, grouped by
- * day, so one topic can show on several days. A row opens to its last covered lines and first
- * open item, with "Pick up in chat".
+ * The Topics panel the dock's lightbulb opens: days newest first, one row per topic touched that
+ * day, so one topic can show on several days. A row shows its latest moment and opens to all of
+ * that day's moments, its last covered lines and first open item, with "Pick up in chat".
  */
 export function TopicsPanel({
   open,
@@ -25,7 +26,7 @@ export function TopicsPanel({
   const { t } = useLingui();
   const words = useTopicWords();
   const now = useMemo(() => new Date(), [topics, open]);
-  const days = useMemo(() => momentsByDay(topics ?? [], now), [topics, now]);
+  const days = useMemo(() => topicsByDay(topics ?? [], now), [topics, now]);
   const [expanded, setExpanded] = useState<string | null>(null);
   useEffect(() => {
     if (!open) return;
@@ -42,7 +43,7 @@ export function TopicsPanel({
       aria-hidden={!open}
       inert={!open || undefined}
       className={cn(
-        "sc-glass absolute inset-x-4 top-3 bottom-[88px] z-40 flex flex-col rounded-[22px] shadow-2xl transition-[transform,opacity] duration-300 ease-[cubic-bezier(.2,.8,.2,1)] md:inset-x-auto md:start-[116px] md:bottom-3 md:w-[360px] md:max-w-[calc(100%-132px)]",
+        "sc-glass absolute inset-x-4 top-[76px] bottom-[88px] z-40 flex flex-col rounded-[22px] shadow-2xl transition-[transform,opacity] duration-300 ease-[cubic-bezier(.2,.8,.2,1)] md:inset-x-auto md:start-[116px] md:bottom-3 md:w-[360px] md:max-w-[calc(100%-132px)]",
         open
           ? "opacity-100"
           : "pointer-events-none -translate-x-4 opacity-0 motion-reduce:translate-x-0",
@@ -71,12 +72,13 @@ export function TopicsPanel({
         {days.map((group) => (
           <section key={group.day}>
             <h3 className="sticky top-0 z-[1] bg-gradient-to-b from-glass from-70% to-transparent px-2 pt-2.5 pb-1.5 text-[11.5px] font-semibold tracking-[0.06em] text-ink-2 uppercase">
-              {words.day(group.moments[0]?.at ?? 0, now)}
+              {words.day(group.rows[0]?.moments[0]?.at ?? 0, now)}
             </h3>
-            {group.moments.map((moment) => {
-              const id = `${group.day}:${moment.topic.key}:${moment.at}:${moment.line}`;
+            {group.rows.map(({ topic, moments }) => {
+              const id = `${group.day}:${topic.key}`;
               const isOpen = expanded === id;
-              const { topic } = moment;
+              const [latest] = moments;
+              const more = moments.length - 1;
               const recent = topic.covered.slice(0, 2);
               const firstOpen = topic.open[0];
               return (
@@ -91,12 +93,12 @@ export function TopicsPanel({
                     className="grid w-full grid-cols-[44px_minmax(0,1fr)] gap-2.5 rounded-[14px] px-2 py-[9px] text-start transition-colors hover:bg-tint/8 focus-visible:outline-2 focus-visible:outline-ring"
                   >
                     <span className="pt-px text-[12px] text-ink-2 tabular-nums">
-                      {words.time(moment.at)}
+                      {words.time(latest.at)}
                     </span>
                     <span>
                       <span className="flex flex-wrap items-center gap-1.5 text-[14px] font-semibold tracking-[-0.005em]">
                         <span dir="auto">{topic.title}</span>
-                        {moment.fresh ? (
+                        {moments.some((moment) => moment.fresh) ? (
                           <span className="rounded-[5px] bg-ok/15 px-1.5 py-0.5 text-[10.5px] font-bold tracking-[0.04em] text-ok uppercase">
                             {t`New`}
                           </span>
@@ -106,7 +108,12 @@ export function TopicsPanel({
                         className="mt-0.5 block text-[12.5px] leading-[1.4] text-ink-2"
                         dir="auto"
                       >
-                        {moment.line}
+                        {latest.line}
+                        {more > 0 ? (
+                          <span className="ms-1.5 whitespace-nowrap text-ink-3">
+                            {plural(more, { one: "+# more", other: "+# more" })}
+                          </span>
+                        ) : null}
                       </span>
                     </span>
                   </button>
@@ -118,6 +125,21 @@ export function TopicsPanel({
                   >
                     <div className="overflow-hidden" inert={!isOpen || undefined}>
                       <div className="flex flex-col gap-2 ps-[62px] pe-2.5 pb-3">
+                        {more > 0 ? (
+                          <ol className="m-0 flex list-none flex-col gap-1 p-0 text-[12.5px] leading-[1.4]">
+                            {moments.map((moment) => (
+                              <li key={`${moment.at}:${moment.line}`} className="flex gap-2">
+                                <span className="shrink-0 text-ink-2 tabular-nums">
+                                  {words.time(moment.at)}
+                                </span>
+                                <span aria-hidden="true" className="text-ink-3">
+                                  ·
+                                </span>
+                                <span dir="auto">{moment.line}</span>
+                              </li>
+                            ))}
+                          </ol>
+                        ) : null}
                         {recent.length || firstOpen ? (
                           <ul className="m-0 list-disc ps-4 text-[12.5px] leading-normal">
                             {recent.map((line) => (

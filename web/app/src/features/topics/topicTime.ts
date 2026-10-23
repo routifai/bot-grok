@@ -58,14 +58,18 @@ export function peakHeat(topic: Pick<Topic, "events" | "lastTouchedAt">, now: Da
   return Math.round((0.25 + 0.55 * recency + 0.2 * busy) * 100) / 100;
 }
 
-/** One row of the Topics panel: a moment and the topic it belongs to. */
+/** One moment of a topic: a dated line, and whether it is topic watch's fresh "New" line. */
 export type TopicMoment = { at: number; line: string; topic: Topic; fresh: boolean };
 
-/** Every topic's moments, newest first, grouped by local day (a topic can show on several). */
-export function momentsByDay(
+/** One row of the Topics panel: a topic and its moments on one day, newest first. */
+export type TopicDayRow = { topic: Topic; moments: [TopicMoment, ...TopicMoment[]] };
+
+/** Each local day, newest first, with one row per topic touched that day (ordered by its newest
+ * moment); a topic can show on several days. */
+export function topicsByDay(
   topics: readonly Topic[],
   now: Date,
-): { day: string; ago: number; moments: TopicMoment[] }[] {
+): { day: string; ago: number; rows: TopicDayRow[] }[] {
   const moments: TopicMoment[] = [];
   for (const topic of topics) {
     for (const event of topic.events) moments.push({ ...event, topic, fresh: false });
@@ -74,12 +78,17 @@ export function momentsByDay(
     }
   }
   moments.sort((a, b) => b.at - a.at);
-  const days: { day: string; ago: number; moments: TopicMoment[] }[] = [];
+  const days: { day: string; ago: number; rows: TopicDayRow[] }[] = [];
   for (const moment of moments) {
     const day = localDay(moment.at);
-    const last = days.at(-1);
-    if (last?.day === day) last.moments.push(moment);
-    else days.push({ day, ago: daysAgo(moment.at, now), moments: [moment] });
+    let last = days.at(-1);
+    if (last?.day !== day) {
+      last = { day, ago: daysAgo(moment.at, now), rows: [] };
+      days.push(last);
+    }
+    const row = last.rows.find((candidate) => candidate.topic.key === moment.topic.key);
+    if (row) row.moments.push(moment);
+    else last.rows.push({ topic: moment.topic, moments: [moment] });
   }
   return days;
 }

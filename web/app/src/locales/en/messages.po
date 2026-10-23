@@ -99,6 +99,9 @@ msgstr "{kindLabel} · version {0}"
 msgid "{minutes}m ago"
 msgstr "{minutes}m ago"
 
+msgid "{more, plural, one {+# more} other {+# more}}"
+msgstr "{more, plural, one {+# more} other {+# more}}"
+
 msgid "{n} cells"
 msgstr "{n} cells"
 
