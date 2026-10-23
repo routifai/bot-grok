@@ -112,3 +112,20 @@ def test_a_notice_steered_into_a_running_turn_labels_nothing(
     outbox.notice(chat, notice.id, {"helper_id": helper})
     outbox.message(chat, _message(conversation_store, chat, "assistant", "Done.", "resp_1"))
     assert store.list_after("local", None) == []
+
+
+def test_engine_code_can_wake_the_conversation_with_its_own_label(
+    conversation_store: SqlAlchemyConversationStore, db_uri: str
+) -> None:
+    chat = conversation_store.create_conversation(labels=SUPER).id
+    store = SqlAlchemyOutboxStore(db_uri)
+    outbox = Outbox(store, conversation_store, _Tasks())
+    notice = _message(conversation_store, chat, "user", "signal", "turn_1")
+    context = {"proactive": {"kind": "topic_watch", "topic_key": "polaris", "urgency": "soon"}}
+    outbox.notice(chat, notice.id, context)
+    reply = _message(conversation_store, chat, "assistant", "Ana replied.", "resp_1")
+    outbox.message(chat, reply)
+    # A bad urgency is the default, never repaired into something else.
+    assert store.labels(chat, [reply.id]) == {
+        reply.id: {"kind": "topic_watch", "topic_key": "polaris", "urgency": "today"}
+    }

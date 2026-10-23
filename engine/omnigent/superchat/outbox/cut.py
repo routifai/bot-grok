@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Mapping
 from typing import Any
 
 from omnigent.superchat.titles import clip, plain_text
@@ -20,6 +21,7 @@ DEFAULT_KIND = "automation"
 _KEY_MAX = 128
 _SOURCE_MAX = 200
 
+_KIND = re.compile(r"[a-z][a-z0-9_]{0,31}")
 _HEADING = re.compile(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$")
 _LIST_MARK = re.compile(r"^\s*(?:[-*+>]|\d+[.)])\s+")
 #: A sentence ends at ``.``, ``!`` or ``?`` followed by a space (or the end), never inside a
@@ -61,18 +63,23 @@ def _text(value: Any, limit: int) -> str | None:
     return " ".join(value.split())[:limit]
 
 
-def parse_label(raw: str | None) -> dict[str, Any]:
-    """A source's ``omnigent.proactive`` label as ``{urgency, topic_key, source}``.
+def parse_label(raw: str | Mapping[str, Any] | None) -> dict[str, Any]:
+    """A source's proactive label (the Helper's ``omnigent.proactive`` JSON, or a notice's
+    ``context.proactive`` object) as ``{kind, urgency, topic_key, source}``.
 
     Anything malformed is dropped, never repaired: a bad urgency is the default, a missing
-    topic is none.
+    topic is none, a kind that is not a short ``snake_case`` word is none.
     """
-    try:
-        value = json.loads(raw) if raw else {}
-    except ValueError:
-        value = {}
+    if isinstance(raw, Mapping):
+        value: Any = dict(raw)
+    else:
+        try:
+            value = json.loads(raw) if raw else {}
+        except ValueError:
+            value = {}
     if not isinstance(value, dict):
         value = {}
+    kind = value.get("kind")
     urgency = value.get("urgency")
     source = {
         key: text
@@ -80,6 +87,7 @@ def parse_label(raw: str | None) -> dict[str, Any]:
         if (text := _text(value.get(key), _SOURCE_MAX)) is not None
     }
     return {
+        "kind": kind if isinstance(kind, str) and _KIND.fullmatch(kind) else None,
         "urgency": urgency if urgency in URGENCIES else DEFAULT_URGENCY,
         "topic_key": _text(value.get("topic_key"), _KEY_MAX),
         "source": source,

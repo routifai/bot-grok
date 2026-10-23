@@ -49,15 +49,16 @@ class Outbox:
         self._open: dict[str, OutboxRow] = {row.conversation_id: row for row in store.open_rows()}
 
     def notice(self, session_id: str, item_id: str, context: Mapping[str, Any]) -> None:
-        """A message carrying *context* was stored in *session_id*: when it is a scheduled
-        Helper's notice and no turn runs, the turn it starts is proactive (blocking)."""
-        helper_id = context.get("helper_id")
-        if not isinstance(helper_id, str) or not helper_id:
-            return
-        helper = self._conversations.get_conversation(helper_id)
-        labels = (helper.labels if helper is not None else None) or {}
-        task_id = labels.get(SCHEDULED_HELPER_LABEL_KEY)
-        if not task_id or helper.parent_conversation_id != session_id:
+        """A message carrying *context* was stored in *session_id*: when it is a proactive
+        source's notice and no turn runs, the turn it starts is proactive (blocking).
+
+        Two sources: a scheduled Helper's Result (``context.helper_id``; the kind is its task's,
+        the rest its ``omnigent.proactive`` label), and engine code that wakes the Conversation
+        itself, such as topic watch (``context.proactive``: ``{kind, topic_key?, urgency?,
+        sender?, term?}``).
+        """
+        label = self._source_label(session_id, context)
+        if label is None:
             return
         parent = self._conversations.get_conversation(session_id)
         if parent is None or not is_super_chat(parent.labels):
@@ -65,14 +66,12 @@ class Outbox:
         if parent.live_status in _MID_TURN_LIVE_STATUSES:
             # Steered into the person's running turn: that turn is theirs, not the run's.
             return
-        task = self._tasks.get(task_id) if self._tasks is not None else None
-        label = parse_label(labels.get(PROACTIVE_LABEL_KEY))
         row = self._store.open_row(
             OutboxRow(
                 id=item_id,
                 owner=owner_key(self._conversations.get_session_owner(session_id)),
                 conversation_id=session_id,
-                kind=(getattr(task, "kind", None) or DEFAULT_KIND)[:32],
+                kind=label["kind"] or DEFAULT_KIND,
                 urgency=label["urgency"],
                 topic_key=label["topic_key"],
                 source=label["source"],
@@ -81,6 +80,26 @@ class Outbox:
         )
         with self._lock:
             self._open[session_id] = row
+
+    def _source_label(self, session_id: str, context: Mapping[str, Any]) -> dict[str, Any] | None:
+        """The proactive label *context* names, or ``None`` when it is from no proactive
+        source."""
+        direct = context.get("proactive")
+        if isinstance(direct, Mapping):
+            return parse_label(direct)
+        helper_id = context.get("helper_id")
+        if not isinstance(helper_id, str) or not helper_id:
+            return None
+        helper = self._conversations.get_conversation(helper_id)
+        labels = (helper.labels if helper is not None else None) or {}
+        task_id = labels.get(SCHEDULED_HELPER_LABEL_KEY)
+        if not task_id or helper.parent_conversation_id != session_id:
+            return None
+        label = parse_label(labels.get(PROACTIVE_LABEL_KEY))
+        task = self._tasks.get(task_id) if self._tasks is not None else None
+        kind = getattr(task, "kind", None)
+        label["kind"] = kind[:32] if isinstance(kind, str) and kind else None
+        return label
 
     def message(self, session_id: str, item: ConversationItem) -> None:
         """An assistant message was stored in *session_id*: label it when its turn is the open
