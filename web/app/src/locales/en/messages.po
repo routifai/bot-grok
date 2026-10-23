@@ -355,6 +355,9 @@ msgstr "Bot"
 msgid "Box"
 msgstr "Box"
 
+msgid "Brief"
+msgstr "Brief"
+
 msgid "Browser"
 msgstr "Browser"
 
@@ -476,6 +479,9 @@ msgstr "Connected"
 msgid "Connecting…"
 msgstr "Connecting…"
 
+msgid "Continue the conversation"
+msgstr "Continue the conversation"
+
 msgid "Conversation"
 msgstr "Conversation"
 
@@ -566,6 +572,9 @@ msgstr "Could not save."
 
 msgid "Could not save. Try again."
 msgstr "Could not save. Try again."
+
+msgid "Could not start it."
+msgstr "Could not start it."
 
 msgid "Could not submit this answer"
 msgstr "Could not submit this answer"
@@ -976,10 +985,11 @@ msgstr "Hide slides"
 msgid "Hide the runs"
 msgstr "Hide the runs"
 
-msgid "Home"
-msgstr "Home"
 msgid "History"
 msgstr "History"
+
+msgid "Home"
+msgstr "Home"
 
 msgid "How often"
 msgstr "How often"
@@ -1082,6 +1092,12 @@ msgstr "Last checked {0} · nothing new"
 msgid "Last touched {0}"
 msgstr "Last touched {0}"
 
+msgid "Last: {line}"
+msgstr "Last: {line}"
+
+msgid "Last: {line} · {when}"
+msgstr "Last: {line} · {when}"
+
 msgid "Layers"
 msgstr "Layers"
 
@@ -1157,6 +1173,9 @@ msgstr "Made"
 
 msgid "Main"
 msgstr "Main"
+
+msgid "Making a new one…"
+msgstr "Making a new one…"
 
 msgid "Mark done: {title}"
 msgstr "Mark done: {title}"
@@ -1325,6 +1344,9 @@ msgstr "Nothing noted yet."
 
 msgid "Nothing remembered yet."
 msgstr "Nothing remembered yet."
+
+msgid "Nothing this week."
+msgstr "Nothing this week."
 
 msgid "Nothing yet"
 msgstr "Nothing yet"
@@ -1614,6 +1636,9 @@ msgstr "Reflection"
 
 msgid "Refresh files"
 msgstr "Refresh files"
+
+msgid "Refresh now"
+msgstr "Refresh now"
 
 msgid "Reload"
 msgstr "Reload"
@@ -2079,13 +2104,14 @@ msgstr "Today"
 msgid "Too large to preview."
 msgstr "Too large to preview."
 
+msgid "Topic update"
+msgstr "Topic update"
+
 msgid "Topics"
 msgstr "Topics"
 
 msgid "Topics, something new"
 msgstr "Topics, something new"
-msgid "Topic update"
-msgstr "Topic update"
 
 msgid "Try again"
 msgstr "Try again"
@@ -2238,6 +2264,9 @@ msgstr "Web search"
 msgid "Week"
 msgstr "Week"
 
+msgid "Weekdays"
+msgstr "Weekdays"
+
 msgid "Weekly"
 msgstr "Weekly"
 
@@ -2271,10 +2300,11 @@ msgstr "What we covered"
 msgid "What we talked about"
 msgstr "What we talked about"
 
-msgid "What you worked on, newest first. Open one to see where you left off, then pick it up in the chat."
-msgstr "What you worked on, newest first. Open one to see where you left off, then pick it up in the chat."
 msgid "What you decide shows up here for 30 days."
 msgstr "What you decide shows up here for 30 days."
+
+msgid "What you worked on, newest first. Open one to see where you left off, then pick it up in the chat."
+msgstr "What you worked on, newest first. Open one to see where you left off, then pick it up in the chat."
 
 msgid "When {files} changes"
 msgstr "When {files} changes"
@@ -2291,6 +2321,7 @@ msgstr "Where we left off"
 #. placeholder {0}: data.title
 msgid "Where we left off on {0}"
 msgstr "Where we left off on {0}"
+
 msgid "While you were away"
 msgstr "While you were away"
 

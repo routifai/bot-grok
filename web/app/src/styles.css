@@ -14,6 +14,13 @@
   --font-display: "Instrument Serif", ui-serif, Georgia, serif;
   --font-mono: "Geist Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
   --shadow-float: 0 1px 2px rgb(0 0 0 / 0.04), 0 12px 32px -12px rgb(0 0 0 / 0.14);
+  /* Home's "Continue the conversation" chevron: a gentle 3px nudge down. */
+  --animate-nudge: sc-nudge 1.8s ease-in-out infinite;
+  @keyframes sc-nudge {
+    50% {
+      transform: translateY(3px);
+    }
+  }
 }
 
 /* Signed-out welcome: the app's own type, and a soft pulse on the "working" dot. */

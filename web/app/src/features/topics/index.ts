@@ -6,4 +6,4 @@ export { HomeTopics } from "./HomeTopics";
 export { TopicCard } from "./TopicCard";
 export { TopicsPanel } from "./TopicsPanel";
 export { isFresh } from "./topicTime";
-export { LIVE_TOPICS_WIRE, type TopicsWire, useTopics } from "./useTopics";
+export { LIVE_TOPICS_WIRE, type TopicsWire, useTopics, useTopicWords } from "./useTopics";

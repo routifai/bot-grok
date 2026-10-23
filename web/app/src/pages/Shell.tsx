@@ -34,7 +34,7 @@ import { ApprovalCards } from "../features/approvals";
 import { appsExtension } from "../features/apps";
 import { ArtifactRegistryProvider } from "../features/artifacts/registry";
 import { useFileStudioRoute } from "../features/artifacts/studio/useFileStudioRoute";
-import { BriefCard } from "../features/brief";
+import { BriefCardView, useLatestBrief } from "../features/brief";
 import { chartsExtension } from "../features/charts";
 import { DeckThemeChoice, decksExtension } from "../features/decks";
 import { documentsExtension } from "../features/documents";
@@ -64,6 +64,7 @@ import { markAfterPaint, markOnce } from "../lib/performance";
 import { rpc } from "../lib/rpc";
 import { ShowMessageProvider } from "../lib/show-message";
 import { useTurnRuns } from "../lib/useMuseLiveState";
+import { ContinuePill } from "./app/chrome/ContinuePill";
 import { ContourGround } from "./app/chrome/ContourGround";
 import { ConversationActivity } from "./app/chrome/ConversationActivity";
 import { conversationLayout } from "./app/chrome/conversationLayout";
@@ -75,7 +76,7 @@ import {
 } from "./app/chrome/EmptyConversation";
 import { Home } from "./app/chrome/Home";
 import { HomeActivity } from "./app/chrome/HomeActivity";
-import { opensOnHome, useHomeOnReturn } from "./app/chrome/homeOnReturn";
+import { lastLine, type SlideWay, slideViews } from "./app/chrome/homeSlide";
 import { BotSettingsPanel } from "./app/chrome/PanelForms";
 import type { Panel } from "./app/chrome/panel";
 import { SidePanelHeader } from "./app/chrome/SidePanelHeader";
@@ -133,14 +134,16 @@ export function ShellPage() {
   const active = bots.find((b) => b.id === botId) ?? bots[0];
   // The dock place open as a sheet, if any.
   const [dockSheet, setDockSheet] = useState<DockKey | null>(null);
-  // Home over a Conversation that has messages (ADR 0035), with the person's topics: the app
-  // opens on it on a first visit or after 4 hours or more away, and so does coming back to the
-  // page after such a break; the Conversation's Home button opens it too. A send, a picked-up
-  // topic or a message link closes it.
-  const [homeOpen, setHomeOpen] = useState(opensOnHome);
-  useHomeOnReturn(() => setHomeOpen(true));
+  // Home is the app's first screen (ADR 0035, amended): every load opens on it, over the
+  // Conversation. Continuing slides the Conversation in (`slide` "up") and the Conversation's
+  // Home button slides Home back ("down"). A send from Home and a message link (`?m=`) land in
+  // the Conversation at once; a picked-up topic flies in and slides.
+  const [homeOpen, setHomeOpen] = useState(true);
+  const [slide, setSlide] = useState<SlideWay | null>(null);
   const [topicsOpen, setTopicsOpen] = useState(false);
   const { topics, reload: reloadTopics } = useTopics(active?.id);
+  // The morning brief leads Home's topics only when there is one (ADR 0037).
+  const latestBrief = useLatestBrief(active?.id ?? "");
   const [folderPickerOpen, setFolderPickerOpen] = useState(false);
   /** Below `md` the Muse sidebar is an off-canvas drawer opened from the main header. */
   const [_navOpen, _setNavOpen] = useState(false);
@@ -325,13 +328,59 @@ export function ShellPage() {
   useEffect(() => {
     if (pendingMessage) setHomeOpen(false);
   }, [pendingMessage]);
-  // Home is the start page of an empty Conversation, and comes back after a break or on the
-  // Home button.
+  // Home is also the start page of an empty Conversation.
   const showHome = Boolean(active && (shownStart || homeOpen));
+  const shellRoot = useRef<HTMLDivElement>(null);
+  const composerDock = useRef<HTMLDivElement>(null);
+  const homeLayer = useRef<HTMLDivElement>(null);
+  const chatLayer = useRef<HTMLDivElement>(null);
+  // While one side slides away it keeps its composer's room, so nothing shifts as it goes.
+  const heldComposer = useRef(0);
+  const homeOpenRef = useRef(homeOpen);
+  homeOpenRef.current = homeOpen;
+  const slideTo = useCallback((way: SlideWay) => {
+    if (homeOpenRef.current === (way === "down")) return;
+    const from = way === "up" ? homeLayer.current : composerDock.current;
+    const room = way === "up" ? from?.querySelector("[data-home-composer]") : from;
+    heldComposer.current = room?.getBoundingClientRect().height ?? 0;
+    setTopicsOpen(false);
+    if (way === "up") setDockSheet(null);
+    setHomeOpen(way === "down");
+    setSlide(way);
+  }, []);
+  useLayoutEffect(() => {
+    if (!slide) return;
+    const toEnd = () => {
+      const scroller = messageScroll.current;
+      if (scroller) scroller.scrollTop = scroller.scrollHeight;
+    };
+    if (slide === "up") toEnd();
+    const run = slideViews(homeLayer.current, chatLayer.current, slide);
+    let live = true;
+    void run.done.then(() => {
+      if (!live) return;
+      if (slide === "up") toEnd();
+      // Into the composer of the side that came in.
+      const into = slide === "up" ? composerDock.current : homeLayer.current;
+      into?.querySelector<HTMLElement>("textarea")?.focus({ preventScroll: true });
+      setSlide(null);
+    });
+    return () => {
+      live = false;
+      run.cancel();
+    };
+  }, [slide, messageScroll]);
+  // "Continue the conversation": the Conversation's last line, while it has one.
+  const last = useMemo(() => lastLine(transcriptMessages), [transcriptMessages]);
+  const continueChat = useCallback(() => slideTo("up"), [slideTo]);
+  // The Conversation's own chrome (its ground, logo and dock) while it shows or slides.
+  const chatChrome = active && (!showHome || slide !== null) ? active : null;
+  const homeComposerFocus = useCallback(() => {
+    homeLayer.current?.querySelector<HTMLElement>("textarea")?.focus();
+  }, []);
   useEffect(() => {
     if (showHome || topicsOpen) void reloadTopics();
   }, [showHome, topicsOpen, reloadTopics]);
-  const shellRoot = useRef<HTMLDivElement>(null);
   // Picking a topic up adds its card to the Conversation (nothing is sent) and opens it there.
   // From Home the card flies into the thread while the pick is recorded.
   const pickTopic = useCallback(
@@ -349,10 +398,10 @@ export function ShellPage() {
         return;
       }
       setTopicsOpen(false);
-      setHomeOpen(false);
       readTranscript();
+      if (homeOpenRef.current) slideTo("up");
     },
-    [active?.id, readTranscript],
+    [active?.id, readTranscript, slideTo],
   );
   const dockTopics = useMemo(
     () => ({
@@ -362,7 +411,6 @@ export function ShellPage() {
     }),
     [topicsOpen, topics],
   );
-  const composerDock = useRef<HTMLDivElement>(null);
   // A View Transition already glides the composer (`superchat-composer`); the FLIP is the fallback.
   useDockTransition(composerDock, shownStart, () => orbFlight.current === "view-transition");
   const _isDesktop = useIsDesktop();
@@ -458,7 +506,7 @@ export function ShellPage() {
       <SuperchatLogo className="md:hidden" />
       <button
         type="button"
-        onClick={() => setHomeOpen(true)}
+        onClick={() => slideTo("down")}
         className="app-no-drag flex items-center gap-1.5 rounded-[9px] px-2.5 py-1.5 text-[12.5px] text-ink-2 transition-colors hover:bg-foreground/10 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
       >
         <House aria-hidden="true" size={15} strokeWidth={1.7} />
@@ -499,8 +547,10 @@ export function ShellPage() {
     >
       {/* Super Chat stays where it was under an open file, out of reach of the keyboard. */}
       <div className="contents" inert={fileStudio.open || undefined}>
-        {showHome && active ? (
+        {(showHome || slide === "up") && active ? (
           <Home
+            ref={homeLayer}
+            away={!showHome}
             personName={bootstrapMe?.name ?? ""}
             dock={
               <ConnectedDock
@@ -508,105 +558,147 @@ export function ShellPage() {
                 active={dockSheet}
                 onSelect={setDockSheet}
                 topics={dockTopics}
-                onConversation={() => setDockSheet(null)}
+                conversationShown={false}
+                onConversation={() => {
+                  setDockSheet(null);
+                  if (last && !shownStart) continueChat();
+                  else homeComposerFocus();
+                }}
               />
             }
-            composer={composerEl}
+            composer={
+              showHome ? (
+                composerEl
+              ) : (
+                <div aria-hidden="true" style={{ height: heldComposer.current }} />
+              )
+            }
             topics={
               <HomeTopics
                 topics={topics}
                 onPick={(topic, from) => void pickTopic(topic, from)}
-                leading={<BriefCard botId={active.id} className="md:w-auto" />}
+                leading={
+                  latestBrief.brief?.page ? (
+                    <BriefCardView latest={latestBrief} className="md:w-auto" />
+                  ) : undefined
+                }
               />
             }
             onOpenSettings={() => openSettings("general")}
             recent={<HomeActivity botId={active.id} hideWhenEmpty />}
+            onContinue={continueChat}
+            continuePill={
+              last && !shownStart ? (
+                <ContinuePill line={last.text} at={last.at} onContinue={continueChat} />
+              ) : undefined
+            }
           />
         ) : null}
-        {active && !showHome ? <ContourGround /> : null}
-        {active && !showHome ? (
-          <SuperchatLogo className="absolute start-8 top-7 z-20 hidden md:inline-flex" />
-        ) : null}
-        {active && !showHome ? (
-          <div className="relative z-10 hidden w-[96px] shrink-0 flex-col items-center justify-between pt-24 pb-6 md:flex">
-            <span />
-            <ConnectedDock
-              botId={active.id}
-              active={dockSheet}
-              onSelect={setDockSheet}
-              topics={dockTopics}
-              onConversation={() => setDockSheet(null)}
-            />
-            <SettingsButton onClick={() => openSettings("general")} />
-          </div>
-        ) : null}
+        {/* The Conversation: under Home (out of reach) until it slides in. */}
+        <div
+          ref={chatLayer}
+          data-testid="conversation-layer"
+          inert={showHome || undefined}
+          className={active ? "relative flex min-w-0 flex-1" : "contents"}
+        >
+          {chatChrome ? <ContourGround /> : null}
+          {chatChrome ? (
+            <SuperchatLogo className="absolute start-8 top-7 z-20 hidden md:inline-flex" />
+          ) : null}
+          {chatChrome ? (
+            <div className="relative z-10 hidden w-[96px] shrink-0 flex-col items-center justify-between pt-24 pb-6 md:flex">
+              <span />
+              <ConnectedDock
+                botId={chatChrome.id}
+                active={dockSheet}
+                onSelect={setDockSheet}
+                topics={dockTopics}
+                conversationShown={!showHome}
+                onConversation={() => setDockSheet(null)}
+              />
+              <SettingsButton onClick={() => openSettings("general")} />
+            </div>
+          ) : null}
 
-        <main className="relative z-10 flex min-w-0 flex-1 flex-col">
-          <div className={active ? "flex min-h-0 flex-1" : "contents"}>
-            <div className={active ? MUSE_CONTENT_PANE : "contents"}>
-              {superchatTopBar}
-              {shownStart ? (
-                <EmptyConversationLead personName={bootstrapMe?.name ?? ""} />
-              ) : active ? (
-                <Transcript
-                  key={museTranscript.threadId ?? active.id}
-                  botDisplayName={active.name}
-                  followSignal={followSignal}
-                  museFace={{ color: active.color, identity: active.id }}
-                  museRuns={turnRuns}
-                  scrollRef={messageScroll}
-                  scrollRequest={scrollRequest}
-                  onScrollRequestHandled={clearScrollRequest}
-                  artifactTarget={transcriptArtifactTarget}
-                  messages={transcriptMessages}
-                  loading={museTranscript.messages === null}
-                  olderCursor={museTranscript.olderCursor}
-                  loadingOlder={museTranscript.loadingOlder}
-                  work={work}
-                  workState={workState}
-                  onLoadOlder={museTranscript.loadOlder}
-                  onShowEarlier={
-                    museTranscript.canShowEarlier ? museTranscript.showEarlier : undefined
-                  }
-                  onAnswer={answerMessage}
-                  onSendCard={sendCardReply}
-                  onDraftCard={setComposerSeed}
-                  onReply={(message) => {
-                    setReplyTarget(message);
-                    setReplyQuote(null);
-                  }}
-                  onQuote={(message, quote) => {
-                    setReplyTarget(message);
-                    setReplyQuote(quote);
-                  }}
-                  trailing={<ApprovalCards botId={active.id} />}
-                  shown={dockSheet === null && !fileStudio.open}
+          <main className="relative z-10 flex min-w-0 flex-1 flex-col">
+            <div className={active ? "flex min-h-0 flex-1" : "contents"}>
+              <div className={active ? MUSE_CONTENT_PANE : "contents"}>
+                {superchatTopBar}
+                {shownStart ? (
+                  <EmptyConversationLead personName={bootstrapMe?.name ?? ""} />
+                ) : active ? (
+                  <Transcript
+                    key={museTranscript.threadId ?? active.id}
+                    botDisplayName={active.name}
+                    followSignal={followSignal}
+                    museFace={{ color: active.color, identity: active.id }}
+                    museRuns={turnRuns}
+                    scrollRef={messageScroll}
+                    scrollRequest={scrollRequest}
+                    onScrollRequestHandled={clearScrollRequest}
+                    artifactTarget={transcriptArtifactTarget}
+                    messages={transcriptMessages}
+                    loading={museTranscript.messages === null}
+                    olderCursor={museTranscript.olderCursor}
+                    loadingOlder={museTranscript.loadingOlder}
+                    work={work}
+                    workState={workState}
+                    onLoadOlder={museTranscript.loadOlder}
+                    onShowEarlier={
+                      museTranscript.canShowEarlier ? museTranscript.showEarlier : undefined
+                    }
+                    onAnswer={answerMessage}
+                    onSendCard={sendCardReply}
+                    onDraftCard={setComposerSeed}
+                    onReply={(message) => {
+                      setReplyTarget(message);
+                      setReplyQuote(null);
+                    }}
+                    onQuote={(message, quote) => {
+                      setReplyTarget(message);
+                      setReplyQuote(quote);
+                    }}
+                    trailing={<ApprovalCards botId={active.id} />}
+                    shown={
+                      dockSheet === null &&
+                      !fileStudio.open &&
+                      !showHome &&
+                      slide === null &&
+                      !topicsOpen
+                    }
+                  />
+                ) : null}
+                {active ? (
+                  <div
+                    ref={composerDock}
+                    style={{
+                      viewTransitionName: "superchat-composer",
+                      minHeight: slide === "down" ? heldComposer.current : undefined,
+                    }}
+                  >
+                    {showHome ? null : composerEl}
+                  </div>
+                ) : null}
+                {shownStart ? (
+                  <EmptyConversationSuggestions onSend={(text) => void sendMessage(text)} />
+                ) : null}
+              </div>
+              {active ? (
+                <SessionPanel
+                  botId={active.id}
+                  roundId={rounds[0]?.status === "running" ? rounds[0].roundId : undefined}
+                  open={sessionPanel.open}
+                  onClose={sessionPanel.close}
                 />
               ) : null}
-              {active ? (
-                <div ref={composerDock} style={{ viewTransitionName: "superchat-composer" }}>
-                  {showHome ? null : composerEl}
+              {active && !sessionPanel.open ? (
+                <div className="pointer-events-none absolute end-5 bottom-24 z-20 hidden md:block xl:bottom-6 [&>*]:pointer-events-auto">
+                  <ConversationActivity botId={active.id} />
                 </div>
               ) : null}
-              {shownStart ? (
-                <EmptyConversationSuggestions onSend={(text) => void sendMessage(text)} />
-              ) : null}
             </div>
-            {active ? (
-              <SessionPanel
-                botId={active.id}
-                roundId={rounds[0]?.status === "running" ? rounds[0].roundId : undefined}
-                open={sessionPanel.open}
-                onClose={sessionPanel.close}
-              />
-            ) : null}
-            {active && !sessionPanel.open ? (
-              <div className="pointer-events-none absolute end-5 bottom-24 z-20 hidden md:block xl:bottom-6 [&>*]:pointer-events-auto">
-                <ConversationActivity botId={active.id} />
-              </div>
-            ) : null}
-          </div>
-        </main>
+          </main>
+        </div>
 
         {active ? (
           <TopicsPanel

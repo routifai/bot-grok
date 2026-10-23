@@ -158,7 +158,6 @@ vi.mock("./app/conversation/message-cards", () => ({
   ArtifactImage: Stub,
 }));
 
-import { LAST_SEEN_KEY } from "./app/chrome/homeOnReturn";
 import { ShellPage } from "./Shell";
 
 function bot(overrides: Partial<Record<string, unknown>> = {}) {
@@ -195,7 +194,7 @@ function bootstrap(overrides: Partial<Record<string, unknown>> = {}) {
   return { me: me(), bots: [bot()], ...overrides };
 }
 
-async function renderShell(initialBootstrap: ReturnType<typeof bootstrap>) {
+async function renderShell(initialBootstrap: ReturnType<typeof bootstrap>, entry = "/app") {
   bootstrapApi.takeInitialBootstrap.mockResolvedValue(initialBootstrap);
   bootstrapApi.loadMe.mockResolvedValue(initialBootstrap.me);
   const container = document.createElement("div");
@@ -205,7 +204,7 @@ async function renderShell(initialBootstrap: ReturnType<typeof bootstrap>) {
   await act(async () => {
     root.render(
       <I18nProvider i18n={i18n}>
-        <MemoryRouter initialEntries={["/app"]}>
+        <MemoryRouter initialEntries={[entry]}>
           <Routes>
             <Route path="/app" element={<ShellPage />} />
             <Route path="/app/:botId" element={<ShellPage />} />
@@ -229,8 +228,7 @@ async function renderShell(initialBootstrap: ReturnType<typeof bootstrap>) {
 }
 
 beforeEach(() => {
-  // A visit a moment ago: the app opens where the person left it (Home waits for a break).
-  const stored = new Map<string, string>([[LAST_SEEN_KEY, String(Date.now())]]);
+  const stored = new Map<string, string>();
   vi.stubGlobal("localStorage", {
     getItem: (key: string) => stored.get(key) ?? null,
     setItem: (key: string, value: string) => stored.set(key, value),
@@ -241,18 +239,24 @@ beforeEach(() => {
   engine.interrupt.mockReset().mockResolvedValue({ delivered: true });
 });
 
-it("shows the conversation chrome: the dock, no sidebar or chat list, no Goals, Feed or Ideas", async () => {
+it("opens on Home with the dock, no sidebar or chat list, no Goals, Feed or Ideas", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const page = await renderShell(bootstrap({ me: me() }));
   try {
-    // Back within 4 hours, the greeting landing waits for a loaded, empty Conversation; until
-    // then (and whenever there are messages) the transcript shell shows.
-    expect(page.container.querySelector('[data-testid="home"]')).toBeNull();
-    const dock = page.container.querySelector('[data-testid="dock"]');
-    const dockLabels = [...(dock?.querySelectorAll("button") ?? [])].map((el) =>
-      el.getAttribute("aria-label"),
-    );
-    expect(dockLabels).toEqual(["Topics", "Inbox", "Library", "Automations", "Files"]);
+    // Home is the first screen on every load, before the Conversation has even loaded.
+    expect(page.container.querySelector('[data-testid="home"]')).toBeTruthy();
+    const dock = page.container.querySelector('[data-testid="home"] [data-testid="dock"]');
+    const dockButtons = [...(dock?.querySelectorAll("button") ?? [])];
+    expect(dockButtons.map((el) => el.getAttribute("aria-label"))).toEqual([
+      "Conversation",
+      "Topics",
+      "Inbox",
+      "Library",
+      "Automations",
+      "Files",
+    ]);
+    // On Home the Conversation is not the screen, so its dock button is not pressed.
+    expect(dockButtons[0]?.getAttribute("aria-pressed")).toBe("false");
     expect(page.container.querySelector('[data-testid="chats-trigger"]')).toBeNull();
     expect(page.container.querySelector('[data-testid="app-rail"]')).toBeNull();
     const text = page.container.textContent ?? "";
@@ -260,24 +264,6 @@ it("shows the conversation chrome: the dock, no sidebar or chat list, no Goals, 
     expect(page.container.querySelector('[data-testid="bots-sidebar"]')).toBeNull();
   } finally {
     await page.cleanup();
-  }
-});
-
-it("opens on Home on a first visit and after 4 hours or more away, else on the Conversation", async () => {
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  for (const [lastSeen, home] of [
-    [null, true],
-    [Date.now() - 5 * 60 * 60 * 1000, true],
-    [Date.now() - 60 * 60 * 1000, false],
-  ] as const) {
-    if (lastSeen === null) window.localStorage.removeItem(LAST_SEEN_KEY);
-    else window.localStorage.setItem(LAST_SEEN_KEY, String(lastSeen));
-    const page = await renderShell(bootstrap({ me: me() }));
-    try {
-      expect(Boolean(page.container.querySelector('[data-testid="home"]'))).toBe(home);
-    } finally {
-      await page.cleanup();
-    }
   }
 });
 
@@ -414,6 +400,103 @@ it("reads one work state: the header pill, the working row and Stop light and se
     expect(engine.interrupt).toHaveBeenCalledWith({ botId: "bot-1" });
     // The engine still says its turn runs; the Stop landed, so nothing reads as running.
     expect(lit()).toEqual({ pill: false, row: false, stop: false });
+  } finally {
+    await page.cleanup();
+  }
+});
+
+const exchange = [
+  ...turn,
+  {
+    ...turn[0],
+    id: "m2",
+    seq: 2,
+    role: "bot",
+    blocks: [{ kind: "text", text: "**Found it** in your mail. It was sent on Tuesday." }],
+  },
+];
+
+async function settle() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  });
+}
+
+it("opens on Home, and Continue the conversation slides into the Conversation at its composer", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  engine.transcript.mockResolvedValue({
+    threadId: "conv",
+    messages: exchange,
+    olderCursor: null,
+    running: false,
+  });
+  const page = await renderShell(bootstrap());
+  try {
+    await settle();
+    const home = page.container.querySelector('[data-testid="home"]');
+    expect(home).toBeTruthy();
+    // The Conversation under Home is out of reach of the keyboard.
+    const chat = page.container.querySelector('[data-testid="conversation-layer"]');
+    expect(chat?.hasAttribute("inert")).toBe(true);
+    const pill = page.container.querySelector(
+      '[data-testid="continue-conversation"]',
+    ) as HTMLButtonElement;
+    expect(pill.tagName).toBe("BUTTON");
+    // The reply's first sentence, without its Markdown.
+    expect(pill.textContent).toContain("Continue the conversation");
+    expect(pill.textContent).toContain("Last: Found it in your mail.");
+    expect(pill.textContent).not.toContain("Tuesday");
+    await act(async () => pill.click());
+    await settle();
+    expect(page.container.querySelector('[data-testid="home"]')).toBeNull();
+    expect(chat?.hasAttribute("inert")).toBe(false);
+    expect(document.activeElement?.tagName).toBe("TEXTAREA");
+    expect(chat?.contains(document.activeElement)).toBe(true);
+    // The Home button slides Home back, with the composer.
+    const homeButton = [...page.container.querySelectorAll("button")].find(
+      (el) => el.textContent === "Home",
+    ) as HTMLButtonElement;
+    await act(async () => homeButton.click());
+    await settle();
+    const back = page.container.querySelector('[data-testid="home"]');
+    expect(back).toBeTruthy();
+    expect(back?.contains(document.activeElement)).toBe(true);
+  } finally {
+    await page.cleanup();
+  }
+});
+
+it("shows no Continue on Home while the Conversation is empty", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  engine.transcript.mockResolvedValue({
+    threadId: "conv",
+    messages: [],
+    olderCursor: null,
+    running: false,
+  });
+  const page = await renderShell(bootstrap());
+  try {
+    await settle();
+    expect(page.container.querySelector('[data-testid="home"]')).toBeTruthy();
+    expect(page.container.querySelector('[data-testid="continue-conversation"]')).toBeNull();
+  } finally {
+    await page.cleanup();
+  }
+});
+
+it("lands a message link straight in the Conversation", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  engine.transcript.mockResolvedValue({
+    threadId: "conv",
+    messages: exchange,
+    olderCursor: null,
+    running: false,
+  });
+  const page = await renderShell(bootstrap(), "/app?m=m1");
+  try {
+    await settle();
+    expect(page.container.querySelector('[data-testid="home"]')).toBeNull();
+    expect(page.container.textContent).toContain("find the invoice");
   } finally {
     await page.cleanup();
   }

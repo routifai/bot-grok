@@ -89,6 +89,7 @@ export function Dock({
   onSelect,
   topics,
   onConversation,
+  conversationShown = true,
 }: {
   active: DockKey | null;
   inboxWaiting: boolean;
@@ -98,8 +99,11 @@ export function Dock({
   topics?: DockTopics;
   /** Back to the Conversation (closes whatever the dock opened); without it there is no button. */
   onConversation?: () => void;
+  /** Whether the Conversation is the screen (not Home): its button reads pressed only then. */
+  conversationShown?: boolean;
 }) {
   const { t } = useLingui();
+  const onConversationPage = conversationShown && active === null;
   const items: { key: DockKey; label: string }[] = [
     { key: "inbox", label: t`Inbox` },
     { key: "apps", label: t`Library` },
@@ -117,9 +121,9 @@ export function Dock({
           type="button"
           aria-label={t`Conversation`}
           title={t`Conversation`}
-          aria-pressed={active === null}
+          aria-pressed={onConversationPage}
           onClick={onConversation}
-          className={cn(BUTTON, active === null && "bg-foreground/15")}
+          className={cn(BUTTON, onConversationPage && "bg-foreground/15")}
         >
           {GLYPHS.conversation}
           {unread > 0 ? (
@@ -202,12 +206,14 @@ export function ConnectedDock({
   onSelect,
   topics,
   onConversation,
+  conversationShown,
 }: {
   botId: string;
   active: DockKey | null;
   onSelect: (key: DockKey) => void;
   topics?: DockTopics;
   onConversation?: () => void;
+  conversationShown?: boolean;
 }) {
   const { asks } = useAsks(botId);
   const { count } = useOutboxUnread(botId);
@@ -218,6 +224,7 @@ export function ConnectedDock({
       unread={count}
       onSelect={onSelect}
       onConversation={onConversation}
+      conversationShown={conversationShown}
       topics={topics}
     />
   );
