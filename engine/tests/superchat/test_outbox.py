@@ -96,6 +96,29 @@ def test_a_scheduled_runs_turn_is_labelled_and_read_once(
     assert store.list_mutes("local") == [{"topic_key": "polaris", "sender": "ana@example.com"}]
 
 
+def test_a_row_another_replica_opened_is_bound_from_the_store(
+    conversation_store: SqlAlchemyConversationStore, db_uri: str
+) -> None:
+    chat = conversation_store.create_conversation(labels=SUPER).id
+    helper = conversation_store.create_conversation(
+        kind="sub_agent",
+        parent_conversation_id=chat,
+        labels={**SUPER, SCHEDULED_HELPER_LABEL_KEY: "c" * 32},
+    ).id
+    store = SqlAlchemyOutboxStore(db_uri)
+    here = Outbox(store, conversation_store, _Tasks())
+    there = Outbox(store, conversation_store, _Tasks())
+
+    notice = _message(conversation_store, chat, "user", "result", "turn_1")
+    there.notice(chat, notice.id, {"helper_id": helper})
+    reply = _message(conversation_store, chat, "assistant", "Done.", "resp_1")
+    here.message(chat, reply)
+
+    assert store.labels(chat, [reply.id]) == {
+        reply.id: {"kind": "topic_watch", "urgency": "today"}
+    }
+
+
 def test_a_notice_steered_into_a_running_turn_labels_nothing(
     conversation_store: SqlAlchemyConversationStore, db_uri: str
 ) -> None:

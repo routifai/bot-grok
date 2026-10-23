@@ -2154,32 +2154,82 @@ async def _persist_external_reasoning_effort_change(
 
 
 #: ``feature name -> hook(session_id, item)``, called with each visible assistant message once it
-#: is stored and before ``message.done`` is published, so what a feature records about it (the
-#: outbox row of a proactive message) is there when a client refetches. Runs on the caller's
-#: thread; a failing hook is logged and never fails the persist.
+#: is stored and before its ``message.done`` is published, so what a feature records about it
+#: (the outbox row of a proactive message) is there when a client refetches. Hooks may block on
+#: the database: they run on a worker thread, never on the event loop, one message of a session
+#: at a time in the order stored. A failing hook is logged and never fails the persist.
 ON_MESSAGE_STORED: dict[str, Callable[[str, ConversationItem], None]] = {}
 
+#: ``session id -> lock`` that keeps a session's hooks and ``message.done`` in stored order.
+_message_stored_locks: weakref.WeakValueDictionary[str, asyncio.Lock] = (
+    weakref.WeakValueDictionary()
+)
+#: Signals scheduled by a synchronous caller, held until they finish.
+_message_stored_tasks: set[asyncio.Task[None]] = set()
 
-def _signal_message_stored(session_id: str, item: ConversationItem) -> None:
-    """Tell the session's family stream an assistant message was stored (``message.done``).
 
-    The one publish for it: every path that persists a visible assistant message calls this
-    with the store-assigned item, so the id a client refetches by always exists.
-    """
-    if (
+def _is_visible_assistant_message(item: ConversationItem) -> bool:
+    return (
         item.type == "message"
         and isinstance(item.data, MessageData)
         and item.data.role == "assistant"
         and not item.data.is_meta
-    ):
+    )
+
+
+def _run_message_stored_hooks(session_id: str, item: ConversationItem) -> None:
+    """Blocking: every :data:`ON_MESSAGE_STORED` hook for *item*, each failure logged."""
+    for hook in list(ON_MESSAGE_STORED.values()):
+        try:
+            hook(session_id, item)
+        except Exception:  # noqa: BLE001 - bookkeeping, never a reason to fail a persist
+            _logger.warning("message stored hook failed for %s", session_id, exc_info=True)
+
+
+async def _signal_message_stored_async(session_id: str, item: ConversationItem) -> None:
+    """Tell the session's family stream an assistant message was stored (``message.done``).
+
+    The one publish for it: every path that persists a visible assistant message calls this
+    (or :func:`_signal_message_stored`) with the store-assigned item, so the id a client
+    refetches by always exists. The hooks run first, off the loop, so ``message.done`` follows
+    what they recorded.
+    """
+    if not _is_visible_assistant_message(item):
+        return
+    from omnigent.superchat.family.signals import notify_message_done
+
+    if not ON_MESSAGE_STORED:
+        notify_message_done(session_id, item.id)
+        return
+    lock = _message_stored_locks.get(session_id)
+    if lock is None:
+        lock = _message_stored_locks[session_id] = asyncio.Lock()
+    async with lock:
+        await asyncio.to_thread(_run_message_stored_hooks, session_id, item)
+        notify_message_done(session_id, item.id)
+
+
+def _signal_message_stored(session_id: str, item: ConversationItem) -> None:
+    """:func:`_signal_message_stored_async` for a caller that cannot await.
+
+    On the event loop the signal is scheduled, not run: the hooks still run off the loop and
+    before this message's ``message.done`` (which is all a refetch depends on), only after the
+    caller's own synchronous publishes, such as ``response.output_item.done`` on the session
+    stream, which carries no outbox state. Off the loop (a worker thread) it runs here.
+    """
+    if not _is_visible_assistant_message(item):
+        return
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
         from omnigent.superchat.family.signals import notify_message_done
 
-        for hook in list(ON_MESSAGE_STORED.values()):
-            try:
-                hook(session_id, item)
-            except Exception:  # noqa: BLE001 - bookkeeping, never a reason to fail a persist
-                _logger.warning("message stored hook failed for %s", session_id, exc_info=True)
+        _run_message_stored_hooks(session_id, item)
         notify_message_done(session_id, item.id)
+        return
+    task = loop.create_task(_signal_message_stored_async(session_id, item))
+    _message_stored_tasks.add(task)
+    task.add_done_callback(_message_stored_tasks.discard)
 
 
 def _publish_external_conversation_item(
@@ -5882,7 +5932,7 @@ async def _relay_persist(
         )
         for stored in persisted:
             if not stored.deduplicated:
-                _signal_message_stored(session_id, stored)
+                await _signal_message_stored_async(session_id, stored)
     except Exception:  # noqa: BLE001
         _logger.exception(
             "Relay persist failed for session=%s",
@@ -5902,7 +5952,10 @@ async def _relay_persist(
                 message="The assistant's reply could not be saved to the conversation.",
             )
             note = NewConversationItem(type="error", response_id=item.response_id, data=error)
-            if await _relay_persist_error_once(conversation_store, session_id, note) == "persisted":
+            if (
+                await _relay_persist_error_once(conversation_store, session_id, note)
+                == "persisted"
+            ):
                 _publish_error_event(session_id, error)
 
 
@@ -6120,7 +6173,7 @@ async def _flush_relay_text(
     # docstring). Ordered before the boundary item / terminal event the
     # caller publishes next; clients match it back to the streamed text
     # by byte-equal content, not by open-section state.
-    _signal_message_stored(session_id, persisted[0])
+    await _signal_message_stored_async(session_id, persisted[0])
     done_event = OutputItemDoneEvent(
         type="response.output_item.done",
         item=persisted[0].to_api_dict(),

@@ -114,38 +114,51 @@ class Outbox:
 
     def message(self, session_id: str, item: ConversationItem) -> None:
         """An assistant message was stored in *session_id*: label it when its turn is the open
-        row's (blocking; does nothing for a Conversation with no open row)."""
-        with self._lock:
-            row = self._open.get(session_id)
-        if row is None or not isinstance(item.data, MessageData):
+        row's (blocking: the caller runs it off the event loop).
+
+        The in-memory rows are this replica's; a Conversation whose row another replica opened
+        (or replaced) is read from the store, the one place every replica's rows are.
+        """
+        if not isinstance(item.data, MessageData):
             return
-        title, line = cut(message_text(item.data.content))
-        if row.item_id is None and self._answers(session_id, item.id, row.id):
-            bound = self._store.bind(
-                row.id,
-                item_id=item.id,
-                response_id=item.response_id,
-                title=title,
-                line=line,
-                at_ms=int(time.time() * 1000),
-            )
-        elif row.item_id is not None and row.response_id == item.response_id:
-            bound = self._store.bind(
-                row.id,
-                item_id=item.id,
-                response_id=item.response_id,
-                title=title,
-                line=line,
-                at_ms=None,
-            )
-        else:
-            self._store.close(row.id)
-            bound = None
+        with self._lock:
+            cached = self._open.get(session_id)
+        row = cached or self._store.open_for(session_id)
+        if row is None:
+            return
+        bound = self._settle(session_id, item, row)
+        if bound is None and cached is not None:
+            fresh = self._store.open_for(session_id)
+            if fresh is not None and fresh.id != row.id:
+                bound = self._settle(session_id, item, fresh)
         with self._lock:
             if bound is None:
                 self._open.pop(session_id, None)
             else:
                 self._open[session_id] = bound
+
+    def _settle(self, session_id: str, item: ConversationItem, row: OutboxRow) -> OutboxRow | None:
+        """Bind *row* to *item* when it is the row's turn's message, else close it.
+
+        :returns: The bound row, or ``None`` when the row was closed.
+        """
+        assert isinstance(item.data, MessageData)
+        if row.item_id is None and self._answers(session_id, item.id, row.id):
+            at_ms: int | None = int(time.time() * 1000)
+        elif row.item_id is not None and row.response_id == item.response_id:
+            at_ms = None
+        else:
+            self._store.close(row.id)
+            return None
+        title, line = cut(message_text(item.data.content))
+        return self._store.bind(
+            row.id,
+            item_id=item.id,
+            response_id=item.response_id,
+            title=title,
+            line=line,
+            at_ms=at_ms,
+        )
 
     def forget(self, session_id: str) -> None:
         """A Conversation was deleted: drop its rows."""

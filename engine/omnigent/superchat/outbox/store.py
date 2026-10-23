@@ -161,6 +161,15 @@ class SqlAlchemyOutboxStore:
             stmt = self._items().where(SqlOutboxItem.open.is_(True))
             return [_row(r) for r in session.execute(stmt).scalars().all()]
 
+    def open_for(self, conversation_id: str) -> OutboxRow | None:
+        """The Conversation's open row, if any (another replica may have opened it)."""
+        with self._session("outbox_open_for") as session:
+            stmt = self._items().where(
+                SqlOutboxItem.open.is_(True), SqlOutboxItem.conversation_id == conversation_id
+            )
+            found = session.execute(stmt.limit(1)).scalars().first()
+            return _row(found) if found is not None else None
+
     def bind(
         self,
         row_id: str,
