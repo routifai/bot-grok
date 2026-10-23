@@ -27,7 +27,7 @@ from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.server.auth import LEVEL_OWNER, RESERVED_USER_LOCAL, AuthProvider
 from omnigent.server.routes._auth_helpers import require_access, require_user
 from omnigent.stores import ConversationStore, PermissionStore
-from omnigent.superchat.feature import RECORDED_RESPONSE_PREFIX
+from omnigent.superchat.feature import RECORDED_RESPONSE_PREFIX, is_super_chat
 from omnigent.superchat.topics.note import PICKED_LABEL_KEY, picked_value
 from omnigent.superchat.topics.store import SqlAlchemyTopicStore
 from omnigent.superchat.topics.topic import WINDOW_DAYS, Topic, clean_key
@@ -222,7 +222,11 @@ def create_topics_router(
         owner = _owner(request)
         await _require_chat(owner, body.conversation_id)
         conv = await asyncio.to_thread(conversation_store.get_conversation, body.conversation_id)
-        if conv is None or conv.parent_conversation_id is not None:
+        if (
+            conv is None
+            or conv.parent_conversation_id is not None
+            or not is_super_chat(conv.labels)
+        ):
             raise OmnigentError("not a Conversation", code=ErrorCode.INVALID_INPUT)
         topic = await asyncio.to_thread(store.get, owner, clean_key(key))
         if topic is None or topic.status != "open":
