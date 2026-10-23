@@ -152,3 +152,16 @@ def test_engine_code_can_wake_the_conversation_with_its_own_label(
     assert store.labels(chat, [reply.id]) == {
         reply.id: {"kind": "topic_watch", "topic_key": "polaris", "urgency": "today"}
     }
+
+
+def test_a_posted_event_cannot_claim_to_be_proactive() -> None:
+    from omnigent.server.routes._sessions.orchestration import _drop_engine_only_context
+    from omnigent.server.schemas import SessionEventInput
+
+    body = SessionEventInput(
+        type="message",
+        data={"role": "user", "content": [{"type": "input_text", "text": "hi"}]},
+        context={"proactive": {"kind": "topic_watch"}, "open_artifact": {"artifact_id": "a"}},
+    )
+    _drop_engine_only_context(body)
+    assert body.context == {"open_artifact": {"artifact_id": "a"}}

@@ -4971,6 +4971,18 @@ def _runner_reject_detail(response: httpx.Response) -> str:
 #: already sees what the context recorded (the artifact open beside the chat). Set by a
 #: feature's install; a failing hook is logged and never fails the send.
 ON_MESSAGE_CONTEXT: dict[str, Callable[[str, str, dict[str, Any]], None]] = {}
+#: ``context`` keys only the engine's own server-side dispatch may set (a wake it builds, such as
+#: topic watch's ``proactive`` label, ADR 0036): dropped from every event that arrives through the
+#: session events route, from a client or a runner.
+ENGINE_ONLY_CONTEXT_KEYS: frozenset[str] = frozenset({"proactive"})
+
+
+def _drop_engine_only_context(body: SessionEventInput) -> None:
+    """Remove :data:`ENGINE_ONLY_CONTEXT_KEYS` from an event that came in from outside."""
+    if body.context and not ENGINE_ONLY_CONTEXT_KEYS.isdisjoint(body.context):
+        body.context = {k: v for k, v in body.context.items() if k not in ENGINE_ONLY_CONTEXT_KEYS}
+
+
 #: ``feature name -> hook(session_id)``, called once a session is deleted so a feature drops what
 #: it keeps for it. Set by a feature's install; a failing hook is logged, never fails the delete.
 ON_SESSION_DELETED: dict[str, Callable[[str], None]] = {}

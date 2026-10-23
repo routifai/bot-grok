@@ -206,6 +206,7 @@ from omnigent.server.routes._sessions.orchestration import (
     _best_effort_stop,
     _child_session_summaries_from_conversations,
     _dispatch_session_event_to_runner,
+    _drop_engine_only_context,
     _enrich_terminal_status_with_subagent_output,
     _ensure_runner_relay_ready,
     _ensure_runner_session_initialized,
@@ -980,6 +981,8 @@ def register_events_routes(
             control and internal transient events.
         :raises OmnigentError: 404 if no session exists.
         """
+        # Engine-only context (``proactive``) is set by server-side dispatch, never from here.
+        _drop_engine_only_context(body)
         user_id, conv = await _authorized_conversation(request, session_id)
         if body.type in ("message", _SLASH_COMMAND_TYPE):
             await refuse_if_suspended(user_id)
