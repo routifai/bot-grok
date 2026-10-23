@@ -4,7 +4,7 @@ import { Id } from "../ids.js";
 
 /** The plain choices the "New automation" form offers; the API turns them into an RRULE. */
 export const AutomationScheduleSchema = z.object({
-  frequency: z.enum(["daily", "weekly", "monthly"]),
+  frequency: z.enum(["daily", "weekdays", "weekly", "monthly"]),
   /** Local time of day, `HH:MM` (24h), in the automation's timezone. */
   time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
   /** Weekly: 0 = Monday … 6 = Sunday. */
@@ -31,6 +31,8 @@ export const AutomationSchema = z.object({
   lastRunStatus: z.string().nullable(),
   /** The model it runs with; `null` is the default model. */
   model: z.string().nullable(),
+  /** `false` for one the app keeps for the person (the morning brief): paused, never deleted. */
+  removable: z.boolean().optional(),
   createdAt: z.string(),
 });
 export type Automation = z.infer<typeof AutomationSchema>;

@@ -20,10 +20,14 @@ import { os } from "./context";
 
 /** The engine's marker for an automation's scheduled task. */
 const AUTOMATION_KIND = "automation";
+/** The morning brief's task (ADR 0037): listed here to pause or run, never deleted. */
+const BRIEF_KIND = "daily_brief";
+const LISTED_KINDS = new Set([AUTOMATION_KIND, BRIEF_KIND]);
 /** The Helper type an automation's runs use. */
 const AUTOMATION_HELPER = "worker";
 
 const DAYS = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"] as const;
+const WEEKDAYS = DAYS.slice(0, 5).join(",");
 
 /** The form's plain choices as the engine's RRULE (evaluated in the task's timezone). */
 export function scheduleToRrule(schedule: AutomationSchedule): string {
@@ -31,9 +35,11 @@ export function scheduleToRrule(schedule: AutomationSchedule): string {
   const parts =
     schedule.frequency === "daily"
       ? ["FREQ=DAILY"]
-      : schedule.frequency === "weekly"
-        ? ["FREQ=WEEKLY", `BYDAY=${DAYS[schedule.weekday ?? 0]}`]
-        : ["FREQ=MONTHLY", `BYMONTHDAY=${schedule.monthDay ?? 1}`];
+      : schedule.frequency === "weekdays"
+        ? ["FREQ=WEEKLY", `BYDAY=${WEEKDAYS}`]
+        : schedule.frequency === "weekly"
+          ? ["FREQ=WEEKLY", `BYDAY=${DAYS[schedule.weekday ?? 0]}`]
+          : ["FREQ=MONTHLY", `BYMONTHDAY=${schedule.monthDay ?? 1}`];
   return [...parts, `BYHOUR=${hour}`, `BYMINUTE=${minute}`].join(";");
 }
 
@@ -51,6 +57,9 @@ export function rruleToSchedule(rrule: string): AutomationSchedule | null {
   const time = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
   const freq = fields.get("FREQ");
   if (freq === "DAILY" && fields.size === 3) return { frequency: "daily", time };
+  if (freq === "WEEKLY" && fields.get("BYDAY") === WEEKDAYS) {
+    return { frequency: "weekdays", time };
+  }
   if (freq === "WEEKLY") {
     const weekday = DAYS.indexOf(fields.get("BYDAY") as (typeof DAYS)[number]);
     return weekday >= 0 ? { frequency: "weekly", time, weekday } : null;
@@ -67,7 +76,7 @@ const iso = (epochSeconds: number | null | undefined) =>
 
 async function tasksOf(sessionId: string): Promise<OmnigentScheduledTask[]> {
   const tasks = await listOmnigentScheduledTasks(engineClient(), NO_EMAIL, sessionId);
-  return tasks.filter((task) => task.kind === AUTOMATION_KIND);
+  return tasks.filter((task) => LISTED_KINDS.has(task.kind ?? ""));
 }
 
 export function toAutomation(task: OmnigentScheduledTask): Automation {
@@ -84,6 +93,7 @@ export function toAutomation(task: OmnigentScheduledTask): Automation {
     lastRunAt: iso(task.last_run_at),
     lastRunStatus: task.last_run_status ?? null,
     model: task.model_override ?? null,
+    removable: task.kind !== BRIEF_KIND,
     createdAt: iso(task.created_at) ?? new Date(0).toISOString(),
   };
 }
@@ -159,7 +169,13 @@ export const automationsRouter = {
       return { ok: true as const };
     }),
     remove: os.automations.remove.handler(async ({ input }) => {
-      await owned(input.id);
+      const sessionId = await owned(input.id);
+      const task = (await tasksOf(sessionId)).find((each) => each.id === input.id);
+      if (task?.kind === BRIEF_KIND) {
+        throw new ORPCError("BAD_REQUEST", {
+          message: "The morning brief can be paused, not deleted.",
+        });
+      }
       await deleteOmnigentScheduledTask(engineClient(), NO_EMAIL, input.id);
       return { ok: true as const };
     }),

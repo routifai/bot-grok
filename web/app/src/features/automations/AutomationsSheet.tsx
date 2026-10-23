@@ -177,7 +177,7 @@ function NewAutomationForm({
     setBusy(true);
     setError(null);
     const schedule: AutomationSchedule =
-      frequency === "daily"
+      frequency === "daily" || frequency === "weekdays"
         ? { frequency, time }
         : frequency === "weekly"
           ? { frequency, time, weekday }
@@ -257,6 +257,7 @@ function NewAutomationForm({
             className={SELECT}
           >
             <NativeSelectOption value="daily">{t`Daily`}</NativeSelectOption>
+            <NativeSelectOption value="weekdays">{t`Weekdays`}</NativeSelectOption>
             <NativeSelectOption value="weekly">{t`Weekly`}</NativeSelectOption>
             <NativeSelectOption value="monthly">{t`Monthly`}</NativeSelectOption>
           </NativeSelect>
@@ -371,24 +372,26 @@ function AutomationRow({
         onCheckedChange={onToggle}
         aria-label={t`${automation.name} is on`}
       />
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={
-            <button
-              type="button"
-              aria-label={t`More actions for ${automation.name}`}
-              className="grid size-9 place-items-center rounded-lg text-ink-2 hover:bg-foreground/10 focus-visible:outline-2 focus-visible:outline-ring"
-            />
-          }
-        >
-          <Ellipsis size={18} aria-hidden="true" />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem variant="destructive" onClick={onDelete}>
-            <Trans>Delete</Trans>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      {automation.removable === false ? null : (
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <button
+                type="button"
+                aria-label={t`More actions for ${automation.name}`}
+                className="grid size-9 place-items-center rounded-lg text-ink-2 hover:bg-foreground/10 focus-visible:outline-2 focus-visible:outline-ring"
+              />
+            }
+          >
+            <Ellipsis size={18} aria-hidden="true" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem variant="destructive" onClick={onDelete}>
+              <Trans>Delete</Trans>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
     </li>
   );
 }
