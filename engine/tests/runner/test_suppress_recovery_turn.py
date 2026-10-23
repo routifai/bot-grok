@@ -302,6 +302,64 @@ async def test_without_suppress_recovery_turn_starts_recovery_turn_from_history(
         )
 
 
+class _RecordedCardServerClient(_HistoryServerClient):
+    """A record that ends in a card the engine recorded outside any turn (a picked-up topic)."""
+
+    async def get(self, url: str, **kwargs: Any) -> _HistoryServerClient._Resp:
+        del kwargs
+        if not url.rstrip("/").endswith("/items"):
+            return self._Resp({})
+        recorded = "recorded_topic_1"
+        return self._Resp(
+            {
+                "data": [
+                    {**_PENDING_USER_MESSAGE, "response_id": "resp_1"},
+                    {
+                        "id": "msg_002",
+                        "type": "message",
+                        "role": "assistant",
+                        "response_id": "resp_1",
+                        "content": [{"type": "output_text", "text": "done"}],
+                    },
+                    {
+                        "id": "fc_1",
+                        "type": "function_call",
+                        "response_id": recorded,
+                        "name": "render_card",
+                        "arguments": "{}",
+                        "call_id": "call_topic_1",
+                    },
+                    {
+                        "id": "fo_1",
+                        "type": "function_call_output",
+                        "response_id": recorded,
+                        "call_id": "call_topic_1",
+                        "output": "{}",
+                    },
+                ],
+                "has_more": False,
+            }
+        )
+
+
+@pytest.mark.asyncio
+async def test_a_recorded_card_at_the_end_of_the_record_starts_no_recovery_turn(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A card the engine recorded between turns ends the record but is no unfinished turn."""
+    app, _pm, harness = _build_sdk_app(_RecordedCardServerClient())
+    caplog.set_level(logging.INFO, logger="omnigent.runner.app")
+
+    async with _runner_client(app) as client:
+        init_resp = await client.post(
+            "/v1/sessions", json=_session_init_payload(suppress_recovery_turn=False)
+        )
+        assert init_resp.status_code == 201, init_resp.text
+        await asyncio.sleep(0.1)
+        assert harness.posted_bodies == []
+        assert _init_rows(caplog)[0]["recovery_turn"] == "none"
+
+
 @pytest.mark.asyncio
 async def test_forward_during_recovery_turn_is_not_replayed_after_it(
     monkeypatch: pytest.MonkeyPatch,

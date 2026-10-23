@@ -140,7 +140,7 @@ from omnigent.runtime.prompt import (
 from omnigent.spec.skill_sources import resolve_session_skills
 from omnigent.spec.types import AgentSpec, LocalToolInfo, SkillSpec
 from omnigent.superchat.artifacts.studio import STUDIO_TYPE
-from omnigent.superchat.feature import is_helper, is_super_chat
+from omnigent.superchat.feature import RECORDED_RESPONSE_PREFIX, is_helper, is_super_chat
 from omnigent.superchat.features import notify_turn_end
 from omnigent.superchat.helpers.notices import take_waiting_progress
 from omnigent.superchat.helpers.saved_files import (
@@ -3085,6 +3085,10 @@ def create_runner_app(
     app.state.studio_runners = _studio_runners
     app.state.superside_chat_pending_refresh = _superside_chat_pending_refresh
     _last_server_item_id: dict[str, str] = {}
+    # conv_id -> whether the record's newest item was recorded by the engine outside any turn
+    # (a picked-up topic's card, ``RECORDED_RESPONSE_PREFIX``): recovery never resumes a turn
+    # for it.
+    _record_ends_recorded: dict[str, bool] = {}
     # conv_id -> the harness subprocess that took the session's last completed turn. The runner's
     # history is that subprocess's context; once it is gone (crash, relaunch, reconnect) the next
     # turn assembles the history from the record instead (ADR 0031: only the load starts one).
@@ -4035,7 +4039,7 @@ def create_runner_app(
                 (last_type == "message" and last_role == "user")
                 or last_type == "function_call"
                 or last_type == "function_call_output"
-            )
+            ) and not _record_ends_recorded.get(session_id, False)
             if (
                 needs_turn
                 and recovery_id is None
@@ -4509,6 +4513,10 @@ def create_runner_app(
                 last_id = page_items[-1].get("id")
                 if last_id:
                     _last_server_item_id[session_id] = last_id
+                last_response = page_items[-1].get("response_id")
+                _record_ends_recorded[session_id] = isinstance(last_response, str) and (
+                    last_response.startswith(RECORDED_RESPONSE_PREFIX)
+                )
         except (httpx.HTTPError, ValueError, ItemsPageFetchError):
             _logger.warning(
                 "History load failed for session=%s",
