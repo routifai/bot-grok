@@ -66,6 +66,7 @@ import {
 } from "./app/chrome/EmptyConversation";
 import { Home } from "./app/chrome/Home";
 import { HomeActivity } from "./app/chrome/HomeActivity";
+import { opensOnHome, useHomeOnReturn } from "./app/chrome/homeOnReturn";
 import { BotSettingsPanel } from "./app/chrome/PanelForms";
 import type { Panel } from "./app/chrome/panel";
 import { SidePanelHeader } from "./app/chrome/SidePanelHeader";
@@ -123,9 +124,12 @@ export function ShellPage() {
   const active = bots.find((b) => b.id === botId) ?? bots[0];
   // The dock place open as a sheet, if any.
   const [dockSheet, setDockSheet] = useState<DockKey | null>(null);
-  // Home over a Conversation that has messages (ADR 0035), with the person's topics: the
-  // Conversation's Home button opens it; a send, a picked-up topic or a message link closes it.
-  const [homeOpen, setHomeOpen] = useState(false);
+  // Home over a Conversation that has messages (ADR 0035), with the person's topics: the app
+  // opens on it on a first visit or after 4 hours or more away, and so does coming back to the
+  // page after such a break; the Conversation's Home button opens it too. A send, a picked-up
+  // topic or a message link closes it.
+  const [homeOpen, setHomeOpen] = useState(opensOnHome);
+  useHomeOnReturn(() => setHomeOpen(true));
   const [topicsOpen, setTopicsOpen] = useState(false);
   const { topics, reload: reloadTopics } = useTopics(active?.id);
   const [folderPickerOpen, setFolderPickerOpen] = useState(false);
@@ -310,7 +314,8 @@ export function ShellPage() {
   useEffect(() => {
     if (pendingMessage) setHomeOpen(false);
   }, [pendingMessage]);
-  // Home is the start page of an empty Conversation, and comes back on the Home button.
+  // Home is the start page of an empty Conversation, and comes back after a break or on the
+  // Home button.
   const showHome = Boolean(active && (shownStart || homeOpen));
   useEffect(() => {
     if (showHome || topicsOpen) void reloadTopics();

@@ -158,6 +158,7 @@ vi.mock("./app/conversation/message-cards", () => ({
   ArtifactImage: Stub,
 }));
 
+import { LAST_SEEN_KEY } from "./app/chrome/homeOnReturn";
 import { ShellPage } from "./Shell";
 
 function bot(overrides: Partial<Record<string, unknown>> = {}) {
@@ -228,6 +229,13 @@ async function renderShell(initialBootstrap: ReturnType<typeof bootstrap>) {
 }
 
 beforeEach(() => {
+  // A visit a moment ago: the app opens where the person left it (Home waits for a break).
+  const stored = new Map<string, string>([[LAST_SEEN_KEY, String(Date.now())]]);
+  vi.stubGlobal("localStorage", {
+    getItem: (key: string) => stored.get(key) ?? null,
+    setItem: (key: string, value: string) => stored.set(key, value),
+    removeItem: (key: string) => stored.delete(key),
+  });
   engine.transcript.mockReset().mockImplementation(() => new Promise(() => undefined));
   engine.send.mockReset().mockResolvedValue({ ok: true });
   engine.interrupt.mockReset().mockResolvedValue({ delivered: true });
@@ -237,8 +245,8 @@ it("shows the conversation chrome: the dock, no sidebar or chat list, no Goals, 
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const page = await renderShell(bootstrap({ me: me() }));
   try {
-    // The greeting landing waits for a loaded, empty Conversation; until then (and whenever
-    // there are messages) the transcript shell shows.
+    // Back within 4 hours, the greeting landing waits for a loaded, empty Conversation; until
+    // then (and whenever there are messages) the transcript shell shows.
     expect(page.container.querySelector('[data-testid="home"]')).toBeNull();
     const dock = page.container.querySelector('[data-testid="dock"]');
     const dockLabels = [...(dock?.querySelectorAll("button") ?? [])].map((el) =>
@@ -252,6 +260,24 @@ it("shows the conversation chrome: the dock, no sidebar or chat list, no Goals, 
     expect(page.container.querySelector('[data-testid="bots-sidebar"]')).toBeNull();
   } finally {
     await page.cleanup();
+  }
+});
+
+it("opens on Home on a first visit and after 4 hours or more away, else on the Conversation", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  for (const [lastSeen, home] of [
+    [null, true],
+    [Date.now() - 5 * 60 * 60 * 1000, true],
+    [Date.now() - 60 * 60 * 1000, false],
+  ] as const) {
+    if (lastSeen === null) window.localStorage.removeItem(LAST_SEEN_KEY);
+    else window.localStorage.setItem(LAST_SEEN_KEY, String(lastSeen));
+    const page = await renderShell(bootstrap({ me: me() }));
+    try {
+      expect(Boolean(page.container.querySelector('[data-testid="home"]'))).toBe(home);
+    } finally {
+      await page.cleanup();
+    }
   }
 });
 
