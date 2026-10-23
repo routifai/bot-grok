@@ -2,7 +2,7 @@ import { useLingui } from "@lingui/react/macro";
 import { cn } from "@superchat/ui-web";
 import { RotateCw } from "lucide-react";
 import { useFileStudio } from "../../components/cards/context";
-import { type BriefWire, useLatestBrief } from "./useLatestBrief";
+import { type BriefWire, type LatestBriefState, useLatestBrief } from "./useLatestBrief";
 
 /** "7:31" today, "Thu 7:31" this week, else the date. */
 function savedWhen(iso: string, locale: string | undefined, now = new Date()): string {
@@ -31,9 +31,20 @@ export function BriefCard({
   /** Tests and previews pass their own; the app uses the live RPC. */
   wire?: BriefWire;
 }) {
+  return <BriefCardView latest={useLatestBrief(botId, wire)} className={className} />;
+}
+
+/** The card over a brief read by the caller's `useLatestBrief` (Home asks whether one exists). */
+export function BriefCardView({
+  latest,
+  className,
+}: {
+  latest: LatestBriefState;
+  className?: string;
+}) {
   const { t, i18n } = useLingui();
   const studio = useFileStudio();
-  const { brief, refreshing, failed, refresh } = useLatestBrief(botId, wire);
+  const { brief, refreshing, failed, refresh } = latest;
   const page = brief?.page;
   if (!page) return null;
   return (

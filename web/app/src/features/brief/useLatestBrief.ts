@@ -25,6 +25,8 @@ export function useLatestBrief(botId: string, wire: BriefWire = LIVE_WIRE) {
   const since = useRef<string | null>(null);
 
   const load = useCallback(async () => {
+    // No Muse yet: nothing to ask for.
+    if (!botId) return;
     try {
       const next = await wire.latest({ botId });
       setBrief(next);
@@ -74,3 +76,6 @@ export function useLatestBrief(botId: string, wire: BriefWire = LIVE_WIRE) {
 
   return { brief, refreshing, failed, refresh };
 }
+
+/** What `useLatestBrief` gives its card. */
+export type LatestBriefState = ReturnType<typeof useLatestBrief>;

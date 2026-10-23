@@ -20,7 +20,8 @@ export function HomeTopics({
 }: {
   topics: readonly Topic[] | null;
   onPick: (topic: Topic, from: HTMLElement) => void;
-  /** A card shown before the topics, e.g. the morning brief (ADR 0037); it may render nothing. */
+  /** A card shown before the topics, e.g. the morning brief (ADR 0037); pass it only when it
+   * has something to show, so a Home with no topics and no brief has no section at all. */
   leading?: ReactNode;
 }) {
   const { t } = useLingui();
@@ -67,7 +68,9 @@ export function HomeTopics({
         </fieldset>
       </div>
       {count === 0 && !leading ? (
-        <p className="px-1 text-[13px] text-ink-2">{t`Nothing in the last 48 hours.`}</p>
+        <p className="px-1 text-[13px] text-ink-2">
+          {range === "recent" ? t`Nothing in the last 48 hours.` : t`Nothing this week.`}
+        </p>
       ) : (
         <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-3">
           {leading}
