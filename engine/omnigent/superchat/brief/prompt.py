@@ -7,6 +7,7 @@ connected, and the person's standing memory. Everything the engine pastes in is 
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from datetime import date
 from typing import Any
@@ -26,8 +27,17 @@ NOTE_KEYS = ("promised", "open_loops")
 _OPEN_PER_TOPIC = 4
 
 
+#: The start of a fence marker (``[Data:`` or ``[End of data``), wherever it appears.
+_FENCE_MARK = re.compile(r"\[(?=\s*(?:data\s*:|end\s+of\s+data\b))", re.IGNORECASE)
+
+
+def _data(text: str) -> str:
+    """*text* with anything that could open or close a fence neutralized."""
+    return _FENCE_MARK.sub("(", text)
+
+
 def _fenced(what: str, body: str) -> str:
-    return f"{DATA_OPEN.format(what=what)}\n{body.strip()}\n{DATA_CLOSE}"
+    return f"{DATA_OPEN.format(what=what)}\n{_data(body.strip())}\n{DATA_CLOSE}"
 
 
 def note_text(sections: Mapping[str, str] | None) -> str:
