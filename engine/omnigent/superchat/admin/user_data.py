@@ -90,6 +90,10 @@ USER_DATA: dict[str, Rule] = {
     "topic_watch_cursors": Direct("owner"),
     "topic_watch_seen": Direct("owner"),
     "topic_watch_runs": Direct("owner"),
+    "topics": Direct("owner"),
+    "outbox_items": Direct("owner"),
+    "outbox_cursors": Direct("owner"),
+    "outbox_feedback": Direct("owner"),
     # -- rows that hang off those, with no foreign key ------------------------------------
     "artifact_views": Child("artifact_publications", "slug", "slug"),
     "objective_tasks": Child("objectives", "objective_id", "id"),
