@@ -37,5 +37,6 @@ One file per decision, numbered in order. A superseded record keeps its file wit
 | [0031](0031-a-new-session-is-assembled-from-state.md) | A new session is assembled from state, never replayed | Accepted 2026-10-19, revised after review the same day: surgical edits to the history load and summarizer, view start for recall, fold in the engine on Light, handoff at min(120k, 0.6 × window) and on cache expiry (flagged); tool merge split into 0032; in build (probe baseline first) |
 | [0032](0032-fewer-shorter-tools.md) | Fewer, shorter tools | Accepted 2026-10-19; split out of 0031: tool merges, Helper admin tools removed, shorter descriptions |
 | [0033](0033-the-context-wave-as-built.md) | The context wave as built | Done 2026-10-20: what 0031 became in code, why, and the live evidence (pi and Claude) |
+| [0035](0035-topics-are-written-by-the-quiet-moment-pass.md) | Topics are written by the quiet-moment pass | Accepted 2026-10-23; Home topics, Topics panel in the dock, pick-up card in the one Conversation; 0034 is reserved for inline visuals |
 
 The pages that explain the current system are listed in [../README.md](../README.md).
