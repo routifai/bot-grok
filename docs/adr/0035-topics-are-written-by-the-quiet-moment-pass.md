@@ -66,6 +66,14 @@ Before matching, code drops noise: bulk and no-reply senders, newsletters (list 
 
 **Every run is accountable.** Each run records its counts per stage (collected, matched, judged, surfaced, marked) and the reason for each surfaced item, so a quiet day can be told apart from a broken watch. The judge's call is in the model-call log like every other.
 
+**Amended 2026-10-23 (owner): term specificity.** A watch term that is everywhere in the person's own world is not a signal: when a topic about their company overview deck watches the name of the organisation they work at, every work email mentions it and the rules above would hand nearly all of them to the judge. So code tells **common** terms from **specific** ones, per person, with no setting:
+
+- **From what the person actually receives.** Each run counts, before matching, the items it collected (noise and web items left out, each item once): per watched term, how many items were seen while it was watched and how many contained it, kept per day for the last 14 days. A term is common when it is in at least 5% of those items, once at least 20 items were seen; below 20 only the seeds below apply.
+- **Seeds, no counts needed.** The person's own organisation and email domain are common from the start: organisation names come from their standing memory facts that say where they work ("works at X", "employed by X", "is a VP at X"), and the domain from their own address when the engine knows it (consumer mail providers left out); a term that is the organisation's name, its leading words or its domain's name counts. A term watched by 3 or more open topics is shared, not distinctive. A short stoplist covers terms under 3 characters and generic work words (deck, report, slides, meeting, update, Q1 to Q4, email, project, draft, team).
+- **Rules.** A common term never counts. Strong is unchanged; **Medium** is a watched person plus at least one specific term; **Weak** is two or more distinct specific terms. A topic whose terms are all common can still match by its hard references, otherwise not. Mutes are unchanged.
+- **Good terms in the first place.** The quiet pass, the seed pass and the Conversation's rule for a picked topic tell the writer that watch terms must pick the topic out within the person's own work (a client, a deal or project codename, a file name), never their own organisation, team or anything in most of their mail. The quiet and seed briefs name the person's organisation, when known, as data so it can be left out. The wording lives in the prompts, never per company in code.
+- **Accountable.** Each run's record lists the terms treated as common and why (`seed:org`, `seed:shared`, `stoplist`, or "23% of 140 items"), and each matched item's reason names the specific terms that hit.
+
 ## Considered options
 
 - **Generate a topic summary when it is clicked.** Rejected: a model call per click is slow, and the pass already reads the same turns.
