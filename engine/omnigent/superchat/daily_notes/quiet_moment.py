@@ -121,6 +121,28 @@ last days (at most 8 topics, only those still alive):
 {notes}"""
 #: Notes the first topics are seeded from.
 SEED_NOTES = 7
+#: A person with no topics gets one seed pass over this much history (ADR 0035, amended).
+SEED_LOOKBACK_SECONDS = 7 * 86400
+
+# The one-time pass that starts a person's topics from their history, so Home is not empty until
+# their next quiet moment. Same Helper Type and tool as the quiet pass; it writes topics only.
+SEED_PROMPT = """\
+This is a one-time pass to start the person's topics: they have none yet. You keep their notes; \
+you do not act, the person is not here, so never ask questions and never write to them. Do not \
+change the daily note or memory.
+
+1. Read the conversation of the last days: `session_history` with `action: "list_chats"` gives \
+its id, then `read` its turns with that `chat_id`, newest first, back up to 7 days (stop after \
+about 200 turns).
+{topics}
+Here `events` are the moments of every day you read, each with its date and local time, so the \
+person sees on which days a topic moved. Use only what the turns and notes say; never invent.
+
+Finish with exactly one fenced JSON block and nothing after it:
+```json
+{{"kind": "topic_seed", "topics_written": 0, "topics_new": 0}}
+```
+"""
 
 FINALIZE_ADDENDUM = """
 This is the day's final pass: tidy today's note so it reads cleanly (merge duplicates, drop what \
@@ -232,6 +254,12 @@ def build_brief(
     return [{"type": "input_text", "text": text}]
 
 
+def build_seed_brief(topics: str) -> list[dict[str, Any]]:
+    """The seed pass's first message: read the last days, then write topics only."""
+    step = TOPICS_STEP.format(topics=topics).replace("\n4. Keep", "\n2. Keep", 1)
+    return [{"type": "input_text", "text": SEED_PROMPT.format(topics=step)}]
+
+
 def seed_text(notes: list[Any], today: str) -> str:
     """:data:`TOPICS_SEED` over the last :data:`SEED_NOTES` notes with content before *today*."""
     earlier = [n for n in notes if n.note_date < today and _has_content(n)][:SEED_NOTES]
@@ -301,6 +329,9 @@ class QuietMoment:
         # Runs started per ``(owner, day, column)``, capped at :data:`MAX_PASS_ATTEMPTS`.
         self._attempts: dict[tuple[str, str, str], int] = {}
         self._last_slow_tick = 0.0
+        # Owners whose topics are started or already exist; a restart forgets, and the next seed
+        # check finds their topics (or none, and tries once more).
+        self._seeded: set[str] = set()
 
     @property
     def tick_seconds(self) -> float:
@@ -405,6 +436,51 @@ class QuietMoment:
             self._notes.list_range, owner, date_from=None, date_to=day, limit=SEED_NOTES + 1
         )
         return seed_text(notes, day)
+
+    async def seed_due(self, *, now: float | None = None) -> int:
+        """Start one seed pass for each person active this week who has no topics yet.
+
+        Same gates as every pass (proactivity off or quiet hours hold it back); at most one per
+        owner per process. ``0`` when no topics capability is registered.
+
+        :returns: Helpers started.
+        """
+        instant = now if now is not None else time.time()
+        recent = await asyncio.to_thread(
+            self._notes.recent_user_messages, since=int(instant - SEED_LOOKBACK_SECONDS)
+        )
+        started = 0
+        for session_id in recent:
+            owner = self._notes.owner_key(
+                await asyncio.to_thread(
+                    self._deps.conversation_store.get_session_owner, session_id
+                )
+            )
+            if owner in self._seeded:
+                continue
+            listed = await asyncio.to_thread(topics_brief, owner)
+            if listed is None:
+                return started
+            if listed:
+                self._seeded.add(owner)
+                continue
+            gate = await self._gate(owner, instant)
+            if gate is None:
+                continue
+            _prefs, day = gate
+            notes = await asyncio.to_thread(
+                self._notes.list_range, owner, date_from=None, date_to=day, limit=SEED_NOTES + 1
+            )
+            self._seeded.add(owner)
+            try:
+                await self._start_named(
+                    session_id, owner, "Topics", build_seed_brief(seed_text(notes, day))
+                )
+                _logger.info("quiet moment: topic seed for %s", session_id)
+                started += 1
+            except Exception:
+                _logger.exception("quiet moment: topic seed failed for %s", session_id)
+        return started
 
     async def finalize_due(self, *, now: float | None = None) -> int:
         """Finalize notes whose day is ending (local evening) or ended; returns passes started."""
@@ -579,6 +655,7 @@ class QuietMoment:
                 await self.idle_due()
                 if time.monotonic() - self._last_slow_tick >= FINALIZE_TICK_SECONDS:
                     self._last_slow_tick = time.monotonic()
+                    await self.seed_due()
                     await self.finalize_due()
                     await self.nightly_due()
             except asyncio.CancelledError:
