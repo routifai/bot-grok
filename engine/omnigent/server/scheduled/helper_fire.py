@@ -86,7 +86,7 @@ def register_fire_deferral(kind: str, hook: Callable[[ScheduledTask], float | No
 #: Kinds whose due runs are never dropped for "busy": they queue (re-fire every
 #: ``_OWNER_BUSY_DEFER_S``) and run up to ``fire._max_concurrent()`` at once per owner (one at a
 #: time while the parent Conversation's own turn runs).
-_QUEUED_KINDS = frozenset({"live_artifact", "automation"})
+_QUEUED_KINDS = frozenset({"live_artifact", "automation", "daily_brief"})
 
 #: ``hook(task)``: how many queued runs the owner's host has room for now, or ``None`` when
 #: nobody measured it lately.
@@ -182,6 +182,16 @@ async def _run_engine(
         error_code=outcome.code,
         attempt=attempt,
     )
+
+
+#: ``task kind -> hook(task)``: the whole brief a run of that kind starts with, built when it fires
+#: (blocking; it may read stores). ``None`` falls back to the task's own prompt.
+_RUN_BRIEFS: dict[str, Callable[[ScheduledTask], str | None]] = {}
+
+
+def register_run_brief(kind: str, hook: Callable[[ScheduledTask], str | None]) -> None:
+    """Build the opening message of each run of a ``kind`` task with ``hook(task)``."""
+    _RUN_BRIEFS[kind] = hook
 
 
 def _quiet_window_end(prefs: OwnerPreferences, now: float) -> float | None:
@@ -751,6 +761,9 @@ def scheduled_brief(task: ScheduledTask, conv: Conversation) -> str:
     """
     The prompt a run starts with; an automation run says it is one, by name.
 
+    A kind with a registered brief (:func:`register_run_brief`) starts with what its hook builds
+    instead. Blocking: the hook may read stores.
+
     The Result goes back to the person's chat unprompted, so it has to say where it comes from:
     otherwise the chat reads it as work nobody asked for.
 
@@ -760,6 +773,15 @@ def scheduled_brief(task: ScheduledTask, conv: Conversation) -> str:
     """
     if SCHEDULED_HELPER_LABEL_KEY not in (getattr(conv, "labels", None) or {}):
         return task.prompt
+    hook = _RUN_BRIEFS.get(getattr(task, "kind", None) or "")
+    if hook is not None:
+        try:
+            built = hook(task)
+        except Exception:
+            _logger.exception("scheduled fire: run brief hook failed for task %s", task.id)
+            built = None
+        if built:
+            return built
     return (
         f'This is the person\'s automation "{task.name}", running on its schedule (not a '
         f'message in chat). Begin your final answer with: Automation "{task.name}": '
@@ -807,7 +829,7 @@ def _make_parent_runner_dispatch(
         await _dispatch_session_event_to_runner(
             conv.id,
             conv_for_dispatch,
-            event or fire._prompt_event(scheduled_brief(task, conv)),
+            event or fire._prompt_event(await asyncio.to_thread(scheduled_brief, task, conv)),
             deps.conversation_store,
             runner_client,
             agent_name=None,

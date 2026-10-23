@@ -12,6 +12,7 @@ export * from "./rpc/apps.js";
 export * from "./rpc/artifact-edit-protocol.js";
 export * from "./rpc/artifacts.js";
 export * from "./rpc/automations.js";
+export * from "./rpc/brief.js";
 export * from "./rpc/charts.js";
 export * from "./rpc/chats.js";
 export * from "./rpc/decks.js";

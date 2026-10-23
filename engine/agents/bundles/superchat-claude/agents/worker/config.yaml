@@ -52,6 +52,8 @@ tools:
     - artifact_outline
     - live_update_context
     - live_update_save
+    # The morning brief run (ADR 0037) saves its page; the handler refuses any other run.
+    - brief_save
     - files_search
     - files_vsearch
     - files_query

@@ -25,6 +25,7 @@ function ordinal(day: number): string {
 export function describeSchedule(schedule: AutomationSchedule | null): string {
   if (!schedule) return "Custom schedule";
   if (schedule.frequency === "daily") return `Every day at ${schedule.time}`;
+  if (schedule.frequency === "weekdays") return `Weekdays at ${schedule.time}`;
   if (schedule.frequency === "weekly") {
     return `Every ${WEEKDAYS[schedule.weekday ?? 0]} at ${schedule.time}`;
   }
