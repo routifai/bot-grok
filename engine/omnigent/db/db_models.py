@@ -2157,6 +2157,113 @@ class SqlRoundEvent(OmnigentBase):
     at_ms: Mapped[int] = mapped_column(BigInteger, nullable=False)
 
 
+class SqlOutboxItem(OmnigentBase):
+    """
+    SQLAlchemy model for the ``outbox_items`` table: one row per proactive message (ADR 0036).
+
+    A row is opened when a scheduled run's notice starts a turn of the Conversation, and bound to
+    the message that turn writes; a later message of the same turn moves it there (the turn's
+    last text is its reply). Channels read bound rows after their own cursor.
+
+    :param id: The notice that started the turn (the row's origin).
+    :param owner: Owner identity (``"local"`` in single-user mode).
+    :param conversation_id: The Conversation (no DB foreign key, Rule R032).
+    :param item_id: The proactive message, ``None`` until the turn writes one.
+    :param response_id: The turn that wrote it.
+    :param kind: The source's kind, e.g. ``automation``, ``topic_watch``, ``daily_brief``.
+    :param topic_key: The topic it is about, when the source named one.
+    :param urgency: ``now``, ``today`` or ``brief``.
+    :param source: JSON object of what the source matched on, e.g. ``{"sender": "..."}``.
+    :param title: Code-cut from the message: first heading or sentence, at most 80 characters.
+    :param line: Code-cut from the message: first sentence after the title, at most 160.
+    :param created_at_ms: Epoch milliseconds the row was bound (opened, while unbound).
+    :param open: The turn may still write to it.
+    """
+
+    __tablename__ = "outbox_items"
+    __table_args__ = (
+        Index("ix_outbox_items_owner", "workspace_id", "owner", "created_at_ms"),
+        Index("ix_outbox_items_item", "workspace_id", "item_id"),
+        Index("ix_outbox_items_open", "workspace_id", "open"),
+    )
+
+    workspace_id: Mapped[int] = mapped_column(
+        BigInteger,
+        primary_key=True,
+        nullable=False,
+        server_default="0",
+        default=current_workspace_id,
+    )
+    id: Mapped[str] = mapped_column(Uuid16, primary_key=True)
+    owner: Mapped[str] = mapped_column(String(128), nullable=False)
+    conversation_id: Mapped[str] = mapped_column(Uuid16, nullable=False)
+    item_id: Mapped[str | None] = mapped_column(Uuid16, nullable=True)
+    response_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    topic_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    urgency: Mapped[str] = mapped_column(String(8), nullable=False)
+    source: Mapped[str] = mapped_column(Text, nullable=False, server_default="{}")
+    title: Mapped[str] = mapped_column(String(320), nullable=False, server_default="")
+    line: Mapped[str] = mapped_column(String(640), nullable=False, server_default="")
+    created_at_ms: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    open: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=true())
+
+
+class SqlOutboxCursor(OmnigentBase):
+    """
+    SQLAlchemy model for the ``outbox_cursors`` table: how far one channel got for one owner.
+
+    The ``web`` channel's cursor is the owner's ``last_seen_item_id`` (ADR 0036).
+
+    :param channel: e.g. ``"web"``.
+    :param owner: Owner identity (``"local"`` in single-user mode).
+    :param cursor: The last proactive message the channel delivered (or the person saw).
+    :param cursor_ms: That message's row time, so a cursor survives the row moving on.
+    """
+
+    __tablename__ = "outbox_cursors"
+
+    workspace_id: Mapped[int] = mapped_column(
+        BigInteger,
+        primary_key=True,
+        nullable=False,
+        server_default="0",
+        default=current_workspace_id,
+    )
+    channel: Mapped[str] = mapped_column(String(32), primary_key=True)
+    owner: Mapped[str] = mapped_column(String(128), primary_key=True)
+    cursor: Mapped[str] = mapped_column(Uuid16, nullable=False)
+    cursor_ms: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+
+class SqlOutboxFeedback(OmnigentBase):
+    """
+    SQLAlchemy model for the ``outbox_feedback`` table: the person's *Not useful* on a proactive
+    message, the stored rule topic watch turns into a mute (ADR 0035, 0036).
+
+    :param owner: Owner identity (``"local"`` in single-user mode).
+    :param item_id: The proactive message.
+    :param topic_key: Its topic, when it had one.
+    :param reason: The person's words, if any.
+    :param at: Epoch seconds it was recorded.
+    """
+
+    __tablename__ = "outbox_feedback"
+
+    workspace_id: Mapped[int] = mapped_column(
+        BigInteger,
+        primary_key=True,
+        nullable=False,
+        server_default="0",
+        default=current_workspace_id,
+    )
+    owner: Mapped[str] = mapped_column(String(128), primary_key=True)
+    item_id: Mapped[str] = mapped_column(Uuid16, primary_key=True)
+    topic_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    at: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
 class SqlObjective(OmnigentBase):
     """
     SQLAlchemy model for the ``objectives`` table.

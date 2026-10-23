@@ -56,6 +56,7 @@ def _load() -> list[Feature]:
     from omnigent.superchat.live import FEATURE as live
     from omnigent.superchat.memory import FEATURE as memory
     from omnigent.superchat.models import FEATURE as models
+    from omnigent.superchat.outbox import FEATURE as outbox
     from omnigent.superchat.projects import FEATURE as projects
     from omnigent.superchat.recall_hint import FEATURE as recall_hint
     from omnigent.superchat.rounds import FEATURE as rounds
@@ -90,6 +91,7 @@ def _load() -> list[Feature]:
         family,
         system_jobs,
         rounds,
+        outbox,
     ]
 
 
