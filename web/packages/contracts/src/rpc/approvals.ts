@@ -65,6 +65,18 @@ export const AnswerAskInput = z.object({
   username: z.string().optional(),
 });
 
+/** One answered ask: an approval approved or denied, or a plan accepted or dismissed. */
+export const AnsweredAskSchema = z.object({
+  id: z.string(),
+  kind: z.enum(["approval", "plan_proposal"]),
+  title: z.string(),
+  decision: z.enum(["approved", "denied", "accepted", "dismissed"]),
+  byYou: z.boolean(),
+  decidedBy: z.string().nullable(),
+  decidedAt: z.string(),
+});
+export type AnsweredAsk = z.infer<typeof AnsweredAskSchema>;
+
 export const approvalsContract = {
   approvals: {
     rules: oc
@@ -79,6 +91,8 @@ export const approvalsContract = {
   },
   asks: {
     list: oc.input(z.object({ botId: Id })).output(z.array(AskSchema)),
+    /** What was decided in the last 30 days, newest first (engine `GET /v1/me/asks/history`). */
+    history: oc.input(z.object({ botId: Id })).output(z.array(AnsweredAskSchema)),
     count: oc.input(z.object({ botId: Id })).output(z.object({ count: z.number().int() })),
     answer: oc.input(AnswerAskInput).output(z.object({ ok: z.literal(true) })),
   },

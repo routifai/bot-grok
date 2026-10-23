@@ -9,6 +9,7 @@ import {
   deleteOmnigentApprovalRule,
   getOmnigentApprovalSettings,
   listOmnigentApprovalRules,
+  listOmnigentAskHistory,
   listOmnigentAsks,
   OmnigentApiError,
   type OmnigentAsk,
@@ -153,6 +154,17 @@ export const approvalsRouter = {
   },
   asks: {
     list: os.asks.list.handler(() => listAsks()),
+    history: os.asks.history.handler(async () =>
+      (await onSuperChat(listOmnigentAskHistory(engineClient(), NO_EMAIL))).map((row) => ({
+        id: row.id,
+        kind: row.kind,
+        title: row.title,
+        decision: row.decision,
+        byYou: row.by_you,
+        decidedBy: row.decided_by,
+        decidedAt: iso(row.decided_at),
+      })),
+    ),
     count: os.asks.count.handler(async () => ({ count: (await listAsks()).length })),
     /** Answers an engine ask with one of its choice ids; a blocked Task's `answer` is the
      * person's reply. The engine checks the ask is theirs. */

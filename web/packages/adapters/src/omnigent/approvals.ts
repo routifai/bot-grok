@@ -121,6 +121,31 @@ export async function listOmnigentAsks(
   return ((await response.json()) as { data: OmnigentAsk[] }).data;
 }
 
+/** One answered ask (`GET /v1/me/asks/history`): an approval approved or denied, or a plan
+ * proposal accepted or dismissed. */
+export interface OmnigentAskDecision {
+  id: string;
+  kind: "approval" | "plan_proposal";
+  title: string;
+  decision: "approved" | "denied" | "accepted" | "dismissed";
+  decided_by: string | null;
+  by_you: boolean;
+  /** Epoch seconds. */
+  decided_at: number;
+}
+
+/** `GET /v1/me/asks/history` — the caller's answered asks of the last 30 days, newest first. */
+export async function listOmnigentAskHistory(
+  config: OmnigentClientConfig,
+  email: string,
+): Promise<OmnigentAskDecision[]> {
+  const response = await fetch(new URL("/v1/me/asks/history", config.baseUrl), {
+    headers: omnigentHeaders(config, email),
+  });
+  await throwOnError(response, "list answered asks", config.secrets);
+  return ((await response.json()) as { data: OmnigentAskDecision[] }).data;
+}
+
 /** `POST /v1/me/asks/{id}/answer` — `choice` is one of the ask's choice ids; a blocked task's
  * `answer` needs the person's reply as `note`. */
 export async function answerOmnigentAsk(

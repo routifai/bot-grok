@@ -137,6 +137,9 @@ msgstr "A live update saved v{0} while you were editing"
 msgid "About you"
 msgstr "About you"
 
+msgid "Accepted"
+msgstr "Accepted"
+
 msgid "Account"
 msgstr "Account"
 
@@ -181,6 +184,9 @@ msgstr "All"
 
 msgid "Allow once"
 msgstr "Allow once"
+
+msgid "Allowed"
+msgstr "Allowed"
 
 msgid "Allowed once"
 msgstr "Allowed once"
@@ -699,6 +705,9 @@ msgstr "Dismiss"
 msgid "Dismiss error"
 msgstr "Dismiss error"
 
+msgid "Dismissed"
+msgstr "Dismissed"
+
 msgid "Divider"
 msgstr "Divider"
 
@@ -930,6 +939,9 @@ msgstr "Hide slides"
 
 msgid "Hide the runs"
 msgstr "Hide the runs"
+
+msgid "History"
+msgstr "History"
 
 msgid "How often"
 msgstr "How often"
@@ -1244,6 +1256,9 @@ msgstr "Not useful"
 
 msgid "Noted. You'll see less like this."
 msgstr "Noted. You'll see less like this."
+
+msgid "Nothing decided yet"
+msgstr "Nothing decided yet"
 
 msgid "Nothing here yet."
 msgstr "Nothing here yet."
@@ -2166,6 +2181,9 @@ msgstr "What to update"
 msgid "What we talked about"
 msgstr "What we talked about"
 
+msgid "What you decide shows up here for 30 days."
+msgstr "What you decide shows up here for 30 days."
+
 msgid "When {files} changes"
 msgstr "When {files} changes"
 
@@ -2223,6 +2241,9 @@ msgstr "Yesterday"
 
 msgid "You"
 msgstr "You"
+
+msgid "You · {when}"
+msgstr "You · {when}"
 
 #. placeholder {0}: status.asked
 msgid "You asked: {0}"
