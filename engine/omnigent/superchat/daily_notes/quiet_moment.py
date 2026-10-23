@@ -111,8 +111,7 @@ the people involved (names or email addresses), at most 8 `terms` that identify 
 client or deal names), the `refs` of threads, events or files it touched, and `web: true` only \
 when it depends on outside news (markets, a public company, a regulation). Set \
 `status: "closed"` when it is finished. The person reads every topic line on Home: write them as \
-short notes in their terms, never naming "the user" or "the person" ("Review marked done", \
-"Built the 14-slide deck").
+short notes in their terms, never about "the user".
 """
 
 #: Filled into TOPICS_STEP when the person has no topics this week: the list starts from the

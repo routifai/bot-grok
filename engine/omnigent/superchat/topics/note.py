@@ -27,15 +27,11 @@ PICKED_LABEL_KEY = "omnigent.superchat.topics.picked"
 ACTIVE_LABEL_KEY = "omnigent.superchat.topics.active"
 #: How long after a pick the Conversation may still update the picked topic.
 ACTIVE_SECONDS = 3 * 3600
-#: The one-shot note, filled with the topic's title and key.
+#: The one-shot note, filled with the topic's title and key: data only; what to do with an
+#: active topic is the Conversation's prompt (``agents/templates/AGENTS.md``).
 PICKED_NOTE = (
-    "The person picked up the topic {title} (`{key}`) to continue it. When the work on it is "
-    "done in a turn, update it with `topics_update` (key `{key}`): move what was done from "
-    "`open` to `covered` (dated today), rewrite `left_off`, set new `starters` and add one "
-    "`events` line with the local time; `covered` and `open` replace the stored lists, so pass "
-    "them whole. The person reads every line on Home: write them as short notes in their terms, "
-    "never naming \"the user\" or \"the person\" (\"Review marked done\", \"Built the 14-slide "
-    "deck\"). Only then finish the turn."
+    "The person picked up the topic {title} (`{key}`): it is the topic this conversation is "
+    "working on."
 )
 
 
@@ -122,4 +118,4 @@ async def deliver_topic_pick(
         )
     note = PICKED_NOTE.format(title=title or key, key=key)
     body = await _topic_body(server_client, key)
-    return [f"{note}\n{body}" if body else note]
+    return [f"{note} Its state as last written:\n{body}" if body else note]
