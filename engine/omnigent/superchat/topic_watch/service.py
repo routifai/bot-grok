@@ -126,6 +126,11 @@ async def _call(fn: Callable[..., Any], *args: Any) -> Any:
     return await result if inspect.isawaitable(result) else result
 
 
+def task_id(owner: str) -> str:
+    """The id of the owner's watch task: derived, so every replica's ticker makes one row."""
+    return uuid.uuid5(uuid.NAMESPACE_OID, f"omnigent-topic-watch\0{owner}").hex
+
+
 def task_rrule(owner: str) -> str:
     """The watch's schedule: weekdays, every working hour, at the owner's own minute."""
     minute = int(hashlib.sha256(owner.encode()).hexdigest(), 16) % 60
@@ -241,27 +246,37 @@ class TopicWatch:
             prefs = self._tasks.get_owner_preferences(owner) or OwnerPreferences(user_id=owner)
             rrule = task_rrule(owner)
             validate_rrule(rrule)
-            mine = [
-                t
-                for t in self._tasks.list(owner_user_id=user_id)
-                if t.kind == TASK_KIND and t.user_id == user_id and t.state != "deleted"
-            ]
+            derived = task_id(owner)
+            mine = sorted(
+                (
+                    t
+                    for t in self._tasks.list(owner_user_id=user_id)
+                    if t.kind == TASK_KIND and t.user_id == user_id and t.state != "deleted"
+                ),
+                key=lambda t: t.id != derived,
+            )
             for extra in mine[1:]:
                 self._tasks.delete(extra.id)
                 removed.append(extra.id)
             task = mine[0] if mine else None
             if task is None:
-                task = self._tasks.create(
-                    scheduled_task_id=uuid.uuid4().hex,
-                    name=TASK_NAME,
-                    prompt="",
-                    rrule=rrule,
-                    user_id=user_id,
-                    agent_id=conv.agent_id,
-                    timezone=prefs.timezone or "UTC",
-                    parent_session_id=conv.id,
-                    kind=TASK_KIND,
-                )
+                try:
+                    task = self._tasks.create(
+                        scheduled_task_id=derived,
+                        name=TASK_NAME,
+                        prompt="",
+                        rrule=rrule,
+                        user_id=user_id,
+                        agent_id=conv.agent_id,
+                        timezone=prefs.timezone or "UTC",
+                        parent_session_id=conv.id,
+                        kind=TASK_KIND,
+                    )
+                except Exception:
+                    # Another replica's ticker made it: the derived id makes this insert fail.
+                    if self._tasks.get(derived) is None:
+                        raise
+                    continue
             elif (task.parent_session_id, task.timezone, task.rrule, task.agent_id) != (
                 conv.id,
                 prefs.timezone or "UTC",
