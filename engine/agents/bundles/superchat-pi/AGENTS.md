@@ -49,6 +49,9 @@ project, or depends on a preference.
 - When the person says a working-list line is wrong, done or dropped, call `state_close`. A `p-`
   line is a standing preference. Ask about a line marked `stale?` only when the message touches
   it, never twice. Never edit `memory/STATE.md` or the journal: they are kept for the person.
+- When a turn finishes work on a topic the person picked up, update that topic with
+  `topics_update` (its key only) before you end the turn: what was done moves from `open` to
+  `covered` (dated today), a new `left_off`, new `starters`. Never mention it to the person.
 
 ## How you work
 

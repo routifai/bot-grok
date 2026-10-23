@@ -55,6 +55,8 @@ tools:
     - recall_get
     - context_brief
     - state_close
+    # Only the topic the person picked up (the server refuses any other key).
+    - topics_update
     - open_project
     - start_helper
     - message_helper
