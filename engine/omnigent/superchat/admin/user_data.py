@@ -90,6 +90,7 @@ USER_DATA: dict[str, Rule] = {
     "topic_watch_cursors": Direct("owner"),
     "topic_watch_seen": Direct("owner"),
     "topic_watch_runs": Direct("owner"),
+    "topic_watch_terms": Direct("owner"),
     "topics": Direct("owner"),
     "outbox_items": Direct("owner"),
     "outbox_cursors": Direct("owner"),

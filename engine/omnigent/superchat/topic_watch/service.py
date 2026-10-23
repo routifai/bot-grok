@@ -49,9 +49,13 @@ from omnigent.superchat.topic_watch.rules import (
     Item,
     Match,
     Verdict,
+    WatchedTopic,
+    common_terms,
     decide,
     match,
     noise_reason,
+    norm_term,
+    term_hits,
     watched_topic,
 )
 from omnigent.superchat.topic_watch.sources import Source, SourceUnavailable
@@ -179,6 +183,23 @@ class _Run:
     sources: dict[str, str] = field(default_factory=dict)
     items: list[dict[str, Any]] = field(default_factory=list)
     rows: list[SeenRow] = field(default_factory=list)
+    #: The watched terms (normalized) this run counted, and each counted item's hits among them.
+    watched: list[str] = field(default_factory=list)
+    term_hits: dict[str, set[str]] = field(default_factory=dict)
+    #: ``term -> why`` for the terms treated as common this run.
+    common: dict[str, str] = field(default_factory=dict)
+
+    def term_counts(self) -> dict[str, tuple[int, int]]:
+        """``term -> (items containing it, items seen)`` over the items this run records.
+
+        Only items with an outcome row count, so an item that comes back (the judge failed and
+        the cursors stayed) is counted once, on the run that records it.
+        """
+        recorded = [r.item_key for r in self.rows if r.item_key in self.term_hits]
+        return {
+            term: (sum(term in self.term_hits[key] for key in recorded), len(recorded))
+            for term in self.watched
+        }
 
 
 class TopicWatch:
@@ -195,6 +216,7 @@ class TopicWatch:
         fire_deps: Callable[[], Any | None],
         judge_caller: Callable[[str], Awaitable[JudgeCaller | None]] | None = None,
         seams: Callable[[], Seams] = Seams.resolve,
+        own_terms: Callable[[str], Sequence[str]] | None = None,
     ) -> None:
         """
         :param store: Cursors, seen-set, ledger and run records.
@@ -206,6 +228,8 @@ class TopicWatch:
         :param judge_caller: ``owner -> caller`` of the owner's Light model; defaults to the
             background caller memory upkeep and titles use.
         :param seams: Returns the other capabilities' functions (resolved per run).
+        :param own_terms: ``owner -> terms`` naming the person's own organisation (blocking);
+            defaults to :func:`omnigent.memory.identity.own_org_terms`.
         """
         self._store = store
         self._tasks = tasks
@@ -215,6 +239,7 @@ class TopicWatch:
         self._fire_deps = fire_deps
         self._judge_caller = judge_caller or _background_caller
         self._seams = seams
+        self._own_terms = own_terms or _own_org_terms
         self._ticker: asyncio.Task[None] | None = None
 
     # ------------------------------------------------------------------ the hidden tasks
@@ -458,9 +483,12 @@ class TopicWatch:
         mutes: Sequence[Mapping[str, Any]],
         run: _Run,
     ) -> list[tuple[Item, Match]]:
-        """Stage 3: drop seen items and noise, match the rest; the batch the judge reads."""
+        """Stage 3: drop seen items and noise, count the terms, match the rest.
+
+        :returns: The batch the judge reads.
+        """
         seen = await asyncio.to_thread(self._store.seen, owner, [i.key for i in items])
-        matched: list[tuple[Item, Match]] = []
+        fresh: list[Item] = []
         taken: set[str] = set()
         for item in items:
             if item.key in seen or item.key in taken:
@@ -471,7 +499,11 @@ class TopicWatch:
                 run.counts["noise"] += 1
                 run.rows.append(SeenRow(item.key, item.source, "noise", item.thread))
                 continue
-            found = match(item, topics, mutes)
+            fresh.append(item)
+        common = await self._common_terms(owner, fresh, topics, run)
+        matched: list[tuple[Item, Match]] = []
+        for item in fresh:
+            found = match(item, topics, mutes, common)
             if found is None:
                 run.counts["unmatched"] += 1
                 run.rows.append(SeenRow(item.key, item.source, "unmatched", item.thread))
@@ -485,6 +517,36 @@ class TopicWatch:
                 SeenRow(item.key, item.source, "over_cap", item.thread, found.topic_key)
             )
         return matched[:MAX_JUDGE_ITEMS]
+
+    async def _common_terms(
+        self, owner: str, fresh: Sequence[Item], topics: Sequence[WatchedTopic], run: _Run
+    ) -> dict[str, str]:
+        """The terms that are common for *owner* this run, with why (recorded on *run*).
+
+        The term counts are brought up to date with this run's items first: each item the
+        person received (web items are fetched by the terms themselves, so they never count)
+        counts once per watched term, and a term's share is over the items seen while watched.
+        """
+        run.watched = sorted({t for t in (norm_term(x) for p in topics for x in p.terms) if t})
+        for item in fresh:
+            if item.topic_key is None:
+                run.term_hits[item.key] = term_hits(item, run.watched)
+        stored = await asyncio.to_thread(self._store.term_counts, owner, run.watched)
+        counted = len(run.term_hits)
+        stats = {
+            term: (
+                stored.get(term, (0, 0))[0] + sum(term in hits for hits in run.term_hits.values()),
+                stored.get(term, (0, 0))[1] + counted,
+            )
+            for term in run.watched
+        }
+        try:
+            own = list(await asyncio.to_thread(self._own_terms, owner))
+        except Exception:
+            _logger.warning("topic watch: own organisation of %s unreadable", owner, exc_info=True)
+            own = []
+        run.common = common_terms(topics, own=own, stats=stats)
+        return run.common
 
     async def _apply(
         self,
@@ -606,12 +668,13 @@ class TopicWatch:
             run.owner,
             rows=run.rows,
             cursors=cursors,
+            terms=run.term_counts(),
             run={
                 "scheduled_task_id": run.task_id,
                 "status": status,
                 "reason": reason,
                 "counts": run.counts,
-                "detail": {"sources": run.sources, "items": run.items},
+                "detail": {"sources": run.sources, "common": run.common, "items": run.items},
                 "started_at": run.started_at,
             },
         )
@@ -626,6 +689,13 @@ class TopicWatch:
         if status == "succeeded":
             return EngineRunOutcome()
         return EngineRunOutcome(status, reason)
+
+
+def _own_org_terms(owner: str) -> list[str]:
+    """The person's own organisation and domains, from memory and their address."""
+    from omnigent.memory.identity import own_org_terms
+
+    return own_org_terms(owner)
 
 
 async def _background_caller(owner: str) -> JudgeCaller | None:

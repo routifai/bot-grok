@@ -2986,6 +2986,36 @@ class SqlTopicWatchSeen(OmnigentBase):
     at: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
+class SqlTopicWatchTerm(OmnigentBase):
+    """
+    SQLAlchemy model for the ``topic_watch_terms`` table: per person, day and watched term, how
+    many of the items topic watch collected that day (noise left out) it saw while the term was
+    watched, and how many of them contained the term. Topic watch sums the last 14 days to tell
+    a common term (in most of the person's own mail) from a specific one (ADR 0035, amended).
+
+    :param owner: Owner identity (``"local"`` in single-user mode).
+    :param day: UTC day number (epoch seconds // 86400).
+    :param term: The watched term, normalized (case and spacing folded).
+    :param items: Items seen that day while the term was watched.
+    :param hits: Of those, the items containing the term.
+    """
+
+    __tablename__ = "topic_watch_terms"
+
+    workspace_id: Mapped[int] = mapped_column(
+        BigInteger,
+        primary_key=True,
+        nullable=False,
+        server_default="0",
+        default=current_workspace_id,
+    )
+    owner: Mapped[str] = mapped_column(String(128), primary_key=True)
+    day: Mapped[int] = mapped_column(Integer, primary_key=True)
+    term: Mapped[str] = mapped_column(String(128), primary_key=True)
+    items: Mapped[int] = mapped_column(Integer, nullable=False)
+    hits: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
 class SqlTopicWatchRun(OmnigentBase):
     """
     SQLAlchemy model for the ``topic_watch_runs`` table: one row per topic watch run, so a quiet

@@ -22,6 +22,7 @@ from omnigent.db.db_models import (
     SqlTopicWatchCursor,
     SqlTopicWatchRun,
     SqlTopicWatchSeen,
+    SqlTopicWatchTerm,
     current_workspace_id,
 )
 from omnigent.db.utils import (
@@ -30,7 +31,7 @@ from omnigent.db.utils import (
     now_epoch,
     run_write_transaction,
 )
-from omnigent.superchat.topic_watch.rules import Ledger
+from omnigent.superchat.topic_watch.rules import COMMON_WINDOW_DAYS, Ledger
 
 #: Outcomes the limits count: a message sent, or one held for quiet hours.
 SPOKEN = ("messaged", "held")
@@ -41,6 +42,13 @@ SPOKEN_KEEP_SECONDS = 365 * 24 * 3600
 LEDGER_WINDOW_SECONDS = 30 * 24 * 3600
 #: Runs kept per owner.
 RUNS_KEPT = 500
+#: The longest term the counts keep (the column's width); longer terms are cut to it.
+TERM_CHARS = 128
+
+
+def day_of(epoch: int) -> int:
+    """The UTC day number the term counts are kept by."""
+    return epoch // 86400
 
 
 @dataclass(frozen=True)
@@ -83,6 +91,32 @@ class SqlAlchemyTopicWatchStore:
                 )
             ).scalars()
             return {row.source: row.cursor for row in rows}
+
+    # ------------------------------------------------------------------ term counts
+
+    def term_counts(self, owner: str, terms: Sequence[str]) -> dict[str, tuple[int, int]]:
+        """``term -> (items containing it, items seen while watched)`` over the window.
+
+        The window is the last :data:`~omnigent.superchat.topic_watch.rules.COMMON_WINDOW_DAYS`
+        UTC days, today included. Terms are normalized; a term with no rows is left out.
+        """
+        keys = list({t[:TERM_CHARS] for t in terms if t})
+        if not keys:
+            return {}
+        since = day_of(now_epoch()) - COMMON_WINDOW_DAYS + 1
+        row = SqlTopicWatchTerm
+        with self._session("select_topic_watch_terms") as session:
+            rows = session.execute(
+                select(row.term, func.sum(row.hits), func.sum(row.items))
+                .where(
+                    row.workspace_id == current_workspace_id(),
+                    row.owner == owner,
+                    row.day >= since,
+                    row.term.in_(keys),
+                )
+                .group_by(row.term)
+            ).all()
+            return {term: (int(hits or 0), int(items or 0)) for term, hits, items in rows}
 
     # ------------------------------------------------------------------ seen-set and ledger
 
@@ -176,10 +210,14 @@ class SqlAlchemyTopicWatchStore:
         rows: Sequence[SeenRow],
         cursors: dict[str, str],
         run: dict[str, Any],
+        terms: dict[str, tuple[int, int]] | None = None,
     ) -> str:
         """Write one run at once: the items' outcomes, the moved cursors and the run record.
 
-        Old seen rows and old runs are pruned in the same write.
+        :param terms: ``term -> (items containing it, items seen)`` this run adds to today's
+            term counts.
+
+        Old seen rows, term counts past the window and old runs are pruned in the same write.
 
         :returns: The run's id.
         """
@@ -225,6 +263,36 @@ class SqlAlchemyTopicWatchStore:
                     detail=json.dumps(run.get("detail") or {}),
                     started_at=run["started_at"],
                     finished_at=now,
+                )
+            )
+            today = day_of(now)
+            added: dict[str, tuple[int, int]] = {}
+            for term, (hits, items) in (terms or {}).items():
+                key = term[:TERM_CHARS]
+                if key and items > 0:
+                    was = added.get(key, (0, 0))
+                    added[key] = (was[0] + hits, was[1] + items)
+            for key, (hits, items) in added.items():
+                counted = session.get(SqlTopicWatchTerm, (workspace, owner, today, key))
+                if counted is None:
+                    session.add(
+                        SqlTopicWatchTerm(
+                            workspace_id=workspace,
+                            owner=owner,
+                            day=today,
+                            term=key,
+                            items=items,
+                            hits=hits,
+                        )
+                    )
+                else:
+                    counted.items += items
+                    counted.hits += hits
+            session.execute(
+                delete(SqlTopicWatchTerm).where(
+                    SqlTopicWatchTerm.workspace_id == workspace,
+                    SqlTopicWatchTerm.owner == owner,
+                    SqlTopicWatchTerm.day <= today - COMMON_WINDOW_DAYS,
                 )
             )
             mine = (SqlTopicWatchSeen.workspace_id == workspace, SqlTopicWatchSeen.owner == owner)
