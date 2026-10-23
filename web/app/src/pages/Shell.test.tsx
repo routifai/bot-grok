@@ -452,15 +452,82 @@ it("opens on Home, and Continue the conversation slides into the Conversation at
     expect(chat?.hasAttribute("inert")).toBe(false);
     expect(document.activeElement?.tagName).toBe("TEXTAREA");
     expect(chat?.contains(document.activeElement)).toBe(true);
-    // The Home button slides Home back, with the composer.
-    const homeButton = [...page.container.querySelectorAll("button")].find(
+    // The logo is Home (no text Home button any more; the pull's tab shows only while pulling):
+    // it slides Home back, with the composer.
+    const textHome = [...page.container.querySelectorAll("button")].filter(
       (el) => el.textContent === "Home",
-    ) as HTMLButtonElement;
-    await act(async () => homeButton.click());
+    );
+    expect(textHome.map((el) => el.dataset.testid)).toEqual(["pull-home"]);
+    expect(textHome[0]?.getAttribute("aria-hidden")).toBe("true");
+    const logos = [
+      ...page.container.querySelectorAll<HTMLButtonElement>('[data-testid="logo-home"]'),
+    ];
+    expect(logos.map((logo) => logo.getAttribute("aria-label"))).toEqual(["Home", "Home"]);
+    await act(async () => logos[0]?.click());
     await settle();
     const back = page.container.querySelector('[data-testid="home"]');
     expect(back).toBeTruthy();
     expect(back?.contains(document.activeElement)).toBe(true);
+  } finally {
+    await page.cleanup();
+  }
+});
+
+it("goes between Home and the Conversation with ⌘↓ / ⌘↑ and a pull past the top", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  engine.transcript.mockResolvedValue({
+    threadId: "conv",
+    messages: exchange,
+    olderCursor: null,
+    running: false,
+  });
+  const page = await renderShell(bootstrap());
+  const key = async (name: string, target: EventTarget = document.body) => {
+    await act(async () => {
+      target.dispatchEvent(
+        new KeyboardEvent("keydown", { key: name, metaKey: true, bubbles: true }),
+      );
+    });
+    await settle();
+  };
+  const home = () => page.container.querySelector('[data-testid="home"]');
+  try {
+    await settle();
+    expect(home()).toBeTruthy();
+    // ⌘↓ from Home continues, like the pill; it lands in the empty composer.
+    await key("ArrowDown");
+    expect(home()).toBeNull();
+    const composer = document.activeElement as HTMLTextAreaElement;
+    expect(composer.tagName).toBe("TEXTAREA");
+    // A composer with words in it keeps ⌘↑ for its caret.
+    await act(async () => {
+      const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+      setValue?.call(composer, "draft");
+      composer.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await key("ArrowUp", composer);
+    expect(home()).toBeNull();
+    await act(async () => {
+      const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+      setValue?.call(composer, "");
+      composer.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    // Empty, ⌘↑ goes back to Home.
+    await key("ArrowUp", composer);
+    expect(home()).toBeTruthy();
+    // Pulling up past the top of the Conversation goes back too.
+    await key("ArrowDown");
+    expect(home()).toBeNull();
+    const transcript = page.container.querySelector('[data-testid="transcript"]') as HTMLElement;
+    await act(async () => {
+      transcript.dispatchEvent(new WheelEvent("wheel", { deltaY: -100, bubbles: true }));
+    });
+    expect(home()).toBeNull();
+    await act(async () => {
+      transcript.dispatchEvent(new WheelEvent("wheel", { deltaY: -100, bubbles: true }));
+    });
+    await settle();
+    expect(home()).toBeTruthy();
   } finally {
     await page.cleanup();
   }

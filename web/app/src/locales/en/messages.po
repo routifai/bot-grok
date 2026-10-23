@@ -133,6 +133,9 @@ msgstr "{slides, plural, one {# slide} other {# slides}}"
 msgid "{spent} of {0}"
 msgstr "{spent} of {0}"
 
+msgid "{topicCount, plural, one {# topic} other {# topics}}"
+msgstr "{topicCount, plural, one {# topic} other {# topics}}"
+
 msgid "{versionCount, plural, one {# version} other {# versions}}"
 msgstr "{versionCount, plural, one {# version} other {# versions}}"
 
@@ -993,6 +996,9 @@ msgstr "History"
 
 msgid "Home"
 msgstr "Home"
+
+msgid "Home · {topics}"
+msgstr "Home · {topics}"
 
 msgid "How often"
 msgstr "How often"

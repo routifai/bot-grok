@@ -1,7 +1,6 @@
 import { useLingui } from "@lingui/react/macro";
 import type { Bot, Topic } from "@superchat/contracts";
-import { AvatarStyleProvider, cn } from "@superchat/ui-web";
-import { House } from "lucide-react";
+import { AvatarStyleProvider } from "@superchat/ui-web";
 import {
   Suspense,
   useCallback,
@@ -22,7 +21,6 @@ import {
   useIsDesktop,
 } from "../components/ai/orb";
 import { AskPreviewsProvider, FileStudioProvider } from "../components/cards/context";
-import { SuperchatLogo } from "../components/SuperchatLogo";
 import {
   transcriptWork,
   useRounds,
@@ -64,6 +62,7 @@ import { markAfterPaint, markOnce } from "../lib/performance";
 import { rpc } from "../lib/rpc";
 import { ShowMessageProvider } from "../lib/show-message";
 import { useTurnRuns } from "../lib/useMuseLiveState";
+import { LogoHomeButton, PullHomeTab } from "./app/chrome/BackHome";
 import { ContinuePill } from "./app/chrome/ContinuePill";
 import { ContourGround } from "./app/chrome/ContourGround";
 import { ConversationActivity } from "./app/chrome/ConversationActivity";
@@ -75,7 +74,13 @@ import {
   EmptyConversationSuggestions,
 } from "./app/chrome/EmptyConversation";
 import { Home } from "./app/chrome/Home";
-import { lastLine, type SlideWay, slideViews } from "./app/chrome/homeSlide";
+import {
+  lastLine,
+  type SlideWay,
+  slideViews,
+  usePullPastStart,
+  useSlideKeys,
+} from "./app/chrome/homeSlide";
 import { BotSettingsPanel } from "./app/chrome/PanelForms";
 import type { Panel } from "./app/chrome/panel";
 import { SidePanelHeader } from "./app/chrome/SidePanelHeader";
@@ -134,9 +139,9 @@ export function ShellPage() {
   // The dock place open as a sheet, if any.
   const [dockSheet, setDockSheet] = useState<DockKey | null>(null);
   // Home is the app's first screen (ADR 0035, amended): every load opens on it, over the
-  // Conversation. Continuing slides the Conversation in (`slide` "up") and the Conversation's
-  // Home button slides Home back ("down"). A send from Home and a message link (`?m=`) land in
-  // the Conversation at once; a picked-up topic flies in and slides.
+  // Conversation. Continuing slides the Conversation in (`slide` "up"); the Conversation's logo,
+  // a pull past its top or ⌘↑ slides Home back ("down"). A send from Home and a message link
+  // (`?m=`) land in the Conversation at once; a picked-up topic flies in and slides.
   const [homeOpen, setHomeOpen] = useState(true);
   const [slide, setSlide] = useState<SlideWay | null>(null);
   const [topicsOpen, setTopicsOpen] = useState(false);
@@ -376,6 +381,20 @@ export function ShellPage() {
   // "Continue the conversation": the Conversation's last line, while it has one.
   const last = useMemo(() => lastLine(transcriptMessages), [transcriptMessages]);
   const continueChat = useCallback(() => slideTo("up"), [slideTo]);
+  const backHome = useCallback(() => slideTo("down"), [slideTo]);
+  // The Conversation in front, with nothing over it: where the way back to Home applies.
+  const chatInFront = Boolean(active) && !showHome && slide === null && !fileStudio.open;
+  // Pulling past the top of the Conversation goes back to Home; never while an earlier page
+  // loads, and only after a held top while earlier messages can still be loaded.
+  const pullHome = usePullPastStart(
+    chatInFront && !museTranscript.loadingOlder ? backHome : null,
+    museTranscript.olderCursor != null || museTranscript.canShowEarlier ? 400 : 0,
+  );
+  // ⌘↑ back to Home from the Conversation; ⌘↓ from Home continues, like the pill.
+  useSlideKeys(
+    chatInFront ? backHome : null,
+    showHome && slide === null && last && !shownStart && !fileStudio.open ? continueChat : null,
+  );
   // The Conversation's own chrome (its ground, logo and dock) while it shows or slides.
   const chatChrome = active && (!showHome || slide !== null) ? active : null;
   const homeComposerFocus = useCallback(() => {
@@ -503,26 +522,10 @@ export function ShellPage() {
     />
   );
 
-  // Back to Home: beside the logo on wide screens, in the top bar on phones.
-  const HomeButton = ({ className }: { className?: string }) => (
-    <button
-      type="button"
-      onClick={() => slideTo("down")}
-      className={cn(
-        "app-no-drag flex items-center gap-1.5 rounded-[9px] px-2.5 py-1.5 text-[12.5px] text-ink-2 transition-colors hover:bg-foreground/10 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring",
-        className,
-      )}
-    >
-      <House aria-hidden="true" size={15} strokeWidth={1.7} />
-      {t`Home`}
-    </button>
-  );
-
   // The superchat top bar: the Project and the model.
   const superchatTopBar = active ? (
     <div className="app-drag relative z-10 flex h-[84px] min-w-0 shrink-0 items-center gap-3 ps-4 pe-4 md:ps-0 md:pe-6">
-      <SuperchatLogo className="md:hidden" />
-      <HomeButton className="md:hidden" />
+      <LogoHomeButton onHome={backHome} className="md:hidden" />
       <span className="min-w-0 flex-1" />
       <div className="app-no-drag flex shrink-0 items-center gap-2">
         {/* Running work shows here too, for when its strip is scrolled away (ADR 0023). */}
@@ -614,9 +617,8 @@ export function ShellPage() {
         >
           {chatChrome ? <ContourGround /> : null}
           {chatChrome ? (
-            <div className="absolute start-8 top-7 z-20 hidden items-center gap-3 md:flex">
-              <SuperchatLogo />
-              <HomeButton />
+            <div className="absolute start-8 top-7 z-20 hidden items-center md:flex">
+              <LogoHomeButton onHome={backHome} />
             </div>
           ) : null}
           {chatChrome ? (
@@ -641,46 +643,53 @@ export function ShellPage() {
                 {shownStart ? (
                   <EmptyConversationLead personName={bootstrapMe?.name ?? ""} />
                 ) : active ? (
-                  <Transcript
-                    key={museTranscript.threadId ?? active.id}
-                    botDisplayName={active.name}
-                    followSignal={followSignal}
-                    museFace={{ color: active.color, identity: active.id }}
-                    museRuns={turnRuns}
-                    scrollRef={messageScroll}
-                    scrollRequest={scrollRequest}
-                    onScrollRequestHandled={clearScrollRequest}
-                    artifactTarget={transcriptArtifactTarget}
-                    messages={transcriptMessages}
-                    loading={museTranscript.messages === null}
-                    olderCursor={museTranscript.olderCursor}
-                    loadingOlder={museTranscript.loadingOlder}
-                    work={work}
-                    workState={workState}
-                    onLoadOlder={museTranscript.loadOlder}
-                    onShowEarlier={
-                      museTranscript.canShowEarlier ? museTranscript.showEarlier : undefined
-                    }
-                    onAnswer={answerMessage}
-                    onSendCard={sendCardReply}
-                    onDraftCard={setComposerSeed}
-                    onReply={(message) => {
-                      setReplyTarget(message);
-                      setReplyQuote(null);
-                    }}
-                    onQuote={(message, quote) => {
-                      setReplyTarget(message);
-                      setReplyQuote(quote);
-                    }}
-                    trailing={<ApprovalCards botId={active.id} />}
-                    shown={
-                      dockSheet === null &&
-                      !fileStudio.open &&
-                      !showHome &&
-                      slide === null &&
-                      !topicsOpen
-                    }
-                  />
+                  <div className="relative flex min-h-0 flex-1 flex-col" {...pullHome.handlers}>
+                    <PullHomeTab
+                      pull={pullHome.pull}
+                      topicCount={topics?.length ?? 0}
+                      onHome={backHome}
+                    />
+                    <Transcript
+                      key={museTranscript.threadId ?? active.id}
+                      botDisplayName={active.name}
+                      followSignal={followSignal}
+                      museFace={{ color: active.color, identity: active.id }}
+                      museRuns={turnRuns}
+                      scrollRef={messageScroll}
+                      scrollRequest={scrollRequest}
+                      onScrollRequestHandled={clearScrollRequest}
+                      artifactTarget={transcriptArtifactTarget}
+                      messages={transcriptMessages}
+                      loading={museTranscript.messages === null}
+                      olderCursor={museTranscript.olderCursor}
+                      loadingOlder={museTranscript.loadingOlder}
+                      work={work}
+                      workState={workState}
+                      onLoadOlder={museTranscript.loadOlder}
+                      onShowEarlier={
+                        museTranscript.canShowEarlier ? museTranscript.showEarlier : undefined
+                      }
+                      onAnswer={answerMessage}
+                      onSendCard={sendCardReply}
+                      onDraftCard={setComposerSeed}
+                      onReply={(message) => {
+                        setReplyTarget(message);
+                        setReplyQuote(null);
+                      }}
+                      onQuote={(message, quote) => {
+                        setReplyTarget(message);
+                        setReplyQuote(quote);
+                      }}
+                      trailing={<ApprovalCards botId={active.id} />}
+                      shown={
+                        dockSheet === null &&
+                        !fileStudio.open &&
+                        !showHome &&
+                        slide === null &&
+                        !topicsOpen
+                      }
+                    />
+                  </div>
                 ) : null}
                 {active ? (
                   <div
