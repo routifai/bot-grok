@@ -39,6 +39,13 @@ SUBAGENT_LABEL_KEY = "omnigent.subagent"
 #: for the parent wake on its first turn.
 SCHEDULED_HELPER_LABEL_KEY = "omnigent.subagent.scheduled_task_id"
 
+#: Set by a proactive source on its scheduled Helper before the Helper's Result goes back, to
+#: say how the message the Result causes should travel (ADR 0036): a JSON object
+#: ``{"urgency": "now" | "today" | "brief", "topic_key": str, "sender": str, "term": str}``,
+#: every key optional (urgency defaults to ``today``). The message's kind is the scheduled
+#: task's ``kind``.
+PROACTIVE_LABEL_KEY = "omnigent.proactive"
+
 #: Stamped by the server on every child session when it creates it. It means "launched, no
 #: status reported yet": the Activity Feed reads such a child as starting (and, if it never
 #: reports one, as failed to start) instead of guessing from age alone. Inert once the child

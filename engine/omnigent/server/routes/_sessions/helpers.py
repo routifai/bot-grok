@@ -2153,6 +2153,13 @@ async def _persist_external_reasoning_effort_change(
     session_stream.publish(session_id, event.model_dump())
 
 
+#: ``feature name -> hook(session_id, item)``, called with each visible assistant message once it
+#: is stored and before ``message.done`` is published, so what a feature records about it (the
+#: outbox row of a proactive message) is there when a client refetches. Runs on the caller's
+#: thread; a failing hook is logged and never fails the persist.
+ON_MESSAGE_STORED: dict[str, Callable[[str, ConversationItem], None]] = {}
+
+
 def _signal_message_stored(session_id: str, item: ConversationItem) -> None:
     """Tell the session's family stream an assistant message was stored (``message.done``).
 
@@ -2167,6 +2174,11 @@ def _signal_message_stored(session_id: str, item: ConversationItem) -> None:
     ):
         from omnigent.superchat.family.signals import notify_message_done
 
+        for hook in list(ON_MESSAGE_STORED.values()):
+            try:
+                hook(session_id, item)
+            except Exception:  # noqa: BLE001 - bookkeeping, never a reason to fail a persist
+                _logger.warning("message stored hook failed for %s", session_id, exc_info=True)
         notify_message_done(session_id, item.id)
 
 

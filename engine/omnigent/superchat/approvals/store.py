@@ -1,7 +1,9 @@
-"""Approval store: standing rules, the daily spending cap and spend, and pending prompts.
+"""Approval store: standing rules, the daily spending cap and spend, and approval prompts.
 
 All rows are per owner. A pending approval is persisted so a restart does not forget it; nothing
-here ever turns an unanswered prompt into a yes.
+here ever turns an unanswered prompt into a yes. A decided prompt keeps its row with its
+``status`` (``approved``, ``denied`` or ``expired``), who decided and when, for the Inbox's
+History (ADR 0036, amended); everything that asks what waits reads ``pending`` rows only.
 """
 
 from __future__ import annotations
@@ -10,7 +12,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from omnigent.db.db_models import (
@@ -56,6 +58,13 @@ class PendingApproval:
     amount_usd: float | None
     event: str
     created_at: int
+    status: str = "pending"
+    decided_by: str | None = None
+    decided_at: int | None = None
+
+
+#: The statuses a decided prompt can end in.
+DECIDED = ("approved", "denied", "expired")
 
 
 def _rule(row: SqlApprovalRule) -> ApprovalRule:
@@ -81,6 +90,9 @@ def _pending(row: SqlApprovalPending) -> PendingApproval:
         amount_usd=row.amount_usd,
         event=row.event,
         created_at=row.created_at,
+        status=row.status,
+        decided_by=row.decided_by,
+        decided_at=row.decided_at,
     )
 
 
@@ -245,23 +257,24 @@ class SqlAlchemyApprovalStore:
                         created_at=now_epoch(),
                     )
                 )
-            else:
+            elif row.status == "pending":
                 row.event = event
 
         run_write_transaction(self._session_immediate, "put_approval_pending", write)
 
     def get_pending(self, elicitation_id: str) -> PendingApproval | None:
-        """One pending approval, or ``None``."""
+        """One approval still waiting, or ``None`` (none, or already decided)."""
         with self._session("get_approval_pending") as session:
             row = session.get(SqlApprovalPending, (current_workspace_id(), elicitation_id))
-            return _pending(row) if row is not None else None
+            return _pending(row) if row is not None and row.status == "pending" else None
 
     def list_pending(
         self, *, user_id: str | None = None, session_id: str | None = None
     ) -> list[PendingApproval]:
         """Pending approvals, oldest first; optionally for one owner or one session."""
         stmt = select(SqlApprovalPending).where(
-            SqlApprovalPending.workspace_id == current_workspace_id()
+            SqlApprovalPending.workspace_id == current_workspace_id(),
+            SqlApprovalPending.status == "pending",
         )
         if user_id is not None:
             stmt = stmt.where(SqlApprovalPending.user_id == user_id)
@@ -271,18 +284,41 @@ class SqlAlchemyApprovalStore:
             rows = session.execute(stmt.order_by(SqlApprovalPending.created_at)).scalars().all()
             return [_pending(row) for row in rows]
 
-    def delete_pending(self, elicitation_id: str) -> None:
-        """Forget a pending approval (answered, or resolved elsewhere)."""
+    def decide(self, elicitation_id: str, status: str, decided_by: str | None = None) -> None:
+        """End a waiting approval: ``approved`` or ``denied`` by *decided_by*, or ``expired``
+        (nobody can answer it any more). A decision is never overwritten, except that the
+        person's answer replaces an ``expired`` its own resolution recorded a moment before."""
+        if status not in DECIDED:
+            raise ValueError(status)
+        replaceable = ("pending",) if status == "expired" else ("pending", "expired")
 
         def write(session: Session) -> None:
             session.execute(
-                delete(SqlApprovalPending).where(
+                update(SqlApprovalPending)
+                .where(
                     SqlApprovalPending.workspace_id == current_workspace_id(),
                     SqlApprovalPending.elicitation_id == elicitation_id,
+                    SqlApprovalPending.status.in_(replaceable),
                 )
+                .values(status=status, decided_by=decided_by, decided_at=now_epoch())
             )
 
-        run_write_transaction(self._session_immediate, "delete_approval_pending", write)
+        run_write_transaction(self._session_immediate, "decide_approval_pending", write)
+
+    def list_decided(self, *, user_id: str, since: int) -> list[PendingApproval]:
+        """The owner's approvals someone approved or denied since *since*, newest first."""
+        stmt = (
+            select(SqlApprovalPending)
+            .where(
+                SqlApprovalPending.workspace_id == current_workspace_id(),
+                SqlApprovalPending.user_id == user_id,
+                SqlApprovalPending.status.in_(("approved", "denied")),
+                SqlApprovalPending.decided_at >= since,
+            )
+            .order_by(SqlApprovalPending.decided_at.desc())
+        )
+        with self._session("list_approval_decided") as session:
+            return [_pending(row) for row in session.execute(stmt).scalars().all()]
 
 
 def pending_to_event(pending: PendingApproval) -> dict[str, Any]:

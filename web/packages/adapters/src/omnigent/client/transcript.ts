@@ -57,6 +57,16 @@ export interface OmnigentTranscriptMessage {
   activity_id?: string;
   /** A user message only: the artifact it is about (docs/conversation.md), or null for none. */
   artifact?: OmnigentMessageArtifact | null;
+  /** An assistant message a scheduled run's turn wrote, not one the person asked for (ADR 0036). */
+  proactive?: OmnigentProactive;
+}
+
+/** How a proactive message came: the source's kind (`automation`, `topic_watch`, `daily_brief`,
+ * …), its topic when it named one, and how soon it matters. */
+export interface OmnigentProactive {
+  kind: string;
+  topic_key?: string;
+  urgency: "now" | "today" | "brief";
 }
 
 /** The artifact a person's message links to: `open` beside the chat when sent, `edited` by a

@@ -15,6 +15,7 @@ import { liveRouter } from "./live";
 import { memoryRouter } from "./memory";
 import { engineModelsRouter } from "./models";
 import { museRouter } from "./muse";
+import { outboxRouter } from "./outbox";
 import { searchRouter } from "./search";
 import { sheetsRouter } from "./sheets";
 import { topicsRouter } from "./topics";
@@ -38,6 +39,7 @@ export const router = os.router({
   ...liveRouter,
   ...memoryRouter,
   ...museRouter,
+  ...outboxRouter,
   ...searchRouter,
   ...sheetsRouter,
   ...topicsRouter,

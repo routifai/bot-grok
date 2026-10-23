@@ -28,6 +28,7 @@ from omnigent.stores.permission_store import PermissionStore
 from omnigent.superchat.artifacts.links import attach_links
 from omnigent.superchat.artifacts.store import SqlAlchemyArtifactStore
 from omnigent.superchat.family.tree import sub_agent_status
+from omnigent.superchat.feature import TRANSCRIPT_FIELDS
 from omnigent.superchat.lineage import session_lineage
 from omnigent.superchat.rounds.read import (
     attach_round_files,
@@ -215,7 +216,8 @@ def register_transcript_routes(
             linked to an artifact has ``artifact`` (``{artifact_id, name, version, how}``, or
             ``None`` when the person said it is about none). Every message has ``round_id``: the
             Round it is in (the id of the person's message that opened it), ``None`` outside
-            any Round.
+            any Round. A proactive message (a scheduled run's turn wrote it, ADR 0036) has
+            ``proactive``: ``{kind, topic_key?, urgency}``.
         :raises OmnigentError: 403 without READ; 404 if no session exists.
         """
         user_id = _get_user_id(request, auth_provider)
@@ -239,6 +241,8 @@ def register_transcript_routes(
         )
         if artifact_store is not None:
             await asyncio.to_thread(attach_links, artifact_store, conversation.id, page["data"])
+        for add_fields in list(TRANSCRIPT_FIELDS.values()):
+            await asyncio.to_thread(add_fields, conversation.id, page["data"])
         if page["live"]:
             # A message waiting behind the running turn: the runner's live queue says which.
             waiting = await _waiting_item_ids(request, conversation.id)

@@ -30,3 +30,13 @@ Super Chat already speaks unprompted: a scheduled run's result wakes the Convers
 
 - Engine rebuild (two tables, routes, labelling at the turn start) and web build; no host change.
 - Every new proactive source must set the label; a missing label means no outbox row and no dot, which the run record makes visible.
+
+## Amendments
+
+**Amended 2026-10-23 (build).** "Read from the stores that already hold them" was not true when this was built, so the stores now keep what History reads:
+
+- **Approvals keep the answered row.** `approval_pending` gains `status` (`pending`, `approved`, `denied`, `expired`), `decided_by` and `decided_at`; an answer marks the row instead of deleting it, and a prompt nobody can answer any more reads `expired`. Everything that asks what waits (the pending lists, the asks, the restart restore, the answer path) reads `pending` rows only, so a waiting approval behaves as before (`superchat/approvals/store.py`).
+- **A replaced proposal is `superseded`.** A newer plan proposal used to mark the open one `dismissed`, like the person's own dismissal; it is now `superseded`, and `dismissed` means the person dismissed it (`stores/objective_store`). Rows from before keep their status.
+- **Blocked-task answers are not in History.** The answer lives in the task's note with no time of its own, so History cannot place it in the last 30 days.
+
+History is `GET /v1/me/asks/history`: approvals approved or denied and proposals accepted or dismissed in the last 30 days, newest first, each with who decided and when.

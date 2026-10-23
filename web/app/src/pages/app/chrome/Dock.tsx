@@ -2,6 +2,7 @@ import { useLingui } from "@lingui/react/macro";
 import { cn } from "@superchat/ui-web";
 import type { ReactNode } from "react";
 import { useAsks } from "../../../features/approvals";
+import { useOutboxUnread } from "../../../features/outbox";
 
 /** The places the dock opens, each as a large sheet over the home. */
 export type DockKey = "inbox" | "apps" | "automations" | "files";
@@ -18,7 +19,12 @@ const ICON = {
   "aria-hidden": true,
 } as const;
 
-const GLYPHS: Record<DockKey | "settings" | "topics", ReactNode> = {
+const GLYPHS: Record<DockKey | "conversation" | "settings" | "topics", ReactNode> = {
+  conversation: (
+    <svg {...ICON}>
+      <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z" />
+    </svg>
+  ),
   topics: (
     <svg {...ICON}>
       <path d="M9 18h6M10 21h4" />
@@ -67,23 +73,31 @@ export type DockTopics = {
   onToggle: () => void;
 };
 
-const DOCK_BUTTON =
+const BUTTON =
   "relative grid size-[52px] place-items-center rounded-2xl text-foreground transition-colors hover:bg-foreground/10 focus-visible:outline-2 focus-visible:outline-ring";
 
 /**
- * The floating glass dock: Topics, Inbox, Library, Automations and Files. Inbox carries a dot
- * while something waits on the person; Topics carries a green one while a topic has news.
+ * The floating glass dock: the Conversation, Topics, Inbox, Library, Automations and Files. Inbox
+ * carries a dot while something waits on the person; the Conversation carries one while it
+ * holds messages Superchat wrote on its own that the person has not seen (ADR 0036); Topics
+ * carries a green one while a topic has news (ADR 0035).
  */
 export function Dock({
   active,
   inboxWaiting,
+  unread = 0,
   onSelect,
   topics,
+  onConversation,
 }: {
   active: DockKey | null;
   inboxWaiting: boolean;
+  /** Proactive messages not seen yet. */
+  unread?: number;
   onSelect: (key: DockKey) => void;
   topics?: DockTopics;
+  /** Back to the Conversation (closes whatever the dock opened); without it there is no button. */
+  onConversation?: () => void;
 }) {
   const { t } = useLingui();
   const items: { key: DockKey; label: string }[] = [
@@ -98,6 +112,26 @@ export function Dock({
       aria-label={t`Main`}
       className="sc-glass flex flex-row gap-2.5 rounded-3xl p-3 md:flex-col"
     >
+      {onConversation ? (
+        <button
+          type="button"
+          aria-label={t`Conversation`}
+          title={t`Conversation`}
+          aria-pressed={active === null}
+          onClick={onConversation}
+          className={cn(BUTTON, active === null && "bg-foreground/15")}
+        >
+          {GLYPHS.conversation}
+          {unread > 0 ? (
+            <span
+              data-testid="dock-conversation-dot"
+              className="absolute top-[9px] right-[9px] size-[9px] rounded-full border-2 border-popover bg-success"
+            >
+              <span className="sr-only">{t`New messages`}</span>
+            </span>
+          ) : null}
+        </button>
+      ) : null}
       {topics ? (
         <button
           type="button"
@@ -106,7 +140,7 @@ export function Dock({
           title={t`Topics`}
           aria-pressed={topics.open}
           onClick={topics.onToggle}
-          className={cn(DOCK_BUTTON, topics.open && "bg-foreground/15")}
+          className={cn(BUTTON, topics.open && "bg-foreground/15")}
         >
           {GLYPHS.topics}
           {topics.fresh && !topics.open ? (
@@ -127,7 +161,7 @@ export function Dock({
           title={item.label}
           aria-pressed={active === item.key}
           onClick={() => onSelect(item.key)}
-          className={cn(DOCK_BUTTON, active === item.key && "bg-foreground/15")}
+          className={cn(BUTTON, active === item.key && "bg-foreground/15")}
         >
           {GLYPHS[item.key]}
           {item.key === "inbox" && inboxWaiting ? (
@@ -160,20 +194,31 @@ export function SettingsButton({ onClick }: { onClick: () => void }) {
   );
 }
 
-/** The dock with its Inbox dot wired to the open Asks. */
+/** The dock with its Inbox dot wired to the open Asks and its Conversation dot to the unseen
+ * proactive messages. */
 export function ConnectedDock({
   botId,
   active,
   onSelect,
   topics,
+  onConversation,
 }: {
   botId: string;
   active: DockKey | null;
   onSelect: (key: DockKey) => void;
   topics?: DockTopics;
+  onConversation?: () => void;
 }) {
   const { asks } = useAsks(botId);
+  const { count } = useOutboxUnread(botId);
   return (
-    <Dock active={active} inboxWaiting={asks.length > 0} onSelect={onSelect} topics={topics} />
+    <Dock
+      active={active}
+      inboxWaiting={asks.length > 0}
+      unread={count}
+      onSelect={onSelect}
+      onConversation={onConversation}
+      topics={topics}
+    />
   );
 }

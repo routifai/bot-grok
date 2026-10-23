@@ -1,4 +1,4 @@
-"""Stored approvals that no runner holds any more are forgotten (:mod:`.held`)."""
+"""Stored approvals that no runner holds any more read expired (:mod:`.held`)."""
 
 from __future__ import annotations
 
@@ -22,7 +22,8 @@ class _Store:
     def __init__(self) -> None:
         self.deleted: list[str] = []
 
-    def delete_pending(self, elicitation_id: str) -> None:
+    def decide(self, elicitation_id: str, status: str) -> None:
+        assert status == "expired"
         self.deleted.append(elicitation_id)
 
 

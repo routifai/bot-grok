@@ -18,7 +18,7 @@ async def drop_unparked(
     store: Any, rows: list[Any], runner_router: RunnerRouter | None
 ) -> list[Any]:
     """
-    The waiting approvals a runner is still holding; the others are forgotten.
+    The waiting approvals a runner is still holding; the others read ``expired``.
 
     An approval waits inside the runner that raised it. When that runner restarts, or the turn
     holding it ends or is interrupted, nobody can answer it any more, but the stored copy
@@ -53,5 +53,5 @@ async def drop_unparked(
             kept.append(row)
             continue
         pending_elicitations.resolve(row.session_id, row.elicitation_id)
-        await asyncio.to_thread(store.delete_pending, row.elicitation_id)
+        await asyncio.to_thread(store.decide, row.elicitation_id, "expired")
     return kept

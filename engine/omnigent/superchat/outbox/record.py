@@ -1,0 +1,164 @@
+"""Where a proactive message gets its label and its outbox row (ADR 0036).
+
+A scheduled run's Result reaches the Conversation as a notice posted with ``context.helper_id``
+(the runner's wake). That notice, stored while no turn runs, is the one place the next turn's
+origin is known: :meth:`Outbox.notice` opens a row for it then, from the Helper's scheduled-task
+label (the kind) and its ``omnigent.proactive`` label (urgency, topic, what matched). The turn
+it starts writes its messages; :meth:`Outbox.message` binds the row to the first one (once the
+item history confirms the notice is the message the turn answers) and moves it to each later
+message of the same turn, whose last text is its reply. A message of another turn closes the
+row. The label lives on the row, keyed by the message, and is read back onto the transcript.
+"""
+
+from __future__ import annotations
+
+import logging
+import threading
+import time
+from collections.abc import Mapping
+from typing import Any
+
+from omnigent.context.labels import PROACTIVE_LABEL_KEY, SCHEDULED_HELPER_LABEL_KEY
+from omnigent.context.rollover import _MID_TURN_LIVE_STATUSES
+from omnigent.entities import ConversationItem, MessageData
+from omnigent.superchat.feature import is_super_chat
+from omnigent.superchat.outbox.cut import DEFAULT_KIND, cut, message_text, parse_label
+from omnigent.superchat.outbox.store import OutboxRow, SqlAlchemyOutboxStore, owner_key
+
+_logger = logging.getLogger(__name__)
+
+#: How far back from a turn's first message the notice that started it is looked for.
+_LOOKBACK_PAGE = 50
+_LOOKBACK_PAGES = 4
+
+
+class Outbox:
+    """Opens, binds and closes outbox rows as the Conversation's messages are stored."""
+
+    def __init__(
+        self,
+        store: SqlAlchemyOutboxStore,
+        conversation_store: Any,
+        scheduled_task_store: Any,
+    ) -> None:
+        self._store = store
+        self._conversations = conversation_store
+        self._tasks = scheduled_task_store
+        self._lock = threading.Lock()
+        #: ``conversation id -> its open row``: only these Conversations' messages are looked at.
+        self._open: dict[str, OutboxRow] = {row.conversation_id: row for row in store.open_rows()}
+
+    def notice(self, session_id: str, item_id: str, context: Mapping[str, Any]) -> None:
+        """A message carrying *context* was stored in *session_id*: when it is a proactive
+        source's notice and no turn runs, the turn it starts is proactive (blocking).
+
+        Two sources: a scheduled Helper's Result (``context.helper_id``; the kind is its task's,
+        the rest its ``omnigent.proactive`` label), and engine code that wakes the Conversation
+        itself, such as topic watch (``context.proactive``: ``{kind, topic_key?, urgency?,
+        sender?, term?}``).
+        """
+        label = self._source_label(session_id, context)
+        if label is None:
+            return
+        parent = self._conversations.get_conversation(session_id)
+        if parent is None or not is_super_chat(parent.labels):
+            return
+        if parent.live_status in _MID_TURN_LIVE_STATUSES:
+            # Steered into the person's running turn: that turn is theirs, not the run's.
+            return
+        row = self._store.open_row(
+            OutboxRow(
+                id=item_id,
+                owner=owner_key(self._conversations.get_session_owner(session_id)),
+                conversation_id=session_id,
+                kind=label["kind"] or DEFAULT_KIND,
+                urgency=label["urgency"],
+                topic_key=label["topic_key"],
+                source=label["source"],
+                created_at_ms=int(time.time() * 1000),
+            )
+        )
+        with self._lock:
+            self._open[session_id] = row
+
+    def _source_label(self, session_id: str, context: Mapping[str, Any]) -> dict[str, Any] | None:
+        """The proactive label *context* names, or ``None`` when it is from no proactive
+        source."""
+        direct = context.get("proactive")
+        if isinstance(direct, Mapping):
+            return parse_label(direct)
+        helper_id = context.get("helper_id")
+        if not isinstance(helper_id, str) or not helper_id:
+            return None
+        helper = self._conversations.get_conversation(helper_id)
+        labels = (helper.labels if helper is not None else None) or {}
+        task_id = labels.get(SCHEDULED_HELPER_LABEL_KEY)
+        if not task_id or helper.parent_conversation_id != session_id:
+            return None
+        label = parse_label(labels.get(PROACTIVE_LABEL_KEY))
+        task = self._tasks.get(task_id) if self._tasks is not None else None
+        kind = getattr(task, "kind", None)
+        label["kind"] = kind[:32] if isinstance(kind, str) and kind else None
+        return label
+
+    def message(self, session_id: str, item: ConversationItem) -> None:
+        """An assistant message was stored in *session_id*: label it when its turn is the open
+        row's (blocking; does nothing for a Conversation with no open row)."""
+        with self._lock:
+            row = self._open.get(session_id)
+        if row is None or not isinstance(item.data, MessageData):
+            return
+        title, line = cut(message_text(item.data.content))
+        if row.item_id is None and self._answers(session_id, item.id, row.id):
+            bound = self._store.bind(
+                row.id,
+                item_id=item.id,
+                response_id=item.response_id,
+                title=title,
+                line=line,
+                at_ms=int(time.time() * 1000),
+            )
+        elif row.item_id is not None and row.response_id == item.response_id:
+            bound = self._store.bind(
+                row.id,
+                item_id=item.id,
+                response_id=item.response_id,
+                title=title,
+                line=line,
+                at_ms=None,
+            )
+        else:
+            self._store.close(row.id)
+            bound = None
+        with self._lock:
+            if bound is None:
+                self._open.pop(session_id, None)
+            else:
+                self._open[session_id] = bound
+
+    def forget(self, session_id: str) -> None:
+        """A Conversation was deleted: drop its rows."""
+        with self._lock:
+            self._open.pop(session_id, None)
+        self._store.delete_conversation(session_id)
+
+    def _answers(self, session_id: str, item_id: str, notice_id: str) -> bool:
+        """Whether the user-role message nearest before *item_id* is the notice *notice_id*:
+        the message's turn is the one the notice started, not one the person started since."""
+        cursor = item_id
+        for _ in range(_LOOKBACK_PAGES):
+            page = self._conversations.list_items(
+                session_id, limit=_LOOKBACK_PAGE, after=cursor, order="desc"
+            )
+            for earlier in page.data:
+                if (
+                    earlier.type == "message"
+                    and isinstance(earlier.data, MessageData)
+                    and earlier.data.role == "user"
+                    and not earlier.data.is_meta
+                ):
+                    return earlier.id == notice_id
+            if not page.has_more or not page.data:
+                return False
+            cursor = page.data[-1].id
+        return False

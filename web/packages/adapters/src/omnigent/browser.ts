@@ -11,6 +11,7 @@ export * from "./decks.js";
 export * from "./knowledge.js";
 export * from "./live.js";
 export * from "./memory.js";
+export * from "./outbox.js";
 export * from "./projects.js";
 export * from "./sheets.js";
 export * from "./topics.js";

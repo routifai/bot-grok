@@ -209,5 +209,14 @@ export const ThreadMessageSchema = z.object({
   delivered: z.literal("queued").optional(),
   /** The person's messages only: the artifact it is about, or null when it is about none. */
   artifact: MessageArtifactSchema.nullable().optional(),
+  /** A reply a scheduled run's turn wrote, not one the person asked for (ADR 0036): the source's
+   * kind (`automation`, `topic_watch`, `daily_brief`, …), its topic, and how soon it matters. */
+  proactive: z
+    .object({
+      kind: z.string(),
+      topicKey: z.string().optional(),
+      urgency: z.enum(["now", "today", "brief"]),
+    })
+    .optional(),
 });
 export type ThreadMessage = z.infer<typeof ThreadMessageSchema>;

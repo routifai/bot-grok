@@ -251,3 +251,26 @@ def topics_brief(owner: str) -> str | None:
     """The owner's current topics as brief lines (``""`` when they have none), or ``None`` when
     no topics capability is registered."""
     return _topics_brief(owner) if _topics_brief is not None else None
+
+
+#: ``feature name -> hook(conversation_id, messages)``: adds a feature's fields to one page of
+#: transcript messages in place (blocking, called off the event loop), so the transcript shows
+#: them without importing the feature, e.g. the outbox's ``proactive`` label.
+TRANSCRIPT_FIELDS: dict[str, Callable[[str, list[dict[str, Any]]], None]] = {}
+
+#: The person's mutes, registered by the outbox capability (ADR 0036) so topic watch can read
+#: them through core instead of importing it.
+_mutes_reader: Callable[[str], list[dict[str, str]]] | None = None
+
+
+def register_mutes_reader(read: Callable[[str], list[dict[str, str]]]) -> None:
+    """Set the function that lists an owner's mutes."""
+    global _mutes_reader
+    _mutes_reader = read
+
+
+def list_mutes(owner: str) -> list[dict[str, str]]:
+    """The owner's mutes from *Not useful* (``{topic_key, sender?, term?}``, oldest first;
+    ``owner`` is the user id, ``"local"`` when auth is off). Blocking; empty without an outbox.
+    """
+    return _mutes_reader(owner) if _mutes_reader is not None else []

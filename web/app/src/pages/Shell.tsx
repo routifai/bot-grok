@@ -41,6 +41,7 @@ import { FolderPicker } from "../features/files/FolderPicker";
 import { knowledgeExtension } from "../features/knowledge";
 import { liveExtension } from "../features/live";
 import { ConversationModelPicker } from "../features/models";
+import { useUnreadTitle } from "../features/outbox";
 import { useChatPlace, WorkInChip } from "../features/projects/WorkIn";
 import {
   newestTurn,
@@ -205,6 +206,8 @@ export function ShellPage() {
   );
   // The Muse's Conversation is the engine's transcript (ADR 0009), and so is whether it is working.
   const museTranscript = useMuseTranscript(active?.id, messageScroll);
+  // "(2) superchat" while messages Superchat wrote on its own wait unseen (ADR 0036).
+  useUnreadTitle(active?.id);
   useReplyAlerts({
     bot: active,
     conversationId: museTranscript.threadId,
@@ -504,6 +507,7 @@ export function ShellPage() {
                 active={dockSheet}
                 onSelect={setDockSheet}
                 topics={dockTopics}
+                onConversation={() => setDockSheet(null)}
               />
             }
             composer={composerEl}
@@ -526,6 +530,7 @@ export function ShellPage() {
               active={dockSheet}
               onSelect={setDockSheet}
               topics={dockTopics}
+              onConversation={() => setDockSheet(null)}
             />
             <SettingsButton onClick={() => openSettings("general")} />
           </div>
@@ -570,6 +575,7 @@ export function ShellPage() {
                     setReplyQuote(quote);
                   }}
                   trailing={<ApprovalCards botId={active.id} />}
+                  shown={dockSheet === null && !fileStudio.open}
                 />
               ) : null}
               {active ? (

@@ -256,7 +256,7 @@ class SqlAlchemyObjectiveStore(ObjectiveStore):
         reason: str,
         plan: builtins.list[dict[str, str | None]],
     ) -> ObjectiveProposal:
-        """Create the objective's open proposal, dismissing any previous open one."""
+        """Create the objective's open proposal; any previous open one reads ``superseded``."""
         now = now_epoch()
 
         def write(session: Session) -> ObjectiveProposal:
@@ -274,7 +274,7 @@ class SqlAlchemyObjectiveStore(ObjectiveStore):
                     raise ValueError(f"unknown task id {item['id']!r}")
             previous = _open_proposal_row(session, objective_id)
             if previous is not None:
-                previous.status = "dismissed"
+                previous.status = "superseded"
                 previous.resolved_at = now
             row = SqlObjectiveProposal(
                 id=proposal_id,
@@ -289,6 +289,33 @@ class SqlAlchemyObjectiveStore(ObjectiveStore):
             return _proposal_entity(row)
 
         return run_write_transaction(self._session_immediate, "insert_objective_proposal", write)
+
+    def decided_proposals(
+        self, *, owner_user_id: str | None, since: int
+    ) -> builtins.list[tuple[str, ObjectiveProposal]]:
+        """The owner's accepted or dismissed proposals since *since*, newest first."""
+        with self._session("list_decided_objective_proposals") as session:
+            owner = (
+                SqlObjective.user_id.is_(None)
+                if owner_user_id is None
+                else SqlObjective.user_id == owner_user_id
+            )
+            stmt = (
+                select(SqlObjective.title, SqlObjectiveProposal)
+                .join(
+                    SqlObjective,
+                    (SqlObjective.workspace_id == SqlObjectiveProposal.workspace_id)
+                    & (SqlObjective.id == SqlObjectiveProposal.objective_id),
+                )
+                .where(
+                    SqlObjectiveProposal.workspace_id == current_workspace_id(),
+                    SqlObjectiveProposal.status.in_(("accepted", "dismissed")),
+                    SqlObjectiveProposal.resolved_at >= since,
+                    owner,
+                )
+                .order_by(SqlObjectiveProposal.resolved_at.desc())
+            )
+            return [(title, _proposal_entity(row)) for title, row in session.execute(stmt).all()]
 
     def resolve_proposal(
         self,
