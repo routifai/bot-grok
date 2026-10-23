@@ -73,6 +73,10 @@ export function topicsByDay(
   const moments: TopicMoment[] = [];
   for (const topic of topics) {
     for (const event of topic.events) moments.push({ ...event, topic, fresh: false });
+    // A topic with no dated moment still has a day: when it was last touched, with where it stands.
+    if (topic.events.length === 0 && topic.lastTouchedAt) {
+      moments.push({ at: topic.lastTouchedAt, line: topic.leftOff, topic, fresh: false });
+    }
     if (topic.since && topic.sinceAt && isFresh(topic, now)) {
       moments.push({ at: topic.sinceAt, line: topic.since, topic, fresh: true });
     }
