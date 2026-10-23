@@ -229,3 +229,20 @@ def register_project_resolver(resolve: Callable[[str], tuple[Path, str] | None])
 def resolve_project(slug: str) -> tuple[Path, str] | None:
     """``(folder, name)`` of Project ``slug``, or ``None`` when there is none (or no resolver)."""
     return _project_resolver(slug) if _project_resolver is not None else None
+
+
+#: The owner's current topics as brief lines, registered by the topics capability so the
+#: quiet-moment pass (``daily_notes``) can list them without importing it (ADR 0035).
+_topics_brief: Callable[[str], str] | None = None
+
+
+def register_topics_brief(render: Callable[[str], str]) -> None:
+    """Set the function that renders an owner's current topics for the quiet brief."""
+    global _topics_brief
+    _topics_brief = render
+
+
+def topics_brief(owner: str) -> str | None:
+    """The owner's current topics as brief lines (``""`` when they have none), or ``None`` when
+    no topics capability is registered."""
+    return _topics_brief(owner) if _topics_brief is not None else None

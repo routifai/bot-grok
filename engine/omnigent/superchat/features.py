@@ -63,6 +63,7 @@ def _load() -> list[Feature]:
     from omnigent.superchat.state_file import FEATURE as state_file
     from omnigent.superchat.system_jobs import FEATURE as system_jobs
     from omnigent.superchat.tasks import FEATURE as tasks
+    from omnigent.superchat.topics import FEATURE as topics
     from omnigent.superchat.transcript import FEATURE as transcript
     from omnigent.superchat.vault import FEATURE as vault
 
@@ -72,6 +73,7 @@ def _load() -> list[Feature]:
         models,
         admin,
         daily_notes,
+        topics,
         cards,
         memory,
         artifacts,

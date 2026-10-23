@@ -2012,6 +2012,47 @@ class SqlDailyNote(OmnigentBase):
     updated_at: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
+class SqlTopic(OmnigentBase):
+    """
+    SQLAlchemy model for the ``topics`` table (ADR 0035).
+
+    One row per owner per topic, upserted by ``key`` by the quiet-moment pass. The lists the
+    web draws (covered, open, starters, events, sources, watch) live in ``body``; what lists
+    filter and sort on are columns.
+
+    :param owner: Owner identity (``"local"`` in single-user mode); with ``key`` the key.
+    :param key: Stable slug the pass reuses when the topic comes back, e.g. ``"polaris-launch"``.
+    :param title: 2 to 5 words in the person's terms.
+    :param status: ``"open"`` or ``"closed"`` (closed ones are hidden, never deleted).
+    :param body: JSON object: ``left_off``, ``covered``, ``open``, ``starters``, ``events``,
+        ``sources``, ``watch`` and the ``since`` line.
+    :param last_touched_at: Epoch seconds of the newest event.
+    :param since_at: Epoch seconds the ``since`` ("New") line was set, or ``None``.
+    """
+
+    __tablename__ = "topics"
+    __table_args__ = (
+        Index("ix_topics_owner_touched", "workspace_id", "owner", "last_touched_at"),
+    )
+
+    workspace_id: Mapped[int] = mapped_column(
+        BigInteger,
+        primary_key=True,
+        nullable=False,
+        server_default="0",
+        default=current_workspace_id,
+    )
+    owner: Mapped[str] = mapped_column(String(128), primary_key=True)
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    title: Mapped[str] = mapped_column(String(120), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="open")
+    body: Mapped[str] = mapped_column(CompressedText, nullable=False)
+    last_touched_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    since_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
 class SqlActivityTitle(OmnigentBase):
     """
     SQLAlchemy model for the ``activity_titles`` table.
