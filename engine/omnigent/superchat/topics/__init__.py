@@ -2,8 +2,8 @@
 
 Layout: ``topic`` (the record and its cleaning rules, pure), ``store``, ``routes`` (list, pick,
 write), ``tools`` (tool def), ``handlers`` (runner side), ``note`` (the next turn's one line
-after a pick). The quiet brief reads the owner's
-topics through :func:`omnigent.superchat.feature.topics_brief`; other capabilities use
+after a pick, and the active topic the Conversation may update itself). The quiet brief reads
+the owner's topics through :func:`omnigent.superchat.feature.topics_brief`; other capabilities use
 :func:`list_watched_topics` and :func:`mark_topic_new`. Imports stay lazy so importing a
 submodule never loads the server.
 """
@@ -18,6 +18,7 @@ from omnigent.superchat.feature import (
     InstallDeps,
     ToolManagerCtx,
     is_helper,
+    is_super_chat,
     register_topics_brief,
 )
 from omnigent.superchat.topics.handlers import handle_topics_tool
@@ -34,10 +35,11 @@ __all__ = ["FEATURE", "list_watched_topics", "mark_topic_new"]
 
 
 def _tools(labels: Mapping[str, str] | None, _ctx: ToolManagerCtx) -> list[Tool]:
-    """Only a Super Chat's Helpers write topics (the ``notes`` Type lists it)."""
+    """A Super Chat's Helpers write topics (the ``notes`` Type lists it); the Conversation
+    itself only the topic the person picked up, which the server enforces."""
     from omnigent.superchat.topics.tools import TopicsUpdateTool
 
-    return [TopicsUpdateTool()] if is_helper(labels) else []
+    return [TopicsUpdateTool()] if is_helper(labels) or is_super_chat(labels) else []
 
 
 def _install(app: FastAPI, deps: InstallDeps) -> None:

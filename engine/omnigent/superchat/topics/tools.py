@@ -1,4 +1,5 @@
-"""Built-in tool for topics (ADR 0035): ``topics_update``, offered to Helpers only.
+"""Built-in tool for topics (ADR 0035): ``topics_update``, offered to Helpers and to the
+Conversation, which may write only the topic the person picked up (the server checks).
 
 Schema-only: the runner dispatches it to ``POST /v1/topics/write`` (see ``handlers``). The
 quiet brief lists the person's current topics, so there is no read tool.
