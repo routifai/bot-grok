@@ -75,7 +75,6 @@ import {
   EmptyConversationSuggestions,
 } from "./app/chrome/EmptyConversation";
 import { Home } from "./app/chrome/Home";
-import { HomeActivity } from "./app/chrome/HomeActivity";
 import { lastLine, type SlideWay, slideViews } from "./app/chrome/homeSlide";
 import { BotSettingsPanel } from "./app/chrome/PanelForms";
 import type { Panel } from "./app/chrome/panel";
@@ -585,7 +584,7 @@ export function ShellPage() {
               />
             }
             onOpenSettings={() => openSettings("general")}
-            recent={<HomeActivity botId={active.id} hideWhenEmpty />}
+            recent={<ConversationActivity botId={active.id} />}
             onContinue={continueChat}
             continuePill={
               last && !shownStart ? (
