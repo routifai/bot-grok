@@ -33,7 +33,9 @@ PICKED_NOTE = (
     "done in a turn, update it with `topics_update` (key `{key}`): move what was done from "
     "`open` to `covered` (dated today), rewrite `left_off`, set new `starters` and add one "
     "`events` line with the local time; `covered` and `open` replace the stored lists, so pass "
-    "them whole. Only then finish the turn."
+    "them whole. The person reads every line on Home: write them as short notes in their terms, "
+    "never naming \"the user\" or \"the person\" (\"Review marked done\", \"Built the 14-slide "
+    "deck\"). Only then finish the turn."
 )
 
 
