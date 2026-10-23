@@ -14,4 +14,5 @@ export * from "./host.js";
 export * from "./knowledge.js";
 export * from "./memory.js";
 export * from "./models.js";
+export * from "./outbox.js";
 export * from "./vault.js";

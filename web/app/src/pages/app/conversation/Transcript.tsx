@@ -21,6 +21,7 @@ import {
   useAnsweredWhileWorking,
   useTurnStrips,
 } from "../../../features/activity";
+import { AwayDivider, ProactiveMeta, useAwayMarker, useOutboxSeen } from "../../../features/outbox";
 import type { ArtifactTarget } from "../../../lib/artifact-open";
 import { quoteDraftForSelection } from "../../../lib/quote-selection";
 import { transcriptIsNearEnd, transcriptMovedDown } from "../../../lib/transcript-scroll";
@@ -89,6 +90,7 @@ const TranscriptView = memo(function Transcript({
   onAnswer,
   onReply,
   onQuote,
+  shown = true,
 }: {
   /** The face shown beside the Muse's replies. */
   museFace: { color: string; identity: string };
@@ -123,6 +125,8 @@ const TranscriptView = memo(function Transcript({
   /** Without reply/quote handlers those actions are hidden. */
   onReply?: (message: ThreadMessage) => void;
   onQuote?: (message: ThreadMessage, quote: string) => void;
+  /** The chat is in front (no sheet over it): reaching its end counts as seeing it (ADR 0036). */
+  shown?: boolean;
 }) {
   const { t } = useLingui();
   const running = workState.turnRunning;
@@ -137,6 +141,10 @@ const TranscriptView = memo(function Transcript({
   const lastScrollTop = useRef<number | null>(null);
   const autoScrollTimer = useRef<number | undefined>(undefined);
   const jumpButtonRef = useRef<HTMLButtonElement>(null);
+  // What Superchat said on its own while the person was away (ADR 0036): one divider above the
+  // first of it, and it counts as seen once the chat is in front and at its end.
+  const awayMarker = useAwayMarker(artifactTarget.botId, followSignal);
+  useOutboxSeen({ botId: artifactTarget.botId, messages, atEnd, shown });
   const messageById = useMemo(
     () => new Map(messages.map((message) => [message.id, message])),
     [messages],
@@ -460,6 +468,11 @@ const TranscriptView = memo(function Transcript({
               data-message-id={message.id}
               className="group/message relative hover:z-20"
             >
+              {message.id === awayMarker ? (
+                <div className="pb-[22px]">
+                  <AwayDivider />
+                </div>
+              ) : null}
               <div
                 className={`relative flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
               >
@@ -486,6 +499,13 @@ const TranscriptView = memo(function Transcript({
                   />
                   {message.role === "user" && !message.id.startsWith("progress:") ? (
                     <UserMessageMeta message={message} />
+                  ) : null}
+                  {message.proactive ? (
+                    <ProactiveMeta
+                      botId={artifactTarget.botId}
+                      messageId={message.id}
+                      proactive={message.proactive}
+                    />
                   ) : null}
                   {answeredWhileWorking.has(message.id) ? <AnsweredWhileWorking /> : null}
                 </div>

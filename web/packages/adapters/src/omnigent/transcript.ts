@@ -182,6 +182,15 @@ export function mapTranscriptMessage(
     ...(typeof message.activity_id === "string" && message.activity_id
       ? { activityId: message.activity_id }
       : {}),
+    ...(message.proactive
+      ? {
+          proactive: {
+            kind: message.proactive.kind,
+            ...(message.proactive.topic_key ? { topicKey: message.proactive.topic_key } : {}),
+            urgency: message.proactive.urgency,
+          },
+        }
+      : {}),
   };
 }
 

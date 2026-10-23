@@ -14,6 +14,7 @@ import { liveContract } from "./rpc/live.js";
 import { memoryContract } from "./rpc/memory.js";
 import { engineModelsContract } from "./rpc/models.js";
 import { museContract } from "./rpc/muse.js";
+import { outboxContract } from "./rpc/outbox.js";
 import { sheetsContract } from "./rpc/sheets.js";
 import { vaultContract } from "./rpc/vault.js";
 
@@ -34,6 +35,7 @@ export const appContract = {
   ...liveContract,
   ...memoryContract,
   ...museContract,
+  ...outboxContract,
   ...sheetsContract,
   ...vaultContract,
 };

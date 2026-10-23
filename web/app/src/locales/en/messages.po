@@ -297,6 +297,9 @@ msgstr "Attachment"
 msgid "Automatic"
 msgstr "Automatic"
 
+msgid "Automation"
+msgstr "Automation"
+
 msgid "Automations"
 msgstr "Automations"
 
@@ -1149,6 +1152,9 @@ msgstr "More actions for {0}"
 msgid "More actions for {title}"
 msgstr "More actions for {title}"
 
+msgid "Morning brief"
+msgstr "Morning brief"
+
 msgid "My machine restarted. Try again."
 msgstr "My machine restarted. Try again."
 
@@ -1169,6 +1175,9 @@ msgstr "New app"
 
 msgid "New automation"
 msgstr "New automation"
+
+msgid "New messages"
+msgstr "New messages"
 
 msgid "Newer version available, show it"
 msgstr "Newer version available, show it"
@@ -1229,6 +1238,12 @@ msgstr "Not run yet"
 
 msgid "Not started"
 msgstr "Not started"
+
+msgid "Not useful"
+msgstr "Not useful"
+
+msgid "Noted. You'll see less like this."
+msgstr "Noted. You'll see less like this."
 
 msgid "Nothing here yet."
 msgstr "Nothing here yet."
@@ -1308,6 +1323,9 @@ msgstr "Open questions"
 
 msgid "Open run"
 msgstr "Open run"
+
+msgid "Open topic"
+msgstr "Open topic"
 
 msgid "Opening superchat…"
 msgstr "Opening superchat…"
@@ -1894,6 +1912,9 @@ msgstr "That change can't be made exactly by hand."
 msgid "That did not work."
 msgstr "That did not work."
 
+msgid "That didn't go through."
+msgstr "That didn't go through."
+
 msgid "That took too long. Try again."
 msgstr "That took too long. Try again."
 
@@ -1960,6 +1981,9 @@ msgstr "Today"
 
 msgid "Too large to preview."
 msgstr "Too large to preview."
+
+msgid "Topic update"
+msgstr "Topic update"
 
 msgid "Try again"
 msgstr "Try again"
@@ -2150,6 +2174,9 @@ msgstr "When I need a decision or an answer, it'll show up here."
 
 msgid "When something important changes"
 msgstr "When something important changes"
+
+msgid "While you were away"
+msgstr "While you were away"
 
 msgid "Who can open it"
 msgstr "Who can open it"

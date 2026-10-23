@@ -40,6 +40,7 @@ import { FolderPicker } from "../features/files/FolderPicker";
 import { knowledgeExtension } from "../features/knowledge";
 import { liveExtension } from "../features/live";
 import { ConversationModelPicker } from "../features/models";
+import { useUnreadTitle } from "../features/outbox";
 import { useChatPlace, WorkInChip } from "../features/projects/WorkIn";
 import {
   newestTurn,
@@ -186,6 +187,8 @@ export function ShellPage() {
   );
   // The Muse's Conversation is the engine's transcript (ADR 0009), and so is whether it is working.
   const museTranscript = useMuseTranscript(active?.id, messageScroll);
+  // "(2) superchat" while messages Superchat wrote on its own wait unseen (ADR 0036).
+  useUnreadTitle(active?.id);
   useReplyAlerts({
     bot: active,
     conversationId: museTranscript.threadId,
@@ -431,7 +434,14 @@ export function ShellPage() {
         {showHome && active ? (
           <Home
             personName={bootstrapMe?.name ?? ""}
-            dock={<ConnectedDock botId={active.id} active={dockSheet} onSelect={setDockSheet} />}
+            dock={
+              <ConnectedDock
+                botId={active.id}
+                active={dockSheet}
+                onSelect={setDockSheet}
+                onConversation={() => setDockSheet(null)}
+              />
+            }
             composer={composerEl}
             onOpenSettings={() => openSettings("general")}
             recent={<HomeActivity botId={active.id} hideWhenEmpty />}
@@ -444,7 +454,12 @@ export function ShellPage() {
         {active && !showHome ? (
           <div className="relative z-10 hidden w-[96px] shrink-0 flex-col items-center justify-between pt-24 pb-6 md:flex">
             <span />
-            <ConnectedDock botId={active.id} active={dockSheet} onSelect={setDockSheet} />
+            <ConnectedDock
+              botId={active.id}
+              active={dockSheet}
+              onSelect={setDockSheet}
+              onConversation={() => setDockSheet(null)}
+            />
             <SettingsButton onClick={() => openSettings("general")} />
           </div>
         ) : null}
@@ -487,6 +502,7 @@ export function ShellPage() {
                     setReplyQuote(quote);
                   }}
                   trailing={<ApprovalCards botId={active.id} />}
+                  shown={dockSheet === null && !fileStudio.open}
                 />
               ) : null}
               {active ? (
