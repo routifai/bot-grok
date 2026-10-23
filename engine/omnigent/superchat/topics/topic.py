@@ -279,6 +279,11 @@ def merge(topic: Topic, fields: dict[str, Any], now: int) -> Topic:
     if "events" in fields:
         topic.events = merge_events(topic.events, fields["events"])
     newest = max((e["at"] for e in topic.events), default=0)
+    if not newest:
+        # No dated moment: the newest covered line's day, never the write time (a topic seeded
+        # from last week must not read as touched today).
+        utc = ZoneInfo("UTC")
+        newest = max((parse_at(c.get("date"), utc, now) or 0 for c in topic.covered), default=0)
     topic.last_touched_at = newest or topic.last_touched_at or now
     topic.updated_at = now
     return topic
