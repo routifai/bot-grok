@@ -31,7 +31,7 @@ class ObjectiveProposal:
     A suggested full plan awaiting the owner's decision.
 
     :param plan: Ordered ``{"id": <kept task id or None>, "title": str}`` items.
-    :param status: ``open``/``accepted``/``dismissed``.
+    :param status: ``open``/``accepted``/``dismissed`` (by the owner)/``superseded`` (replaced).
     """
 
     id: str

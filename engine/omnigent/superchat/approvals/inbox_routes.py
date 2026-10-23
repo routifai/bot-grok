@@ -6,11 +6,17 @@
 * ``POST /me/asks/{id}/answer`` ``{choice, note?}`` -> ``{"ok": true}``. Dispatches to the
   approval answer function and the objective store, the same code the underlying routes run;
   ownership is checked exactly as they do.
+* ``GET /me/asks/history`` -> ``{"data": [decision]}``, newest first: the asks answered in the
+  last :data:`HISTORY_DAYS` days, read from the stores that hold them (ADR 0036, amended):
+  approvals ``approved`` / ``denied`` and plan proposals ``accepted`` / ``dismissed``. A
+  decision is ``{id, kind, title, decision, decided_by, by_you, decided_at}``. A blocked task's
+  answer is not listed: its store keeps no time for it.
 """
 
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -36,6 +42,8 @@ from omnigent.superchat.approvals.held import drop_unparked
 from omnigent.superchat.approvals.routes import answer_approval, owner_of, target_names
 
 _NOTE_MAX = 2000
+#: How far back the Inbox's History reads.
+HISTORY_DAYS = 30
 
 
 class AskAnswer(BaseModel):
@@ -101,6 +109,49 @@ def create_asks_router(
                     asks += objective_asks(objective)
         asks.sort(key=lambda ask: (ask["created_at"] or 0, ask["id"]), reverse=True)
         return request_redactor(request, user_id).deep({"data": asks})
+
+    @router.get("/me/asks/history")
+    async def ask_history(request: Request) -> dict[str, Any]:
+        """The caller's answered asks of the last :data:`HISTORY_DAYS` days, newest first."""
+        user_id = require_user(request, auth_provider)
+        since = int(time.time()) - HISTORY_DAYS * 86400
+        owner = owner_of(user_id)
+        rows: list[dict[str, Any]] = []
+        approvals = getattr(request.app.state, "approval_store", None)
+        if approvals is not None:
+            decided = await asyncio.to_thread(approvals.list_decided, user_id=owner, since=since)
+            rows += [
+                {
+                    "id": f"approval:{row.elicitation_id}",
+                    "kind": "approval",
+                    "title": row.summary,
+                    "decision": row.status,
+                    "decided_by": row.decided_by,
+                    "by_you": row.decided_by == owner,
+                    "decided_at": row.decided_at,
+                }
+                for row in decided
+            ]
+        if objective_store is not None:
+            owner_id = _objective_owner(user_id)
+            proposals = await asyncio.to_thread(
+                lambda: objective_store.decided_proposals(owner_user_id=owner_id, since=since)
+            )
+            # Only the Goal's owner can answer its proposal, so the owner decided it.
+            rows += [
+                {
+                    "id": f"proposal:{proposal.objective_id}:{proposal.id}",
+                    "kind": "plan_proposal",
+                    "title": title,
+                    "decision": proposal.status,
+                    "decided_by": owner,
+                    "by_you": True,
+                    "decided_at": proposal.resolved_at,
+                }
+                for title, proposal in proposals
+            ]
+        rows.sort(key=lambda row: (row["decided_at"] or 0, row["id"]), reverse=True)
+        return request_redactor(request, user_id).deep({"data": rows})
 
     @router.post("/me/asks/{ask_id}/answer")
     async def answer_ask(request: Request, ask_id: str, body: AskAnswer) -> dict[str, bool]:

@@ -196,7 +196,12 @@ async def answer_approval(
     await _apply_pending_policy_ask_writes(
         pending.session_id, conv, conversation_store, agent_store, data
     )
-    await asyncio.to_thread(store.delete_pending, elicitation_id)
+    await asyncio.to_thread(
+        store.decide,
+        elicitation_id,
+        "denied" if decision == "deny" else "approved",
+        owner,
+    )
 
 
 def owner_of(user_id: str | None) -> str:
@@ -319,7 +324,9 @@ def install_pending_persistence(store: SqlAlchemyApprovalStore) -> int:
 
     def mirror(conversation_id: str, elicitation_id: str, event: dict[str, Any] | None) -> None:
         if event is None:
-            store.delete_pending(elicitation_id)
+            # Resolved without an answer recorded here (it timed out or its turn ended): a
+            # decision made in the Inbox was recorded first and is kept.
+            store.decide(elicitation_id, "expired")
             return
         params = event.get("params")
         if not isinstance(params, dict) or params.get("target_session_id"):
@@ -379,7 +386,7 @@ def install_pending_persistence(store: SqlAlchemyApprovalStore) -> int:
             restored += 1
         else:
             # Filed before prompts were attested (its fields came from event text): drop it.
-            store.delete_pending(row.elicitation_id)
+            store.decide(row.elicitation_id, "expired")
             _logger.info("dropped a legacy pending approval: %s", row.elicitation_id)
     pending_elicitations.set_persist_hook(mirror)
     return restored

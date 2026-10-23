@@ -168,3 +168,35 @@ def test_ask_subjects_are_redacted(
     )
     raw = client.get("/v1/me/asks").text
     assert secret not in raw and raw.count("[redacted]") >= 2
+
+
+def test_history_lists_decisions_not_supersessions(client: TestClient, stores) -> None:
+    objectives, approvals = stores
+    objective_id = _objective(objectives)
+    # A newer proposal replaces the first: that is not the person's decision.
+    objectives.set_open_proposal(
+        uuid.uuid4().hex, objective_id, reason="Better plan", plan=[{"id": None, "title": "b"}]
+    )
+    ask = client.get("/v1/me/asks").json()["data"][0]
+    client.post(f"/v1/me/asks/{ask['id']}/answer", json={"choice": "dismiss"})
+    for elicitation_id in ("e_yes", "e_gone"):
+        approvals.put_pending(
+            elicitation_id,
+            _SESSION,
+            user_id="local",
+            category="tool",
+            target="send_mail",
+            summary=f"Send mail {elicitation_id}",
+            amount_usd=None,
+            event="{}",
+        )
+    approvals.decide("e_yes", "approved", "local")
+    approvals.decide("e_gone", "expired")
+    approvals.decide("e_yes", "denied", "local")  # a decision is never overwritten
+
+    history = client.get("/v1/me/asks/history").json()["data"]
+    assert sorted((row["kind"], row["decision"], row["by_you"]) for row in history) == [
+        ("approval", "approved", True),
+        ("plan_proposal", "dismissed", True),
+    ]
+    assert approvals.list_pending() == []

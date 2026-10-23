@@ -101,10 +101,22 @@ class ObjectiveStore(ABC):
         plan: builtins.list[dict[str, str | None]],
     ) -> ObjectiveProposal:
         """
-        Create the objective's open proposal, dismissing any previous open one.
+        Create the objective's open proposal; any previous open one reads ``superseded``.
 
         :param plan: Ordered ``{"id": kept task id or None, "title": str}`` items.
         :raises ValueError: If a kept id is not a task of this objective.
+        """
+        ...
+
+    @abstractmethod
+    def decided_proposals(
+        self, *, owner_user_id: str | None, since: int
+    ) -> builtins.list[tuple[str, ObjectiveProposal]]:
+        """
+        The owner's proposals the owner accepted or dismissed since *since* (epoch seconds),
+        newest first, each with its objective's title. Superseded ones are not decisions.
+
+        :param owner_user_id: The objectives' ``user_id`` (``None`` in single-user mode).
         """
         ...
 

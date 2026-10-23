@@ -2354,7 +2354,8 @@ class SqlObjectiveProposal(OmnigentBase):
     At most one is ``open`` per objective (enforced by the store).
 
     :param plan: JSON list of ``{"id": <existing task id or null>, "title": ...}``.
-    :param status: ``open``/``accepted``/``dismissed``.
+    :param status: ``open``/``accepted``/``dismissed`` (by the owner)/``superseded`` (replaced by
+        a newer proposal).
     """
 
     __tablename__ = "objective_proposals"
@@ -2376,7 +2377,7 @@ class SqlObjectiveProposal(OmnigentBase):
 
     __table_args__ = (
         CheckConstraint(
-            "status IN ('open', 'accepted', 'dismissed')",
+            "status IN ('open', 'accepted', 'dismissed', 'superseded')",
             name="ck_objective_proposals_status",
         ),
         Index("ix_objective_proposals_objective", "workspace_id", "objective_id", "status"),
@@ -2700,9 +2701,11 @@ class SqlApprovalSpend(OmnigentBase):
 
 class SqlApprovalPending(OmnigentBase):
     """
-    SQLAlchemy model for ``approval_pending``: approval prompts still waiting on the person.
+    SQLAlchemy model for ``approval_pending``: approval prompts, waiting on the person or decided.
 
-    Persisted so a restart does not forget them; never expires to a yes.
+    Persisted so a restart does not forget them; never expires to a yes. A decided prompt keeps
+    its row (ADR 0036, amended): ``status`` ``approved`` / ``denied`` with who decided and when,
+    or ``expired`` when nobody can answer it any more. Only ``pending`` rows wait.
     """
 
     __tablename__ = "approval_pending"
@@ -2717,10 +2720,18 @@ class SqlApprovalPending(OmnigentBase):
     amount_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
     event: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="pending")
+    decided_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    decided_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     __table_args__ = (
         Index("ix_approval_pending_user", "workspace_id", "user_id", "created_at"),
         Index("ix_approval_pending_session", "workspace_id", "session_id"),
+        Index("ix_approval_pending_decided", "workspace_id", "user_id", "decided_at"),
+        CheckConstraint(
+            "status IN ('pending', 'approved', 'denied', 'expired')",
+            name="ck_approval_pending_status",
+        ),
     )
 
 
