@@ -360,6 +360,72 @@ async def test_a_recorded_card_at_the_end_of_the_record_starts_no_recovery_turn(
         assert _init_rows(caplog)[0]["recovery_turn"] == "none"
 
 
+class _CardAfterUnansweredServerClient(_HistoryServerClient):
+    """A card recorded between turns lands after a message no turn answered yet."""
+
+    async def get(self, url: str, **kwargs: Any) -> _HistoryServerClient._Resp:
+        del kwargs
+        if not url.rstrip("/").endswith("/items"):
+            return self._Resp({})
+        recorded = "recorded_topic_1"
+        return self._Resp(
+            {
+                "data": [
+                    {**_PENDING_USER_MESSAGE, "response_id": "resp_1"},
+                    {
+                        "id": "fc_1",
+                        "type": "function_call",
+                        "response_id": recorded,
+                        "name": "render_card",
+                        "arguments": "{}",
+                        "call_id": "call_topic_1",
+                    },
+                    {
+                        "id": "fo_1",
+                        "type": "function_call_output",
+                        "response_id": recorded,
+                        "call_id": "call_topic_1",
+                        "output": "{}",
+                    },
+                ],
+                "has_more": False,
+            }
+        )
+
+
+@pytest.mark.asyncio
+async def test_a_recorded_card_after_an_unanswered_message_still_resumes_it(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Recovery decides on the newest item a turn wrote, not on a card recorded after it."""
+    app, _pm, harness = _build_sdk_app(_CardAfterUnansweredServerClient())
+    caplog.set_level(logging.INFO, logger="omnigent.runner.app")
+
+    async with _runner_client(app) as client:
+        init_resp = await client.post(
+            "/v1/sessions", json=_session_init_payload(suppress_recovery_turn=False)
+        )
+        assert init_resp.status_code == 201, init_resp.text
+        await asyncio.sleep(0.1)
+        assert len(harness.posted_bodies) == 1
+        assert _init_rows(caplog)[0]["recovery_turn"] == "history_resume"
+        # The resumed item is the message, not the card: its forward is already answered.
+        forward_resp = await client.post(
+            f"/v1/sessions/{SESSION_ID}/events",
+            json={
+                "type": "message",
+                "role": "user",
+                "agent_id": AGENT_ID,
+                "content": [{"type": "input_text", "text": "hello from history"}],
+                "persisted_item_id": "msg_001",
+            },
+        )
+        assert forward_resp.status_code == 202, forward_resp.text
+        assert forward_resp.json()["status"] == "already_running"
+        await asyncio.sleep(0.1)
+        assert len(harness.posted_bodies) == 1
+
+
 @pytest.mark.asyncio
 async def test_forward_during_recovery_turn_is_not_replayed_after_it(
     monkeypatch: pytest.MonkeyPatch,

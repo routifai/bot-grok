@@ -3085,10 +3085,12 @@ def create_runner_app(
     app.state.studio_runners = _studio_runners
     app.state.superside_chat_pending_refresh = _superside_chat_pending_refresh
     _last_server_item_id: dict[str, str] = {}
-    # conv_id -> whether the record's newest item was recorded by the engine outside any turn
-    # (a picked-up topic's card, ``RECORDED_RESPONSE_PREFIX``): recovery never resumes a turn
-    # for it.
-    _record_ends_recorded: dict[str, bool] = {}
+    # conv_id -> ``(type, role, id)`` of the record's newest item a turn wrote, kept only while
+    # the record ends in items the engine recorded outside any turn (a picked-up topic's card,
+    # ``RECORDED_RESPONSE_PREFIX``): recovery decides on that item, never on the recorded ones,
+    # so a card landing after an unanswered message or mid-turn still resumes it. ``None``: no
+    # turn wrote anything yet.
+    _record_turn_tail: dict[str, tuple[Any, Any, Any] | None] = {}
     # conv_id -> the harness subprocess that took the session's last completed turn. The runner's
     # history is that subprocess's context; once it is gone (crash, relaunch, reconnect) the next
     # turn assembles the history from the record instead (ADR 0031: only the load starts one).
@@ -4032,14 +4034,22 @@ def create_runner_app(
         recovery_turn = "none"
         if history and not execution_seen and session_id not in _active_turns:
             _session_histories[session_id] = history
-            last = history[-1]
-            last_type = last.get("type")
-            last_role = last.get("role")
+            resumed_item_id = _last_server_item_id.get(session_id)
+            if session_id in _record_turn_tail:
+                last_type, last_role, resumed_item_id = _record_turn_tail[session_id] or (
+                    None,
+                    None,
+                    None,
+                )
+            else:
+                last = history[-1]
+                last_type = last.get("type")
+                last_role = last.get("role")
             needs_turn = (
                 (last_type == "message" and last_role == "user")
                 or last_type == "function_call"
                 or last_type == "function_call_output"
-            ) and not _record_ends_recorded.get(session_id, False)
+            )
             if (
                 needs_turn
                 and recovery_id is None
@@ -4047,7 +4057,6 @@ def create_runner_app(
                 and session_id not in _active_turns
             ):
                 recovery_turn = "history_resume"
-                resumed_item_id = _last_server_item_id.get(session_id)
                 if last_type == "message" and last_role == "user" and resumed_item_id:
                     _recovery_resumed_item_ids[session_id] = resumed_item_id
                 _begin_turn_slot(session_id)
@@ -4503,6 +4512,8 @@ def create_runner_app(
         if superside and keep_tokens is None:
             keep_tokens = resolve_keep_tokens(rollover_labels)
         all_items: list[_JsonObject] = []
+        turn_tail: tuple[Any, Any, Any] | None = None
+        _record_turn_tail.pop(session_id, None)
         try:
             async for page_items in iter_items_from_checkpoint(
                 server_client,
@@ -4513,10 +4524,20 @@ def create_runner_app(
                 last_id = page_items[-1].get("id")
                 if last_id:
                     _last_server_item_id[session_id] = last_id
+                for raw in page_items:
+                    response_id = raw.get("response_id")
+                    if not (
+                        isinstance(response_id, str)
+                        and response_id.startswith(RECORDED_RESPONSE_PREFIX)
+                    ):
+                        turn_tail = (raw.get("type"), raw.get("role"), raw.get("id"))
                 last_response = page_items[-1].get("response_id")
-                _record_ends_recorded[session_id] = isinstance(last_response, str) and (
-                    last_response.startswith(RECORDED_RESPONSE_PREFIX)
-                )
+                if isinstance(last_response, str) and last_response.startswith(
+                    RECORDED_RESPONSE_PREFIX
+                ):
+                    _record_turn_tail[session_id] = turn_tail
+                else:
+                    _record_turn_tail.pop(session_id, None)
         except (httpx.HTTPError, ValueError, ItemsPageFetchError):
             _logger.warning(
                 "History load failed for session=%s",
