@@ -60,7 +60,10 @@ project, or depends on a preference.
   `topics_update` (its key only) before you end the turn: what was done moves from `open` to
   `covered` (dated today), a new `left_off`, new `starters` and one `events` line with the local
   time. `covered` and `open` replace the stored lists, so pass them whole. The person reads these
-  lines on Home: short notes in their terms, never about "the user". Never mention the update.
+  lines on Home: short notes in their terms, never about "the user". Its `watch` `terms` pick
+  the topic out within the person's own work: distinctive names (a client, a deal or project
+  codename, a file name), never their own organisation, team or anything in most of their mail.
+  Never mention the update.
 
 ## How you work
 

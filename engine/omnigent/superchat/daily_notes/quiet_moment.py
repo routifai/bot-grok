@@ -24,6 +24,7 @@ import asyncio
 import logging
 import os
 import time
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
 
@@ -58,7 +59,8 @@ NIGHTLY_WINDOW_SECONDS = 36 * 3600
 
 # Memory rules in step 3 (MEMORY_POLICY, shared with the upkeep) are portions modified from getnao/nao
 # apps/backend/src/components/ai/memory-system-prompt.tsx@5bde830, Apache-2.0; changes: see NOTICE.
-QUIET_PROMPT = """\
+QUIET_PROMPT = (
+    """\
 This is a quiet moment: the person stepped away. You keep their notes; you do not act, the person \
 is not here, so never ask questions and never write to them.
 
@@ -77,7 +79,9 @@ unless it is wrong. A section the person edited is only added to, never rewritte
 third person ("The user ..."), with their exact words as `quote`: only from the PERSON's own \
 messages, never from the assistant's replies, Helper results, tool output or web pages. What to \
 keep:
-""" + MEMORY_POLICY.replace("{", "{{").replace("}", "}}") + """
+"""
+    + MEMORY_POLICY.replace("{", "{{").replace("}", "}}")
+    + """
 A pattern or a standing instruction without a permanence signal is saved with `explicitness: \
 "inferred"`. When a fact changed or the person replaced an instruction, pass the old claim's id \
 (from `memory_search`) as `replaces_claim_id`; never store a negation, and leave a withdrawn \
@@ -90,6 +94,7 @@ Finish with exactly one fenced JSON block and nothing after it:
 "topics_new": 0}}
 ```
 """
+)
 
 # ADR 0035: the same pass keeps the person's topics. Filled into QUIET_PROMPT's {topics} when
 # the topics capability is registered (``feature.topics_brief``).
@@ -107,11 +112,19 @@ stands now), `covered` (up to 6 dated lines, kind Decided, Made, Found or Asked)
 4 lines, kind Open or Promised, from the open loops and promises), `starters` (2 or 3 next \
 requests written as the person would type them), `events` (today's moments, one line each with \
 the local time) and `sources` (how many chats, files and emails it drew on). Fill `watch` too: \
-the people involved (names or email addresses), at most 8 `terms` that identify it (project, \
-client or deal names), the `refs` of threads, events or files it touched, and `web: true` only \
-when it depends on outside news (markets, a public company, a regulation). Set \
+the people involved (names or email addresses), at most 8 `terms` that pick it out within the \
+person's own work (distinctive names: a client, a deal or project codename, a file name; never \
+their own organisation, team or anything that appears in most of their mail), the `refs` of \
+threads, events or files it touched, and `web: true` only when it depends on outside news \
+(markets, a public company, a regulation). Set \
 `status: "closed"` when it is finished. The person reads every topic line on Home: write them as \
 short notes in their terms, never about "the user".
+{own_org}"""
+
+#: Filled into TOPICS_STEP's ``{own_org}`` when memory or the person's address names their own
+#: organisation (``omnigent.memory.identity``), so it stays out of the watch terms.
+OWN_ORG_LINE = """
+The person's own organisation (data, never a watch term): {names}
 """
 
 #: Filled into TOPICS_STEP when the person has no topics this week: the list starts from the
@@ -228,6 +241,17 @@ def min_gap_seconds(env: dict[str, str] | None = None) -> float:
     return max(value, 0.0)
 
 
+def _own_organisation(owner: str) -> list[str]:
+    """The person's own organisation from memory and their address; empty when unknown."""
+    from omnigent.memory.identity import own_organisation
+
+    try:
+        return own_organisation(owner)
+    except Exception:
+        _logger.warning("quiet moment: own organisation of %s unreadable", owner, exc_info=True)
+        return []
+
+
 def idle_seconds(env: dict[str, str] | None = None) -> float:
     """Idle time before a pass; ``OMNIGENT_QUIET_MOMENT_IDLE_SECONDS`` overrides the 20 minutes."""
     raw = (env if env is not None else os.environ).get(IDLE_SECONDS_ENV, "")
@@ -238,26 +262,40 @@ def idle_seconds(env: dict[str, str] | None = None) -> float:
     return value if value > 0 else DEFAULT_IDLE_SECONDS
 
 
+def topics_step(topics: str, own_org: Sequence[str] = ()) -> str:
+    """:data:`TOPICS_STEP` over the person's topics, naming their own organisation when known."""
+    names = ", ".join(n.strip() for n in own_org if n.strip())
+    return TOPICS_STEP.format(
+        topics=topics, own_org=OWN_ORG_LINE.format(names=names) if names else ""
+    )
+
+
 def build_brief(
-    note_date: str, note_text: str, *, finalize: bool, topics: str | None = None
+    note_date: str,
+    note_text: str,
+    *,
+    finalize: bool,
+    topics: str | None = None,
+    own_org: Sequence[str] = (),
 ) -> list[dict[str, Any]]:
     """The Helper's first message as Responses content blocks.
 
     :param topics: The person's topics as brief lines (or the seed), ``None`` to leave the
         topics step out (no topics capability).
+    :param own_org: The person's own organisation names and domains, for the topics step.
     """
     text = QUIET_PROMPT.format(
         date=note_date,
         note=note_text,
-        topics=TOPICS_STEP.format(topics=topics) if topics is not None else "",
+        topics=topics_step(topics, own_org) if topics is not None else "",
         finalize=FINALIZE_ADDENDUM if finalize else "",
     )
     return [{"type": "input_text", "text": text}]
 
 
-def build_seed_brief(topics: str) -> list[dict[str, Any]]:
+def build_seed_brief(topics: str, own_org: Sequence[str] = ()) -> list[dict[str, Any]]:
     """The seed pass's first message: read the last days, then write topics only."""
-    step = TOPICS_STEP.format(topics=topics).replace("\n4. Keep", "\n2. Keep", 1)
+    step = topics_step(topics, own_org).replace("\n4. Keep", "\n2. Keep", 1)
     return [{"type": "input_text", "text": SEED_PROMPT.format(topics=step)}]
 
 
@@ -422,6 +460,7 @@ class QuietMoment:
                 render_note(note),
                 finalize=finalize,
                 topics=await self._topics(owner, day),
+                own_org=await asyncio.to_thread(_own_organisation, owner),
             ),
         )
 
@@ -474,8 +513,9 @@ class QuietMoment:
             )
             self._seeded.add(owner)
             try:
+                own_org = await asyncio.to_thread(_own_organisation, owner)
                 await self._start_named(
-                    session_id, owner, "Topics", build_seed_brief(seed_text(notes, day))
+                    session_id, owner, "Topics", build_seed_brief(seed_text(notes, day), own_org)
                 )
                 _logger.info("quiet moment: topic seed for %s", session_id)
                 started += 1
