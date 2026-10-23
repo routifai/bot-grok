@@ -44,6 +44,7 @@ from omnigent.server.routes._sessions.helpers import (
 )
 from omnigent.server.routes._sessions.orchestration import (
     _resolve_elicitation,
+    _signal_elicitation_answered,
 )
 from omnigent.server.schemas import (
     ElicitationResult,
@@ -133,6 +134,7 @@ def register_elicitations_routes(
                 raise _session_not_found()
         _resolve_data = {"elicitation_id": elicitation_id, **body.model_dump(exclude_none=True)}
         await _resolve_elicitation(session_id, _resolve_data, runner_router, conversation_store)
+        await _signal_elicitation_answered(session_id, _resolve_data, user_id)
         # Apply any policy writes deferred by the relay tool-call ASK gate
         # (e.g. a cost-budget checkpoint) now that the verdict is in.
         await _apply_pending_policy_ask_writes(

@@ -25,7 +25,10 @@ from omnigent.runtime import pending_elicitations
 from omnigent.server.auth import LEVEL_EDIT, RESERVED_USER_LOCAL, AuthProvider
 from omnigent.server.routes._auth_helpers import require_access_and_level, require_user
 from omnigent.server.routes._sessions.helpers import _apply_pending_policy_ask_writes
-from omnigent.server.routes._sessions.orchestration import _resolve_elicitation
+from omnigent.server.routes._sessions.orchestration import (
+    ON_ELICITATION_ANSWERED,
+    _resolve_elicitation,
+)
 from omnigent.stores import AgentStore, ConversationStore, PermissionStore
 from omnigent.superchat.approvals.held import drop_unparked
 from omnigent.superchat.approvals.policy import (
@@ -389,4 +392,18 @@ def install_pending_persistence(store: SqlAlchemyApprovalStore) -> int:
             store.decide(row.elicitation_id, "expired")
             _logger.info("dropped a legacy pending approval: %s", row.elicitation_id)
     pending_elicitations.set_persist_hook(mirror)
+
+    def answered(
+        session_id: str, elicitation_id: str, action: str, answered_by: str | None
+    ) -> None:
+        # Answered outside the Inbox (the session's resolve URL or approval event): the
+        # resolution's ``expired`` above is replaced by the decision and who made it.
+        store.decide(
+            elicitation_id,
+            "approved" if action == "accept" else "denied",
+            owner_of(answered_by),
+            session_id=session_id,
+        )
+
+    ON_ELICITATION_ANSWERED["approvals"] = answered
     return restored

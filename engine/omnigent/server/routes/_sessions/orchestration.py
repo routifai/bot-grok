@@ -4974,6 +4974,31 @@ ON_MESSAGE_CONTEXT: dict[str, Callable[[str, str, dict[str, Any]], None]] = {}
 #: ``feature name -> hook(session_id)``, called once a session is deleted so a feature drops what
 #: it keeps for it. Set by a feature's install; a failing hook is logged, never fails the delete.
 ON_SESSION_DELETED: dict[str, Callable[[str], None]] = {}
+#: ``feature name -> hook(session_id, elicitation_id, action, answered_by)``, called (blocking,
+#: off the loop)
+#: once a person's ``accept`` or ``decline`` reached an elicitation through the session routes
+#: (the resolve URL or the ``approval`` event), so a feature records who answered it and how.
+#: A failing hook is logged and never fails the answer.
+ON_ELICITATION_ANSWERED: dict[str, Callable[[str, str, str, str | None], None]] = {}
+
+
+async def _signal_elicitation_answered(
+    session_id: str, data: dict[str, Any], answered_by: str | None
+) -> None:
+    """Run :data:`ON_ELICITATION_ANSWERED` for a verdict *answered_by* delivered in *session_id*
+    (``data``: ``elicitation_id`` and ``action``); a ``cancel`` or a malformed verdict runs
+    nothing. A hook acts only on an elicitation of *session_id*."""
+    elicitation_id = data.get("elicitation_id")
+    action = data.get("action")
+    if not isinstance(elicitation_id, str) or action not in ("accept", "decline"):
+        return
+    for hook in list(ON_ELICITATION_ANSWERED.values()):
+        try:
+            await asyncio.to_thread(hook, session_id, elicitation_id, action, answered_by)
+        except Exception:  # noqa: BLE001 - bookkeeping, never a reason to fail the answer
+            _logger.warning(
+                "elicitation answered hook failed for %s", elicitation_id, exc_info=True
+            )
 
 
 async def _persist_user_event_item(

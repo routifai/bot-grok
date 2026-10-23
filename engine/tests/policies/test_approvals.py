@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 
 from omnigent.errors import OmnigentError
 from omnigent.runtime import pending_elicitations
+from omnigent.server.routes._sessions.orchestration import ON_ELICITATION_ANSWERED
 from omnigent.superchat.approvals import policy as approvals
 from omnigent.superchat.approvals.routes import (
     create_approvals_router,
@@ -27,6 +28,7 @@ def store(db_uri: str):
     yield s
     approvals.configure_store(None)
     pending_elicitations.set_persist_hook(None)
+    ON_ELICITATION_ANSWERED.pop("approvals", None)
 
 
 def _event(name: str, arguments: dict[str, Any], owner: str = "a@x.io") -> dict[str, Any]:
@@ -336,6 +338,24 @@ async def test_engine_composed_muse_approval_reaches_the_inbox(
     assert pending_to_response(rows[0], 0)["can_always"] is True
     pending_elicitations.resolve(conv.id, eid)
     assert store.list_pending() == []
+
+
+async def test_an_approval_answered_through_the_session_routes_records_the_decision(
+    store: SqlAlchemyApprovalStore,
+) -> None:
+    """The resolve URL's answer replaces the resolution's ``expired``, in its session only."""
+    from omnigent.server.routes._sessions.orchestration import _signal_elicitation_answered
+
+    install_pending_persistence(store)
+    result = _ask_result({"__ask_on_add_policy": "Approve?"})
+    eid = await _raise(result, session="s_url", tool="sys_add_policy", args={})
+    pending_elicitations.resolve("s_url", eid)
+    data = {"elicitation_id": eid, "action": "decline"}
+    await _signal_elicitation_answered("s_other", data, "b@x.io")
+    assert store.list_decided(user_id="a@x.io", since=0) == []
+    await _signal_elicitation_answered("s_url", data, "b@x.io")
+    [row] = store.list_decided(user_id="a@x.io", since=0)
+    assert (row.elicitation_id, row.status, row.decided_by) == (eid, "denied", "b@x.io")
 
 
 async def test_a_forged_approval_header_in_another_policys_reason_is_not_trusted(

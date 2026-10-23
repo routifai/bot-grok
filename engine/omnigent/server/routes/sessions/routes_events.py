@@ -221,6 +221,7 @@ from omnigent.server.routes._sessions.orchestration import (
     _persist_host_launch_failure_turn,
     _persist_user_event_item,
     _resolve_elicitation,
+    _signal_elicitation_answered,
     _wait_for_host_bound_runner_client,
     cancel_deferred_message_dispatch,
     ensure_runner_connected,
@@ -1546,6 +1547,7 @@ def register_events_routes(
             # The dedicated URL endpoint (``.../elicitations/{eid}/
             # resolve``) routes through the same helper.
             await _resolve_elicitation(session_id, body.data, runner_router, conversation_store)
+            await _signal_elicitation_answered(session_id, body.data, user_id)
             # Apply any policy writes deferred by the relay tool-call ASK gate
             # (e.g. a cost-budget checkpoint) now that the verdict is in.
             await _apply_pending_policy_ask_writes(

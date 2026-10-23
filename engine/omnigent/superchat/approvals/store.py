@@ -284,10 +284,18 @@ class SqlAlchemyApprovalStore:
             rows = session.execute(stmt.order_by(SqlApprovalPending.created_at)).scalars().all()
             return [_pending(row) for row in rows]
 
-    def decide(self, elicitation_id: str, status: str, decided_by: str | None = None) -> None:
+    def decide(
+        self,
+        elicitation_id: str,
+        status: str,
+        decided_by: str | None = None,
+        *,
+        session_id: str | None = None,
+    ) -> None:
         """End a waiting approval: ``approved`` or ``denied`` by *decided_by*, or ``expired``
         (nobody can answer it any more). A decision is never overwritten, except that the
-        person's answer replaces an ``expired`` its own resolution recorded a moment before."""
+        person's answer replaces an ``expired`` its own resolution recorded a moment before.
+        With *session_id*, only an approval asked in that session is decided."""
         if status not in DECIDED:
             raise ValueError(status)
         replaceable = ("pending",) if status == "expired" else ("pending", "expired")
@@ -299,6 +307,11 @@ class SqlAlchemyApprovalStore:
                     SqlApprovalPending.workspace_id == current_workspace_id(),
                     SqlApprovalPending.elicitation_id == elicitation_id,
                     SqlApprovalPending.status.in_(replaceable),
+                    *(
+                        (SqlApprovalPending.session_id == session_id,)
+                        if session_id is not None
+                        else ()
+                    ),
                 )
                 .values(status=status, decided_by=decided_by, decided_at=now_epoch())
             )
