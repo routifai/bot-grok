@@ -32,6 +32,35 @@ DAILY_CAP = {"off": 0, "low": 1, "normal": 3, "high": 6}
 
 DROP, MARK, HOLD, MESSAGE = "drop", "mark", "hold", "message"
 
+# Term specificity (ADR 0035, amended 2026-10-23): a term everywhere in the person's own mail is
+# not a signal. A term is common when it is in at least COMMON_SHARE of the items seen while it
+# was watched, over the last COMMON_WINDOW_DAYS, once COMMON_MIN_ITEMS items were seen.
+COMMON_SHARE = 0.05
+COMMON_MIN_ITEMS = 20
+COMMON_WINDOW_DAYS = 14
+#: A term watched by this many open topics or more is shared, not distinctive.
+SHARED_TOPICS = 3
+#: Terms shorter than this never count.
+MIN_TERM_CHARS = 3
+#: Generic work words that never pick a topic out.
+STOPLIST = frozenset(
+    {
+        "deck",
+        "report",
+        "slides",
+        "meeting",
+        "update",
+        "q1",
+        "q2",
+        "q3",
+        "q4",
+        "email",
+        "project",
+        "draft",
+        "team",
+    }
+)
+
 _NO_REPLY = re.compile(
     r"^(no[-_.]?reply|do[-_.]?not[-_.]?reply|donotreply|mailer[-_.]daemon|postmaster|bounces?)"
     r"([-_.+].*)?@",
@@ -228,6 +257,54 @@ def _norm(value: str) -> str:
     return " ".join(value.casefold().split())
 
 
+def norm_term(value: str) -> str:
+    """A watched term as matching and the term counts read it (case and spacing folded)."""
+    return _norm(value)
+
+
+def term_hits(item: Item, terms: Iterable[str]) -> set[str]:
+    """Which of the normalized *terms* *item* contains as whole words (each counted once)."""
+    text = _norm(f"{item.title}\n{item.text_excerpt}")
+    return {t for t in terms if _has_phrase(text, t)}
+
+
+def common_terms(
+    topics: Sequence[WatchedTopic],
+    *,
+    own: Iterable[str] = (),
+    stats: Mapping[str, tuple[int, int]] | None = None,
+) -> dict[str, str]:
+    """The watched terms that are common for this person, each with why (normalized keys).
+
+    - ``seed:org``: the person's own organisation or email domain (*own*), or its leading words
+      (``rbc`` for "RBC Capital Markets").
+    - ``seed:shared``: watched by :data:`SHARED_TOPICS` or more of the open topics.
+    - ``stoplist``: shorter than :data:`MIN_TERM_CHARS`, or a generic work word.
+    - ``"23% of 140 items"``: in at least :data:`COMMON_SHARE` of the items seen while it was
+      watched (*stats*: ``term -> (items containing it, items seen)``), once
+      :data:`COMMON_MIN_ITEMS` were seen; below that only the seeds and the stoplist apply.
+    """
+    owned = [o for o in (_norm(x) for x in own) if o]
+    by_term: dict[str, set[str]] = {}
+    for topic in topics:
+        for term in topic.terms:
+            normalized = _norm(term)
+            if normalized:
+                by_term.setdefault(normalized, set()).add(topic.key)
+    common: dict[str, str] = {}
+    for term, keys in by_term.items():
+        hits, seen = (stats or {}).get(term, (0, 0))
+        if any(term == o or o.startswith(f"{term} ") for o in owned):
+            common[term] = "seed:org"
+        elif len(keys) >= SHARED_TOPICS:
+            common[term] = "seed:shared"
+        elif len(term) < MIN_TERM_CHARS or term in STOPLIST:
+            common[term] = "stoplist"
+        elif seen >= COMMON_MIN_ITEMS and hits >= COMMON_SHARE * seen:
+            common[term] = f"{round(100 * hits / seen)}% of {seen} items"
+    return common
+
+
 def _has_phrase(text: str, phrase: str) -> bool:
     """Whether *phrase* occurs in *text* as whole words (both already normalized)."""
     return bool(phrase) and re.search(rf"(?<!\w){re.escape(phrase)}(?!\w)", text) is not None
@@ -264,7 +341,10 @@ def _muted(mutes: Sequence[Mapping[str, Any]], topic_key: str) -> tuple[set[str]
 
 
 def _match_one(
-    item: Item, topic: WatchedTopic, mutes: Sequence[Mapping[str, Any]]
+    item: Item,
+    topic: WatchedTopic,
+    mutes: Sequence[Mapping[str, Any]],
+    common: Mapping[str, str] | frozenset[str],
 ) -> Match | None:
     muted_senders, muted_terms = _muted(mutes, topic.key)
     if item.sender and (
@@ -276,7 +356,11 @@ def _match_one(
         if ref and _norm(ref) in refs:
             return Match(topic.key, STRONG, f"watched reference {ref}")
     text = _norm(f"{item.title}\n{item.text_excerpt}")
-    terms = {t for t in (_norm(term) for term in topic.terms) if t and t not in muted_terms}
+    terms = {
+        t
+        for t in (_norm(term) for term in topic.terms)
+        if t and t not in muted_terms and t not in common
+    }
     hits = sorted(t for t in terms if _has_phrase(text, t))
     person = _person_hit(item, topic.people)
     if person and hits:
@@ -287,21 +371,26 @@ def _match_one(
 
 
 def match(
-    item: Item, topics: Sequence[WatchedTopic], mutes: Sequence[Mapping[str, Any]] = ()
+    item: Item,
+    topics: Sequence[WatchedTopic],
+    mutes: Sequence[Mapping[str, Any]] = (),
+    common: Mapping[str, str] | frozenset[str] = frozenset(),
 ) -> Match | None:
     """The strongest topic *item* hits, or ``None`` (ADR 0035 stage 3).
 
     Strong: a hard reference (thread, meeting or file the topic touched). Medium: a watched
-    person sent, attends or edited it and it contains a watched term. Weak: it contains two or
-    more distinct watched terms of one topic. A muted sender never matches that topic and a
-    muted term never counts for it. A web item matches only the topic it was fetched for. Ties
-    go to the earlier topic in *topics*.
+    person sent, attends or edited it and it contains a specific watched term. Weak: it contains
+    two or more distinct specific watched terms of one topic. A *common* term (normalized, from
+    :func:`common_terms`) never counts, so a topic watched only by common terms matches by its
+    references alone. A muted sender never matches that topic and a muted term never counts for
+    it. A web item matches only the topic it was fetched for. Ties go to the earlier topic in
+    *topics*.
     """
     best: Match | None = None
     for topic in topics:
         if item.topic_key is not None and topic.key != item.topic_key:
             continue
-        found = _match_one(item, topic, mutes)
+        found = _match_one(item, topic, mutes, common)
         if found and (
             best is None or _STRENGTH_ORDER[found.strength] > _STRENGTH_ORDER[best.strength]
         ):

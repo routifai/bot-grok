@@ -6,6 +6,7 @@ import json
 
 import pytest
 
+from omnigent.memory.identity import domain_label, org_domains, org_names, own_addresses
 from omnigent.superchat.topic_watch.judge import parse_verdicts
 from omnigent.superchat.topic_watch.rules import (
     DROP,
@@ -17,6 +18,7 @@ from omnigent.superchat.topic_watch.rules import (
     Match,
     Verdict,
     WatchedTopic,
+    common_terms,
     decide,
     match,
     noise_reason,
@@ -87,6 +89,72 @@ def test_match_strengths_and_mutes() -> None:
     web = Item("web", "w1", "Polaris partner tier news", "", NOW, topic_key="other")
     found = match(web, [POLARIS, other])
     assert found is not None and found.topic_key == "other"
+
+
+# Term specificity (ADR 0035, amended): the person works at Northwind; every mail names it.
+DECK = WatchedTopic(
+    key="nw-deck",
+    title="Company overview deck",
+    people=("Ana Ruiz <ana@northwind.test>",),
+    terms=("Northwind", "overview deck", "Halcyon"),
+)
+
+
+def test_own_organisation_never_counts() -> None:
+    common = common_terms([DECK], own=["Northwind Capital Markets", "northwind.test"])
+    assert common == {"northwind": "seed:org"}
+    org_only = _mail(sender="ana@northwind.test", text_excerpt="Northwind town hall moved")
+    assert match(org_only, [DECK], common=common) is None
+    specific = _mail(sender="ana@northwind.test", text_excerpt="Northwind: Halcyon numbers")
+    found = match(specific, [DECK], common=common)
+    assert found is not None and found.strength == "medium"
+    assert found.reason.endswith("mentions halcyon")
+    # Two terms, one of them common, is no longer a weak match.
+    assert match(_mail(text_excerpt="Northwind and Halcyon"), [DECK], common=common) is None
+    # A hard reference still matches a topic whatever its terms.
+    refs = WatchedTopic(key="r", title="R", terms=("Northwind",), refs=("thread-9",))
+    found = match(_mail(thread_ref="thread-9"), [refs], common=common)
+    assert found is not None and found.strength == "strong"
+
+
+def test_own_organisation_from_facts_and_address() -> None:
+    facts = [
+        "The user works at Northwind Capital Markets as a VP.",
+        "The user is a senior analyst at Contoso Bank, in Toronto.",
+        "The user's company is based in Toronto.",
+        "The user's work email is ana@contoso.co.uk",
+    ]
+    assert org_names(facts) == ["Northwind Capital Markets", "Contoso Bank"]
+    addresses = own_addresses("ana@mail.northwind.test", facts)
+    assert addresses == ["ana@mail.northwind.test", "ana@contoso.co.uk"]
+    assert org_domains([*addresses, "ana@gmail.com", "local"]) == [
+        "mail.northwind.test",
+        "contoso.co.uk",
+    ]
+    assert [domain_label(d) for d in ("mail.northwind.test", "contoso.co.uk")] == [
+        "northwind",
+        "contoso",
+    ]
+
+
+def test_shared_and_stoplisted_terms_are_common() -> None:
+    topics = [WatchedTopic(key=f"t{i}", title="T", terms=("Atlas", f"Code{i}")) for i in range(3)]
+    topics.append(WatchedTopic(key="s", title="S", terms=("Q4", "deck", "HR", "Halcyon")))
+    common = common_terms(topics)
+    assert common["atlas"] == "seed:shared"
+    assert {t: common[t] for t in ("q4", "deck", "hr")} == dict.fromkeys(
+        ("q4", "deck", "hr"), "stoplist"
+    )
+    assert "halcyon" not in common and "code1" not in common
+
+
+def test_common_from_what_the_person_receives() -> None:
+    # 5% of the items seen while watched, once 20 items were seen.
+    assert common_terms([DECK], stats={"halcyon": (7, 140)}) == {"halcyon": "5% of 140 items"}
+    assert common_terms([DECK], stats={"halcyon": (6, 140)}) == {}
+    # Cold start: below 20 items only the seeds and the stoplist apply.
+    assert common_terms([DECK], stats={"halcyon": (19, 19)}) == {}
+    assert common_terms([DECK], stats={"halcyon": (1, 20)}) == {"halcyon": "5% of 20 items"}
 
 
 def _verdict(change: str = "blocker", urgency: str = "now", relevance: int = 3) -> Verdict:
