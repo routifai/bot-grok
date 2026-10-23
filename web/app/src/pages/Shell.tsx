@@ -1,6 +1,6 @@
 import { useLingui } from "@lingui/react/macro";
 import type { Bot, Topic } from "@superchat/contracts";
-import { AvatarStyleProvider } from "@superchat/ui-web";
+import { AvatarStyleProvider, cn } from "@superchat/ui-web";
 import { House } from "lucide-react";
 import {
   Suspense,
@@ -499,18 +499,26 @@ export function ShellPage() {
     />
   );
 
+  // Back to Home: beside the logo on wide screens, in the top bar on phones.
+  const HomeButton = ({ className }: { className?: string }) => (
+    <button
+      type="button"
+      onClick={() => slideTo("down")}
+      className={cn(
+        "app-no-drag flex items-center gap-1.5 rounded-[9px] px-2.5 py-1.5 text-[12.5px] text-ink-2 transition-colors hover:bg-foreground/10 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring",
+        className,
+      )}
+    >
+      <House aria-hidden="true" size={15} strokeWidth={1.7} />
+      {t`Home`}
+    </button>
+  );
+
   // The superchat top bar: the Project and the model.
   const superchatTopBar = active ? (
     <div className="app-drag relative z-10 flex h-[84px] min-w-0 shrink-0 items-center gap-3 ps-4 pe-4 md:ps-0 md:pe-6">
       <SuperchatLogo className="md:hidden" />
-      <button
-        type="button"
-        onClick={() => slideTo("down")}
-        className="app-no-drag flex items-center gap-1.5 rounded-[9px] px-2.5 py-1.5 text-[12.5px] text-ink-2 transition-colors hover:bg-foreground/10 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
-      >
-        <House aria-hidden="true" size={15} strokeWidth={1.7} />
-        {t`Home`}
-      </button>
+      <HomeButton className="md:hidden" />
       <span className="min-w-0 flex-1" />
       <div className="app-no-drag flex shrink-0 items-center gap-2">
         {/* Running work shows here too, for when its strip is scrolled away (ADR 0023). */}
@@ -602,7 +610,10 @@ export function ShellPage() {
         >
           {chatChrome ? <ContourGround /> : null}
           {chatChrome ? (
-            <SuperchatLogo className="absolute start-8 top-7 z-20 hidden md:inline-flex" />
+            <div className="absolute start-8 top-7 z-20 hidden items-center gap-3 md:flex">
+              <SuperchatLogo />
+              <HomeButton />
+            </div>
           ) : null}
           {chatChrome ? (
             <div className="relative z-10 hidden w-[96px] shrink-0 flex-col items-center justify-between pt-24 pb-6 md:flex">
