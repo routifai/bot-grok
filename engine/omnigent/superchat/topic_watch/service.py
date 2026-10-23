@@ -72,11 +72,12 @@ JUDGE_TIMEOUT_SECONDS = 90.0
 _STRENGTH = {"strong": 3, "medium": 2, "weak": 1}
 
 #: ``seam -> "module:attribute"``, resolved at each run so no capability imports another. The
-#: topics capability (ADR 0035) exposes the first two; the feedback rows of ADR 0036 the third.
+#: topics capability (ADR 0035) exposes the first two; the outbox (ADR 0036) registers the mutes
+#: reader of its *Not useful* rows in core.
 SEAM_PATHS = {
     "list_watched_topics": "omnigent.superchat.topics:list_watched_topics",
     "mark_topic_new": "omnigent.superchat.topics:mark_topic_new",
-    "topic_mutes": "omnigent.superchat.outbox:topic_mutes",
+    "topic_mutes": "omnigent.superchat.feature:list_mutes",
 }
 
 
@@ -495,7 +496,8 @@ class TopicWatch:
         action, reason = decision.action, decision.reason
         if action == MESSAGE and not await self._deliver(task, payload):
             action, reason = MARK, f"{reason}; could not be said, marked"
-        if action == MARK and not await self._mark(seams, run.owner, verdict, item):
+        # A message (said now or held) marks its topic too: the New line shows either way.
+        if action != DROP and not await self._mark(seams, run.owner, verdict, item):
             reason = f"{reason}; mark failed"
         outcome = {DROP: "dropped", MARK: "marked", HOLD: "held", MESSAGE: "messaged"}[action]
         run.counts[{"messaged": "surfaced"}.get(outcome, outcome)] += 1

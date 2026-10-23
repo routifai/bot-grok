@@ -324,7 +324,7 @@ def decide(
     A message goes now only for an answer to an open item, a blocker or a deadline inside 24
     hours (urgency ``now``), within the limits: one per topic per 3 hours, the daily cap of the
     proactivity level, and never twice for one thread. Quiet hours hold it until they end. Every
-    other kept item marks its topic.
+    other kept item only marks its topic (the caller marks a message's topic too).
     """
     if verdict.relevance < MIN_RELEVANCE:
         return Decision(DROP, f"relevance {verdict.relevance}")
