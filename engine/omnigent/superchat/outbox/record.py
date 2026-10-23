@@ -22,7 +22,14 @@ from omnigent.context.labels import PROACTIVE_LABEL_KEY, SCHEDULED_HELPER_LABEL_
 from omnigent.context.rollover import _MID_TURN_LIVE_STATUSES
 from omnigent.entities import ConversationItem, MessageData
 from omnigent.superchat.feature import is_super_chat
-from omnigent.superchat.outbox.cut import DEFAULT_KIND, cut, message_text, parse_label
+from omnigent.superchat.outbox.cut import (
+    DEFAULT_KIND,
+    DEFAULT_URGENCY,
+    KIND_URGENCY,
+    cut,
+    message_text,
+    parse_label,
+)
 from omnigent.superchat.outbox.store import OutboxRow, SqlAlchemyOutboxStore, owner_key
 
 _logger = logging.getLogger(__name__)
@@ -95,10 +102,14 @@ class Outbox:
         task_id = labels.get(SCHEDULED_HELPER_LABEL_KEY)
         if not task_id or helper.parent_conversation_id != session_id:
             return None
-        label = parse_label(labels.get(PROACTIVE_LABEL_KEY))
         task = self._tasks.get(task_id) if self._tasks is not None else None
         kind = getattr(task, "kind", None)
-        label["kind"] = kind[:32] if isinstance(kind, str) and kind else None
+        kind = kind[:32] if isinstance(kind, str) and kind else None
+        label = parse_label(
+            labels.get(PROACTIVE_LABEL_KEY),
+            default_urgency=KIND_URGENCY.get(kind or "", DEFAULT_URGENCY),
+        )
+        label["kind"] = kind
         return label
 
     def message(self, session_id: str, item: ConversationItem) -> None:

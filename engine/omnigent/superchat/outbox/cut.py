@@ -18,6 +18,8 @@ URGENCIES = ("now", "today", "brief")
 DEFAULT_URGENCY = "today"
 #: The kind a scheduled run without one is (an automation the person set up).
 DEFAULT_KIND = "automation"
+#: A kind's urgency when its source names none (the daily brief's task kind, ADR 0037).
+KIND_URGENCY = {"daily_brief": "brief"}
 _KEY_MAX = 128
 _SOURCE_MAX = 200
 
@@ -63,12 +65,14 @@ def _text(value: Any, limit: int) -> str | None:
     return " ".join(value.split())[:limit]
 
 
-def parse_label(raw: str | Mapping[str, Any] | None) -> dict[str, Any]:
+def parse_label(
+    raw: str | Mapping[str, Any] | None, *, default_urgency: str = DEFAULT_URGENCY
+) -> dict[str, Any]:
     """A source's proactive label (the Helper's ``omnigent.proactive`` JSON, or a notice's
     ``context.proactive`` object) as ``{kind, urgency, topic_key, source}``.
 
-    Anything malformed is dropped, never repaired: a bad urgency is the default, a missing
-    topic is none, a kind that is not a short ``snake_case`` word is none.
+    Anything malformed is dropped, never repaired: a bad urgency is *default_urgency*, a
+    missing topic is none, a kind that is not a short ``snake_case`` word is none.
     """
     if isinstance(raw, Mapping):
         value: Any = dict(raw)
@@ -88,7 +92,7 @@ def parse_label(raw: str | Mapping[str, Any] | None) -> dict[str, Any]:
     }
     return {
         "kind": kind if isinstance(kind, str) and _KIND.fullmatch(kind) else None,
-        "urgency": urgency if urgency in URGENCIES else DEFAULT_URGENCY,
+        "urgency": urgency if urgency in URGENCIES else default_urgency,
         "topic_key": _text(value.get("topic_key"), _KEY_MAX),
         "source": source,
     }

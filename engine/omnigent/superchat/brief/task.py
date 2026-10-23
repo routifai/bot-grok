@@ -7,11 +7,9 @@ from __future__ import annotations
 
 import uuid
 
-#: The scheduled task's kind; 0036 labels its messages as the proactive kind ``brief``.
+#: The scheduled task's kind; the outbox (0036) labels its run's message with this kind and,
+#: by kind, urgency ``brief``.
 BRIEF_KIND = "daily_brief"
-#: How ADR 0036 labels the run's message: ``proactive: {kind, urgency}``.
-PROACTIVE_KIND = "brief"
-PROACTIVE_URGENCY = "brief"
 BRIEF_TASK_NAME = "Morning brief"
 #: Weekdays at 7:30, in the task's time zone.
 BRIEF_RRULE = "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;BYHOUR=7;BYMINUTE=30"

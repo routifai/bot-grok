@@ -13,7 +13,7 @@ People want to open the app and see what needs them today without asking. Genera
 **What it writes: one page, one line.**
 
 - A page artifact, "Brief · Fri 23 Oct", one new version per run: **Needs you today** (at most 3, each with the reason and a ready draft or next step, never sent), **Your day** (meetings with one line of prep each), **Since yesterday** (what moved on open topics), **Worth knowing** (at most 3). An empty section is left out, and a day with nothing reads "Nothing needs you today".
-- One proactive message (0036, kind `brief`, urgency `brief`): the first line of *Needs you today* and the page link.
+- One proactive message (0036, kind `daily_brief`, urgency `brief`): the first line of *Needs you today* and the page link.
 
 **Where the person sees it.** On Home, the latest brief is the first card in "Pick up where you left off", marked "Brief" with its time; it opens the page. Older briefs are the page's versions.
 
@@ -28,3 +28,7 @@ People want to open the app and see what needs them today without asking. Genera
 - Engine and bundle change (the brief prompt and kind); no host change.
 - Mail and calendar sections appear only for people with a connector; without one the brief runs on notes and topics.
 - Cost: one Builder-model run per person per weekday; skipped when proactivity is off.
+
+## Amended 2026-10-23 (build)
+
+- **The message's kind is the task's kind, `daily_brief`.** The outbox labels a scheduled run's message with its task's kind, so the brief's message is `daily_brief`, not `brief`. Its urgency is `brief` because the outbox defaults urgency by kind (`daily_brief` → `brief`) when the source names none; other kinds default to `today`.
