@@ -288,9 +288,13 @@ export function ShellPage() {
   }, [running, clearStopFailed]);
   const wasRunningRef = useRef(false);
   useEffect(() => {
-    if (wasRunningRef.current && !running) setFilesRefreshKey((key) => key + 1);
+    if (wasRunningRef.current && !running) {
+      setFilesRefreshKey((key) => key + 1);
+      // A turn on a picked-up topic updates it before it ends (ADR 0035, amended).
+      void reloadTopics();
+    }
     wasRunningRef.current = running;
-  }, [running]);
+  }, [running, reloadTopics]);
   // An empty Conversation is a start page: the greeting, the composer centered under it, and
   // a few suggestions; the composer glides down to its dock once the first message lands.
   const startPage =

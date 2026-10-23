@@ -19,17 +19,28 @@ export const LIVE_TOPICS_WIRE: TopicsWire = {
 const TOPICS_POLL_MS = 5 * 60_000;
 
 /** The person's topics this week (`null` until the first read), re-read on focus and on
- * `reload`. A failed read keeps what was shown. */
+ * `reload`. A `reload` while a read runs reads once more after it, so a write that landed
+ * meanwhile is never missed. A failed read keeps what was shown. */
 export function useTopics(botId: string | undefined, wire: TopicsWire = LIVE_TOPICS_WIRE) {
   const [topics, setTopics] = useState<Topic[] | null>(null);
   const reading = useRef(false);
+  const again = useRef(false);
   const reload = useCallback(async () => {
-    if (!botId || reading.current) return;
+    if (!botId) return;
+    if (reading.current) {
+      again.current = true;
+      return;
+    }
     reading.current = true;
     try {
-      setTopics((await wire.list({ botId, days: 7 })).topics);
-    } catch {
-      setTopics((current) => current ?? []);
+      do {
+        again.current = false;
+        try {
+          setTopics((await wire.list({ botId, days: 7 })).topics);
+        } catch {
+          setTopics((current) => current ?? []);
+        }
+      } while (again.current);
     } finally {
       reading.current = false;
     }
