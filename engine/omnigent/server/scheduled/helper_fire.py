@@ -85,7 +85,7 @@ def register_fire_deferral(kind: str, hook: Callable[[ScheduledTask], float | No
 #: Kinds whose due runs are never dropped for "busy": they queue (re-fire every
 #: ``_OWNER_BUSY_DEFER_S``) and run up to ``fire._max_concurrent()`` at once per owner (one at a
 #: time while the parent Conversation's own turn runs).
-_QUEUED_KINDS = frozenset({"live_artifact", "automation"})
+_QUEUED_KINDS = frozenset({"live_artifact", "automation", "daily_brief"})
 
 #: ``hook(task)``: how many queued runs the owner's host has room for now, or ``None`` when
 #: nobody measured it lately.
