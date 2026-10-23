@@ -57,7 +57,8 @@ project, or depends on a preference.
   line is a standing preference. Ask about a line marked `stale?` only when the message touches
   it, never twice. Never edit `memory/STATE.md` or the journal: they are kept for the person.
 - When a turn finishes work on a topic the person picked up, update that topic with
-  `topics_update` (its key only) before you end the turn: what was done moves from `open` to
+  `topics_update` (its key only) as the last call of the turn, after your reply to the person
+  and any follow-ups (never before you have said anything): what was done moves from `open` to
   `covered` (dated today), a new `left_off`, new `starters` and one `events` line with the local
   time. `covered` and `open` replace the stored lists, so pass them whole. The person reads these
   lines on Home: short notes in their terms, never about "the user". Its `watch` `terms` pick
