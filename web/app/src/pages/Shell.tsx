@@ -49,7 +49,14 @@ import {
   useSessionPanelOpen,
 } from "../features/session-panel";
 import { sheetsExtension } from "../features/sheets";
-import { HomeTopics, isFresh, TopicsPanel, useTopics } from "../features/topics";
+import {
+  FLIGHT_HANDOFF_MS,
+  flyCard,
+  HomeTopics,
+  isFresh,
+  TopicsPanel,
+  useTopics,
+} from "../features/topics";
 import type { ArtifactTarget } from "../lib/artifact-open";
 import { markAfterPaint, markOnce } from "../lib/performance";
 import { rpc } from "../lib/rpc";
@@ -320,13 +327,21 @@ export function ShellPage() {
   useEffect(() => {
     if (showHome || topicsOpen) void reloadTopics();
   }, [showHome, topicsOpen, reloadTopics]);
+  const shellRoot = useRef<HTMLDivElement>(null);
   // Picking a topic up adds its card to the Conversation (nothing is sent) and opens it there.
+  // From Home the card flies into the thread while the pick is recorded.
   const pickTopic = useCallback(
-    async (topic: Topic) => {
+    async (topic: Topic, from?: HTMLElement) => {
       if (!active) return;
+      const into = shellRoot.current?.getBoundingClientRect();
+      const flight = from && into ? flyCard(from, into) : null;
       try {
-        await rpc.topics.pick({ botId: active.id, key: topic.key });
+        await Promise.all([
+          rpc.topics.pick({ botId: active.id, key: topic.key }),
+          flight ? new Promise((done) => window.setTimeout(done, FLIGHT_HANDOFF_MS)) : null,
+        ]);
       } catch {
+        flight?.cancel();
         return;
       }
       setTopicsOpen(false);
@@ -473,6 +488,7 @@ export function ShellPage() {
 
   const shell = (
     <div
+      ref={shellRoot}
       data-testid="shell-root"
       data-ready={shellReady}
       className="superchat-window relative flex h-full min-w-0 flex-1 overflow-hidden text-foreground"
@@ -491,7 +507,9 @@ export function ShellPage() {
               />
             }
             composer={composerEl}
-            topics={<HomeTopics topics={topics} onPick={(topic) => void pickTopic(topic)} />}
+            topics={
+              <HomeTopics topics={topics} onPick={(topic, from) => void pickTopic(topic, from)} />
+            }
             onOpenSettings={() => openSettings("general")}
             recent={<HomeActivity botId={active.id} hideWhenEmpty />}
           />
