@@ -56,6 +56,7 @@ from omnigent.superchat.family.tree import (  # noqa: F401  (re-exported: the fa
     resolve_super_chat_id,
     sub_agent_status,
 )
+from omnigent.superchat.feature import RECORDED_RESPONSE_PREFIX
 from omnigent.superchat.rounds.record import NO_TURN, RELAY_LOST, RESET, helper_titled
 from omnigent.superchat.titles import STRUCTURED_TEXT, one_line_summary, truncate
 from omnigent.superchat.transcript.blocks import turn_activity_id
@@ -965,7 +966,12 @@ def _activities_for_conversation(
                 helper=view["helpers"].get(conversation.id) if view else None,
             )
         ]
-    groups = _group_items_by_response(items)
+    # What the engine recorded outside a turn (a picked-up topic) is no run of its own.
+    groups = [
+        group
+        for group in _group_items_by_response(items)
+        if not group[0].response_id.startswith(RECORDED_RESPONSE_PREFIX)
+    ]
     rounds = _item_rounds(conversation.id, items) if not studio else {}
     views = _round_views(conversation.id, rounds.values(), views_seen)
     stored_labels = conv_store.get_activity_labels(

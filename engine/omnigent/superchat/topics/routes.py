@@ -25,6 +25,7 @@ from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.server.auth import LEVEL_OWNER, RESERVED_USER_LOCAL, AuthProvider
 from omnigent.server.routes._auth_helpers import require_access, require_user
 from omnigent.stores import ConversationStore, PermissionStore
+from omnigent.superchat.feature import RECORDED_RESPONSE_PREFIX
 from omnigent.superchat.topics.store import SqlAlchemyTopicStore
 from omnigent.superchat.topics.topic import WINDOW_DAYS, Topic, clean_key
 
@@ -84,6 +85,8 @@ def _fallback(topic: Topic) -> str:
     lines = [f"Picked up **{topic.title}**."]
     if topic.left_off:
         lines.append(f"Where we left off: {topic.left_off}")
+    if topic.since:
+        lines.append(f"New since then: {topic.since}")
     if topic.covered:
         lines.append("What we covered:")
         lines += [f"- {c['date']} {c['kind']}: {c['text']}" for c in topic.covered]
@@ -107,6 +110,9 @@ def topic_card(topic: Topic) -> dict[str, Any]:
             "covered": topic.covered,
             "open": topic.open,
             "starters": topic.starters,
+            "sources": topic.sources,
+            "since": topic.since or None,
+            "since_at": topic.since_at,
             "last_touched_at": topic.last_touched_at,
         },
         "fallback": _fallback(topic),
@@ -119,7 +125,8 @@ def append_topic_card(
     """Blocking: record *card* in the Conversation as a finished card call and publish it.
 
     Stored as a ``render_card`` call with its result, so the transcript draws it like any reply
-    card and a session assembled from the record reads the card's fallback. No turn starts.
+    card and a session assembled from the record reads the card's fallback. No turn starts, and
+    its ``response_id`` (:data:`RECORDED_RESPONSE_PREFIX`) keeps it out of the Activity feed.
     """
     from omnigent.entities import (
         FunctionCallData,
@@ -128,7 +135,7 @@ def append_topic_card(
     )
     from omnigent.server.routes._sessions.helpers import _publish_external_conversation_item
 
-    response_id = f"topic_{uuid.uuid4().hex}"
+    response_id = f"{RECORDED_RESPONSE_PREFIX}topic_{uuid.uuid4().hex}"
     call_id = f"call_topic_{uuid.uuid4().hex[:24]}"
     arguments = {k: card[k] for k in ("card", "id", "title", "data", "fallback")}
     persisted = conversation_store.append(

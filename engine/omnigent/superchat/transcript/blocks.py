@@ -55,6 +55,7 @@ from omnigent.superchat.cards.tools import (
     TERMINAL_CARDS,
     build_follow_ups,
 )
+from omnigent.superchat.feature import RECORDED_RESPONSE_PREFIX
 from omnigent.superchat.helpers.tools import START_HELPER_TOOL_NAME
 from omnigent.superchat.subagents import STUDIO_QUEUED_NOTE
 
@@ -500,7 +501,11 @@ def project_items(
         turns = {i.get("id"): i.get("response_id") for i in items if i.get("response_id")}
         for message in messages:
             response_id = turns.get(message["id"])
-            if message["role"] == "assistant" and isinstance(response_id, str):
+            if (
+                message["role"] == "assistant"
+                and isinstance(response_id, str)
+                and not response_id.startswith(RECORDED_RESPONSE_PREFIX)
+            ):
                 message["activity_id"] = turn_activity_id(conversation_id, response_id)
     return messages
 

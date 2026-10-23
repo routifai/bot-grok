@@ -215,6 +215,11 @@ class Feature:
     jobs: Callable[[FastAPI], list[BackgroundJob]] | None = None
 
 
+#: The ``response_id`` prefix of items the engine records in a Conversation outside any turn (a
+#: picked-up topic's card, ADR 0035): part of the record, never an Activity of their own.
+RECORDED_RESPONSE_PREFIX = "recorded_"
+
+
 #: Where a Project's folder is, registered by the projects capability so another capability
 #: (``start_helper``) can ask core instead of importing it.
 _project_resolver: Callable[[str], tuple[Path, str] | None] | None = None
