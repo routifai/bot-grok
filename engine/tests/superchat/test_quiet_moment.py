@@ -360,8 +360,15 @@ def test_the_passes_run_as_notes_and_its_allow_list_has_the_tools_the_prompts_na
     prompts = "\n".join(
         [quiet_moment.QUIET_PROMPT, quiet_moment.DREAM_PROMPT, quiet_moment.PEOPLE_PROMPT]
     )
-    named = set(re.findall(r"`((?:daily_note|memory|session_history)\w*)`", prompts))
-    assert {"daily_note_update", "memory_remember", "memory_search", "session_history"} <= named
+    prompts += quiet_moment.TOPICS_STEP
+    named = set(re.findall(r"`((?:daily_note|memory|session_history|topics)\w*)`", prompts))
+    assert {
+        "daily_note_update",
+        "memory_remember",
+        "memory_search",
+        "session_history",
+        "topics_update",
+    } <= named
     for bundle in ("superchat-claude", "superchat-pi"):
         text = (root / bundle / "agents/notes/config.yaml").read_text()
         allow = text.split("allow:\n", 1)[1].split("\nprompt:", 1)[0]
@@ -370,6 +377,7 @@ def test_the_passes_run_as_notes_and_its_allow_list_has_the_tools_the_prompts_na
         assert tools == {
             "daily_note_get",
             "daily_note_update",
+            "topics_update",
             "memory_remember",
             "memory_forget",
             "memory_search",

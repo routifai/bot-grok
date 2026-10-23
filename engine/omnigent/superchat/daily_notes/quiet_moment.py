@@ -2,10 +2,10 @@
 
 When a top-level Super Chat goes quiet (default 20 minutes) after a substantial exchange (at
 least :data:`MIN_TURNS` user messages since the last pass), one bounded ``notes`` Helper reads
-the recent conversation, updates today's note with ``daily_note_update`` and records lasting
-facts with ``memory_remember``. It is an ad-hoc Helper (``start_adhoc_helper``): its Result
-never wakes the Conversation, so the person is never
-messaged.
+the recent conversation, updates today's note with ``daily_note_update``, records lasting
+facts with ``memory_remember`` and keeps the person's topics with ``topics_update`` (ADR 0035).
+It is an ad-hoc Helper (``start_adhoc_helper``): its Result never wakes the Conversation, so the
+person is never messaged.
 
 Gating reuses the scheduled-run rules: nothing runs while the owner's proactivity is ``off`` or
 inside their quiet hours, and at most :data:`MAX_PASSES_PER_DAY` passes run per owner per local
@@ -32,6 +32,7 @@ from omnigent.entities.scheduled_task import OwnerPreferences
 from omnigent.memory.upkeep import MEMORY_POLICY
 from omnigent.superchat.daily_notes.notes import local_date, local_zone, render_note
 from omnigent.superchat.daily_notes.store import PASS_LEASE_SECONDS, SqlAlchemyDailyNoteStore
+from omnigent.superchat.feature import topics_brief
 
 _logger = logging.getLogger(__name__)
 
@@ -82,12 +83,44 @@ A pattern or a standing instruction without a permanence signal is saved with `e
 (from `memory_search`) as `replaces_claim_id`; never store a negation, and leave a withdrawn \
 instruction alone (the live conversation handles it). Skip anything already in memory \
 (`memory_search` first).
-{finalize}
+{topics}{finalize}
 Finish with exactly one fenced JSON block and nothing after it:
 ```json
-{{"kind": "daily_note", "sections_updated": 0, "memories_added": 0}}
+{{"kind": "daily_note", "sections_updated": 0, "memories_added": 0, "topics_written": 0, \
+"topics_new": 0}}
 ```
 """
+
+# ADR 0035: the same pass keeps the person's topics. Filled into QUIET_PROMPT's {topics} when
+# the topics capability is registered (``feature.topics_brief``).
+TOPICS_STEP = """
+4. Keep the person's topics with `topics_update`. A topic is a piece of work or a subject they \
+are likely to come back to (a project, a deal, a trip, a decision), never one per message. Their \
+topics this week:
+
+{topics}
+
+Reuse a listed `key` when today's conversation continues that topic and pass only what changed; \
+start a new key only for something new (the working list's `t-` tag when it has one). For each \
+topic you touch: `title` (2 to 5 words, the person's terms), `left_off` (one sentence: where it \
+stands now), `covered` (up to 6 dated lines, kind Decided, Made, Found or Asked), `open` (up to \
+4 lines, kind Open or Promised, from the open loops and promises), `starters` (2 or 3 next \
+requests written as the person would type them), `events` (today's moments, one line each with \
+the local time) and `sources` (how many chats, files and emails it drew on). Fill `watch` too: \
+the people involved (names or email addresses), at most 8 `terms` that identify it (project, \
+client or deal names), the `refs` of threads, events or files it touched, and `web: true` only \
+when it depends on outside news (markets, a public company, a regulation). Set \
+`status: "closed"` when it is finished.
+"""
+
+#: Filled into TOPICS_STEP when the person has no topics this week: the list starts from the
+#: last days' notes.
+TOPICS_SEED = """(none yet). Start the list from today's conversation and these notes from the \
+last days (at most 8 topics, only those still alive):
+
+{notes}"""
+#: Notes the first topics are seeded from.
+SEED_NOTES = 7
 
 FINALIZE_ADDENDUM = """
 This is the day's final pass: tidy today's note so it reads cleanly (merge duplicates, drop what \
@@ -182,12 +215,28 @@ def idle_seconds(env: dict[str, str] | None = None) -> float:
     return value if value > 0 else DEFAULT_IDLE_SECONDS
 
 
-def build_brief(note_date: str, note_text: str, *, finalize: bool) -> list[dict[str, Any]]:
-    """The Helper's first message as Responses content blocks."""
+def build_brief(
+    note_date: str, note_text: str, *, finalize: bool, topics: str | None = None
+) -> list[dict[str, Any]]:
+    """The Helper's first message as Responses content blocks.
+
+    :param topics: The person's topics as brief lines (or the seed), ``None`` to leave the
+        topics step out (no topics capability).
+    """
     text = QUIET_PROMPT.format(
-        date=note_date, note=note_text, finalize=FINALIZE_ADDENDUM if finalize else ""
+        date=note_date,
+        note=note_text,
+        topics=TOPICS_STEP.format(topics=topics) if topics is not None else "",
+        finalize=FINALIZE_ADDENDUM if finalize else "",
     )
     return [{"type": "input_text", "text": text}]
+
+
+def seed_text(notes: list[Any], today: str) -> str:
+    """:data:`TOPICS_SEED` over the last :data:`SEED_NOTES` notes with content before *today*."""
+    earlier = [n for n in notes if n.note_date < today and _has_content(n)][:SEED_NOTES]
+    rendered = "\n\n".join(f"### {n.note_date}\n\n{render_note(n)}" for n in earlier)
+    return TOPICS_SEED.format(notes=rendered or "(no earlier notes)")
 
 
 def _in_quiet_hours(prefs: OwnerPreferences, now: float) -> bool:
@@ -336,8 +385,26 @@ class QuietMoment:
             agent_type=AGENT_TYPE,
             name="Daily note",
             user_id=user_id,
-            content=build_brief(day, render_note(note), finalize=finalize),
+            content=build_brief(
+                day,
+                render_note(note),
+                finalize=finalize,
+                topics=await self._topics(owner, day),
+            ),
         )
+
+    async def _topics(self, owner: str, day: str) -> str | None:
+        """The owner's topics for the brief; the seed from the last notes when they have none.
+
+        ``None`` (no topics step) when no topics capability is registered.
+        """
+        listed = await asyncio.to_thread(topics_brief, owner)
+        if listed is None or listed:
+            return listed
+        notes = await asyncio.to_thread(
+            self._notes.list_range, owner, date_from=None, date_to=day, limit=SEED_NOTES + 1
+        )
+        return seed_text(notes, day)
 
     async def finalize_due(self, *, now: float | None = None) -> int:
         """Finalize notes whose day is ending (local evening) or ended; returns passes started."""
