@@ -1,6 +1,7 @@
 import { useLingui } from "@lingui/react/macro";
-import type { Bot } from "@superchat/contracts";
+import type { Bot, Topic } from "@superchat/contracts";
 import { AvatarStyleProvider } from "@superchat/ui-web";
+import { House } from "lucide-react";
 import {
   Suspense,
   useCallback,
@@ -48,6 +49,7 @@ import {
   useSessionPanelOpen,
 } from "../features/session-panel";
 import { sheetsExtension } from "../features/sheets";
+import { HomeTopics, isFresh, TopicsPanel, useTopics } from "../features/topics";
 import type { ArtifactTarget } from "../lib/artifact-open";
 import { markAfterPaint, markOnce } from "../lib/performance";
 import { rpc } from "../lib/rpc";
@@ -121,6 +123,11 @@ export function ShellPage() {
   const active = bots.find((b) => b.id === botId) ?? bots[0];
   // The dock place open as a sheet, if any.
   const [dockSheet, setDockSheet] = useState<DockKey | null>(null);
+  // Home over a Conversation that has messages (ADR 0035), with the person's topics: the
+  // Conversation's Home button opens it; a send, a picked-up topic or a message link closes it.
+  const [homeOpen, setHomeOpen] = useState(false);
+  const [topicsOpen, setTopicsOpen] = useState(false);
+  const { topics, reload: reloadTopics } = useTopics(active?.id);
   const [folderPickerOpen, setFolderPickerOpen] = useState(false);
   /** Below `md` the Muse sidebar is an off-canvas drawer opened from the main header. */
   const [_navOpen, _setNavOpen] = useState(false);
@@ -142,6 +149,7 @@ export function ShellPage() {
           if (found) scrollToMessage(messageId);
         })
         .finally(() => {
+          setHomeOpen(false);
           const next = new URLSearchParams(searchParams);
           next.delete("m");
           setSearchParams(next, { replace: true });
@@ -298,8 +306,38 @@ export function ShellPage() {
       orbFlight.current = flyOrb(() => flushSync(() => setShownStart(false)));
     });
   }, [startPage, shownStart]);
-  // The greeting landing shows only while the Conversation has never had a message.
-  const showHome = Boolean(active && shownStart);
+  // The person's message on its way opens the Conversation.
+  useEffect(() => {
+    if (pendingMessage) setHomeOpen(false);
+  }, [pendingMessage]);
+  // Home is the start page of an empty Conversation, and comes back on the Home button.
+  const showHome = Boolean(active && (shownStart || homeOpen));
+  useEffect(() => {
+    if (showHome || topicsOpen) void reloadTopics();
+  }, [showHome, topicsOpen, reloadTopics]);
+  // Picking a topic up adds its card to the Conversation (nothing is sent) and opens it there.
+  const pickTopic = useCallback(
+    async (topic: Topic) => {
+      if (!active) return;
+      try {
+        await rpc.topics.pick({ botId: active.id, key: topic.key });
+      } catch {
+        return;
+      }
+      setTopicsOpen(false);
+      setHomeOpen(false);
+      readTranscript();
+    },
+    [active?.id, readTranscript],
+  );
+  const dockTopics = useMemo(
+    () => ({
+      open: topicsOpen,
+      fresh: Boolean(topics?.some((topic) => isFresh(topic, new Date()))),
+      onToggle: () => setTopicsOpen((open) => !open),
+    }),
+    [topicsOpen, topics],
+  );
   const composerDock = useRef<HTMLDivElement>(null);
   // A View Transition already glides the composer (`superchat-composer`); the FLIP is the fallback.
   useDockTransition(composerDock, shownStart, () => orbFlight.current === "view-transition");
@@ -394,6 +432,14 @@ export function ShellPage() {
   const superchatTopBar = active ? (
     <div className="app-drag relative z-10 flex h-[84px] min-w-0 shrink-0 items-center gap-3 ps-4 pe-4 md:ps-0 md:pe-6">
       <SuperchatLogo className="md:hidden" />
+      <button
+        type="button"
+        onClick={() => setHomeOpen(true)}
+        className="app-no-drag flex items-center gap-1.5 rounded-[9px] px-2.5 py-1.5 text-[12.5px] text-ink-2 transition-colors hover:bg-foreground/10 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+      >
+        <House aria-hidden="true" size={15} strokeWidth={1.7} />
+        {t`Home`}
+      </button>
       <span className="min-w-0 flex-1" />
       <div className="app-no-drag flex shrink-0 items-center gap-2">
         {/* Running work shows here too, for when its strip is scrolled away (ADR 0023). */}
@@ -431,8 +477,16 @@ export function ShellPage() {
         {showHome && active ? (
           <Home
             personName={bootstrapMe?.name ?? ""}
-            dock={<ConnectedDock botId={active.id} active={dockSheet} onSelect={setDockSheet} />}
+            dock={
+              <ConnectedDock
+                botId={active.id}
+                active={dockSheet}
+                onSelect={setDockSheet}
+                topics={dockTopics}
+              />
+            }
             composer={composerEl}
+            topics={<HomeTopics topics={topics} onPick={(topic) => void pickTopic(topic)} />}
             onOpenSettings={() => openSettings("general")}
             recent={<HomeActivity botId={active.id} hideWhenEmpty />}
           />
@@ -444,7 +498,12 @@ export function ShellPage() {
         {active && !showHome ? (
           <div className="relative z-10 hidden w-[96px] shrink-0 flex-col items-center justify-between pt-24 pb-6 md:flex">
             <span />
-            <ConnectedDock botId={active.id} active={dockSheet} onSelect={setDockSheet} />
+            <ConnectedDock
+              botId={active.id}
+              active={dockSheet}
+              onSelect={setDockSheet}
+              topics={dockTopics}
+            />
             <SettingsButton onClick={() => openSettings("general")} />
           </div>
         ) : null}
@@ -478,6 +537,7 @@ export function ShellPage() {
                   }
                   onAnswer={answerMessage}
                   onSendCard={sendCardReply}
+                  onDraftCard={setComposerSeed}
                   onReply={(message) => {
                     setReplyTarget(message);
                     setReplyQuote(null);
@@ -514,6 +574,14 @@ export function ShellPage() {
           </div>
         </main>
 
+        {active ? (
+          <TopicsPanel
+            open={topicsOpen}
+            topics={topics}
+            onClose={() => setTopicsOpen(false)}
+            onPick={(topic) => void pickTopic(topic)}
+          />
+        ) : null}
         {active ? (
           <FolderPicker
             botId={active.id}

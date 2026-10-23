@@ -4,8 +4,9 @@ import { parseReplyCard } from "@superchat/contracts";
 import { ReplyArtifactFileCard } from "../../features/artifacts";
 import { LegacyChartNote } from "../../features/charts";
 import { PassageChips } from "../../features/knowledge";
+import { TopicCard } from "../../features/topics";
 import { CardSkeleton, catalog } from "./catalog";
-import { useReplyCardRunning, useResolvedReplyCard } from "./context";
+import { useReplyCardDraft, useReplyCardRunning, useResolvedReplyCard } from "./context";
 import { SecureEntryCard } from "./SecureEntryCard";
 
 /** The markdown the Muse wrote for a card the client cannot draw. */
@@ -29,6 +30,7 @@ export function ReplyCard({
   answer?: string;
   cardId?: string;
 }) {
+  const draft = useReplyCardDraft();
   if (block.pending) return <CardSkeleton card={block.card} />;
   // The chart card was retired; old transcripts still hold it.
   if (block.card === "chart") return <LegacyChartNote />;
@@ -60,6 +62,8 @@ export function ReplyCard({
       return <catalog.progress title={title} data={parsed.data} />;
     case "secure_entry":
       return <SecureEntryCard data={parsed.data} />;
+    case "topic":
+      return <TopicCard data={parsed.data} onDraft={draft ?? undefined} />;
   }
 }
 

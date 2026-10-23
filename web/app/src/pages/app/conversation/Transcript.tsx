@@ -8,6 +8,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import type { CardAnswer } from "../../../components/cards/context";
 import {
   ReplyCardBotProvider,
+  ReplyCardDraftProvider,
   ReplyCardSendProvider,
   ReplyCardThreadProvider,
 } from "../../../components/cards/context";
@@ -40,11 +41,14 @@ import { WorkingRow } from "./WorkingRow";
  * answered asks). */
 export function Transcript({
   onSendCard,
+  onDraftCard,
   ...props
 }: ComponentProps<typeof TranscriptView> & {
   /** A reply card's button sends this text as the person's next message (an ask card's pick
    * with its structured answer). */
   onSendCard?: (text: string, answer?: CardAnswer) => void;
+  /** A card puts this text in the composer, unsent (a picked-up topic's starters). */
+  onDraftCard?: (text: string) => void;
 }) {
   // Follow-up chips that are not shown leave no row behind (no ghost bubble or Copy action).
   const { messages: allMessages } = props;
@@ -53,12 +57,17 @@ export function Transcript({
     const hidden = hiddenFollowUpMessageIds(allMessages, running);
     return hidden.size === 0 ? allMessages : allMessages.filter((m) => !hidden.has(m.id));
   }, [allMessages, running]);
-  const view = (
+  const thread = (
     <ReplyCardBotProvider botId={props.artifactTarget.botId}>
       <ReplyCardThreadProvider messages={props.messages} running={running}>
         <TranscriptView {...props} messages={shownMessages} />
       </ReplyCardThreadProvider>
     </ReplyCardBotProvider>
+  );
+  const view = onDraftCard ? (
+    <ReplyCardDraftProvider draft={onDraftCard}>{thread}</ReplyCardDraftProvider>
+  ) : (
+    thread
   );
   return onSendCard ? (
     <ReplyCardSendProvider send={onSendCard}>{view}</ReplyCardSendProvider>

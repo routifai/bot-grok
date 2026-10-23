@@ -6,19 +6,24 @@ import { SettingsButton } from "./Dock";
 
 /**
  * The home screen: the mark and wordmark top-left, the dock on the left, the greeting over the
- * composer in the middle, recent chats bottom-right and Settings bottom-left. It sits over the
- * Conversation shell until something opens (a send, a chat).
+ * composer in the middle with the person's topics under it, recent chats bottom-right and
+ * Settings bottom-left. It sits over the Conversation shell until something opens (a send, a
+ * picked-up topic); the Conversation's Home button brings it back. Its contour ground lifts
+ * into a peak under each topic card.
  */
 export function Home({
   personName,
   dock,
   composer,
+  topics,
   recent,
   onOpenSettings,
 }: {
   personName: string;
   dock: ReactNode;
   composer: ReactNode;
+  /** "Pick up where you left off" under the composer (ADR 0035); absent while there are none. */
+  topics?: ReactNode;
   recent: ReactNode;
   onOpenSettings: () => void;
 }) {
@@ -37,7 +42,7 @@ export function Home({
         <div className="flex flex-none md:absolute md:inset-y-0 md:start-0 md:z-10 md:items-center">
           {dock}
         </div>
-        <main className="flex min-h-[300px] min-w-0 flex-col items-center justify-center gap-8 md:h-full md:px-28">
+        <main className="flex min-h-[300px] min-w-0 flex-col items-center justify-center-safe gap-8 md:min-h-full md:px-28">
           <h1
             className="max-w-[680px] text-center text-[34px] leading-[1.12] font-medium tracking-[-0.03em] text-balance text-foreground/90 md:text-[52px]"
             dir="auto"
@@ -55,6 +60,7 @@ export function Home({
             )}
           </h1>
           <div className="w-full max-w-[780px]">{composer}</div>
+          {topics ? <div className="w-full max-w-[1120px] pb-20">{topics}</div> : null}
         </main>
       </div>
       <footer className="pointer-events-none relative z-10 flex flex-wrap items-end justify-between gap-4 md:absolute md:inset-x-8 md:bottom-7 [&>*]:pointer-events-auto">

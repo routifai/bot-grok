@@ -18,7 +18,13 @@ const ICON = {
   "aria-hidden": true,
 } as const;
 
-const GLYPHS: Record<DockKey | "settings", ReactNode> = {
+const GLYPHS: Record<DockKey | "settings" | "topics", ReactNode> = {
+  topics: (
+    <svg {...ICON}>
+      <path d="M9 18h6M10 21h4" />
+      <path d="M12 3a6 6 0 0 0-3.6 10.8c.6.5 1 1.2 1 2V16h5.2v-.2c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z" />
+    </svg>
+  ),
   inbox: (
     <svg {...ICON}>
       <path d="M3 13h5l1.5 3h5l1.5-3h5" />
@@ -53,18 +59,31 @@ const GLYPHS: Record<DockKey | "settings", ReactNode> = {
   ),
 };
 
+/** The dock's Topics button: it opens the Topics panel beside the dock, not a sheet. */
+export type DockTopics = {
+  open: boolean;
+  /** A topic has a fresh "New" line: the lightbulb carries a green dot. */
+  fresh: boolean;
+  onToggle: () => void;
+};
+
+const DOCK_BUTTON =
+  "relative grid size-[52px] place-items-center rounded-2xl text-foreground transition-colors hover:bg-foreground/10 focus-visible:outline-2 focus-visible:outline-ring";
+
 /**
- * The floating glass dock: Inbox, Library, Automations and Files. Inbox carries a dot while
- * something waits on the person.
+ * The floating glass dock: Topics, Inbox, Library, Automations and Files. Inbox carries a dot
+ * while something waits on the person; Topics carries a green one while a topic has news.
  */
 export function Dock({
   active,
   inboxWaiting,
   onSelect,
+  topics,
 }: {
   active: DockKey | null;
   inboxWaiting: boolean;
   onSelect: (key: DockKey) => void;
+  topics?: DockTopics;
 }) {
   const { t } = useLingui();
   const items: { key: DockKey; label: string }[] = [
@@ -79,6 +98,27 @@ export function Dock({
       aria-label={t`Main`}
       className="sc-glass flex flex-row gap-2.5 rounded-3xl p-3 md:flex-col"
     >
+      {topics ? (
+        <button
+          type="button"
+          data-testid="dock-topics"
+          aria-label={topics.fresh ? t`Topics, something new` : t`Topics`}
+          title={t`Topics`}
+          aria-pressed={topics.open}
+          onClick={topics.onToggle}
+          className={cn(DOCK_BUTTON, topics.open && "bg-foreground/15")}
+        >
+          {GLYPHS.topics}
+          {topics.fresh && !topics.open ? (
+            <span
+              aria-hidden="true"
+              className="absolute top-[9px] right-[9px] size-[9px] rounded-full border-2 border-popover bg-ok"
+            >
+              <span className="absolute -inset-1 rounded-full border-2 border-ok opacity-70 motion-safe:animate-ping motion-reduce:hidden" />
+            </span>
+          ) : null}
+        </button>
+      ) : null}
       {items.map((item) => (
         <button
           key={item.key}
@@ -87,10 +127,7 @@ export function Dock({
           title={item.label}
           aria-pressed={active === item.key}
           onClick={() => onSelect(item.key)}
-          className={cn(
-            "relative grid size-[52px] place-items-center rounded-2xl text-foreground transition-colors hover:bg-foreground/10 focus-visible:outline-2 focus-visible:outline-ring",
-            active === item.key && "bg-foreground/15",
-          )}
+          className={cn(DOCK_BUTTON, active === item.key && "bg-foreground/15")}
         >
           {GLYPHS[item.key]}
           {item.key === "inbox" && inboxWaiting ? (
@@ -128,11 +165,15 @@ export function ConnectedDock({
   botId,
   active,
   onSelect,
+  topics,
 }: {
   botId: string;
   active: DockKey | null;
   onSelect: (key: DockKey) => void;
+  topics?: DockTopics;
 }) {
   const { asks } = useAsks(botId);
-  return <Dock active={active} inboxWaiting={asks.length > 0} onSelect={onSelect} />;
+  return (
+    <Dock active={active} inboxWaiting={asks.length > 0} onSelect={onSelect} topics={topics} />
+  );
 }

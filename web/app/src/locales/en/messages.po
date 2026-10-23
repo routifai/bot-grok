@@ -55,9 +55,21 @@ msgstr "{0} (max {ATTACHMENT_MAX_COUNT} attachments)"
 msgid "{0} (over 10 MiB)"
 msgstr "{0} (over 10 MiB)"
 
+#. placeholder {0}: sources.chats
+msgid "{0} chats"
+msgstr "{0} chats"
+
 #. placeholder {0}: targets.length
 msgid "{0} elements"
 msgstr "{0} elements"
+
+#. placeholder {0}: sources.emails
+msgid "{0} emails"
+msgstr "{0} emails"
+
+#. placeholder {0}: sources.files
+msgid "{0} files"
+msgstr "{0} files"
 
 #. placeholder {0}: automation.name
 msgid "{0} is on"
@@ -70,6 +82,9 @@ msgstr "{0} KB"
 #. placeholder {0}: format(size / (1024 * 1024))
 msgid "{0} MB"
 msgstr "{0} MB"
+
+msgid "{count, plural, one {# topic from your chats, files and mail} other {# topics from your chats, files and mail}}"
+msgstr "{count, plural, one {# topic from your chats, files and mail} other {# topics from your chats, files and mail}}"
 
 msgid "{days}d ago"
 msgstr "{days}d ago"
@@ -270,6 +285,9 @@ msgstr "Ask superchat to change this slide…"
 msgid "Ask superchat to change this…"
 msgstr "Ask superchat to change this…"
 
+msgid "Asked"
+msgstr "Asked"
+
 msgid "At"
 msgstr "At"
 
@@ -376,6 +394,9 @@ msgstr "Changing {about}"
 msgid "Chat Settings"
 msgstr "Chat Settings"
 
+msgid "chats"
+msgstr "chats"
+
 msgid "Checked · nothing new"
 msgstr "Checked · nothing new"
 
@@ -424,6 +445,9 @@ msgstr "Close panel"
 
 msgid "Close preview"
 msgstr "Close preview"
+
+msgid "Close topics"
+msgstr "Close topics"
 
 msgid "Close user settings"
 msgstr "Close user settings"
@@ -643,6 +667,9 @@ msgstr "Day of the week"
 msgid "Days"
 msgstr "Days"
 
+msgid "Days touched this week"
+msgstr "Days touched this week"
+
 msgid "Decided"
 msgstr "Decided"
 
@@ -751,6 +778,9 @@ msgstr "Editorial"
 msgid "Email"
 msgstr "Email"
 
+msgid "emails"
+msgstr "emails"
+
 msgid "Enter to save · Esc to cancel"
 msgstr "Enter to save · Esc to cancel"
 
@@ -809,6 +839,9 @@ msgstr "File"
 msgid "File on your machine"
 msgstr "File on your machine"
 
+msgid "files"
+msgstr "files"
+
 msgid "Files"
 msgstr "Files"
 
@@ -848,6 +881,9 @@ msgstr "Font size"
 
 msgid "Forget"
 msgstr "Forget"
+
+msgid "Found"
+msgstr "Found"
 
 msgid "Foundation"
 msgstr "Foundation"
@@ -927,6 +963,9 @@ msgstr "Hide slides"
 
 msgid "Hide the runs"
 msgstr "Hide the runs"
+
+msgid "Home"
+msgstr "Home"
 
 msgid "How often"
 msgstr "How often"
@@ -1018,9 +1057,16 @@ msgstr "Keeps {title} updated"
 msgid "Kind"
 msgstr "Kind"
 
+msgid "Last 48 hours"
+msgstr "Last 48 hours"
+
 #. placeholder {0}: whenText(live.checkedAt)
 msgid "Last checked {0} · nothing new"
 msgstr "Last checked {0} · nothing new"
+
+#. placeholder {0}: words.when(data.last_touched_at, now)
+msgid "Last touched {0}"
+msgstr "Last touched {0}"
 
 msgid "Layers"
 msgstr "Layers"
@@ -1091,6 +1137,9 @@ msgstr "Lower the conversation"
 
 msgid "Machine"
 msgstr "Machine"
+
+msgid "Made"
+msgstr "Made"
 
 msgid "Main"
 msgstr "Main"
@@ -1164,6 +1213,9 @@ msgstr "Name"
 msgid "Never"
 msgstr "Never"
 
+msgid "New"
+msgstr "New"
+
 msgid "New app"
 msgstr "New app"
 
@@ -1233,6 +1285,9 @@ msgstr "Not started"
 msgid "Nothing here yet."
 msgstr "Nothing here yet."
 
+msgid "Nothing in the last 48 hours."
+msgstr "Nothing in the last 48 hours."
+
 msgid "Nothing matches your search."
 msgstr "Nothing matches your search."
 
@@ -1247,6 +1302,9 @@ msgstr "Nothing yet"
 
 msgid "Nothing yet — once I do something, it shows up here."
 msgstr "Nothing yet — once I do something, it shows up here."
+
+msgid "Nothing yet. Topics appear here a little while after you work on something."
+msgstr "Nothing yet. Topics appear here a little while after you work on something."
 
 msgid "Noticed, {when}"
 msgstr "Noticed, {when}"
@@ -1374,6 +1432,22 @@ msgstr "Pick a folder"
 msgid "Pick a time and I'll do this for you."
 msgstr "Pick a time and I'll do this for you."
 
+msgid "Pick it up"
+msgstr "Pick it up"
+
+msgid "Pick up"
+msgstr "Pick up"
+
+#. placeholder {0}: topic.title
+msgid "Pick up {0}"
+msgstr "Pick up {0}"
+
+msgid "Pick up in chat"
+msgstr "Pick up in chat"
+
+msgid "Pick up where you left off"
+msgstr "Pick up where you left off"
+
 msgid "pinned"
 msgstr "pinned"
 
@@ -1482,6 +1556,9 @@ msgstr "Raise the conversation"
 
 msgid "Ran"
 msgstr "Ran"
+
+msgid "Range"
+msgstr "Range"
 
 #. placeholder {0}: attachment.file.name
 msgid "Reading {0} is taking too long. Try again in a moment."
@@ -1816,6 +1893,9 @@ msgstr "Status"
 msgid "Steps"
 msgstr "Steps"
 
+msgid "Still open"
+msgstr "Still open"
+
 msgid "Still working on this."
 msgstr "Still working on this."
 
@@ -1952,6 +2032,9 @@ msgstr "This model isn't available — pick another."
 msgid "This part of the page has no stable name in the file, so it can't be changed by hand."
 msgstr "This part of the page has no stable name in the file, so it can't be changed by hand."
 
+msgid "This week"
+msgstr "This week"
+
 msgid "Time"
 msgstr "Time"
 
@@ -1960,6 +2043,12 @@ msgstr "Today"
 
 msgid "Too large to preview."
 msgstr "Too large to preview."
+
+msgid "Topics"
+msgstr "Topics"
+
+msgid "Topics, something new"
+msgstr "Topics, something new"
 
 msgid "Try again"
 msgstr "Try again"
@@ -2139,8 +2228,14 @@ msgstr "What should superchat do?"
 msgid "What to update"
 msgstr "What to update"
 
+msgid "What we covered"
+msgstr "What we covered"
+
 msgid "What we talked about"
 msgstr "What we talked about"
+
+msgid "What you worked on, newest first. Open one to see where you left off, then pick it up in the chat."
+msgstr "What you worked on, newest first. Open one to see where you left off, then pick it up in the chat."
 
 msgid "When {files} changes"
 msgstr "When {files} changes"
@@ -2150,6 +2245,13 @@ msgstr "When I need a decision or an answer, it'll show up here."
 
 msgid "When something important changes"
 msgstr "When something important changes"
+
+msgid "Where we left off"
+msgstr "Where we left off"
+
+#. placeholder {0}: data.title
+msgid "Where we left off on {0}"
+msgstr "Where we left off on {0}"
 
 msgid "Who can open it"
 msgstr "Who can open it"

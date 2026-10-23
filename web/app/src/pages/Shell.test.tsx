@@ -244,7 +244,7 @@ it("shows the conversation chrome: the dock, no sidebar or chat list, no Goals, 
     const dockLabels = [...(dock?.querySelectorAll("button") ?? [])].map((el) =>
       el.getAttribute("aria-label"),
     );
-    expect(dockLabels).toEqual(["Inbox", "Library", "Automations", "Files"]);
+    expect(dockLabels).toEqual(["Topics", "Inbox", "Library", "Automations", "Files"]);
     expect(page.container.querySelector('[data-testid="chats-trigger"]')).toBeNull();
     expect(page.container.querySelector('[data-testid="app-rail"]')).toBeNull();
     const text = page.container.textContent ?? "";

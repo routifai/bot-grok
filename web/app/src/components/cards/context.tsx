@@ -19,6 +19,23 @@ export function ReplyCardSendProvider({ send, children }: { send: CardSend; chil
   return <SendContext.Provider value={send}>{children}</SendContext.Provider>;
 }
 
+/** How a card puts words in the composer for the person to edit or send (a topic's starters);
+ * nothing is sent. */
+type CardDraft = (text: string) => void;
+const DraftContext = createContext<CardDraft | null>(null);
+
+export function ReplyCardDraftProvider({
+  draft,
+  children,
+}: {
+  draft: CardDraft;
+  children: ReactNode;
+}) {
+  return <DraftContext.Provider value={draft}>{children}</DraftContext.Provider>;
+}
+
+export const useReplyCardDraft = () => useContext(DraftContext);
+
 /** Wrap a transcript once; its cards then update in place and lock once answered. */
 export function ReplyCardThreadProvider({
   messages,
