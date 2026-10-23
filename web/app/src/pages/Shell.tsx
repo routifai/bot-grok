@@ -34,6 +34,7 @@ import { ApprovalCards } from "../features/approvals";
 import { appsExtension } from "../features/apps";
 import { ArtifactRegistryProvider } from "../features/artifacts/registry";
 import { useFileStudioRoute } from "../features/artifacts/studio/useFileStudioRoute";
+import { BriefCard } from "../features/brief";
 import { chartsExtension } from "../features/charts";
 import { DeckThemeChoice, decksExtension } from "../features/decks";
 import { documentsExtension } from "../features/documents";
@@ -512,7 +513,11 @@ export function ShellPage() {
             }
             composer={composerEl}
             topics={
-              <HomeTopics topics={topics} onPick={(topic, from) => void pickTopic(topic, from)} />
+              <HomeTopics
+                topics={topics}
+                onPick={(topic, from) => void pickTopic(topic, from)}
+                leading={<BriefCard botId={active.id} className="md:w-auto" />}
+              />
             }
             onOpenSettings={() => openSettings("general")}
             recent={<HomeActivity botId={active.id} hideWhenEmpty />}

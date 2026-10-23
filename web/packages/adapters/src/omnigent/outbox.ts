@@ -52,17 +52,3 @@ export async function markOmnigentOutboxNotUseful(
   );
   await throwOnError(response, "mark message not useful", config.secrets);
 }
-
-/** `POST /v1/me/topics/{key}/pick` — pick a topic up in the Conversation (ADR 0035): the engine
- * adds its card; no turn starts. */
-export async function pickOmnigentOutboxTopic(
-  config: OmnigentClientConfig,
-  email: string,
-  topicKey: string,
-): Promise<void> {
-  const response = await fetch(
-    new URL(`/v1/me/topics/${encodeURIComponent(topicKey)}/pick`, config.baseUrl),
-    { method: "POST", headers: omnigentHeaders(config, email) },
-  );
-  await throwOnError(response, "open topic", config.secrets);
-}

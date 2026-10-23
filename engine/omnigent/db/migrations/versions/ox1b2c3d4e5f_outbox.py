@@ -1,7 +1,7 @@
 """The outbox: proactive messages, each channel's cursor and the person's *Not useful*.
 
 Revision ID: ox1b2c3d4e5f
-Revises: rq1b2c3d4e5f
+Revises: tp1b2c3d4e5f
 Create Date: 2026-10-23 12:00:00.000000
 
 ADR 0036: every proactive message writes one ``outbox_items`` row; each channel reads the rows
@@ -19,7 +19,7 @@ from alembic import op
 from omnigent.db.db_models import Uuid16
 
 revision: str = "ox1b2c3d4e5f"
-down_revision: str | None = "rq1b2c3d4e5f"
+down_revision: str | None = "tp1b2c3d4e5f"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

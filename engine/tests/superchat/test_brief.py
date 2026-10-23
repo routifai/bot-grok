@@ -49,7 +49,7 @@ def test_the_run_brief_reads_in_order_and_fences_what_it_pastes() -> None:
         today=DAY,
         previous=("2026-10-22", {"promised": "- Send Dana the sheet", "talked_about": "lunch"}),
         today_note=None,
-        topics=[{"title": "Polaris", "left_off": "Quote due", "new": "Vendor replied"}],
+        topics=[{"title": "Polaris", "left_off": "Quote due", "since": "Vendor replied"}],
         connectors=[],
         memory="Prefers short replies.",
     )

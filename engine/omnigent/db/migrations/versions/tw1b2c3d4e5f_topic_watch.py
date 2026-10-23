@@ -1,7 +1,7 @@
 """Topic watch: per-source cursors, the seen-set and the run record.
 
 Revision ID: tw1b2c3d4e5f
-Revises: rq1b2c3d4e5f
+Revises: ah1b2c3d4e5f
 Create Date: 2026-10-23 12:00:00.000000
 
 ADR 0035 (Signal filtering): an hourly run reads what changed since its cursor per source,
@@ -18,7 +18,7 @@ from alembic import op
 from omnigent.db.db_models import Uuid16
 
 revision: str = "tw1b2c3d4e5f"
-down_revision: str | None = "rq1b2c3d4e5f"
+down_revision: str | None = "ah1b2c3d4e5f"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

@@ -105,6 +105,18 @@ _logger = logging.getLogger(__name__)
 
 FEATURES: list[Feature] = _load()
 
+
+def _wire_brief_topics() -> None:
+    """The morning brief reads the person's open topics (ADR 0037 over 0035); wired here, the one
+    place that already imports every capability, so neither imports the other."""
+    from omnigent.superchat.brief.sources import set_topics_source
+    from omnigent.superchat.topics import list_watched_topics
+
+    set_topics_source(list_watched_topics)
+
+
+_wire_brief_topics()
+
 #: ``tool_name -> handler`` over every feature, consulted by the runner dispatch.
 FEATURE_HANDLERS: dict[str, Handler] = {
     name: handler for feature in FEATURES for name, handler in feature.handlers.items()

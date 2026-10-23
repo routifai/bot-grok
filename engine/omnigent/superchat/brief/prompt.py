@@ -55,8 +55,8 @@ def _line(entry: Any) -> str:
 def topics_text(topics: Sequence[Any] | None) -> str:
     """Open topics (ADR 0035) as lines: title and where it stands, open items, its "New" line.
 
-    Reads ``title``, ``key``, ``left_off``, ``open`` and ``new`` (or ``new_line``) from a mapping
-    or an object, so it renders whatever ``list_watched_topics`` returns.
+    Reads ``title``, ``key``, ``left_off``, ``open`` and ``since`` (the topic's "New" line) from
+    a mapping or an object, so it renders whatever ``list_watched_topics`` returns.
     """
     lines: list[str] = []
     for topic in topics or ():
@@ -68,7 +68,7 @@ def topics_text(topics: Sequence[Any] | None) -> str:
         for entry in list(_field(topic, "open") or [])[:_OPEN_PER_TOPIC]:
             if text := _line(entry):
                 lines.append(f"  - {text}")
-        new = _field(topic, "new") or _field(topic, "new_line")
+        new = _field(topic, "since")
         if isinstance(new, str) and new.strip():
             lines.append(f"  - New: {new.strip()}")
     return "\n".join(lines) or NO_TOPICS

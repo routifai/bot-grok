@@ -1,13 +1,15 @@
 // The outbox (ADR 0036): proactive messages the person has not seen, and what they say about
 // one. The web is one channel: it reads the unread count and reports where the person got to.
+
+import { ORPCError } from "@orpc/server";
 import {
   getOmnigentOutboxUnread,
   markOmnigentOutboxNotUseful,
   markOmnigentOutboxSeen,
   type OmnigentOutboxUnread,
-  pickOmnigentOutboxTopic,
+  pickOmnigentTopic,
 } from "@superchat/adapters/omnigent/browser";
-import { engineClient, NO_EMAIL } from "./client";
+import { engineClient, museSessionId, NO_EMAIL } from "./client";
 import { onSuperChat, os } from "./context";
 
 function mapUnread(unread: OmnigentOutboxUnread) {
@@ -34,7 +36,11 @@ export const outboxRouter = {
       return { ok: true as const };
     }),
     openTopic: os.outbox.openTopic.handler(async ({ input }) => {
-      await onSuperChat(pickOmnigentOutboxTopic(engineClient(), NO_EMAIL, input.topicKey));
+      // The same pick as Home's topics (ADR 0035): the web's `botId` is the Conversation's id.
+      const sessionId = await museSessionId();
+      if (input.botId !== sessionId)
+        throw new ORPCError("NOT_FOUND", { message: "Muse not found" });
+      await onSuperChat(pickOmnigentTopic(engineClient(), NO_EMAIL, input.topicKey, sessionId));
       return { ok: true as const };
     }),
   },

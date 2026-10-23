@@ -202,8 +202,9 @@ def install(store: SqlAlchemyTopicStore | None) -> None:
 
 
 def list_watched_topics(owner: str) -> list[dict[str, Any]]:
-    """Open topics touched within 7 days, for topic watch: key, title, left_off, open, watch,
-    last_touched_at. Empty before the feature is installed."""
+    """Open topics touched within 7 days, for topic watch and the daily brief: key, title,
+    left_off, open, watch, last_touched_at and the "New" line (since, since_at). Empty before the
+    feature is installed."""
     if _store is None:
         return []
     return [
@@ -214,6 +215,8 @@ def list_watched_topics(owner: str) -> list[dict[str, Any]]:
             "open": t.open,
             "watch": t.watch,
             "last_touched_at": t.last_touched_at,
+            "since": t.since,
+            "since_at": t.since_at,
         }
         for t in _store.list_recent(owner)
     ]

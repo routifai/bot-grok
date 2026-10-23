@@ -3,7 +3,7 @@ import { useLingui } from "@lingui/react/macro";
 import type { Topic } from "@superchat/contracts";
 import { cn } from "@superchat/ui-web";
 import { ArrowRight } from "lucide-react";
-import { useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { FreshTag, SourceCounts, WeekStrip } from "./TopicParts";
 import { inRange, isFresh, peakHeat, type TopicRange, weekStrip } from "./topicTime";
 import { useTopicWords } from "./useTopics";
@@ -16,16 +16,19 @@ import { useTopicWords } from "./useTopics";
 export function HomeTopics({
   topics,
   onPick,
+  leading,
 }: {
   topics: readonly Topic[] | null;
   onPick: (topic: Topic, from: HTMLElement) => void;
+  /** A card shown before the topics, e.g. the morning brief (ADR 0037); it may render nothing. */
+  leading?: ReactNode;
 }) {
   const { t } = useLingui();
   const words = useTopicWords();
   const [range, setRange] = useState<TopicRange>("recent");
   const now = useMemo(() => new Date(), [topics]);
-  if (!topics?.length) return null;
-  const shown = topics.filter((topic) => inRange(topic, range, now));
+  if (!topics?.length && !leading) return null;
+  const shown = (topics ?? []).filter((topic) => inRange(topic, range, now));
   const count = shown.length;
   const ranges: { key: TopicRange; label: string }[] = [
     { key: "recent", label: t`Last 48 hours` },
@@ -63,10 +66,11 @@ export function HomeTopics({
           ))}
         </fieldset>
       </div>
-      {count === 0 ? (
+      {count === 0 && !leading ? (
         <p className="px-1 text-[13px] text-ink-2">{t`Nothing in the last 48 hours.`}</p>
       ) : (
         <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-3">
+          {leading}
           {shown.map((topic, index) => (
             <button
               key={topic.key}
