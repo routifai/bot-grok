@@ -1,6 +1,6 @@
 # 0035: Topics are written by the quiet-moment pass
 
-> **Status:** Accepted 2026-10-23 by the owner, from the clickable mock-up (Home topics, pick-up card, Topics panel). Defaults chosen: topics cover 7 days, Home opens on the last 48 hours, the panel lives in the dock, topic watch is out of scope (its own record later). Builds on [0017](0017-the-working-list-is-tagged-and-the-journal-lives-in-the-host.md) and [0005](0005-proactive-work-is-scheduled-helper-runs.md).
+> **Status:** Accepted 2026-10-23 by the owner, from the clickable mock-up (Home topics, pick-up card, Topics panel). Defaults chosen: topics cover 7 days, Home opens on the last 48 hours, the panel lives in the dock, topic watch filtering decided here and built next. Builds on [0017](0017-the-working-list-is-tagged-and-the-journal-lives-in-the-host.md) and [0005](0005-proactive-work-is-scheduled-helper-runs.md).
 
 One Conversation for a year leaves the person without the cues other chat apps give for free: a list of session titles to scan and the last few messages under each. People asked for those cues back ("where was I on Polaris?") without giving up the single Conversation. The data already exists: the quiet-moment pass writes today's note (*What we talked about*, *Decisions*, *Promised*, *Open loops*) 20 minutes after the person goes quiet, the working list carries `t-` and `o-` tags, and the journal has dated lines. Nothing shows it.
 
@@ -18,6 +18,7 @@ One Conversation for a year leaves the person without the cues other chat apps g
 | `starters` | 2 or 3 next requests in the person's voice, each one line, never sent on their own |
 | `events` | Dated one-line moments `{at, line}` (newest 12 kept), the source of the panel's by-day list |
 | `sources` | Counts of chats, files and emails it drew on |
+| `watch` | `{people, terms, refs}` for topic watch (see Signal filtering); stored now, read by the next wave |
 | `last_touched_at`, `status` | Newest event; `open` or `closed` |
 
 The engine stores topics in one table per owner (`superchat/topics/`, its own capability folder: store, routes, tool, handler). `topics_update` upserts by `key`: a field passed replaces the stored one, `events` are merged and deduplicated, `last_touched_at` is the newest event. Code validates sizes and kinds and trims; it never asks a model to repair. A topic untouched for 7 days drops out of every list but is kept; a `closed` one is hidden.
@@ -33,6 +34,38 @@ The engine stores topics in one table per owner (`superchat/topics/`, its own ca
 
 **Wording.** "Topics" and "Pick up where you left off". Nothing the person sees mentions the pass, a Helper or a tool.
 
+## Signal filtering: how topic watch decides what is worth saying
+
+Decided here, built in the next wave. Topics are the filter: a signal from mail, calendar, files or the web matters only if it moves a topic the person is working on. Everything else waits for the daily brief or is dropped. The pipeline narrows in five stages; the cheap stages are code, a model sees only what survives them, and the last word is a code rule.
+
+**1. Watch list (written with the topic).** Each open topic carries a `watch` field the quiet pass fills alongside it: the **people** involved (names, email addresses), the **terms** that identify it (project, client, deal names; at most 8), and **hard references** (email thread ids, calendar event ids, file ids the topic already touched). Code adds references it already knows from the topic's sources. A topic closed or untouched for 7 days stops being watched.
+
+**2. Collect (code, no model).** A hidden scheduled run of kind `topic_watch` (0005; hourly during the person's working hours, gated by proactivity and quiet hours like every proactive run) reads only what changed since its last cursor, per source: new mail, new or changed calendar events, changed files in the person's Computer, and the web only for topics marked as needing it (markets, news). Read-only; one cursor per source per person.
+
+**3. Match (code, no model).** An item survives only if it hits a topic:
+
+| Strength | Rule |
+|---|---|
+| Strong | It is in a watched thread, meeting or file (hard reference) |
+| Medium | A watched person sent it, attends it or edited it, **and** it contains a watched term |
+| Weak | It contains two or more distinct watched terms of one topic |
+
+Before matching, code drops noise: bulk and no-reply senders, newsletters (list headers), auto-replies, the person's own sent mail, plain accept or tentative calendar responses, and anything already seen. Each item keeps the topic it matched; an item matching nothing is counted and dropped.
+
+**4. Judge (Light model, structured, no tools).** Surviving items go in one batched call per run with each topic's `left_off` and open items. Item text is fenced as data, never instructions. For each item the model returns a fixed shape that code validates:
+
+`{topic_key, relevance: 0-3, change: answers_open_item | new_deadline | blocker | new_info | none, urgency: now | today | brief, why: one line}`
+
+**5. Decide (code rules).** Nothing reaches the person unless `relevance ≥ 2` and `change ≠ none`.
+
+- **Message now** when the change answers an open item, blocks one, or brings a deadline inside 24 hours, and the urgency is `now`. Quiet hours hold it until they end.
+- **Mark the topic** in every other kept case: the topic gets its "New" line (the green tag on Home and in the pick-up card) and the item goes into the next daily brief. No message.
+- **Limits:** one message per topic per 3 hours; per day at most 1 (low), 3 (balanced) or 6 (eager) by the proactivity level; the same thread never surfaces twice.
+
+**Learning from the person.** A proactive message carries *Not useful*. Pressing it mutes that sender or term for that topic (a stored rule code applies at stage 3); acting on a message (opening, replying, picking up the topic) keeps its weight. Mutes are listed in Settings and can be removed.
+
+**Every run is accountable.** Each run records its counts per stage (collected, matched, judged, surfaced, marked) and the reason for each surfaced item, so a quiet day can be told apart from a broken watch. The judge's call is in the model-call log like every other.
+
 ## Considered options
 
 - **Generate a topic summary when it is clicked.** Rejected: a model call per click is slow, and the pass already reads the same turns.
@@ -46,4 +79,5 @@ The engine stores topics in one table per owner (`superchat/topics/`, its own ca
 - An engine rebuild and a bundle render (the `notes` Helper gets `topics_update`); no host change.
 - Topics appear only after a quiet pass has run; the first pass seeds from the last 7 notes.
 - The pass's output now carries topics: health is visible in the model-call log of each quiet pass (topics written, keys reused vs new).
-- Topic watch (a scheduled run that checks open topics against mail, calendar and the web and messages only on a real change) is the next record; the topic's card already has a place for its "New" line.
+- Topic watch is decided above and built next; this wave already stores each topic's `watch` field, so the watch starts with history. The card already has a place for its "New" line.
+- Mail and calendar signals need a connector with change cursors; until one exists, topic watch runs on files and the web only.
