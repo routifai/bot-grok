@@ -12,7 +12,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import delete, desc, select
+from sqlalchemy import delete, desc, func, select
 from sqlalchemy.orm import Session
 
 from omnigent.db.db_models import (
@@ -37,6 +37,8 @@ SPOKEN = ("messaged", "held")
 #: How long a seen item is kept; a spoken one longer (a thread is never surfaced twice).
 SEEN_KEEP_SECONDS = 30 * 24 * 3600
 SPOKEN_KEEP_SECONDS = 365 * 24 * 3600
+#: How far back the ledger reads the per-topic times and today's count.
+LEDGER_WINDOW_SECONDS = 30 * 24 * 3600
 #: Runs kept per owner.
 RUNS_KEPT = 500
 
@@ -99,24 +101,36 @@ class SqlAlchemyTopicWatchStore:
             return set(rows)
 
     def ledger(self, owner: str, *, day_start: int) -> Ledger:
-        """The messages the limits count: newest per topic, threads spoken of, today's count."""
+        """The messages the limits count: newest per topic, threads spoken of, today's count.
+
+        The per-topic times and today's count read the last :data:`LEDGER_WINDOW_SECONDS` only
+        (the limits look back 3 hours and one day); the threads read every spoken row kept
+        (:data:`SPOKEN_KEEP_SECONDS`), since a thread never surfaces twice. Columns only: a
+        held row's payload is never loaded here.
+        """
         ledger = Ledger()
+        seen = SqlTopicWatchSeen
+        mine = (
+            seen.workspace_id == current_workspace_id(),
+            seen.owner == owner,
+            seen.outcome.in_(SPOKEN),
+        )
+        since = min(day_start, now_epoch() - LEDGER_WINDOW_SECONDS)
         with self._session("select_topic_watch_ledger") as session:
-            rows = session.execute(
-                select(SqlTopicWatchSeen).where(
-                    SqlTopicWatchSeen.workspace_id == current_workspace_id(),
-                    SqlTopicWatchSeen.owner == owner,
-                    SqlTopicWatchSeen.outcome.in_(SPOKEN),
-                )
-            ).scalars()
-            for row in rows:
-                if row.topic_key:
-                    ledger.topic_last[row.topic_key] = max(
-                        ledger.topic_last.get(row.topic_key, 0), row.at
-                    )
-                ledger.threads.add(row.thread_ref or row.item_key[:255])
-                if row.at >= day_start:
+            recent = session.execute(
+                select(seen.topic_key, seen.at).where(*mine, seen.at >= since)
+            ).all()
+            for topic_key, at in recent:
+                if topic_key:
+                    ledger.topic_last[topic_key] = max(ledger.topic_last.get(topic_key, 0), at)
+                if at >= day_start:
                     ledger.today += 1
+            threads = session.execute(
+                select(func.coalesce(seen.thread_ref, func.substr(seen.item_key, 1, 255)))
+                .where(*mine)
+                .distinct()
+            ).scalars()
+            ledger.threads.update(threads)
         return ledger
 
     def held(self, owner: str) -> list[SeenRow]:
