@@ -1,7 +1,8 @@
 """Topics (ADR 0035): what the person is working on, kept by the quiet-moment pass.
 
 Layout: ``topic`` (the record and its cleaning rules, pure), ``store``, ``routes`` (list, pick,
-write), ``tools`` (tool def), ``handlers`` (runner side). The quiet brief reads the owner's
+write), ``tools`` (tool def), ``handlers`` (runner side), ``note`` (the next turn's one line
+after a pick). The quiet brief reads the owner's
 topics through :func:`omnigent.superchat.feature.topics_brief`; other capabilities use
 :func:`list_watched_topics` and :func:`mark_topic_new`. Imports stay lazy so importing a
 submodule never loads the server.
@@ -20,6 +21,7 @@ from omnigent.superchat.feature import (
     register_topics_brief,
 )
 from omnigent.superchat.topics.handlers import handle_topics_tool
+from omnigent.superchat.topics.note import deliver_topic_pick
 from omnigent.superchat.topics.store import brief_lines, list_watched_topics, mark_topic_new
 from omnigent.superchat.topics.tools import TOPIC_TOOL_NAMES
 
@@ -65,5 +67,6 @@ FEATURE = Feature(
     name="topics",
     tools=_tools,
     handlers=dict.fromkeys(TOPIC_TOOL_NAMES, handle_topics_tool),
+    turn_prefix=deliver_topic_pick,
     install=_install,
 )

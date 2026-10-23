@@ -3,7 +3,8 @@
 * ``GET /v1/me/topics?days=7`` lists the owner's open topics touched within ``days`` (at most
   7), newest first; closed ones are hidden.
 * ``POST /v1/me/topics/{key}/pick`` appends one ``topic`` card to the owner's Conversation:
-  no turn starts and nothing is sent to the model now; the card is part of the record.
+  no turn starts and nothing is sent to the model now; the card is part of the record, and the
+  next turn gets a one-line note (``note.py``).
 * ``POST /v1/topics/write`` is what the Helper's ``topics_update`` tool calls: it validates,
   trims and upserts by key.
 """
@@ -26,6 +27,7 @@ from omnigent.server.auth import LEVEL_OWNER, RESERVED_USER_LOCAL, AuthProvider
 from omnigent.server.routes._auth_helpers import require_access, require_user
 from omnigent.stores import ConversationStore, PermissionStore
 from omnigent.superchat.feature import RECORDED_RESPONSE_PREFIX
+from omnigent.superchat.topics.note import PICKED_LABEL_KEY, picked_value
 from omnigent.superchat.topics.store import SqlAlchemyTopicStore
 from omnigent.superchat.topics.topic import WINDOW_DAYS, Topic, clean_key
 
@@ -208,6 +210,12 @@ def create_topics_router(
             raise OmnigentError("no such topic", code=ErrorCode.NOT_FOUND)
         card = topic_card(topic)
         await asyncio.to_thread(append_topic_card, conversation_store, body.conversation_id, card)
+        # A warm session never reads the card: the next turn is told in one line (note.py).
+        await asyncio.to_thread(
+            conversation_store.set_labels,
+            body.conversation_id,
+            {PICKED_LABEL_KEY: picked_value(topic.key, topic.title)},
+        )
         return {"card": card}
 
     @router.post("/topics/write")

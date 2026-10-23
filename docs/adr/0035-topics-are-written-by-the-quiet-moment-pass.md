@@ -81,3 +81,9 @@ Before matching, code drops noise: bulk and no-reply senders, newsletters (list 
 - The pass's output now carries topics: health is visible in the model-call log of each quiet pass (topics written, keys reused vs new).
 - Topic watch is decided above and built next; this wave already stores each topic's `watch` field, so the watch starts with history. The card already has a place for its "New" line.
 - Mail and calendar signals need a connector with change cursors; until one exists, topic watch runs on files and the web only.
+
+## Amended 2026-10-23 (build)
+
+- **The next turn also gets a one-line note.** A warm session holds its own history and is sent only the person's new message, so it never reads a card the engine appended between turns. A pick therefore also marks the Conversation, and the next turn starts with one line naming the picked topic's title and key, cleared once read (the same one-shot pattern as the person moving a chat). The card stays the record; a session assembled from the record reads it there.
+- **The pick is recorded outside any turn.** Its items carry a `recorded_` response id: no Activity row, no turn link, and the runner's crash recovery never starts a turn for them.
+- **Home opens after a break.** The app opens on Home when the person returns after 4 hours or more away (and on a first visit); otherwise it opens on the Conversation as before. The Conversation has a Home button to go back.
